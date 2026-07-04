@@ -93,7 +93,7 @@ namespace Arcanum.World
                 for (int x = 0; x < SectorTerrain.Size; x++)
                 {
                     Sprite sprite = GetTileSprite(terrain.At(x, y)) ?? filler;
-                    if (sprite == null) continue;
+                    if (!sprite) continue;
                     int gx = offX + x, gy = offY + y;
                     placeTile($"Tile_{x}_{y}", parent, sprite, IsoProjection.TileToWorld(gx, gy, _pixelsPerUnit), (gx + gy) * 2);
                 }

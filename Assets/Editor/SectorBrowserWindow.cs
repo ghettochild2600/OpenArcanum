@@ -35,7 +35,7 @@ namespace Arcanum.Editor
             _sectors.Clear();
             _status = null;
 
-            if (_target == null)
+            if (!_target)
             {
                 _status = "No TileMapDemo selected.";
                 return;

@@ -160,7 +160,7 @@ namespace Arcanum.World.Demo
         private void ConfigureCamera()
         {
             _cam = Camera.main;
-            if (_cam == null)
+            if (!_cam)
             {
                 var camGo = new GameObject("DemoCamera") { tag = "MainCamera" };
                 _cam = camGo.AddComponent<Camera>();
@@ -194,7 +194,7 @@ namespace Arcanum.World.Demo
 
         private void Update()
         {
-            if (_cam == null) return;
+            if (!_cam) return;
 
             float scroll = Input.mouseScrollDelta.y;
             if (Mathf.Abs(scroll) > 0.01f)
