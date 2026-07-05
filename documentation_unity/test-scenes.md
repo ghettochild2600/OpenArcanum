@@ -97,7 +97,24 @@ a **Sector Browser** window (as shown above):
 
 Under the hood the archives are mounted once and the resolvers/sprite caches are reused, so switching sectors is
 fast. The browser is editor-only (`TileMapDemoEditor` + `SectorBrowserWindow` in the `Arcanum.Editor` assembly); the
-runtime `LoadSector(path)` method it calls is public, so a build could drive it too.
+runtime `LoadSector(path)` method it calls is public, and `TileMapDemo` also draws its **own** in-scene sector list
+(the "Sectors ▾" overlay, top-left in Play/builds) so you can switch sectors without the editor window.
+
+#### Running in a browser (WebGL) — bring your own data
+
+A browser has no access to your disk, so `GameDataLocator` can't find the install; instead the player supplies
+their own `.dat` files at runtime. In a WebGL build, `TileMapDemo` shows an **upload gate**: a "Choose .dat files…"
+button that opens the native file picker. Pick at least **arcanum2.dat** (tile art) and **Arcanum.dat** (from the
+install's `modules` folder — the maps). The `ArcanumFileUpload.jslib` bridge writes them into the browser's virtual
+filesystem under `/arcanum/`, `TileMapDemo` mounts them with the normal `MountFile`, and the sector browser + render
+proceed exactly as on desktop. **Nothing is uploaded to a server** — the bytes stay in the player's browser (they
+live once in the WebGL heap; `DatArchive` streams entries from there, so it isn't double-copied). Never bundle or
+host the `.dat` files — they're copyrighted; the upload-your-own-copy model is the point.
+
+In the **WebGL-platform editor** the upload gate is skipped and `GameDataLocator` reads your install directly, so
+you can test the whole flow in-editor before building. Two build gotchas for GitHub Pages hosting: enable
+**Decompression Fallback** (or set Compression = Disabled) in Player Settings → WebGL → Publishing, since Pages
+can't set the `Content-Encoding` headers Brotli/Gzip need; and add a `.nojekyll` to the published output.
 
 ### Dialog & script test bench — `Scenes/TestDialogs`
 
