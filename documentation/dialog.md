@@ -62,6 +62,39 @@ option**. A literal `0` that isn't blank is rejected as an error (`dialog.c:2668
 `text1` is non-blank but its `text2` (female) variant is blank, the parser logs a "missing female response"
 warning (`dialog.c:2728`) — but still accepts the record and falls back to `text1`.
 
+### The response number's sign (`goto`)
+
+An option's `goto` field carries the conversation's exit protocol in its sign (`dialog.c sub_417590`):
+
+| value | meaning |
+|---|---|
+| `> 0` | continue — jump to that NPC line |
+| `0` | end the conversation, then resume the NPC's `SAP_DIALOG` **script** at `script_line + 1` (the entry after the `SAT_DIALOG` that opened the dialog) |
+| `< 0` | end the conversation, then jump the script to line `−goto` |
+
+This is how a dialog hands quest logic back to the `.scr`: talking runs the SAP_DIALOG script, the script's
+`SAT_DIALOG` opens the conversation at a branch, and the chosen exit resumes the script
+(`ui/dialog_ui.c dialog_ui_execute_script`, 0x568480).
+
+### Response tokens & generated dialog
+
+An option whose text is a `<letter>:` token is a **canned line** picked at random from the generated-dialog
+tables (`dialog.c sub_416C10` / `dialog_copy_pc_generic_msg` 0x4182D0). The PC-facing files are
+`mes/gd_pc2m.mes` / `gd_pc2f.mes` (chosen by the NPC's gender), with `gd_dumb_pc2m/f` variants for dumb PCs;
+32 gd files exist in all (class/race/NPC/story variants). Generic token ranges: `y:` 1–99, `n:` 100–199,
+`s:` 200–299, `e:` 400–499 (goodbye — e.g. `{400}{Goodbye.}`), `f:` 800–899, `k:` 1500–1599, `w:`
+1800–1899. Other tokens invoke UI handlers: `b:` barter, `t:` teach skill, `h:` heal menu, `l:` world map,
+`p:` newspapers, `r:` rumors, `q:N` quest-line redirect, `u:N`/`z:N` NPC uses skill / casts spell. At most
+**5 options** show per node (`DialogState.options[5]`); if every option is filtered out, the engine
+substitutes a generated goodbye (`sub_414E60`) so the player can always leave.
+
+### The voice-over id hides in the `test` field
+
+The leading integer of an option's `test` field is NOT a condition — it's the speech line number, packed
+with the script number into a voice id (`sub_4189C0`) that resolves to
+`sound/speech/<script#>/v<line>_<m|f>.mp3` (falling back `_f` → `_m`). Condition parsing skips leading
+non-letters, so the number is inert for gating.
+
 ## NPC line vs player option
 
 **The role of a record is decided purely by `iq`** (`dialog.c:1343`, `2696`):
@@ -83,8 +116,10 @@ addressing *you* — "sir" / "madam"), never on the NPC's:
   male PC gets `text1`; a blank `text2` reuses `text1` (`dialog.c:2332`).
 - **Option gender gate.** On a player option, `text2` is **not** text — it holds a number that gates the
   option by PC gender (`dialog.c:1347`). The value is parsed at load time: blank ⇒ `-1` meaning "any
-  gender"; otherwise it is matched against the PC's gender. An option whose gate doesn't match the PC's
-  gender is filtered out. Because `text2` on an option is a gate, it is never displayed.
+  gender"; otherwise it is matched against the PC's raw `STAT_GENDER` — **`GENDER_FEMALE = 0`,
+  `GENDER_MALE = 1`** (stat.h:42), so `{0}` marks a female-only option and `{1}` a male-only one (check any
+  "…buying a lady a drink?" option in the shipped data: it carries `{0}`). An option whose gate doesn't
+  match is filtered out. Because `text2` on an option is a gate, it is never displayed.
 
 ## Name codes
 

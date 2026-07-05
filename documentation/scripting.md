@@ -208,6 +208,24 @@ Only one loop can be active at a time; the engine logs an error if a script trie
 `SFO_CURRENT_LOOPED_OBJECT` is how the loop body addresses "the object we're on this pass" — it is
 how a script can, for example, do something to every nearby critter or to each follower in turn.
 
+## Script ⇄ dialog hand-off
+
+`SAT_DIALOG` opens the attachee NPC's conversation at the dialog line in its first operand and returns
+`RETURN_AND_SKIP_DEFAULT` — the conversation takes over (`script.c:1513`). When the conversation ends, the
+chosen option's response number resumes this script: `0` ⇒ at the entry after the `SAT_DIALOG`, negative ⇒
+at `−response#` (`ui/dialog_ui.c dialog_ui_execute_script`). Talking to an NPC in the first place fires its
+`SAP_DIALOG` script at line 0 (`ui/tb_ui.c sub_57CC70`) — the script, not the click, decides which dialog
+branch opens. Two retail quirks preserved in arcanum-ce: a mind-controlled NPC's dialog is force-redirected
+to script **2188** (`script_execute`), and `SAT_DIALOG` has a flags/counters copy-paste bug (script.c:1523).
+
+### Per-slot local state
+
+Each `OBJ_F_SCRIPTS` slot persists `flags` (32 local flags, bit-packed) and `counters` (four 8-bit counters
+in one word) per object per attachment point. Dialog's `lf`/`lc` codes read/write the **SAP_DIALOG slot's**
+flags/counters — dialog and script local state are the same storage. Gotcha: the exported
+`script_local_counter_get` (0x444FD0) forgets the `& 0xFF` mask that the in-VM `script_get_value` applies,
+so reading a low counter through that API returns the higher counter bytes too.
+
 ## The object heartbeat clock (`ai_timeevent`)
 
 Living objects do not run their AI or heartbeat scripts on a fixed global tick. Instead each object

@@ -4,7 +4,8 @@
     "references": [
         "Arcanum.Formats",
         "UnityEngine.TestRunner",
-        "UnityEditor.TestRunner"
+        "UnityEditor.TestRunner",
+        "Arcanum.Script"
     ],
     "includePlatforms": [
         "Editor"

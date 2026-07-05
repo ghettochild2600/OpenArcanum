@@ -94,5 +94,35 @@ namespace Arcanum.Formats.Dialog
 
         /// <summary>The speaking NPC leaves the party (dialog <c>lv</c> / <c>critter_disband</c>).</summary>
         void DisbandNpc();
+
+        /// <summary>Display text for a generated-response token (dialog.c <c>sub_416C10</c> — <c>e:</c>
+        /// goodbye, <c>y:/n:/s:/f:/k:/w:</c> generic lines, from the <c>mes/gd_*.mes</c> tables). Null ⇒ the
+        /// token can't be rendered and the option is skipped. Default: none.</summary>
+        string GeneratedText(char token) => null;
+
+        /// <summary>The PC's magick(+)/tech(−) aptitude (engine <c>STAT_MAGICK_TECH_APTITUDE</c>) — the
+        /// <c>ma</c> gate reads it, <c>ta</c> reads its negation. Default: 0 (balanced).</summary>
+        int MagickAptitude => 0;
+
+        /// <summary>The PC's trained level in a magick college (engine <c>spell_college_level_get</c>, 0–5) —
+        /// the <c>sc</c> gate. Default: 0.</summary>
+        int SpellCollegeLevel(int college) => 0;
+
+        /// <summary>Whether the party holds a (non-mind-controlled) follower whose prototype has this
+        /// <c>OBJ_F_NAME</c> index (engine <c>object_list_followers</c> scan) — the <c>pa</c> gate.
+        /// Default: false.</summary>
+        bool PartyHasMemberNamed(int nameId) => false;
+
+        /// <summary>The NPC is jilted — abandoned by the PC (engine <c>ONF_JILTED</c>) — the <c>wt</c> gate.
+        /// Default: false (follower-desertion mechanics not modelled yet; see Docs/Dialog.md).</summary>
+        bool IsNpcJilted => false;
+
+        /// <summary>The NPC was told to wait here (engine <c>ONF_AI_WAIT_HERE</c>) — the <c>wa</c> gate.
+        /// Default: false (wait-here orders not modelled yet).</summary>
+        bool IsNpcWaiting => false;
+
+        /// <summary>Whether a rumor's associated quest is resolved/quelled (engine global
+        /// <c>rumor_qstate_get</c>) — the <c>rq</c> gate. Default: false (rumor-quell tracking not driven yet).</summary>
+        bool RumorQuelled(int id) => false;
     }
 }

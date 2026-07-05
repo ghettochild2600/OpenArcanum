@@ -98,3 +98,37 @@ a **Sector Browser** window (as shown above):
 Under the hood the archives are mounted once and the resolvers/sprite caches are reused, so switching sectors is
 fast. The browser is editor-only (`TileMapDemoEditor` + `SectorBrowserWindow` in the `Arcanum.Editor` assembly); the
 runtime `LoadSector(path)` method it calls is public, so a build could drive it too.
+
+### Dialog & script test bench — `Scenes/TestDialogs`
+
+Scene: **`Scenes/TestDialogs`** (driver **`DialogScriptGallery`** on a single GameObject). A standalone conversation runner that wires the real `Arcanum.Formats.Dialog`
+and `Arcanum.Script` assemblies with **no world dependency** — so it's both a way to eyeball any NPC's dialog and
+the smoke test for those layers before a release.
+
+Enter an NPC's **dialog number** (Virgil = `1324`) and press **Talk**. It runs that NPC's `SAP_DIALOG` script
+through the real VM, whose `SAT_DIALOG` action decides which dialog line to open — exactly the engine flow (talking
+runs the script, the script picks the branch) — then opens the conversation. Click options to walk the tree; on
+end it resumes the `SAP_DIALOG` script (the response-number hand-off), which may open a follow-up line.
+
+The value is the **live, editable game-state** on the left — everything a `.dlg` test reads or effect writes:
+Intelligence (the IQ gate), PC gender (gender gate + speech variant), race, gold, alignment, persuasion, NPC
+reaction, **met-before** and **following** toggles, and quest/flag setters. Change any value and the option list
+re-filters instantly, so you can *see* a gate open or close. The right panel shows the conversation and a running
+**trace** — which conditions the SAP_DIALOG script evaluated and which effects each pick fired (`qu 12 → 3`,
+`re +5`, `jo (NPC joins)`, …). Effects mutate the same store the conditions read, so it stays coherent.
+
+**Decode** dumps the `SAP_DIALOG` script's entries in readable `if <condition> THEN <action> ELSE <action>` form —
+the quickest way to understand why a conversation opened where it did (e.g. Virgil's chain of "if special state →
+special dialog" checks ending in the unconditional first-meeting line).
+
+World side-effects that need the full game (teleport, spawn, real combat) are logged rather than performed — this
+is a pure logic bench. Configure your data and press Play (it defaults to Virgil).
+
+#### Picking a dialog — the Dialog Browser
+
+You rarely want to hand-type dialog numbers. The `DialogScriptGallery` inspector has a **Browse dialogs…** button
+(also at **Arcanum ▸ Test ▸ Dialog Browser**) that opens a searchable window listing every `dlg/*.dlg` in the
+install by number and name. Type part of a name (`virgil`, `merchant`) or a number to filter; in **Play mode** the
+**Talk** button opens that dialog in the running bench immediately (the currently-open one is marked `◀ open`). The
+list works in edit mode too — only Talk needs Play. Dialogs are enumerated straight from the archives, so no extra
+configuration beyond your game-data path.

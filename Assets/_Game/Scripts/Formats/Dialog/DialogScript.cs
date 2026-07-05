@@ -17,10 +17,17 @@ namespace Arcanum.Formats.Dialog
 
         public IReadOnlyCollection<int> LineNumbers => _lines.Keys;
 
+        /// <summary>The engine shows at most 5 responses per NPC line (dialog.c <c>DialogState.options[5]</c>).</summary>
+        public const int MaxOptions = 5;
+
         /// <summary>
         /// The player options that follow an NPC speech line: the consecutive option lines after
-        /// <paramref name="npcLine"/> up to the next NPC speech line, skipping engine markers (B:/E:/R:…)
-        /// and lines the player's intelligence doesn't satisfy.
+        /// <paramref name="npcLine"/> up to the next NPC speech line (engine <c>sub_414F50</c>), filtered by
+        /// the IQ gate (positive = min INT, negative = max INT — the "dumb" branches), the gender gate, and
+        /// the line's script test; capped at <see cref="MaxOptions"/>. Token options (<c>e:</c> goodbye,
+        /// <c>y:/n:/s:/f:/k:/w:</c> generic lines) resolve their display text from the generated-dialog
+        /// tables via <see cref="IDialogContext.GeneratedText"/>; tokens we can't render (b: barter,
+        /// t: train, …) are skipped.
         /// </summary>
         public List<DialogLine> OptionsFor(int npcLine, int playerIq = 20, IDialogContext ctx = null)
         {
@@ -36,20 +43,27 @@ namespace Arcanum.Formats.Dialog
 
                 DialogLine l = kv.Value;
                 if (l.IsNpcSpeech) break;       // reached the next NPC line → this block of options ends
-                if (IsMarker(l.Text)) continue; // engine directive, not a player-facing option
                 if (!IqAllows(l.Iq, playerIq)) continue;
-                // gender gate: the option's gender field is STAT_GENDER (0=male, 1=female); show only if it matches.
-                if (ctx != null && l.OptionGender != -1 && l.OptionGender != (ctx.PcIsMale ? 0 : 1)) continue;
+                // Gender gate: the option's gender field is STAT_GENDER — GENDER_FEMALE = 0, GENDER_MALE = 1
+                // (stat.h; dialog.c sub_414F50 shows the option only when it matches the PC's gender).
+                if (ctx != null && l.OptionGender != -1 && l.OptionGender != (ctx.PcIsMale ? 1 : 0)) continue;
                 if (!DialogScriptEvaluator.TestPasses(l.Test, ctx)) continue; // script condition gate
+
+                if (l.IsToken)
+                {
+                    // Engine response tokens (sub_416C10) — resolve the generic ones to generated text
+                    // (gd_*.mes); anything the context can't render is dropped, like before.
+                    string text = ctx?.GeneratedText(l.TokenCode);
+                    if (text == null) continue;
+                    l = l.WithText(text);
+                }
+
                 options.Add(l);
+                if (options.Count >= MaxOptions) break; // engine cap: 5 responses per node
             }
 
             return options;
         }
-
-        // Engine markers are "X:" prefixed (B: barter, E: end, R: reaction-gated, …) — not spoken lines.
-        private static bool IsMarker(string text)
-            => !string.IsNullOrEmpty(text) && text.Length >= 2 && char.IsLetter(text[0]) && text[1] == ':';
 
         private static bool IqAllows(int iq, int playerIq)
             => iq == 0 || (iq > 0 ? playerIq >= iq : playerIq <= -iq);

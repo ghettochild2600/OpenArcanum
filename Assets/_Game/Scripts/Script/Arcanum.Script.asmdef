@@ -1,10 +1,8 @@
 {
-    "name": "Arcanum.Runtime",
-    "rootNamespace": "Arcanum.Runtime",
+    "name": "Arcanum.Script",
+    "rootNamespace": "Arcanum.Script",
     "references": [
-        "Arcanum.Formats",
-        "Arcanum.World",
-        "Arcanum.Script"
+        "Arcanum.Formats"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
@@ -14,5 +12,5 @@
     "autoReferenced": true,
     "defineConstraints": [],
     "versionDefines": [],
-    "noEngineReferences": false
+    "noEngineReferences": true
 }

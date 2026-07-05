@@ -3,7 +3,8 @@
     "rootNamespace": "Arcanum.Editor",
     "references": [
         "Arcanum.Formats",
-        "Arcanum.World"
+        "Arcanum.World",
+        "Arcanum.Runtime"
     ],
     "includePlatforms": [
         "Editor"

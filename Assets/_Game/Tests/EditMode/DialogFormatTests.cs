@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Arcanum.Formats.Dialog;
+using Arcanum.Formats.Text;
 using NUnit.Framework;
 
 namespace Arcanum.Formats.Tests
@@ -17,7 +18,7 @@ namespace Arcanum.Formats.Tests
         private const string Dlg =
             "{1}{Hello, sir.}{Hello, madam.}{}{}{0}{}\n" +
             "{2}{Tell me about @npcname@.}{}{1}{}{5}{}\n" +
-            "{3}{A woman's question.}{1}{1}{}{5}{}\n" + // gender 1 = female-only (STAT_GENDER)
+            "{3}{A woman's question.}{0}{1}{}{5}{}\n" + // gender 0 = female-only (STAT_GENDER: female=0, male=1)
             "{4}{A clever question.}{}{15}{}{5}{}\n" +
             "{5}{I am @pcname@'s merchant.}{}{}{}{0}{}\n" +
             "{6}{Goodbye.}{}{1}{}{0}{}\n";
@@ -76,6 +77,22 @@ namespace Arcanum.Formats.Tests
         }
 
         [Test]
+        public void GeneratedDialogText_PicksFromTokenRange()
+        {
+            var mes = new MesFile(new List<KeyValuePair<int, string>>
+            {
+                new KeyValuePair<int, string>(400, "Goodbye."),
+                new KeyValuePair<int, string>(407, "Good day."),
+                new KeyValuePair<int, string>(100, "No."),
+            });
+            var gd = new GeneratedDialogText(mes, new System.Random(1));
+            string e = gd.For('e');
+            Assert.That(e == "Goodbye." || e == "Good day.", $"'{e}' should come from the e: range (400–499)");
+            Assert.That(gd.For('n'), Is.EqualTo("No.")); // 100–199
+            Assert.That(gd.For('b'), Is.Null);           // barter has no generic text range
+        }
+
+        [Test]
         public void ExpandNameCodes()
         {
             var ctx = new Ctx { Pc = "Hero", Npc = "Merchant" };
@@ -103,17 +120,89 @@ namespace Arcanum.Formats.Tests
         }
 
         [Test]
-        public void GenderZeroOptionIsMaleOnly()
+        public void GenderZeroOptionIsFemaleOnly()
         {
-            // {0} = male-only (STAT_GENDER 0). Verifies the corrected (previously inverted) convention.
+            // STAT_GENDER: GENDER_FEMALE = 0, GENDER_MALE = 1 (stat.h). Verified against the shipped data —
+            // e.g. 01618master_prowler.dlg option "How about buying a lady a drink?" carries gender 0.
             string dlg = "{1}{Greeting.}{}{}{}{0}{}\n" +
-                         "{2}{Man talk.}{0}{1}{}{5}{}\n" + // gender 0 → male-only
+                         "{2}{Woman talk.}{0}{1}{}{5}{}\n" + // gender 0 → female-only
+                         "{3}{Man talk.}{1}{1}{}{5}{}\n" +   // gender 1 → male-only
                          "{5}{Bye.}{}{}{}{0}{}\n";
             DialogScript s = DlgReader.Read(Latin1(dlg));
-            CollectionAssert.Contains(Texts(new DialogConversation(s, 1, 20, new Ctx { Male = true }).Options()),
-                "Man talk.", "gender 0 → shown to a male PC");
-            CollectionAssert.DoesNotContain(Texts(new DialogConversation(s, 1, 20, new Ctx { Male = false }).Options()),
-                "Man talk.", "gender 0 → hidden from a female PC");
+            List<string> male = Texts(new DialogConversation(s, 1, 20, new Ctx { Male = true }).Options());
+            List<string> female = Texts(new DialogConversation(s, 1, 20, new Ctx { Male = false }).Options());
+            CollectionAssert.Contains(male, "Man talk.");
+            CollectionAssert.DoesNotContain(male, "Woman talk.");
+            CollectionAssert.Contains(female, "Woman talk.");
+            CollectionAssert.DoesNotContain(female, "Man talk.");
+        }
+
+        [Test]
+        public void EmptyOptions_SynthesizeGeneratedGoodbye()
+        {
+            // Every option gated out → the engine injects a generated goodbye (sub_414E60); ending through it
+            // hands control back to the SAP_DIALOG script (EndScriptLine 0 = resume after SAT_DIALOG).
+            string dlg = "{1}{You bore me.}{}{}{}{0}{}\n" +
+                         "{2}{Elite reply.}{}{19}{}{5}{}\n" + // IQ ≥ 19 — gated out at IQ 10
+                         "{5}{Bye.}{}{}{}{0}{}\n";
+            var convo = new DialogConversation(DlgReader.Read(Latin1(dlg)), 1, 10, new Ctx { Male = true });
+            List<DialogLine> options = convo.Options();
+            Assert.That(options.Count, Is.EqualTo(1));
+            Assert.That(options[0].Num, Is.EqualTo(-1));       // synthetic
+            Assert.That(options[0].Text, Is.EqualTo("Bye now.")); // Ctx.GeneratedText('e')
+            Assert.That(convo.Pick(options[0]), Is.False);
+            Assert.That(convo.EndScriptLine, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void TokenOption_ResolvesGeneratedText_AndUnrenderableTokensAreSkipped()
+        {
+            string dlg = "{1}{Hello.}{}{}{}{0}{}\n" +
+                         "{2}{e:}{}{1}{}{0}{}\n" +   // goodbye token → generated text
+                         "{3}{b:}{}{1}{}{5}{}\n" +   // barter token → no handler → skipped
+                         "{4}{Ask away.}{}{1}{}{5}{}\n" +
+                         "{5}{Sure.}{}{}{}{0}{}\n";
+            var convo = new DialogConversation(DlgReader.Read(Latin1(dlg)), 1, 20, new Ctx { Male = true });
+            List<string> texts = Texts(convo.Options());
+            CollectionAssert.AreEquivalent(new[] { "Bye now.", "Ask away." }, texts);
+        }
+
+        [Test]
+        public void OptionsCapAtFive()
+        {
+            var sb = new System.Text.StringBuilder("{1}{Pick.}{}{}{}{0}{}\n");
+            for (int i = 0; i < 7; i++) sb.Append("{" + (2 + i) + "}{Option " + i + ".}{}{1}{}{0}{}\n");
+            var convo = new DialogConversation(DlgReader.Read(Latin1(sb.ToString())), 1, 20, new Ctx { Male = true });
+            Assert.That(convo.Options().Count, Is.EqualTo(5)); // engine DialogState.options[5]
+        }
+
+        [Test]
+        public void FlEffect_IsFinalSay_ThenEndsWithoutScriptHandoff()
+        {
+            string dlg = "{1}{Hello.}{}{}{}{0}{}\n" +
+                         "{2}{Anger the NPC.}{}{1}{}{5}{fl 9}\n" +
+                         "{5}{Unreached.}{}{}{}{0}{}\n" +
+                         "{9}{Get out of my sight!}{}{}{}{0}{}\n";
+            var convo = new DialogConversation(DlgReader.Read(Latin1(dlg)), 1, 20, new Ctx { Male = true });
+            DialogLine opt = convo.Options()[0];
+            Assert.That(convo.Pick(opt), Is.True);              // the final say is shown…
+            Assert.That(convo.CurrentLine, Is.EqualTo(9));
+            Assert.That(convo.FinalSay, Is.True);
+            List<DialogLine> last = convo.Options();            // …with only the generated goodbye left
+            Assert.That(last.Count, Is.EqualTo(1));
+            Assert.That(last[0].Num, Is.EqualTo(-1));
+            Assert.That(convo.Pick(last[0]), Is.False);
+            Assert.That(convo.EndScriptLine, Is.EqualTo(-1));   // fl ends outright — no script hand-off
+        }
+
+        [Test]
+        public void NegativeTarget_EndsAndJumpsScriptToThatLine()
+        {
+            string dlg = "{1}{Deal?}{}{}{}{0}{}\n" +
+                         "{2}{Yes.}{}{1}{}{-7}{}\n"; // engine sub_417590: negative → end + script line 7
+            var convo = new DialogConversation(DlgReader.Read(Latin1(dlg)), 1, 20, new Ctx { Male = true });
+            Assert.That(convo.Pick(convo.Options()[0]), Is.False);
+            Assert.That(convo.EndScriptLine, Is.EqualTo(7));
         }
 
         [Test]
@@ -136,6 +225,36 @@ namespace Arcanum.Formats.Tests
         }
 
         [Test]
+        public void EvaluatesAptitudeCollegePartyAndStateFlagConditions()
+        {
+            var ctx = new Ctx { Aptitude = 40, CollegeLevel = 3, PartyMemberName = 6411, Jilted = false, Waiting = false, Quelled = true };
+
+            // ma reads magick aptitude; ta reads its negation (Cmp sign convention).
+            Assert.That(DialogScriptEvaluator.TestPasses("ma20", ctx), Is.True);   // 40 ≥ 20
+            Assert.That(DialogScriptEvaluator.TestPasses("ma60", ctx), Is.False);  // 40 < 60
+            Assert.That(DialogScriptEvaluator.TestPasses("ta-20", ctx), Is.True);  // −40 ≤ −20
+            Assert.That(DialogScriptEvaluator.TestPasses("ta20", ctx), Is.False);  // −40 < 20 (need ≥)
+
+            // sc: A = college, B = required level.
+            Assert.That(DialogScriptEvaluator.TestPasses("sc4 3", ctx), Is.True);  // college level 3 ≥ 3
+            Assert.That(DialogScriptEvaluator.TestPasses("sc4 4", ctx), Is.False); // 3 < 4
+
+            // pa: party holds / lacks the named follower.
+            Assert.That(DialogScriptEvaluator.TestPasses("pa6411", ctx), Is.True);   // present
+            Assert.That(DialogScriptEvaluator.TestPasses("pa-6411", ctx), Is.False); // "must lack" but present
+            Assert.That(DialogScriptEvaluator.TestPasses("pa9999", ctx), Is.False);  // absent
+
+            // wt/wa: 1 = must be jilted/waiting, 0 = must not. Not jilted/waiting here.
+            Assert.That(DialogScriptEvaluator.TestPasses("wt0", ctx), Is.True);   // not jilted, want-not ✓
+            Assert.That(DialogScriptEvaluator.TestPasses("wt1", ctx), Is.False);  // want jilted, isn't
+            Assert.That(DialogScriptEvaluator.TestPasses("wa0", ctx), Is.True);
+
+            // rq: rumor quelled (this one is quelled).
+            Assert.That(DialogScriptEvaluator.TestPasses("rq5", ctx), Is.True);    // must be quelled ✓
+            Assert.That(DialogScriptEvaluator.TestPasses("rq-5", ctx), Is.False);  // must not be, but is
+        }
+
+        [Test]
         public void RunsLeavePartyEffect()
         {
             var ctx = new Ctx();
@@ -153,7 +272,20 @@ namespace Arcanum.Formats.Tests
             public bool PcIsMale => Male;
             public string PcName => Pc;
             public string NpcName => Npc;
+            public string GeneratedText(char token) => token == 'e' ? "Bye now." : null;
             public int PcRace => 0;
+
+            // Drivers for the ma/ta/sc/pa/wt/wa/rq gates.
+            public int Aptitude;
+            public int CollegeLevel;
+            public int PartyMemberName = -1;
+            public bool Jilted, Waiting, Quelled;
+            public int MagickAptitude => Aptitude;
+            public int SpellCollegeLevel(int college) => CollegeLevel;
+            public bool PartyHasMemberNamed(int nameId) => nameId == PartyMemberName;
+            public bool IsNpcJilted => Jilted;
+            public bool IsNpcWaiting => Waiting;
+            public bool RumorQuelled(int id) => Quelled;
 
             public int Intelligence => 20;
             public int Charisma => 10;

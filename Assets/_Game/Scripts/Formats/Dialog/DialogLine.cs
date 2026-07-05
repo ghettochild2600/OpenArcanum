@@ -36,9 +36,20 @@ namespace Arcanum.Formats.Dialog
         public string NpcSpeech(bool pcMale)
             => pcMale || string.IsNullOrWhiteSpace(Text2) ? Text : Text2;
 
-        /// <summary>A player option's gender gate — the raw <c>STAT_GENDER</c> value: 0 = male-only, 1 = female-only,
-        /// -1 = any (blank). Only meaningful for option lines.</summary>
+        /// <summary>A player option's gender gate — the raw <c>STAT_GENDER</c> value (stat.h:
+        /// <c>GENDER_FEMALE = 0, GENDER_MALE = 1</c>), so 0 = female-only, 1 = male-only, -1 = any (blank).
+        /// Only meaningful for option lines.</summary>
         public int OptionGender
             => Iq != 0 && !string.IsNullOrWhiteSpace(Text2) && int.TryParse(Text2.Trim(), out int g) ? g : -1;
+
+        /// <summary>Whether the option text is an engine token (<c>b:</c> barter, <c>e:</c> goodbye, …) rather
+        /// than spoken text — a single letter + ':' prefix (dialog.c <c>sub_416C10</c>).</summary>
+        public bool IsToken => !string.IsNullOrEmpty(Text) && Text.Length >= 2 && char.IsLetter(Text[0]) && Text[1] == ':';
+
+        /// <summary>The token letter (lower-cased), or '\0' for a plain line.</summary>
+        public char TokenCode => IsToken ? char.ToLowerInvariant(Text[0]) : '\0';
+
+        /// <summary>A copy of this line with substituted display text (a resolved generated-response token).</summary>
+        public DialogLine WithText(string text) => new DialogLine(Num, text, Text2, Iq, Test, Target, Effect);
     }
 }

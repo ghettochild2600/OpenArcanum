@@ -81,7 +81,22 @@ namespace Arcanum.Formats.Dialog
                 case "na": return t.A < 0 ? ctx.Alignment <= t.A : ctx.Alignment >= -t.A;  // alignment, sign-reversed vs `al`
                 case "ar": return t.A > 0 ? ctx.AreaKnown(t.A) : !ctx.AreaKnown(-t.A);     // area is / isn't known
 
+                // Magick(+)/tech(−) aptitude (engine DIALOG_COND_MA / _TA): ma reads the aptitude, ta its
+                // negation — both with the Cmp sign convention (positive arg ≥, negative ≤).
+                case "ma": return Cmp(ctx.MagickAptitude, t.A);
+                case "ta": return Cmp(-ctx.MagickAptitude, t.A);
+                // Spell-college level (DIALOG_COND_SC): A = college, B = required level (Cmp sign convention).
+                case "sc": return Cmp(ctx.SpellCollegeLevel(t.A), t.B);
+                // Party has a follower named A / lacks the one named −A (DIALOG_COND_PA).
+                case "pa": return t.A > 0 ? ctx.PartyHasMemberNamed(t.A) : !ctx.PartyHasMemberNamed(-t.A);
+                // NPC jilted / waiting / rumor-quelled (DIALOG_COND_WT / _WA / _RQ). 1 = must be, 0 = must not.
+                case "wt": return ctx.IsNpcJilted == (t.A == 1);
+                case "wa": return ctx.IsNpcWaiting == (t.A == 1);
+                case "rq": return t.A > 0 ? ctx.RumorQuelled(t.A) : !ctx.RumorQuelled(-t.A);
+
                 default:
+                    // Still documented-permissive: `tr` (skill TRAINING level — we model ranks, not training
+                    // tiers) and `ia` (PC's current worldmap area — no location→area table yet). See Docs/Dialog.md.
                     OnUnsupported?.Invoke(t.Code, t.A);
                     return true; // permissive: don't hide an option we can't evaluate
             }
