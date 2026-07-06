@@ -71,6 +71,8 @@ sections you fly over with a free camera: **walls** (one base piece per `art/wal
 (chests, barrels, …), **roofs**, **facades** (one representative piece — a facade frame is the 78×40 sliver
 the engine draws per tile, not the whole building), and **scenery** (the biggest table; toggleable).
 
+![The doors section, swinging through their frames](https://cdn.arcanum.aapanasik.com/github/demo-doors.gif)
+
 Every entry is enumerated from your install's own name tables and decoded, so this doubles as a coverage
 check: an art that fails to resolve or decode shows as a ✗-labelled empty cell, and the Console logs each
 section's `decoded / missing` counts. Oversized sprites are scaled down into their cell so tall trees and
