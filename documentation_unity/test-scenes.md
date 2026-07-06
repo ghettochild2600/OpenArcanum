@@ -63,6 +63,24 @@ As with the character gallery, configure your data and press Play.
 > The gallery shows each terrain's base tile in isolation. To see **real, blended terrain** assembled the way the
 > game draws it, use the terrain demo below — it runs the actual in-game generator over a real sector.
 
+### Object art gallery — `Scenes/TestObjects`
+
+Driver: **`ObjectArtGallery`**. Browses the **static-object art tables** in one place, stacked as labelled
+sections you fly over with a free camera: **walls** (one base piece per `art/wall/structure.mes` entry),
+**doors** and **windows** (`art/portal/portal.mes` — animated, so doors actually swing), **containers**
+(chests, barrels, …), **roofs**, **facades** (one representative piece — a facade frame is the 78×40 sliver
+the engine draws per tile, not the whole building), and **scenery** (the biggest table; toggleable).
+
+Every entry is enumerated from your install's own name tables and decoded, so this doubles as a coverage
+check: an art that fails to resolve or decode shows as a ✗-labelled empty cell, and the Console logs each
+section's `decoded / missing` counts. Oversized sprites are scaled down into their cell so tall trees and
+wide pieces don't bury the grid.
+
+Controls: **WASD/arrows** or **middle/right-mouse drag** to pan, **scroll** to zoom, **L** toggles the
+per-cell labels (they also auto-hide when zoomed far out; section headers always show). Inspector knobs:
+columns, cell size, a per-section cap (`MaxPerSection`, 0 = everything — anything dropped is logged), and
+the scenery toggle.
+
 ### Terrain / sector demo — `Scenes/TestTerrain`
 
 Driver: **`TileMapDemo`**. Loads one real Arcanum **sector** (a 64×64 patch of the world, a `.sec` file from the

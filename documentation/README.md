@@ -17,6 +17,8 @@ references point at files/lines in `arcanum-ce` so claims can be verified.
   tiles / walls / roofs / facades / lighting & day-night are drawn.
 - **[Dialog](dialog.md)** — how conversations are stored and gated (the IQ rule, gender variants, condition &
   effect codes, reaction).
+- **[Barter](barter.md)** — trading with NPCs: the substitute-inventory store, the exact buy/sell price
+  formulas (haggle, markup, reaction), and what merchants refuse to trade.
 - **[Scripting](scripting.md)** — the `.scr` script VM (conditions, actions, control flow) and the object
   heartbeat / `ai_timeevent` cadence.
 - **[Combat & characters](combat-and-characters.md)** — to-hit / damage / armour-class / resistance formulas,

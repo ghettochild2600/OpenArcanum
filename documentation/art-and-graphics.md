@@ -222,6 +222,14 @@ all under `art\`:
 
 These tables are loaded once at startup (`name.c:244`).
 
+> **The name tables contain dead entries.** Thirteen entries across the shipped tables reference art that
+> doesn't exist in any archive, so the retail engine can't draw them either: three `scenery.mes` typos
+> (`SmtihBench4`, `device_filp`, `torture09_filp` — the correctly-spelled `.art` files exist), two
+> `portal.mes` entries pointing at never-shipped *damaged* variants (`in5f5cd0`, `wi2f3ad0`; the undamaged
+> `…u0` art exists), and eight pieces of cut content (goddess pedestal pair, `rug_flat_L/R`,
+> `CinderBlock`, the halfling-god altar piece, facade `EQT_03`, `Vendigroth-Arm`). A resolver that
+> "fails" on these matches retail behaviour.
+
 ### Scenery and interface — number into a table
 
 The simplest cases: take the art-id's num and look it up. Scenery uses a **composite key**:
@@ -271,7 +279,12 @@ These have their own name tables and composition rules (`a_name.c`):
   flippable/non-flippable sets, and the filename encodes the tile pair and a couple of variation letters.
 - **Walls** — `art\wall\<name><piece><damage><variation>.art` (`a_name.c:1635`); the **piece** code (one
   of ~46 — corners, edges, doorways `d…`, posts `p…`) and a **damage** code (`0x400` → fully destroyed,
-  `0x80` → damaged) select the right segment.
+  `0x80` → damaged) select the right segment. The wall's `<name>` (a 3-char code from
+  `art\wall\wallname.mes`) is picked per **structure**: `art\wall\structure.mes` maps a structure number
+  to its interior and exterior wall names, chosen by the art-id's rotation. Note the file's two blocks:
+  keys **below 1000 are the structures**, keys **1000+n are structure n's editor display name** — the
+  engine stops parsing structures at key 1000 (`a_name.c:1490`) and reads `1000+n` only for names
+  (`a_name.c:1772`); treating the name block as structures yields ~45 phantom entries.
 - **Roofs** — `art\roof\<name>.art` (`a_name.c:1912`).
 - **Lights** — `art\light\<name>.art`, or `art\light\<name>_s<n>.art` when the light has a directional
   variant (`a_name.c:1865`).

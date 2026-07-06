@@ -83,7 +83,8 @@ tables (`dialog.c sub_416C10` / `dialog_copy_pc_generic_msg` 0x4182D0). The PC-f
 `mes/gd_pc2m.mes` / `gd_pc2f.mes` (chosen by the NPC's gender), with `gd_dumb_pc2m/f` variants for dumb PCs;
 32 gd files exist in all (class/race/NPC/story variants). Generic token ranges: `y:` 1–99, `n:` 100–199,
 `s:` 200–299, `e:` 400–499 (goodbye — e.g. `{400}{Goodbye.}`), `f:` 800–899, `k:` 1500–1599, `w:`
-1800–1899. Other tokens invoke UI handlers: `b:` barter, `t:` teach skill, `h:` heal menu, `l:` world map,
+1800–1899. Other tokens invoke UI handlers: `b:` barter (text from 300–399, or 1600–1699 for a party
+follower — see [barter.md](barter.md)), `t:` teach skill, `h:` heal menu, `l:` world map,
 `p:` newspapers, `r:` rumors, `q:N` quest-line redirect, `u:N`/`z:N` NPC uses skill / casts spell. At most
 **5 options** show per node (`DialogState.options[5]`); if every option is filtered out, the engine
 substitutes a generated goodbye (`sub_414E60`) so the player can always leave.

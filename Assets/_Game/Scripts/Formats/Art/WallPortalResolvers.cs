@@ -42,6 +42,10 @@ namespace Arcanum.Formats.Art
             var structs = new List<(int, int)>();
             foreach (var e in structure.Entries)
             {
+                // structure.mes has two blocks: real structures below key 1000, and each structure's
+                // editor display name at key 1000+n. The engine stops reading at 1000 (a_name.c:1490,
+                // init_wall_structures) — parsing the names as structures bloated the table with junk.
+                if (e.Key >= 1000) continue;
                 string[] toks = e.Value.Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
                 int interior = toks.Length > 0 ? IndexOf(toks[0]) : 4;
                 int exterior = toks.Length > 1 ? IndexOf(toks[1]) : 0;
