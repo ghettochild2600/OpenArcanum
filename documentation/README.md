@@ -27,6 +27,8 @@ references point at files/lines in `arcanum-ce` so claims can be verified.
   data chain.
 - **[World, maps & quests](world-maps-quests.md)** — sector layout, map transitions (jump points & teleporters),
   the world map, and the quest/journal system.
+- **[Sound & music](sound-and-music.md)** — the data-driven audio pipeline: sound-id tables, the `sfx.c`
+  selection key math, the positional model, and the music/ambience scheme language.
 
 ## Reproducing these findings
 
