@@ -19,13 +19,17 @@ namespace Arcanum.Formats.Art
         // monster/unique-NPC resolvers (which share the armour/shield/weapon naming) can reuse them.
         private static readonly string[] BodyStrs = { "HM", "DF", "GH", "HG", "EF" };
         internal static readonly string[] ArmorStrs = { "UW", "V1", "LA", "CM", "PM", "RB", "PC", "BN", "CD" };
+
+        /// <summary>The armor code in a critter art id (TigArtArmorType: 3 chain, 4 plate, 6 plate classic)
+        /// — footstep sounds key off it (sfx.c:331).</summary>
+        public static int ArmorOf(uint artId) => (int)((artId >> 20) & 0xF);
         internal static readonly char[] WeaponCodes = { 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'X', 'Y', 'N', 'Z' };
         private static readonly char[] GenderCodes = { 'F', 'M', 'X' };
         internal static readonly char[] ShieldCodes = { 'X', 'S' };
 
         private const int ArmorPlate = 4, ArmorPlateClassic = 6;
         private const int BodyHuman = 0, BodyDwarf = 1, BodyHalfling = 2, BodyElf = 4; // BodyStrs indices
-        private const int GenderFemale = 0, GenderMale = 1; // GenderCodes indices ('F','M')
+        private const int GenderFemale = 0, GenderMale = 1;                            // GenderCodes indices ('F','M')
         internal const int WeaponSword = 3, WeaponTwoHandedSword = 7;
         private const int AnimStand = 0, AnimExplode = 25;
 
@@ -60,6 +64,7 @@ namespace Arcanum.Formats.Art
                 if (bodyType == BodyElf) bodyType = BodyHuman;       // elf female → human female (engine)
                 else if (bodyType != BodyHuman) gender = GenderMale; // dwarf/halfling/half-ogre female → race's male body
             }
+
             if (armor == ArmorPlate || armor == ArmorPlateClassic)
             {
                 if (bodyType == BodyElf) bodyType = BodyHuman;
@@ -73,7 +78,11 @@ namespace Arcanum.Formats.Art
 
             string bodyStr = BodyStrs[bodyType];
             string armorStr;
-            if (anim == AnimExplode) { armorStr = "XX"; genderCode = GenderCodes[2]; }
+            if (anim == AnimExplode)
+            {
+                armorStr = "XX";
+                genderCode = GenderCodes[2];
+            }
             else armorStr = ArmorStrs[armor];
 
             char shieldCode = ShieldCodes[shield];
@@ -120,7 +129,7 @@ namespace Arcanum.Formats.Art
             if (ArtId.Type(artId) != ArtId.TypeMonster) return null;
             string name = _names?.Get((int)((artId >> 23) & 0x1F)); // MONSTER_ID_SPECIE_SHIFT 23
             if (string.IsNullOrEmpty(name)) return null;
-            int armor = (int)((artId >> 20) & 0x7);                  // MONSTER_ID_ARMOR_SHIFT 20 (3 bits)
+            int armor = (int)((artId >> 20) & 0x7); // MONSTER_ID_ARMOR_SHIFT 20 (3 bits)
             int shield = (int)((artId >> 19) & 1);
             int weapon = (int)(artId & 0xF);
             if (armor >= CritterArtResolver.ArmorStrs.Length || weapon >= CritterArtResolver.WeaponCodes.Length) return null;

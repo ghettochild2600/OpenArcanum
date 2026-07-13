@@ -13,6 +13,8 @@ namespace Arcanum.Formats.Objects
         public int Range = 1;
         public int MinStrength;
         public int AmmoType = 10000;
+        public int AmmoConsumption = 1; // OBJ_F_WEAPON_AMMO_CONSUMPTION — ammo spent per shot
+        public int MissileAid = -1; // OBJ_F_WEAPON_MISSILE_AID — projectile art id fired by a ranged weapon (−1 = none)
         public int MagicTechComplexity; // from the item group; −value = tech
         public readonly int[] DamageMin = new int[DamageTypeCount];
         public readonly int[] DamageMax = new int[DamageTypeCount];
@@ -65,6 +67,19 @@ namespace Arcanum.Formats.Objects
 
         public int FirstHeartbeatScriptNum { get; internal set; }
 
+        /// <summary>The <c>SAP_BUY_OBJECT</c> script number — a merchant's veto hook, run when the PC offers
+        /// an item for sale (<c>item_check_sell</c>); 0 = none.</summary>
+        public int BuyObjectScriptNum { get; internal set; }
+
+        /// <summary>The <c>SAP_WILL_KOS</c> script number — an NPC's veto hook over kill-on-sight decisions
+        /// (<c>ai_check_kos</c>: script returns skip-default ⇒ never KOS that target); 0 = none.</summary>
+        public int WillKosScriptNum { get; internal set; }
+
+        /// <summary>The <c>SAP_DIALOG_OVERRIDE</c> script number, kept separately from <see cref="DialogNum"/>
+        /// (which already falls back to it): its <c>.dlg</c> also carries per-NPC barter chatter at lines
+        /// 11999+range/100 (<c>dialog_copy_npc_override_msg</c>); 0 = none.</summary>
+        public int DialogOverrideNum { get; internal set; }
+
         /// <summary><c>OBJ_F_HP_DAMAGE</c> — damage taken. A critter is dead (engine <c>critter_is_dead</c>:
         /// <c>hp_current ≤ 0</c>) when this reaches max HP; crash-site bodies are placed with the 32000 kill
         /// sentinel. 0 = none.</summary>
@@ -73,6 +88,36 @@ namespace Arcanum.Formats.Objects
         /// <summary>For NPCs, <c>OBJ_F_NPC_REACTION_BASE</c>: the authored starting reaction toward the PC
         /// (engine default 50 = neutral); null if inherited from the prototype.</summary>
         public int? ReactionBase { get; internal set; }
+
+        /// <summary>For NPCs, <c>OBJ_F_NPC_RETAIL_PRICE_MULTIPLIER</c> — the merchant's markup percentage used
+        /// by barter pricing (item.c <c>item_cost</c>); null if inherited from the prototype.</summary>
+        public int? RetailPriceMultiplier { get; internal set; }
+
+        /// <summary>For NPCs, <c>OBJ_F_NPC_FLAGS</c> (<c>ONF_*</c>: KOS, KOS_OVERRIDE, FENCE, …); null if unset.</summary>
+        public int? NpcFlags { get; internal set; }
+
+        /// <summary>For NPCs, <c>OBJ_F_NPC_AI_DATA</c> — the row index into <c>rules/ai_params.mes</c>
+        /// (flee/KOS/alignment thresholds, engine <c>ai_copy_params</c>); null if unset.</summary>
+        public int? AiData { get; internal set; }
+
+        /// <summary>For NPCs, <c>OBJ_F_NPC_SOCIAL_CLASS</c> (engine <c>SOCIAL_CLASS_*</c> — guards protect
+        /// their town, shopkeepers barter, …); null if unset.</summary>
+        public int? SocialClass { get; internal set; }
+
+        /// <summary>For NPCs, <c>OBJ_F_NPC_ORIGIN</c> — the home town/area id (guards protect same-origin
+        /// critters; reputation effects can filter by it); null if unset.</summary>
+        public int? Origin { get; internal set; }
+
+        /// <summary>For NPCs, <c>OBJ_F_NPC_SUBSTITUTE_INVENTORY</c> — ObjectID of the merchant's store
+        /// container (barter trades against its inventory, not the NPC's own); null if none.</summary>
+        public byte[] SubstituteInventoryOid { get; internal set; }
+
+        /// <summary>For NPCs, <c>OBJ_F_NPC_EXPERIENCE_WORTH</c> (field 285) — XP the killer earns, via the engine
+        /// formula <c>20 × worth / 100</c> (critter.c:702); null if inherited from the prototype.</summary>
+        public int? ExperienceWorth { get; internal set; }
+
+        /// <summary><c>OBJ_F_NAME</c> (field 22) — the object's name index (engine <c>SCT_OBJ_IS_NAMED</c>); null if unset.</summary>
+        public int? NameIndex { get; internal set; }
 
         /// <summary>For items, <c>OBJ_F_ITEM_INV_LOCATION</c>: a worn slot (1000–1008) or a loose grid cell; -1 = unset.</summary>
         public int InvLocation { get; }
@@ -91,6 +136,34 @@ namespace Arcanum.Formats.Objects
         /// <summary>For critters, <c>OBJ_F_CRITTER_STAT_BASE_IDX</c> — base stats indexed by <c>STAT_*</c>
         /// (STR..CHA = 0..7, LEVEL = 17); null if inherited from the prototype. Absent keys are 0.</summary>
         public int[] StatBase { get; internal set; }
+
+        /// <summary>For critters, <c>OBJ_F_CRITTER_SPELL_TECH_IDX</c> — spell college levels in slots 0–16
+        /// and tech-discipline degrees in slots 17–24 (tech.c <c>SEVENTEEN</c>); null if inherited.</summary>
+        public int[] SpellTech { get; internal set; }
+
+        /// <summary>For ammo items, <c>OBJ_F_AMMO_QUANTITY</c> / <c>OBJ_F_AMMO_TYPE</c> — the stack's shot
+        /// count and which weapons feed on it (arrow/bullet/charge/fuel); null if inherited.</summary>
+        public int? AmmoQuantity { get; internal set; }
+
+        public int? AmmoItemType { get; internal set; }
+
+        /// <summary><c>OBJ_F_MATERIAL</c> (sound classes) / <c>OBJ_F_SOUND_EFFECT</c> (the object's sound-id
+        /// base — critter voice set, portal creak, weapon swing); null if inherited.</summary>
+        public int? Material { get; internal set; }
+
+        public int? SoundEffect { get; internal set; }
+
+        /// <summary><c>OBJ_F_ITEM_MAGIC_TECH_COMPLEXITY</c> (negative = tech, its magnitude is the expertise
+        /// % crafting demands) / <c>OBJ_F_ITEM_DISCIPLINE</c> (which <c>TECH_*</c> the item belongs to).</summary>
+        public int? ItemComplexity { get; internal set; }
+
+        public int? ItemDiscipline { get; internal set; }
+
+        /// <summary>Spell a usable magic item casts (<c>OBJ_F_ITEM_SPELL_1</c>; 10000 = none) and its charge
+        /// store (<c>OBJ_F_ITEM_SPELL_MANA_STORE</c>: one per use, negative = infinite); null if unset.</summary>
+        public int? ItemSpell { get; internal set; }
+
+        public int? SpellMana { get; internal set; }
 
         /// <summary>For armour items, <c>OBJ_F_ARMOR_AC_ADJ</c> — the AC bonus the armour grants; null otherwise.</summary>
         public int? ArmorAc { get; internal set; }
@@ -217,9 +290,22 @@ namespace Arcanum.Formats.Objects
         private const int F_ITEM_PARENT = 88;                // OBJ_F_ITEM_PARENT (HANDLE) → holder's ObjectID
         private const int F_ITEM_WEIGHT = 89;                // OBJ_F_ITEM_WEIGHT (INT32)
         private const int F_ITEM_WORTH = 91;                 // OBJ_F_ITEM_WORTH (INT32) → base coin value
+        private const int F_ITEM_DISCIPLINE = 97;           // OBJ_F_ITEM_DISCIPLINE → TECH_* the item belongs to
+        private const int F_ITEM_SPELL_1 = 100;              // OBJ_F_ITEM_SPELL_1 → spell a usable item casts (10000 = none)
+        private const int F_ITEM_SPELL_MANA_STORE = 105;     // OBJ_F_ITEM_SPELL_MANA_STORE → charges (neg = infinite)
         private const int F_ITEM_INV_AID = 93;               // OBJ_F_ITEM_INV_AID (INT32 art id) → compact inventory icon
         private const int F_ITEM_INV_LOCATION = 94;          // OBJ_F_ITEM_INV_LOCATION (INT32) → worn slot 1000–1008 or loose cell
         private const int F_NPC_REACTION_BASE = 295;         // OBJ_F_NPC_REACTION_BASE (INT32) → authored starting reaction
+        private const int F_NPC_RETAIL_PRICE_MULTIPLIER = 293; // OBJ_F_NPC_RETAIL_PRICE_MULTIPLIER (INT32) → barter markup %
+        private const int F_NPC_SUBSTITUTE_INVENTORY = 294; // OBJ_F_NPC_SUBSTITUTE_INVENTORY (HANDLE) → merchant store container
+        private const int F_NPC_FLAGS = 280;                // OBJ_F_NPC_FLAGS (INT32) → ONF_* (KOS, FENCE, …)
+        private const int F_NPC_AI_DATA = 282;              // OBJ_F_NPC_AI_DATA (INT32) → rules/ai_params.mes row
+        private const int F_NPC_SOCIAL_CLASS = 296;         // OBJ_F_NPC_SOCIAL_CLASS (INT32) → SOCIAL_CLASS_*
+        private const int F_NPC_ORIGIN = 291;               // OBJ_F_NPC_ORIGIN (INT32) → home town/area id
+        private const int F_NPC_EXPERIENCE_WORTH = 285;      // OBJ_F_NPC_EXPERIENCE_WORTH (INT32) → kill XP (engine ×20/100)
+        private const int F_NAME = 22;                       // OBJ_F_NAME (INT32) → name index (SCT_OBJ_IS_NAMED)
+        private const int F_MATERIAL = 30;                   // OBJ_F_MATERIAL (INT32) → Material (sound classes)
+        private const int F_SOUND_EFFECT = 33;               // OBJ_F_SOUND_EFFECT (INT32) → per-object sound id base
         private const int F_ITEM_MAGIC_TECH_COMPLEXITY = 96; // OBJ_F_ITEM_MAGIC_TECH_COMPLEXITY (INT32) → −tech / +magic
 
         private const int F_ARMOR_AC_ADJ = 152; // OBJ_F_ARMOR_AC_ADJ (INT32) → AC bonus this armor grants
@@ -232,6 +318,7 @@ namespace Arcanum.Formats.Objects
         private const int F_ARMOR_RESISTANCE_ADJ = 154; // OBJ_F_ARMOR_RESISTANCE_ADJ_IDX (INT32_ARRAY) — armour resist bonus
         private const int ResistanceCount = 5;          // RESISTANCE_TYPE_COUNT (NORMAL,FIRE,ELECTRICAL,POISON,MAGIC)
         private const int F_CRITTER_BASIC_SKILL = 221;  // OBJ_F_CRITTER_BASIC_SKILL_IDX (INT32_ARRAY) by BASIC_SKILL_*
+        private const int F_CRITTER_SPELL_TECH = 223;   // OBJ_F_CRITTER_SPELL_TECH_IDX (INT32_ARRAY): colleges 0–16, tech 17–24
         private const int F_CRITTER_TECH_SKILL = 222;   // OBJ_F_CRITTER_TECH_SKILL_IDX (INT32_ARRAY) by TECH_SKILL_*
         private const int BasicSkillCount = 12;         // BASIC_SKILL_COUNT
 
@@ -246,6 +333,10 @@ namespace Arcanum.Formats.Objects
         private const int F_WEAPON_RANGE = 121; // 1 = melee
         private const int F_WEAPON_MIN_STRENGTH = 123;
         private const int F_WEAPON_AMMO_TYPE = 125; // 10000 = none
+        private const int F_WEAPON_AMMO_CONSUMPTION = 126;
+        private const int F_AMMO_QUANTITY = 142;     // OBJ_F_AMMO_QUANTITY — shots in an ammo stack
+        private const int F_AMMO_TYPE = 143;         // OBJ_F_AMMO_TYPE — arrow/bullet/charge/fuel
+        private const int F_WEAPON_MISSILE_AID = 127; // OBJ_F_WEAPON_MISSILE_AID → projectile art id (−1 = none)
 
         // Additional in-scope fields surfaced (all INT32). Ordinals from obj.h, verified against ObjectFieldData.OdType.
         private const int F_HP_PTS = 27;       // base max HP — hp_current = HP_PTS − HP_DAMAGE (≤0 ⇒ dead)
@@ -272,6 +363,8 @@ namespace Arcanum.Formats.Objects
         private const int SAP_USE = 1;
         private const int SAP_DIALOG = 9;
         private const int SAP_FIRST_HEARTBEAT = 10; // fires once when the object first ticks
+        private const int SAP_BUY_OBJECT = 17;      // merchant veto: "will I buy this item?" (item_check_sell)
+        private const int SAP_WILL_KOS = 22;        // NPC veto: "will I kill this on sight?" (ai_check_kos)
         private const int SAP_HEARTBEAT = 19;       // periodic tick (AI, self-gating NPCs that toggle off/kill)
         private const int SAP_DIALOG_OVERRIDE = 31;
         private const int ScriptNumOffset = 8; // num is the 3rd dword of a 12-byte Script entry
@@ -329,9 +422,21 @@ namespace Arcanum.Formats.Objects
             int examineScriptNum = 0;
             int heartbeatScriptNum = 0;
             int firstHeartbeatScriptNum = 0;
+            int buyObjectScriptNum = 0;
+            int dialogOverrideNum = 0;
+            int willKosScriptNum = 0;
             int hpDamage = 0;
             int? reactionBase = null;
-            int[] statBase = null;
+            int? retailPriceMultiplier = null;
+            byte[] substituteInventoryOid = null;
+            int? npcFlags = null, aiData = null, socialClass = null, npcOrigin = null;
+            int? experienceWorth = null;
+            int? nameIndex = null;
+            int[] statBase = null, spellTech = null;
+            int? ammoQuantity = null, ammoItemType = null;
+            int? material = null, soundEffect = null;
+            int? itemComplexity = null, itemDiscipline = null;
+            int? itemSpell = null, spellMana = null;
             int? armorAc = null;
             int[] basicSkills = null, techSkills = null;
             int[] resistances = null, armorResist = null;
@@ -422,6 +527,18 @@ namespace Arcanum.Formats.Objects
                         worth = I32(b, o);
                         o += 4;
                         break;
+                    case F_ITEM_DISCIPLINE:
+                        itemDiscipline = I32(b, o);
+                        o += 4;
+                        break;
+                    case F_ITEM_SPELL_1:
+                        itemSpell = I32(b, o);
+                        o += 4;
+                        break;
+                    case F_ITEM_SPELL_MANA_STORE:
+                        spellMana = I32(b, o);
+                        o += 4;
+                        break;
                     case F_ITEM_INV_AID:
                         invAid = U32(b, o);
                         o += 4;
@@ -432,6 +549,53 @@ namespace Arcanum.Formats.Objects
                         break;
                     case F_NPC_REACTION_BASE:
                         reactionBase = I32(b, o);
+                        o += 4;
+                        break;
+                    case F_NPC_RETAIL_PRICE_MULTIPLIER:
+                        retailPriceMultiplier = I32(b, o);
+                        o += 4;
+                        break;
+                    case F_NPC_FLAGS:
+                        npcFlags = I32(b, o);
+                        o += 4;
+                        break;
+                    case F_NPC_AI_DATA:
+                        aiData = I32(b, o);
+                        o += 4;
+                        break;
+                    case F_NPC_SOCIAL_CLASS:
+                        socialClass = I32(b, o);
+                        o += 4;
+                        break;
+                    case F_NPC_ORIGIN:
+                        npcOrigin = I32(b, o);
+                        o += 4;
+                        break;
+                    case F_NPC_SUBSTITUTE_INVENTORY:
+                    {
+                        byte present = b[o++]; // HANDLE: presence byte + 24-byte OID
+                        if (present != 0)
+                        {
+                            substituteInventoryOid = Slice(b, o, OidSize);
+                            o += OidSize;
+                        }
+
+                        break;
+                    }
+                    case F_NPC_EXPERIENCE_WORTH:
+                        experienceWorth = I32(b, o);
+                        o += 4;
+                        break;
+                    case F_NAME:
+                        nameIndex = I32(b, o);
+                        o += 4;
+                        break;
+                    case F_MATERIAL:
+                        material = I32(b, o);
+                        o += 4;
+                        break;
+                    case F_SOUND_EFFECT:
+                        soundEffect = I32(b, o);
                         o += 4;
                         break;
                     case F_ARMOR_AC_ADJ:
@@ -501,6 +665,10 @@ namespace Arcanum.Formats.Objects
                         statBase = ReadIntArray(b, o, StatCount);
                         o += FieldSize(b, o, od);
                         break;
+                    case F_CRITTER_SPELL_TECH:
+                        spellTech = ReadIntArray(b, o, 25); // 17 college slots + 8 tech-degree slots
+                        o += FieldSize(b, o, od);
+                        break;
                     case F_CRITTER_BASIC_SKILL:
                         basicSkills = ReadIntArray(b, o, BasicSkillCount);
                         o += FieldSize(b, o, od);
@@ -519,8 +687,9 @@ namespace Arcanum.Formats.Objects
                         break;
 
                     // Weapon fields only populate on a weapon record (wf != null); otherwise they fall to default.
-                    case F_ITEM_MAGIC_TECH_COMPLEXITY when wf != null:
-                        wf.MagicTechComplexity = I32(b, o);
+                    case F_ITEM_MAGIC_TECH_COMPLEXITY: // any item: crafting expertise; weapons also keep it
+                        itemComplexity = I32(b, o);
+                        if (wf != null) wf.MagicTechComplexity = itemComplexity.Value;
                         o += 4;
                         break;
                     case F_WEAPON_FLAGS when wf != null:
@@ -545,6 +714,22 @@ namespace Arcanum.Formats.Objects
                         break;
                     case F_WEAPON_AMMO_TYPE when wf != null:
                         wf.AmmoType = I32(b, o);
+                        o += 4;
+                        break;
+                    case F_WEAPON_AMMO_CONSUMPTION when wf != null:
+                        wf.AmmoConsumption = I32(b, o);
+                        o += 4;
+                        break;
+                    case F_AMMO_QUANTITY:
+                        ammoQuantity = I32(b, o);
+                        o += 4;
+                        break;
+                    case F_AMMO_TYPE:
+                        ammoItemType = I32(b, o);
+                        o += 4;
+                        break;
+                    case F_WEAPON_MISSILE_AID when wf != null:
+                        wf.MissileAid = I32(b, o);
                         o += 4;
                         break;
                     case F_WEAPON_DAMAGE_LOWER when wf != null:
@@ -572,11 +757,14 @@ namespace Arcanum.Formats.Objects
                         {
                             // separate generated/state-line dialog (e.g. *override.dlg, no entry at line 1)
                             dialogNum = ScriptNum(b, o, SAP_DIALOG);
-                            if (dialogNum == 0) dialogNum = ScriptNum(b, o, SAP_DIALOG_OVERRIDE);
+                            dialogOverrideNum = ScriptNum(b, o, SAP_DIALOG_OVERRIDE); // also barter chatter overrides
+                            if (dialogNum == 0) dialogNum = dialogOverrideNum;
                             useScriptNum = ScriptNum(b, o, SAP_USE);             // the use/teleport script (doors, levers)
                             examineScriptNum = ScriptNum(b, o, SAP_EXAMINE);     // look-at script (signs, often floats text)
                             heartbeatScriptNum = ScriptNum(b, o, SAP_HEARTBEAT); // periodic tick (AI / self-gating NPCs)
                             firstHeartbeatScriptNum = ScriptNum(b, o, SAP_FIRST_HEARTBEAT);
+                            buyObjectScriptNum = ScriptNum(b, o, SAP_BUY_OBJECT); // merchant "will I buy this?" veto
+                            willKosScriptNum = ScriptNum(b, o, SAP_WILL_KOS);     // "will I kill this on sight?" veto
                         }
 
                         o += FieldSize(b, o, od);
@@ -605,9 +793,29 @@ namespace Arcanum.Formats.Objects
                 ExamineScriptNum = examineScriptNum,
                 HeartbeatScriptNum = heartbeatScriptNum,
                 FirstHeartbeatScriptNum = firstHeartbeatScriptNum,
+                BuyObjectScriptNum = buyObjectScriptNum,
+                DialogOverrideNum = dialogOverrideNum,
                 HpDamage = hpDamage,
                 ReactionBase = reactionBase,
+                RetailPriceMultiplier = retailPriceMultiplier,
+                SubstituteInventoryOid = substituteInventoryOid,
+                NpcFlags = npcFlags,
+                AiData = aiData,
+                SocialClass = socialClass,
+                Origin = npcOrigin,
+                WillKosScriptNum = willKosScriptNum,
+                ExperienceWorth = experienceWorth,
+                NameIndex = nameIndex,
                 StatBase = statBase,
+                SpellTech = spellTech,
+                AmmoQuantity = ammoQuantity,
+                AmmoItemType = ammoItemType,
+                Material = material,
+                SoundEffect = soundEffect,
+                ItemComplexity = itemComplexity,
+                ItemDiscipline = itemDiscipline,
+                ItemSpell = itemSpell,
+                SpellMana = spellMana,
                 ArmorAc = armorAc,
                 BasicSkills = basicSkills,
                 TechSkills = techSkills,

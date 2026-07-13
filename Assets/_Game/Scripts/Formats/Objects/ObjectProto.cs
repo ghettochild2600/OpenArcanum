@@ -82,9 +82,67 @@ namespace Arcanum.Formats.Objects
         /// null if unset on the prototype.</summary>
         public int? ReactionBase { get; internal set; }
 
+        /// <summary><c>OBJ_F_NPC_RETAIL_PRICE_MULTIPLIER</c> — the merchant markup percentage barter pricing
+        /// feeds into <c>item_cost</c>; null if unset on the prototype.</summary>
+        public int? RetailPriceMultiplier { get; internal set; }
+
+        /// <summary>The prototype's <c>SAP_BUY_OBJECT</c> (merchant sale-veto), <c>SAP_DIALOG_OVERRIDE</c> and
+        /// <c>SAP_WILL_KOS</c> (kill-on-sight veto) script numbers; 0 = none.</summary>
+        public int BuyObjectScriptNum { get; internal set; }
+
+        public int DialogOverrideNum { get; internal set; }
+
+        public int WillKosScriptNum { get; internal set; }
+
+        /// <summary><c>OBJ_F_NPC_FLAGS</c> (<c>ONF_*</c>: KOS, KOS_OVERRIDE, FENCE, …); null if unset.</summary>
+        public int? NpcFlags { get; internal set; }
+
+        /// <summary><c>OBJ_F_NPC_AI_DATA</c> — the <c>rules/ai_params.mes</c> row (flee/KOS/alignment
+        /// thresholds); null if unset.</summary>
+        public int? AiData { get; internal set; }
+
+        /// <summary><c>OBJ_F_NPC_SOCIAL_CLASS</c> (<c>SOCIAL_CLASS_*</c> — 6 = guard); null if unset.</summary>
+        public int? SocialClass { get; internal set; }
+
+        /// <summary><c>OBJ_F_NPC_ORIGIN</c> — the home town/area id; null if unset.</summary>
+        public int? Origin { get; internal set; }
+
+        /// <summary><c>OBJ_F_NPC_EXPERIENCE_WORTH</c> — the prototype's authored kill-XP worth (engine awards
+        /// <c>20 × worth / 100</c>); null if unset.</summary>
+        public int? ExperienceWorth { get; internal set; }
+
+        /// <summary><c>OBJ_F_NAME</c> — the prototype's name index (engine <c>SCT_OBJ_IS_NAMED</c>); null if unset.</summary>
+        public int? NameIndex { get; internal set; }
+
         /// <summary><c>OBJ_F_CRITTER_STAT_BASE_IDX</c> — the prototype's base stats keyed by <c>STAT_*</c>
         /// (STR..CHA = 0..7, LEVEL = 17); null for non-critters. This is where most NPCs get their real stats.</summary>
         public int[] StatBase { get; internal set; }
+
+        /// <summary><c>OBJ_F_CRITTER_SPELL_TECH_IDX</c> — spell college levels (slots 0–16) + tech degrees
+        /// (17–24); most spellcasting NPCs get theirs from the prototype.</summary>
+        public int[] SpellTech { get; internal set; }
+
+        /// <summary><c>OBJ_F_AMMO_QUANTITY</c> / <c>OBJ_F_AMMO_TYPE</c> for ammo prototypes; null otherwise.</summary>
+        public int? AmmoQuantity { get; internal set; }
+
+        public int? AmmoItemType { get; internal set; }
+
+        /// <summary><c>OBJ_F_MATERIAL</c> / <c>OBJ_F_SOUND_EFFECT</c>; null if unset.</summary>
+        public int? Material { get; internal set; }
+
+        public int? SoundEffect { get; internal set; }
+
+        /// <summary><c>OBJ_F_ITEM_MAGIC_TECH_COMPLEXITY</c> / <c>OBJ_F_ITEM_DISCIPLINE</c> — crafting reads
+        /// the component's discipline + |complexity| as the required expertise; null if unset.</summary>
+        public int? ItemComplexity { get; internal set; }
+
+        public int? ItemDiscipline { get; internal set; }
+
+        /// <summary>Spell a usable magic item casts + its charge store (<c>OBJ_F_ITEM_SPELL_1</c> /
+        /// <c>OBJ_F_ITEM_SPELL_MANA_STORE</c>); null if unset.</summary>
+        public int? ItemSpell { get; internal set; }
+
+        public int? SpellMana { get; internal set; }
 
         /// <summary><c>OBJ_F_ARMOR_AC_ADJ</c> — the AC bonus an armour prototype grants; null otherwise.</summary>
         public int? ArmorAc { get; internal set; }
@@ -191,7 +249,26 @@ namespace Arcanum.Formats.Objects
                         p.SceneryFlags, p.UseScriptNum, p.ExamineScriptNum, p.HeartbeatScriptNum, p.FirstHeartbeatScriptNum)
                     {
                         ReactionBase = p.ReactionBase,
+                        RetailPriceMultiplier = p.RetailPriceMultiplier,
+                        BuyObjectScriptNum = p.BuyObjectScriptNum,
+                        DialogOverrideNum = p.DialogOverrideNum,
+                        WillKosScriptNum = p.WillKosScriptNum,
+                        NpcFlags = p.NpcFlags,
+                        AiData = p.AiData,
+                        SocialClass = p.SocialClass,
+                        Origin = p.Origin,
+                        ExperienceWorth = p.ExperienceWorth,
+                        NameIndex = p.NameIndex,
                         StatBase = p.StatBase,
+                        SpellTech = p.SpellTech,
+                        AmmoQuantity = p.AmmoQuantity,
+                        AmmoItemType = p.AmmoItemType,
+                        Material = p.Material,
+                        SoundEffect = p.SoundEffect,
+                        ItemComplexity = p.ItemComplexity,
+                        ItemDiscipline = p.ItemDiscipline,
+                        ItemSpell = p.ItemSpell,
+                        SpellMana = p.SpellMana,
                         ArmorAc = p.ArmorAc,
                         BasicSkills = p.BasicSkills,
                         TechSkills = p.TechSkills,
