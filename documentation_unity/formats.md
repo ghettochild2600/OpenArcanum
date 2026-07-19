@@ -27,7 +27,7 @@ It reads the data from **your own legitimate install** of the game; nothing copy
 | `Dialog` | `.dlg` conversations + the dialog test/effect mini-language | `DlgReader`, `DialogScriptEvaluator` |
 | `Script` | compiled `.scr` scripts (opcodes + typed operands) | `ScriptReader`, `ScriptFile` |
 | `Quest` | quest metadata, journal text, the XP table | `QuestLog` |
-| `World` | sectors (`.sec`), map list / properties, jump points, areas, world map | `SectorReader`, `MapList`, `AreaList` |
+| `World` | sectors (`.sec`), map list / properties, jump points, areas, world map, per-sector terrain grids (`terrain.tdf`), random-encounter charts/tables (`wmap_rnd.mes`) | `SectorReader`, `MapList`, `AreaList`, `TerrainGrid`, `WmapRndData` |
 
 ## How the pieces connect
 

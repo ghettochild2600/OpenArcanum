@@ -34,6 +34,8 @@ Source references point at `arcanum-ce` (`src/game/script.c`, `script.h`, `ai.c`
 - [The focus-object loop family](#the-focus-object-loop-family)
 - [The object heartbeat clock (`ai_timeevent`)](#the-object-heartbeat-clock-ai_timeevent)
 - [Self-gating NPCs](#self-gating-npcs)
+- [Authored-off NPCs — reveal gates](#authored-off-npcs--reveal-gates)
+- [Day/night standpoints](#daynight-standpoints)
 
 ## Attachment points (`SAP_*`)
 
@@ -289,3 +291,74 @@ map stays alive and visible, and the area looks badly overcrowded.
 A related, separate case is an NPC that is **stored already dead** in the map data (its
 hit-point-damage field set to the engine's "killed" sentinel) rather than killing itself on
 heartbeat. Those bodies are lootable from the moment the sector loads and need no script at all.
+
+## Authored-off NPCs — reveal gates
+
+Self-gating has an inverse: an NPC placed in the map data with the **`OF_OFF` object flag already
+set** — invisible and inert from the moment the sector loads — whose heartbeat script exists to
+*reveal* it later. **336 of the 3,792 NPC mobiles in the shipped game (8.9%) are authored off**,
+257 of them on the overland map, so honouring the flag is a big part of a town looking correctly
+populated rather than overcrowded.
+
+The pattern is the mirror image of self-gating. Example — Arbalah in Shrouded Hills
+(`scr/02787arbalahhb.scr`, her `SAP_HEARTBEAT`):
+
+```
+[0] IF pc_quest_state(quest 1158) == 0   → GOTO 3          (quest unknown: stay hidden)
+[1] TOGGLE_STATE                                            (quest active: reveal her)
+[2] REMOVE_THIS_SCRIPT
+[3] RETURN_AND_RUN_DEFAULT
+```
+
+Quest 1158 is the Brehgo "kill the priest" storyline; until the player is in it, Arbalah simply is
+not there (you meet the Half-Elf Priest in her house instead), and once it starts, her own heartbeat
+toggles her on and detaches itself. For this to work the heartbeat clock **must tick switched-off
+objects**: the engine's per-tick gate (`sub_4AD420`, `ai.c:2940`) checks only dead / turn-based
+combat / distance — *not* `OF_OFF` — so a hidden NPC's reveal gate still fires.
+
+Two gotchas worth knowing:
+
+- `OF_OFF` is bit `0x2` of the common `OBJ_F_FLAGS` field. It is authored per-mobile; prototypes
+  don't meaningfully carry it for this pattern.
+- A reveal script runs `TOGGLE_STATE`, not "switch on" — it relies on the authored state being off.
+  If a port spawns authored-off NPCs visible, the same script *hides* them instead, which reads as
+  "the NPC vanished for no reason."
+
+## Day/night standpoints
+
+Every NPC carries two "home" positions — `OBJ_F_NPC_STANDPOINT_DAY` and
+`OBJ_F_NPC_STANDPOINT_NIGHT` (both packed 64-bit tile locations) — plus
+`OBJ_F_CRITTER_TELEPORT_MAP`, the map those standpoints live on. The AI's idle rule is simply *"be
+at your active standpoint"* (`ai_standpoints_process`, `ai.c:2685`): shopkeepers stand at the
+counter by day, walk to the back room at night, streets empty after dark.
+
+**Which standpoint is active** (`ai_get_standpoint`, `ai.c:2787`): the day one from **6:00 to
+20:59** (`ai_is_day`), the night one otherwise. Followers are exempt — a led critter has no
+standpoint of its own.
+
+**The behaviour per heartbeat**, for an NPC that isn't following or fighting:
+
+- Within **wander range** of the active standpoint — 4 tiles if the NPC has
+  `ONF_WANDERS`/`ONF_WANDERS_IN_DARK` (npc-flags `0x1000`/`0x2000`), else 1 tile — the NPC is
+  "home": it looks for the **nearest bed** and gets into it (`ai_find_nearest_bed` /
+  `critter_enter_bed`), or mills around the spot if it's a wanderer.
+- Farther away, it **walks there** (`ai_move_to`). A sleeping NPC wakes first.
+- During the transition hours — when the clock reads exactly **6 or 21** — only **1 in 1000**
+  heartbeats process (`ai.c:2712`), so a town drifts home over the hour instead of every NPC
+  standing up on the same tick. Every other hour processes freely, which is what keeps idle NPCs
+  pinned to their spots all day.
+- On **map load** the engine runs a forced pass (`ai.c:2888`, just before `SAP_FIRST_HEARTBEAT`):
+  an out-of-place NPC is *teleported* straight to its active standpoint — enter a town at night and
+  everyone is already in their night arrangement — and one whose `TELEPORT_MAP` is a different map
+  is teleported off to that map entirely.
+
+**What the shipped data authors.** Both standpoints default to the NPC's **spawn location** at
+object creation (`object.c:4229`), so every mobile carries values; only the **328 NPCs (8.65%)
+whose day and night tiles differ** have a real schedule — mostly short commutes of 3–15 tiles
+(Ristezze, Jacob Bens, Jongle Dunne and Percival Toone in Shrouded Hills are easy ones to watch
+across 21:00). No shipped mobile or prototype sets `CRITTER_TELEPORT_MAP` — cross-map commuting
+only ever arises from runtime writes (the Teleport spell, scripts, PC creation).
+
+Scripts re-home NPCs with `SAT_SET_DAY_STANDPOINT` / `SAT_SET_NIGHT_STANDPOINT` (object, x, y —
+`script.c:1890`) and the `_EX` variants (`script.c:2798`), which additionally set the standpoint's
+map with the odd encoding `map = operand − 4999` (the operand is the map's `MapList.mes` key).

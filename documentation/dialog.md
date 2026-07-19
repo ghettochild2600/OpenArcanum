@@ -232,6 +232,15 @@ Three codes — `$$`, `re`, `al` — read a leading **operator** before their va
 | `or` | Set the NPC's origin / faction |
 | `et` | Train a skill to **Expert** (gated by current level / training) |
 
+**Author typos in the shipped data.** Five codes appear in the retail `.dlg` files that do **not
+exist** in the engine's tables, so they hit the unknown-code paths above: the *tests* `mm`, `st` and
+`be` (`01823citizen.dlg` 635–638, `01066thorvalddialogue.dlg` 676–677, `01076myrthdialogue.dlg` 270 —
+those options can never appear in retail) and the *effects* `ma` / `ta` (`01511trainer.dlg` 151–160,
+a debug dialog trying to "set aptitude" — the effect string just stops there). `ma`/`ta` are real
+**test** codes (aptitude comparisons) but were never effect codes, and `mm` is a real **effect**
+("mark map") but never a test — the writers mixed the two tables up. A faithful reimplementation must
+reproduce the unknown-code behaviour rather than invent semantics for these.
+
 ## Reaction
 
 **Reaction** is a 0–100 disposition number an NPC holds toward a particular PC, and it gates which option

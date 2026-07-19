@@ -4,8 +4,8 @@
 formats packed into a few `.dat` archives. Everything an installation ships — sprites, text, prototypes,
 maps, dialog, scripts — lives inside those archives and is read through one virtual file system. This
 page describes the **container** (`.dat`), the **text tables** (`.mes`), the **object model** that
-underpins prototypes and map objects (`.pro`, `.sec`, `.mob`), and how an object's typed fields are laid
-out on disk. The sprite, dialog, and script formats are mentioned where they fit but documented in detail
+underpins prototypes and map objects (`.pro`, `.sec`, `.mob`), the per-sector **terrain grid**
+(`terrain.tdf`), and how an object's typed fields are laid out on disk. The sprite, dialog, and script formats are mentioned where they fit but documented in detail
 elsewhere — see the [Art & graphics](art-and-graphics.md), [Dialog](dialog.md), and
 [Scripting](scripting.md) pages.
 
@@ -333,6 +333,31 @@ This split mirrors the static/dynamic divide: the `.sec` holds the fixed scenery
 list, while the surrounding mobile objects are individual `.mob` files keyed by OID. (For a finished,
 shipped map these per-object `.mob` files are consolidated into a single file that begins with a 16-byte
 GUID and then runs object records back-to-back until EOF.)
+
+## `terrain.tdf` — one terrain id per sector
+
+Each map folder carries a `terrain.tdf` giving every **sector** a 16-bit terrain id (`terrain.c`;
+`terrain_open` at `terrain.c:198`). The world-map random-encounter system reads it to decide which
+monster table a location uses — see the [world doc](world-maps-quests.md#random-encounters-wmap_rnd).
+
+The header is **0x20 bytes**:
+
+| Offset | Type | Field |
+|---|---|---|
+| 0x00 | float | version — must be `1.2` |
+| 0x04 | uint32 | flags — bit 0 = rows are compressed |
+| 0x08 | int64 | width in sectors |
+| 0x10 | int64 | height in sectors |
+| 0x18 | int32 | base terrain type (+ 4 bytes padding) |
+
+Uncompressed (flags bit 0 clear), the payload is `width × height` little-endian `uint16` ids,
+row-major. Compressed — which the shipped overland is (2000×2000 sectors) — each **row is an
+independent zlib stream** prefixed by an `int32` byte length; the engine inflates rows on demand
+through a 4-row cache (`sub_4E9410`), so random access never decompresses the whole grid.
+
+A terrain id packs two 5-bit terrain types: the **base** type at bits 11–15 and the **composite**
+(transition) type at bits 6–10 (`sub_4E8DC0` / `sub_4E8DD0`). A map with no terrain file behaves as
+if every sector held the map's base terrain type (from `map.prp`).
 
 ---
 

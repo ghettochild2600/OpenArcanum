@@ -21,6 +21,8 @@ last changed.
   - [Jump points (`map.jmp`)](#jump-points-mapjmp)
   - [Scripted teleporters & doors](#scripted-teleporters--doors)
 - [The world map](#the-world-map)
+  - [Known areas](#known-areas--how-locations-appear-on-the-map)
+  - [Random encounters (`wmap_rnd`)](#random-encounters-wmap_rnd)
 - [Town maps & fog-of-war](#town-maps--fog-of-war)
 - [Quests & the journal](#quests--the-journal)
 
@@ -187,11 +189,75 @@ Area 0 is the "unknown" placeholder used for open wilderness (`AREA_UNKNOWN`). A
 overland, not separate maps; one area maps to many sub-maps via each map's `Area:` field.
 
 **Travel.** The engine moves the player as overland travel rather than an instant jump: the party
-walks a route of waypoints across the continent, game time advances roughly an hour per sector
-crossed (`wmap_ui.c:3996`), and each step rolls for **random encounters** (frequency, terrain gating,
-and level-scaled monster groups from `Rules/WMap_Rnd.mes`). An encounter interrupts travel, loads an
-encounter map, and resumes afterward. Areas passed within their detection radius en route become
-**known** (`area_set_known`).
+walks a route of waypoints across the continent, one sector per 50 ms tick, and game time advances
+**one hour per sector crossed** (`wmap_ui.c:3996`). Areas passed within their detection radius en
+route become **known** (`area_set_known`). Random encounters can interrupt the trip — see below.
+
+### Known areas — how locations appear on the map
+
+The map draws (and snaps waypoints / Teleport-spell picks to) only areas the player **knows**.
+Known-ness is per-PC state (`area.c:57` — a flag byte per area, bit `0x1`), and **nothing is known
+at a fresh start** (`area_reset` zeroes everything). An area becomes known in exactly four ways:
+
+1. **Walking into a town** — entering a sector that carries a town map marks its area known
+   (`wmap_ui_notify_sector_changed`, `wmap_ui.c:4006`). This is why the starting area is on the map
+   immediately.
+2. **Overland travel proximity** — each travel step tests the nearest area whose radius (strictly)
+   contains the current tile (`area_get_nearest_area_in_range`, `area.c:549`; Chebyshev distance
+   against the anchor). A `Radius:-1` area can never be discovered this way.
+3. **Dialog** — the `mm` effect code ("mark map").
+4. **Scripts** — the `SAT_MARK_MAP_LOCATION` action.
+
+### Random encounters (`wmap_rnd`)
+
+Encounters are driven by a repeating **game-time event** re-armed every `random(300..700)` game
+minutes — about 5 to 11⅔ game hours (`wmap_rnd_schedule`, `wmap_rnd.c:1444`). Because travel passes
+an hour per sector, that works out to a check every ~5–12 sectors of travel; the same event also
+fires while simply walking the overland or **sleeping** (resting multiplies the encounter chance
+×5). The check only runs on the overland outside any area.
+
+The data lives in **`Rules/WMap_Rnd.mes`** (`wmap_rnd_mod_load`, `wmap_rnd.c:371`; comma-separated
+fields; a malformed file silently disables encounters):
+
+| Keys | Content | Entry format |
+|---|---|---|
+| 10000+ | **frequency chart** — encounter % per region | `{x, y, radiusTiles, percent}` |
+| 20000+ | **power chart** — `none`/`easy`/`average`/`powerful` per region | `{x, y, radiusTiles, name}` |
+| 30000+ | **table-override chart** — force a specific table | `{x, y, radiusTiles, tableIdx}` |
+| 49999 | number of extra "user" tables beyond the 54 fixed ones | |
+| 50000 + 100·t | **encounter table `t`**, up to 99 entries | see below |
+
+Charts are circles tested by Chebyshev distance, smallest matching radius wins. A table entry reads:
+
+```
+{weight%, First: <proto>, <min>[-<max>], … Fifth: …,
+ [MinLevel: v] [MaxLevel: v] [GlobalFlag: v] [TriggerCount: v]}
+```
+
+— a relative pick weight, up to five monster slots (basic-prototype number + count range), and
+optional gates: PC level band, a script global flag that must be set, and a lifetime cap on how many
+times the entry may ever fire (the per-entry fire counts are the only state `wmap_rnd_save` keeps).
+
+**The roll** (`wmap_rnd_check`, `wmap_rnd.c:979`, in order): frequency-chart lookup (default 5%,
+sleeping ×5) vs a d100 → power lookup (default *average*; *none* aborts) → night = hour < 6 or
+≥ 18 → suppressed inside towns → terrain check → table selection → weighted entry pick among
+eligible entries → per-slot count rolls. The 54 fixed tables are indexed
+`(terrain − 1)·6 + (power − 1)·2 + night` — **9 terrains × 3 power tiers × day/night**.
+
+**Terrain gating** uses the per-sector terrain grid (`terrain.tdf` — see the data-formats doc): the
+sector's base and composite terrain types must both map to an encounter terrain
+(`wmap_rnd_terrain_clear`). Water and all mountain types have **no encounters**; the rest map
+grasslands→1, plains/broadleaf/deforested→2, swamps→3, elven forest→4, jungle→5, desert→6,
+forest→7, snow plains→8, void plains→9.
+
+**The spawn** (`wmap_rnd_encounter_spawn`, `wmap_rnd.c:1273`): monsters are created on the *same*
+overland map at the party's position — origin 6 tiles west or north (50/50), then a fixed offset
+walk per monster (`k=0 → (0,+1)`, else `(+⌊(k−1)/3⌋+1, +k mod 3)`, restarting per slot). A blocked
+tile retries within 6 tiles of the party or drops that monster; an occupied tile drops it. The
+spawns are **ordinary NPCs** — their hostility comes entirely from the prototype's faction/KOS/AI,
+and no special flag marks them. Mid-travel, the party is teleported to the token's interpolated
+position, the world-map screen closes and refuses to reopen for 4 seconds; travel resumes by
+plotting again.
 
 **Where the world map is available.** You can only open the world map (and thus travel) when the
 player is standing on the overland in open wilderness, not inside a town or dungeon
