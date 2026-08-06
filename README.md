@@ -10,7 +10,7 @@ reverse-engineered and checked against the shipped data and the community decomp
 
 To play this project you have to buy original game. You can do it on different platforms:
 - [Steam](https://store.steampowered.com/app/500810/Arcanum_Of_Steamworks_and_Magick_Obscura/)
-- [GGG](https://www.gog.com/en/game/arcanum_of_steamworks_and_magick_obscura)
+- [GOG](https://www.gog.com/en/game/arcanum_of_steamworks_and_magick_obscura)
 
 > ⚠️ **Work in progress.** This is an engine and systems project under active development — not a finished,
 > playable game. Expect rough edges, placeholders, and missing features.
