@@ -1,6 +1,7 @@
 using System;
 using Arcanum.Formats.Art;
 using UnityEngine;
+using OpenArcanum.Rendering;
 
 namespace Arcanum.Runtime.Art
 {
@@ -15,49 +16,103 @@ namespace Arcanum.Runtime.Art
     {
         private const int TransparentIndex = 0;
 
-        /// <summary>When set, <see cref="CreateSprite"/> packs frames into this shared atlas instead of giving
-        /// each sprite its own texture — so sprites batch (sorting unchanged). Null = one texture per sprite.</summary>
+        /// <summary>
+        /// When set, <see cref="CreateSprite"/> packs frames into this shared atlas instead of giving
+        /// each sprite its own texture — so sprites batch (sorting unchanged).
+        /// Null = one texture per sprite.
+        /// </summary>
         public static RuntimeSpriteAtlas ActiveAtlas;
 
-        // Decodes a frame to bottom-up RGBA32 with index 0 = transparent. mirrorX mirrors the pixels in place
-        // (engine TIG_ART_BLT_FLIP_X) keeping the hotspot/rect — unlike SpriteRenderer.flipX which shifts an
-        // off-centre pivot.
-        private static Color32[] BuildPixels(ArtFrame frame, ArtPalette palette, bool mirrorX, out int w, out int h)
+        // Decodes a frame to bottom-up RGBA32 with index 0 = transparent.
+        // mirrorX mirrors the pixels in place (engine TIG_ART_BLT_FLIP_X)
+        // keeping the hotspot/rect — unlike SpriteRenderer.flipX which shifts
+        // an off-centre pivot.
+        private static Color32[] BuildPixels(
+            ArtFrame frame,
+            ArtPalette palette,
+            bool mirrorX,
+            out int w,
+            out int h)
         {
-            int width = frame.Width, height = frame.Height;
+            int width = frame.Width;
+            int height = frame.Height;
+
             w = Mathf.Max(width, 1);
             h = Mathf.Max(height, 1);
 
             var pixels = new Color32[w * h];
             ArtColor[] colors = palette.Colors;
+
             for (int y = 0; y < height; y++)
             {
                 int srcRow = y * width;
-                int dstRow = (height - 1 - y) * width; // vertical flip: top-down → bottom-up
+                int dstRow = (height - 1 - y) * width; // top-down → bottom-up
+
                 for (int x = 0; x < width; x++)
                 {
                     byte index = frame.Indices[srcRow + x];
                     int dstX = mirrorX ? (width - 1 - x) : x;
+
                     pixels[dstRow + dstX] = index == TransparentIndex
                         ? new Color32(0, 0, 0, 0)
-                        : new Color32(colors[index].R, colors[index].G, colors[index].B, 255);
+                        : new Color32(
+                            colors[index].R,
+                            colors[index].G,
+                            colors[index].B,
+                            255);
                 }
             }
 
             return pixels;
         }
 
-        public static Texture2D CreateTexture(ArtFrame frame, ArtPalette palette, bool mirrorX = false)
+        public static Texture2D CreateTexture(
+            ArtFrame frame,
+            ArtPalette palette,
+            bool mirrorX = false)
         {
-            if (frame == null) throw new ArgumentNullException(nameof(frame));
-            if (palette == null) throw new ArgumentNullException(nameof(palette));
+            if (frame == null)
+                throw new ArgumentNullException(nameof(frame));
 
-            Color32[] pixels = BuildPixels(frame, palette, mirrorX, out int w, out int h);
-            // Point filtering, NO mipmaps: each sprite renders full-resolution so its shape stays true at every
-            // zoom (mipmaps averaged pixel art into a blurry blob between zoom levels — worse).
-            var texture = new Texture2D(w, h, TextureFormat.RGBA32, mipChain: false) { filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp, name = "ArtFrame", };
+            if (palette == null)
+                throw new ArgumentNullException(nameof(palette));
+
+            Color32[] pixels = BuildPixels(
+                frame,
+                palette,
+                mirrorX,
+                out int w,
+                out int h);
+
+            // OpenArcanum rendering policy:
+            //
+            // Original:
+            //   Point filtering
+            //   No mipmaps
+            //
+            // Enhanced:
+            //   Bilinear filtering
+            //   Mipmaps enabled
+            //
+            // This is only the first rendering hook. Later Enhanced mode
+            // can use HD replacement textures, normal maps, depth data,
+            // modern materials, lighting, and shadows.
+            bool useMipMaps = OpenArcanumTexturePolicy.UseMipMaps;
+
+            var texture = new Texture2D(
+                w,
+                h,
+                TextureFormat.RGBA32,
+                mipChain: useMipMaps)
+            {
+                filterMode = OpenArcanumTexturePolicy.TextureFilterMode,
+                wrapMode = TextureWrapMode.Clamp,
+                name = "ArtFrame"
+            };
+
             texture.SetPixels32(pixels);
-            texture.Apply(updateMipmaps: false);
+            texture.Apply(updateMipmaps: useMipMaps);
+
             return texture;
         }
 
@@ -66,7 +121,12 @@ namespace Arcanum.Runtime.Art
         /// <paramref name="pixelsPerUnit"/>, and the pivot is placed on the frame's
         /// hotspot so animations and world placement stay registered.
         /// </summary>
-        public static Sprite CreateSprite(ArtFrame frame, ArtPalette palette, float pixelsPerUnit = 100f, Vector2? pivotOverride = null, bool mirrorX = false)
+        public static Sprite CreateSprite(
+            ArtFrame frame,
+            ArtPalette palette,
+            float pixelsPerUnit = 100f,
+            Vector2? pivotOverride = null,
+            bool mirrorX = false)
         {
             if (frame == null)
                 throw new ArgumentNullException(nameof(frame));
@@ -77,26 +137,60 @@ namespace Arcanum.Runtime.Art
             int width = Mathf.Max(frame.Width, 1);
             int height = Mathf.Max(frame.Height, 1);
 
-            // Hotspot is top-left based; convert to Unity's bottom-left normalized pivot. Not clamped: roof art
-            // uses negative hotspots that anchor outside the sprite. For a mirrored (flipped) piece the engine
-            // zeroes hot_x (tig_art_frame_data), so the piece's LEFT edge sits at the anchor.
+            // Hotspot is top-left based; convert to Unity's bottom-left normalized pivot.
+            // Not clamped: roof art uses negative hotspots that anchor outside the sprite.
+            //
+            // For a mirrored (flipped) piece the engine zeroes hot_x
+            // (tig_art_frame_data), so the piece's LEFT edge sits at the anchor.
             Vector2 pivot = pivotOverride ?? new Vector2(
-                mirrorX ? 0f : (width > 0 ? frame.HotX / (float)width : 0.5f),
-                height > 0 ? (height - frame.HotY) / (float)height : 0.5f);
+                mirrorX
+                    ? 0f
+                    : (width > 0
+                        ? frame.HotX / (float)width
+                        : 0.5f),
 
-            // Shared atlas (batching): pack into a page and return a sub-rect sprite. Falls back to a standalone
-            // texture if no atlas is active or the frame is too big to pack. Sorting is unaffected either way.
+                height > 0
+                    ? (height - frame.HotY) / (float)height
+                    : 0.5f);
+
+            // Shared atlas (batching): pack into a page and return a sub-rect sprite.
+            // Falls back to a standalone texture if no atlas is active or the frame
+            // is too big to pack. Sorting is unaffected either way.
             if (ActiveAtlas != null)
             {
-                Color32[] px = BuildPixels(frame, palette, mirrorX, out int aw, out int ah);
-                Sprite atlased = ActiveAtlas.Add(px, aw, ah, pivot, pixelsPerUnit);
-                if (atlased != null) return atlased;
+                Color32[] px = BuildPixels(
+                    frame,
+                    palette,
+                    mirrorX,
+                    out int aw,
+                    out int ah);
+
+                Sprite atlased = ActiveAtlas.Add(
+                    px,
+                    aw,
+                    ah,
+                    pivot,
+                    pixelsPerUnit);
+
+                if (atlased != null)
+                    return atlased;
             }
 
-            Texture2D texture = CreateTexture(frame, palette, mirrorX);
-            var sprite = Sprite.Create(texture, new Rect(0, 0, width, height), pivot, pixelsPerUnit,
-                extrude: 0, meshType: SpriteMeshType.FullRect);
+            Texture2D texture = CreateTexture(
+                frame,
+                palette,
+                mirrorX);
+
+            var sprite = Sprite.Create(
+                texture,
+                new Rect(0, 0, width, height),
+                pivot,
+                pixelsPerUnit,
+                extrude: 0,
+                meshType: SpriteMeshType.FullRect);
+
             sprite.name = "ArtSprite";
+
             return sprite;
         }
     }

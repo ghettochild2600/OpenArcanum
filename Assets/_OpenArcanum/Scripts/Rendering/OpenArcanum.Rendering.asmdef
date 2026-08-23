@@ -1,10 +1,7 @@
 {
-    "name": "Arcanum.World",
-    "rootNamespace": "Arcanum.World",
-    "references": [
-        "Arcanum.Formats",
-        "OpenArcanum.Rendering"
-    ],
+    "name": "OpenArcanum.Rendering",
+    "rootNamespace": "OpenArcanum.Rendering",
+    "references": [],
     "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,
