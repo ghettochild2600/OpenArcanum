@@ -29,3 +29,5 @@ Thumbs.db
 sysinfo.txt
 crashlytics-build.properties
 /[Aa]ssets/[Aa]ssetStoreTools*
+
+/GameData/
