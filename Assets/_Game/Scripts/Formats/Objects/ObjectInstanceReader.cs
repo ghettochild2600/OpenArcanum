@@ -36,6 +36,11 @@ namespace Arcanum.Formats.Objects
 
         public int TileY => Location.HasValue ? (int)((Location.Value >> 32) & 0x3F) : -1;
 
+        /// <summary>Full map-space tile coordinates retained in the packed location.</summary>
+        public int MapX => Location.HasValue ? (int)(Location.Value & 0xFFFFFFFFL) : -1;
+
+        public int MapY => Location.HasValue ? (int)(Location.Value >> 32) : -1;
+
         /// <summary>Instance's own art id (<c>OBJ_F_CURRENT_AID</c>), or null if inherited from the prototype.</summary>
         public uint? CurrentArtId { get; }
 

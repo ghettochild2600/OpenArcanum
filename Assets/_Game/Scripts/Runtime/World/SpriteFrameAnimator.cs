@@ -30,6 +30,10 @@ namespace Arcanum.Runtime.World
         /// <summary>True while a one-shot clip is playing (callers shouldn't override the clip meanwhile).</summary>
         public bool IsPlayingOnce => _once;
 
+        public int CurrentFrame => _frame;
+
+        public float FramesPerSecond => _fps;
+
         public void Init(Sprite[] frames, float fps, int startFrame = 0)
         {
             _sr = GetComponent<SpriteRenderer>();
@@ -44,6 +48,27 @@ namespace Arcanum.Runtime.World
             _fps = fps > 0f ? fps : 8f; // some art reports 0 fps; fall back to a gentle idle rate
             _accum = 0f;
             _frame = frames != null && frames.Length > 0 ? ((startFrame % frames.Length) + frames.Length) % frames.Length : 0;
+            if (_frames != null && _frames.Length > 0) _sr.sprite = _frames[_frame];
+        }
+
+        /// <summary>
+        /// Replaces sprites rebuilt from the same ART clip without resetting animation phase.
+        /// Used when a presentation owner recreates its frames after a graphics-mode change.
+        /// </summary>
+        public void RebuildLoop(Sprite[] frames, float fps)
+        {
+            if (_sr == null) _sr = GetComponent<SpriteRenderer>();
+            int frame = _frame;
+            float accum = _accum;
+            _frames = frames;
+            _fps = fps > 0f ? fps : 8f;
+            _frame = frames != null && frames.Length > 0
+                ? Mathf.Clamp(frame, 0, frames.Length - 1)
+                : 0;
+            _accum = accum;
+            _once = false;
+            _loopFrames = frames;
+            _loopFps = _fps;
             if (_frames != null && _frames.Length > 0) _sr.sprite = _frames[_frame];
         }
 

@@ -79,5 +79,18 @@ namespace Arcanum.Runtime
 
             return null;
         }
+
+        /// <summary>Returns the first matching directory below a configured game-data root.</summary>
+        public static string FindDirectory(string relativePath)
+        {
+            foreach (string root in CandidateRoots())
+            {
+                if (string.IsNullOrEmpty(root)) continue;
+                string candidate = Path.Combine(root, relativePath);
+                if (Directory.Exists(candidate)) return candidate;
+            }
+
+            return null;
+        }
     }
 }
