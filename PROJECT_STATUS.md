@@ -2,10 +2,13 @@
 
 ## Current Objective
 
-The single-asset high-resolution replacement proof of concept is complete.
+The character and ordinary-object runtime SpriteRenderer integration milestone
+is complete for every non-terrain ART-to-Sprite caller that currently exists in
+the repository.
 
-The next objective is to carry source identity through additional production
-SpriteRenderer paths without changing Original-mode behavior.
+The next objective is to reuse the source-aware path when the first production
+map character/object sprite constructor is implemented. Terrain remains a
+separate future design.
 
 ## Current Branch
 
@@ -257,16 +260,148 @@ the integration does not modify the ART frame arrays, FPS, or timing logic.
 
 ### Known Limitations
 
-- Only `CharacterArtGallery` currently carries source identity into the new overload.
-- Mirrored `mirrorX` callers intentionally retain original ART until replacement mirroring semantics are defined.
+- `CharacterArtGallery` and `ObjectArtGallery` carry source identity, but the repository does not yet contain a
+  production map loader that creates character/object sprites for `WorldObject`.
 - HD sprites bypass `RuntimeSpriteAtlas`, so production batching and lifetime management remain future work.
 - Only exact 4x replacements are supported.
 - The local proof is validation artwork, not a production-quality remaster.
-- Loaded and rejected replacements are cached; use `OpenArcanumHDAssetLoader.ClearCache()` after changing an already-seen file during the same runtime session.
+- Loaded and rejected replacements are cached within one runtime session. Entering a new Play/runtime session
+  now clears that cache even when Unity domain reload is disabled.
+
+## Runtime Sprite Integration Milestone
+
+Completed on 2026-08-23 with Unity 6000.0.71f1.
+
+### Call-Site Audit
+
+Every `ArtTextureFactory.CreateSprite` caller was inspected.
+
+- `CharacterArtGallery.LoadRotations` represents characters. It already passes the ART path, rotation and frame,
+  uses the original hotspot pivot, participates in facing/frame animation, does not request `mirrorX`, and does not
+  activate `RuntimeSpriteAtlas`.
+- `ObjectArtGallery.LoadFrames` is the current ordinary SpriteRenderer object path for walls, portals, containers,
+  roofs, facades and scenery. It previously lost the ART path and frame identity. It uses a centered pivot override,
+  rotation 0, and uses `SpriteFrameAnimator` with the original ART FPS for animated doors/windows. It now passes the
+  path, rotation 0 and the real frame index, including the selected middle facade frame.
+- `TileMapRenderer.GetFacadeSprite` and `TileMapRenderer.GetSprite` still lose identity. They render facade/terrain
+  tiles, own higher-level terrain sprite caches, and were deliberately not modified because terrain is out of scope.
+- `TileGallery` is a terrain-only test caller and was deliberately not modified.
+- No current caller passes `mirrorX: true`. `ArtTextureFactory` remains the authoritative implementation of the
+  engine's horizontal-flip semantics for future callers.
+- No current non-terrain caller activates `RuntimeSpriteAtlas`. `TileMapRenderer` only saves, clears and restores
+  `ActiveAtlas` while rendering terrain. Source-aware HD sprites continue to bypass atlas packing.
+- `WorldObject` exposes a `SpriteRenderer` view and a `ReRender` callback but does not create sprites; there was no
+  source-identity call site to change there.
+
+The smallest required caller change was therefore `ObjectArtGallery.LoadFrames`; blindly changing terrain/demo tile
+callers was unnecessary.
+
+### Runtime Integration Implemented
+
+- Ordinary object frames now use the source-aware `ArtTextureFactory.CreateSprite` overload.
+- Static objects pass frame 0; animated objects pass every actual frame index; middle-frame facades pass their selected
+  frame index rather than incorrectly identifying it as frame 0.
+- Centered pivot overrides remain centered in Original and Enhanced modes.
+- `art.Fps` still drives `SpriteFrameAnimator`; no timing or gameplay transform code changed.
+- The dependency direction remains `Arcanum.World` to `OpenArcanum.Rendering`; no reference back to `Arcanum.World`
+  was introduced, so there is no assembly cycle.
+
+### Mirror Behavior
+
+HD `mirrorX` is implemented as an exact horizontal row-by-row pixel reversal of the validated replacement texture,
+matching the existing original ART `BuildPixels` operation. It does not use `SpriteRenderer.flipX` and does not change
+a GameObject transform.
+
+Mirrored HD textures are cached separately. `ArtTextureFactory` retains its existing pivot semantics: without a pivot
+override, mirrored pivot X is 0 while pivot Y remains the original hotspot-derived value; a caller-provided pivot
+override remains authoritative.
+
+The object proof measured:
+
+- Exact mirrored-pixel comparison: true
+- Normal and mirrored world size: 0.44 x 0.42
+- Normal hotspot pivot: approximately (0.52, 0.26)
+- Mirrored pivot: approximately (0.00, 0.26)
+- Anchor/world position: unchanged
+
+Because no checked-in runtime caller currently requests `mirrorX`, this exact factory-level result is ready for the
+first such caller but is not presented as an existing gameplay-facing mirror call site.
+
+### Cache and Mode Behavior
+
+- The HD loader still caches accepted textures and rejected paths within a runtime session.
+- Mirrored textures have their own cache entries and are destroyed by `ClearCache` with their source textures.
+- A `SubsystemRegistration` reset now clears the HD loader cache at the beginning of every runtime/Play session,
+  including when Unity domain reload is disabled.
+- Character/object sprite arrays are owned by scene instances and are rebuilt on a new Play/session run.
+- The only higher-level persistent sprite caches found are in `TileMapRenderer`, which is terrain-only and out of scope.
+- Changing the config does not replace Sprite instances that are already rendered during the same Play run. Live
+  in-place Original/Enhanced switching has no supported runtime API yet and will require a small sprite-owner refresh
+  contract when a production world renderer exists.
+
+The same Unity editor session validated Enhanced with a loaded PNG, Original, and then Enhanced with that PNG renamed
+away. The final run rebuilt the original ART sprite instead of reusing the earlier cached HD texture, proving the new
+runtime-session invalidation prevents this stale-cache case.
+
+### Runtime Object Validation
+
+The actual `TestObjects` SpriteRenderer scene was used, not only `CharacterArtGallery`. The proof generator resolves
+the first existing container through the same `container.mes` and mounted DAT VFS used by the runtime object path.
+
+Local proof identity:
+
+- Source: `art/container/g_junk.art`
+- Rotation/frame: r0/f0
+- Original frame: 44x42
+- Original hotspot: (23,31)
+- Local replacement: `HDAssets/art/container/g_junk/r0_f0.png`
+- Replacement: 176x168, generated from local game data, visibly tinted, Git-ignored and never staged
+
+Original mode with the replacement present:
+
+- Sprite: `ArtSprite`
+- Texture/rect: 44x42
+- Pixels per unit: 100
+- Sprite and rendered world size: 0.44x0.42
+- Centered override pivot: (0.50,0.50)
+- Object position: (-11.25,-55.03,0.00)
+- No HD load occurred
+
+Enhanced mode with the valid replacement:
+
+- Unity logged the exact local replacement path as loaded
+- Sprite: `HDArtSprite_r0_f0`
+- Texture/rect: 176x168
+- Pixels per unit: 400
+- Sprite and rendered world size: 0.44x0.42
+- Centered override pivot: (0.50,0.50)
+- Object position: (-11.25,-55.03,0.00)
+
+Enhanced mode after renaming the replacement away, in a later Play run in the same editor session:
+
+- Sprite: `ArtSprite`
+- Texture/rect: 44x42
+- Pixels per unit: 100
+- World size, pivot, scale and position matched Original mode
+- No HD load or warning occurred
+
+Animated portal sections also ran through the updated frame loop: 111 doors and 260 windows decoded, and their existing
+`SpriteFrameAnimator` continued to use the original frame arrays and ART FPS. The selected proof container itself is
+static, so animation timing is not applicable to that asset.
+
+Unity compiled the changes successfully. The completed runtime runs showed zero Console warnings and zero Console
+errors. The proof PNG was restored after fallback validation, Play mode was stopped, and graphics mode was returned to
+Original.
+
+### Runtime Integration Commits
+
+- `5225de6` Propagate HD identity through object sprites
+- `9ee11ac` Mirror HD sprites and reset runtime cache
+- `a33062d` Add runtime HD object validation tools
 
 ## Next Recommended Milestone
 
-Carry ART path, rotation, and frame identity through one production character or
-world-object SpriteRenderer pipeline, then repeat the same Original/Enhanced/
-missing/invalid A/B validation there. Keep terrain out of scope until its
-geometry and atlas assumptions have a dedicated HD design.
+Implement or identify the first production map character/object sprite owner, reuse the source-aware factory contract,
+and give that owner a narrow rebuild hook for future live graphics-mode switching. Validate a placed animated character
+or portal there before designing terrain replacement geometry/atlas behavior. Do not begin bulk conversion or terrain
+replacement as part of that milestone.
