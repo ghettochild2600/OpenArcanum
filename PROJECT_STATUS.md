@@ -2,7 +2,10 @@
 
 ## Current Objective
 
-Build a high-resolution replacement asset pipeline for Enhanced graphics mode.
+The single-asset high-resolution replacement proof of concept is complete.
+
+The next objective is to carry source identity through additional production
+SpriteRenderer paths without changing Original-mode behavior.
 
 ## Current Branch
 
@@ -132,9 +135,9 @@ f0 = frame 0
 
 Inspect OpenArcanumHDAssetLoader.cs before relying on this convention. The implementation is authoritative.
 
-## Near-Term Milestone
+## Completed Milestone
 
-Prove the complete pipeline with one asset.
+The complete pipeline has been proven with one asset.
 
 1. Identify one original ART resource.
 2. Determine its original resource path, rotation and frame.
@@ -146,19 +149,124 @@ Prove the complete pipeline with one asset.
 8. Preserve pivot and hotspot behavior.
 9. Removing the PNG must automatically restore original ART fallback.
 
-Do not attempt mass conversion before the single-asset proof of concept works reliably.
+Do not attempt mass conversion until source identity has been integrated into
+the intended production sprite paths and the replacement authoring contract is
+documented beyond this proof.
 
-## Next Development Step
+## Proof of Concept Result
 
-Inspect:
+Completed on 2026-08-23 with Unity 6000.0.71f1.
 
-- OpenArcanumHDAssetLoader.cs
-- ArtTextureFactory.cs
-- The existing ART resource-resolution path
-- The code that knows the ART resource path, rotation and frame before sprite creation
+### Architecture Implemented
 
-Do not make implementation changes immediately.
+- `ArtTextureFactory` retains its original compatibility overload.
+- A source-aware overload accepts the original ART path, rotation index, and frame index.
+- `CharacterArtGallery` supplies that identity for every decoded critter frame.
+- Original mode continues through the original texture/atlas code path.
+- Enhanced mode asks `OpenArcanumHDAssetLoader` for a replacement before atlas packing.
+- Replacements must be exactly 4x the original frame width and height.
+- Accepted HD sprites use the original normalized hotspot pivot and 4x pixels-per-unit.
+- HD sprites bypass `RuntimeSpriteAtlas` for this initial proof.
+- Missing, undecodable, or wrong-size replacements fall back to original ART.
+- Invalid replacements are rejected once per cache lifetime to avoid warning spam.
 
-First determine how original ART resource path, rotation, frame, pivot, hotspot, and pixels-per-unit flow through the current architecture.
+### Files Changed
 
-Then propose the smallest integration necessary to render one 4x replacement PNG in Enhanced mode while preserving Original behavior.
+- `Assets/_OpenArcanum/Scripts/Rendering/OpenArcanumHDAssetLoader.cs`
+- `Assets/_Game/Scripts/World/ArtTextureFactory.cs`
+- `Assets/_Game/Scripts/Runtime/Demo/CharacterArtGallery.cs`
+- `Assets/_OpenArcanum/Editor/HDReplacementProofGenerator.cs`
+- `.gitignore`
+- `AGENTS.md`
+- `PROJECT_STATUS.md`
+
+### Local Proof Asset
+
+Source ART:
+
+`art/critter/hmf/hmfuwxaa.art`
+
+Identity:
+
+- Rotation: 0
+- Frame: 0
+- Original frame: 28x77
+- Hotspot: (9, 75)
+- Normalized pivot: approximately (0.3214, 0.0260)
+
+Replacement:
+
+`HDAssets/art/critter/hmf/hmfuwxaa/r0_f0.png`
+
+The replacement is 112x308. It was generated from the user's local game data,
+visually tinted for an unambiguous proof, and remains entirely under the
+Git-ignored `HDAssets/` directory. No original or derived proprietary artwork
+was staged or committed.
+
+### Validation Performed
+
+The `TestCharactersArt` SpriteRenderer scene was run through the existing Unity
+Editor and inspected in the Unity Console.
+
+Original mode with the replacement present:
+
+- Sprite: `ArtSprite`
+- Texture and rect: 28x77
+- Pixels per unit: 100
+- World size: 0.28x0.77
+- Normalized pivot: approximately (0.32, 0.03)
+- Character position: (-5.60, 1.20, 0.00)
+- No HD replacement load was attempted.
+
+Enhanced mode with the valid replacement:
+
+- Unity logged the exact replacement path as loaded.
+- Sprite: `HDArtSprite_r0_f0`
+- Texture and rect: 112x308
+- Pixels per unit: 400
+- World size: 0.28x0.77
+- Normalized pivot: approximately (0.32, 0.03)
+- Character position: (-5.60, 1.20, 0.00)
+
+Enhanced mode with the replacement renamed away, on a fresh run:
+
+- Sprite: `ArtSprite`
+- Texture and rect: 28x77
+- Pixels per unit: 100
+- World size, pivot, and character position matched Original mode.
+
+Enhanced mode with a deliberately invalid 1x1 replacement:
+
+- Unity logged one warning explaining that 112x308 was required and 1x1 was found.
+- The rendered sprite fell back to `ArtSprite` at 28x77 and 100 pixels per unit.
+- World size, pivot, and character position matched Original mode.
+
+The valid 112x308 proof PNG was restored and loaded successfully in a final
+Enhanced-mode run after the last code change. The editor graphics configuration
+was returned to Original afterward. Unity compiled every meaningful C# change
+with zero Console errors.
+
+The gallery's existing `CritterTurntable` continued cycling facings and frames;
+the integration does not modify the ART frame arrays, FPS, or timing logic.
+
+### Commits
+
+- `3619eb7` Add HD replacement asset loader groundwork
+- `70994f6` Document HD replacement workflow
+- `f567fff` Render validated 4x character replacements
+
+### Known Limitations
+
+- Only `CharacterArtGallery` currently carries source identity into the new overload.
+- Mirrored `mirrorX` callers intentionally retain original ART until replacement mirroring semantics are defined.
+- HD sprites bypass `RuntimeSpriteAtlas`, so production batching and lifetime management remain future work.
+- Only exact 4x replacements are supported.
+- The local proof is validation artwork, not a production-quality remaster.
+- Loaded and rejected replacements are cached; use `OpenArcanumHDAssetLoader.ClearCache()` after changing an already-seen file during the same runtime session.
+
+## Next Recommended Milestone
+
+Carry ART path, rotation, and frame identity through one production character or
+world-object SpriteRenderer pipeline, then repeat the same Original/Enhanced/
+missing/invalid A/B validation there. Keep terrain out of scope until its
+geometry and atlas assumptions have a dedicated HD design.
