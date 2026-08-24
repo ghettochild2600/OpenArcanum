@@ -237,11 +237,31 @@ namespace Arcanum.Runtime.Demo
                 ArtFrame[] src = art.Rotations[0].Frames;
                 var centre = new Vector2(0.5f, 0.5f);
                 if (useMiddleFrame)
-                    return (new[] { ArtTextureFactory.CreateSprite(src[src.Length / 2], art.PrimaryPalette, PixelsPerUnit, centre) }, 0);
+                {
+                    int frameIndex = src.Length / 2;
+                    return (new[]
+                    {
+                        ArtTextureFactory.CreateSprite(
+                            src[frameIndex],
+                            art.PrimaryPalette,
+                            path,
+                            rotation: 0,
+                            frameIndex: frameIndex,
+                            pixelsPerUnit: PixelsPerUnit,
+                            pivotOverride: centre)
+                    }, 0);
+                }
 
                 var frames = new Sprite[src.Length];
                 for (int f = 0; f < src.Length; f++)
-                    frames[f] = ArtTextureFactory.CreateSprite(src[f], art.PrimaryPalette, PixelsPerUnit, centre);
+                    frames[f] = ArtTextureFactory.CreateSprite(
+                        src[f],
+                        art.PrimaryPalette,
+                        path,
+                        rotation: 0,
+                        frameIndex: f,
+                        pixelsPerUnit: PixelsPerUnit,
+                        pivotOverride: centre);
                 return (frames, art.Fps);
             }
             catch (Exception ex)
