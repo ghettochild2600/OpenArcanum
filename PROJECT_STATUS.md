@@ -2,13 +2,15 @@
 
 ## Current Objective
 
-The character and ordinary-object runtime SpriteRenderer integration milestone
-is complete for every non-terrain ART-to-Sprite caller that currently exists in
-the repository.
+Production sector objects now have a real runtime SpriteRenderer owner that
+retains ART source identity, supports exact engine mirroring, and can rebuild
+in place when the graphics mode changes. Real `.sec` and `.mob` map content has
+been validated in Original and Enhanced modes. Terrain remains intentionally
+separate and untouched.
 
-The next objective is to reuse the source-aware path when the first production
-map character/object sprite constructor is implemented. Terrain remains a
-separate future design.
+The next objective is to connect this presentation owner to the broader map
+lifecycle and gameplay-state loading as those systems mature, without turning
+it into a global asset manager or beginning terrain replacement.
 
 ## Current Branch
 
@@ -152,9 +154,8 @@ The complete pipeline has been proven with one asset.
 8. Preserve pivot and hotspot behavior.
 9. Removing the PNG must automatically restore original ART fallback.
 
-Do not attempt mass conversion until source identity has been integrated into
-the intended production sprite paths and the replacement authoring contract is
-documented beyond this proof.
+Do not attempt mass conversion until production asset lifetime/batching and the
+replacement authoring contract are documented beyond these proofs.
 
 ## Proof of Concept Result
 
@@ -260,8 +261,8 @@ the integration does not modify the ART frame arrays, FPS, or timing logic.
 
 ### Known Limitations
 
-- `CharacterArtGallery` and `ObjectArtGallery` carry source identity, but the repository does not yet contain a
-  production map loader that creates character/object sprites for `WorldObject`.
+- `CharacterArtGallery` and `ObjectArtGallery` carry source identity. A production sector owner now does as well;
+  see the Production Sector Sprite Ownership milestone below.
 - HD sprites bypass `RuntimeSpriteAtlas`, so production batching and lifetime management remain future work.
 - Only exact 4x replacements are supported.
 - The local proof is validation artwork, not a production-quality remaster.
@@ -335,9 +336,8 @@ first such caller but is not presented as an existing gameplay-facing mirror cal
   including when Unity domain reload is disabled.
 - Character/object sprite arrays are owned by scene instances and are rebuilt on a new Play/session run.
 - The only higher-level persistent sprite caches found are in `TileMapRenderer`, which is terrain-only and out of scope.
-- Changing the config does not replace Sprite instances that are already rendered during the same Play run. Live
-  in-place Original/Enhanced switching has no supported runtime API yet and will require a small sprite-owner refresh
-  contract when a production world renderer exists.
+- Gallery sprite arrays are still rebuilt by recreating their scene instances. Production sector owners now support
+  explicit in-place Original/Enhanced rebuilding; see the Production Sector Sprite Ownership milestone below.
 
 The same Unity editor session validated Enhanced with a loaded PNG, Original, and then Enhanced with that PNG renamed
 away. The final run rebuilt the original ART sprite instead of reusing the earlier cached HD texture, proving the new
@@ -399,9 +399,132 @@ Original.
 - `9ee11ac` Mirror HD sprites and reset runtime cache
 - `a33062d` Add runtime HD object validation tools
 
+## Production Sector Sprite Ownership Milestone
+
+Completed on 2026-08-24 with Unity 6000.0.71f1.
+
+### Production Owner and Architecture
+
+The repository previously parsed sector objects but did not instantiate them:
+`SectorReader.ReadObjects` had no runtime consumer, and `WorldObject.View` / `ReRender`
+were never assigned. `TileMapDemo` owned terrain only. No hidden production path was
+bypassing `ArtTextureFactory` because there was no ordinary world-object presentation
+owner yet.
+
+The smallest production path is now:
+
+`WorldObjectSectorLoader` -> `.sec` and sector `.mob` instances -> inherited prototype
+ART id -> existing type-specific ART resolver -> `WorldObject` gameplay-tile root ->
+`WorldObjectSpriteOwner` visual child -> source-aware `ArtTextureFactory.CreateSprite`.
+
+- The loader reads real sector records and authored mobile records, filters them to the selected sector, and excludes
+  inventory children plus destroyed/off/don't-draw records from map presentation.
+- Walls, portals, scenery, containers, ground items, critters/monsters/unique NPCs, roofs, facades, lights and eye candy
+  use the existing resolver classes. No HD-loading logic is duplicated.
+- The `WorldObject` root remains on the projected gameplay tile. Only its visual child receives the engine's exact
+  `+40,+20` presentation base and authored object offsets.
+- `WorldObject.View` and `WorldObject.ReRender` are assigned. `WorldObject.SetArt` therefore rebuilds the presentation
+  from the new ART identity for future state-driven door/window/critter changes.
+- Dependency direction remains `Arcanum.Runtime` -> `Arcanum.World` -> `OpenArcanum.Rendering`; no Rendering-to-Runtime
+  dependency or assembly cycle was introduced.
+- `TestTerrain` now contains a sibling `WorldObjectSectorLoader` root. It is deliberately separate from the terrain
+  host so a terrain refresh cannot delete entity visuals.
+
+### Source Identity, Frames and Mirroring
+
+`WorldObjectSpriteOwner` retains the original ART path, requested rotation, decoded source rotation, actual frame
+indices, mirror state, FPS, and complete frame array.
+
+- ART-id rotation/frame bit layouts follow the engine's per-art-type rules rather than a generic approximation.
+- Critter, monster and unique-NPC facings 1-3 use source rotations 7-5 and exact horizontal pixel reversal.
+- Wall/portal/roof ART-id flip behavior is preserved.
+- Pivot overrides reproduce `tig_art_frame_data` hotspot transforms, including wall/portal `-40,+20`, facing-mirror
+  hotspot reflection, and flipped roof/portal/wall anchors. No `SpriteRenderer.flipX` or transform compensation is used.
+- Animation arrays retain the original ART FPS. Rebuilding a loop retains the current frame and fractional phase.
+- Portals are built with all state frames but are not incorrectly auto-looped. Scenery obeys `OSCF_NO_AUTO_ANIMATE`;
+  critters use the original ART loop timing.
+
+### Rebuild and Cache Behavior
+
+- `OpenArcanumGraphicsSettings.SetRuntimeMode` is a session-only override and clears the HD loader cache whenever the
+  mode changes.
+- `WorldObjectSectorLoader.RebuildVisuals` asks each owned presentation to recreate its frame array from retained ART
+  identity. This is an explicit narrow hook, not a global event or asset manager.
+- Original standalone sprite textures are released after a successful rebuild. Cached HD textures remain owned by the
+  existing HD loader and are cleared through its existing cache contract.
+- Original -> Enhanced -> Original was exercised in one Play session. All 580 active visual owners rebuilt each time;
+  a paused animated NPC remained on the same frame across the rebuild.
+
+### Real Map Validation
+
+Actual map content from `maps/arcanum1-024-fixed/101602821844.sec` and its `.mob` records was loaded, not either art
+gallery. The final pass read 687 records and produced 580 drawable owners: 290 scenery, 264 walls, eight portals, nine
+containers and nine NPCs. Seventy-five inventory children were intentionally not presented; 32 records still had
+unresolved/non-renderable ART identities.
+
+Local proof clips were generated from the selected real entities under Git-ignored `HDAssets/` and were never staged:
+
+- Static scenery `art/scenery/fwd1.art`, r0/f0: 23x37 at 100 PPU became 92x148 at 400 PPU. Both modes measured world
+  size 0.23x0.37, pivot approximately (0.48,0.19), identical gameplay/visual positions, and scale 1.
+- Animated scenery `art/scenery/plushbed1.art`, two frames at 8 FPS: 136x111 became 544x444 for the measured frame.
+  Both modes measured world size 1.36x1.11 and pivot approximately (0.47,0.31), with identical positions and scale.
+- NPC `art/monster/shp/shpuwxaa.art`, requested facing 3 -> source rotation 5 with mirror: all nine 8-FPS frames were
+  replaced. Frozen frame 5 measured 54x51 at 100 PPU versus 216x204 at 400 PPU, world size 0.54x0.51, pivot
+  approximately (0.44,0.27), and identical gameplay/visual positions and scale. The sprite name confirmed the exact
+  mirror path: `HDArtSprite_r5_f5_MirrorX`.
+- A real portal `art/portal/vtnf5bu0.art` was also loaded through the replacement path during validation; its frames
+  remain state-driven rather than automatically animated.
+
+Missing fallback was tested by reversibly renaming the selected static scenery PNG, clearing through a mode switch,
+and rebuilding Enhanced in the same session. That real placed entity returned to `ArtSprite`, 23x37 at 100 PPU, with
+the same world size, pivot, positions and scale, while the other available replacements remained HD. The PNG was
+restored afterward. Invalid-replacement warning/fallback remains the same already-validated loader path.
+
+The final post-filter Original and Enhanced map runs completed with zero Unity Console warnings and zero errors.
+The editor was returned to Original mode and Play mode was stopped.
+
+### Files Changed
+
+- `Assets/_Game/Scripts/Runtime/World/WorldObjectSectorLoader.cs`
+- `Assets/_Game/Scripts/Runtime/World/WorldObjectSpriteOwner.cs`
+- `Assets/_Game/Scripts/Runtime/World/SpriteFrameAnimator.cs`
+- `Assets/_Game/Scripts/Formats/Objects/ObjectInstanceReader.cs`
+- `Assets/_Game/Scripts/World/GameDataLocator.cs`
+- `Assets/_OpenArcanum/Scripts/Rendering/OpenArcanumGraphicsConfig.cs`
+- `Assets/_OpenArcanum/Editor/ProductionHDValidation.cs`
+- `Assets/_Game/Scenes/TestTerrain.unity`
+
+### Final CreateSprite Call-Site Classification
+
+- Production runtime: `WorldObjectSpriteOwner` is source-aware and is the sole ordinary sector entity sprite creator.
+- Gallery/test: `CharacterArtGallery` and `ObjectArtGallery` remain source-aware.
+- Editor/proof: `HDReplacementProofGenerator` intentionally exercises normal and mirrored source-aware factory paths.
+- Terrain/batched: `TileMapRenderer` and terrain-only `TileGallery` remain on the compatibility overload by design;
+  terrain is explicitly out of scope.
+- No remaining production ordinary-object caller lacks ART source identity. `WorldObject.SetArt` reaches the owner through
+  `ReRender`; it does not create a sprite independently.
+- HD sprites still bypass `RuntimeSpriteAtlas`; its current production use is terrain/batched rendering only.
+
+### Commits
+
+- `10cc88f` Add production sector sprite ownership
+- `4908a72` Add real sector HD validation tools
+
+### Remaining Limitations
+
+- The new owner is a production runtime component consuming real map data, but the repository still lacks a complete
+  shipping map/gameplay lifecycle. Sector streaming, persistent gameplay state, inventory ownership, scripts and full
+  interaction construction remain separate work.
+- The 32 unresolved records need a resolver/data-identity audit before claiming every object type in every sector.
+- Portal frame changes are ready through `WorldObject.SetArt`, but full door/window gameplay state wiring is not part of
+  this rendering milestone.
+- Live mode switching is explicit per sector owner; galleries and future owners are not subscribed through a global event.
+- HD sprites bypass `RuntimeSpriteAtlas`, exact 4x PNGs are the only supported replacement scale, and proof artwork is
+  validation-only.
+- Terrain replacement, bulk extraction/upscaling and original data modification were not started.
+
 ## Next Recommended Milestone
 
-Implement or identify the first production map character/object sprite owner, reuse the source-aware factory contract,
-and give that owner a narrow rebuild hook for future live graphics-mode switching. Validate a placed animated character
-or portal there before designing terrain replacement geometry/atlas behavior. Do not begin bulk conversion or terrain
-replacement as part of that milestone.
+Integrate `WorldObjectSectorLoader`/`WorldObjectSpriteOwner` with the eventual map lifecycle: stable object identity,
+sector load/unload, state-driven portal art, and inventory ownership without presenting inventory children. Then decide
+whether ordinary HD sprites need a small atlas/lifetime policy. Keep terrain replacement and bulk conversion separate.
