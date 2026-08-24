@@ -1,0 +1,53 @@
+# OpenArcanum repository line-ending policy
+* text=auto eol=lf
+
+# Source
+*.cs         text eol=lf
+*.asmdef     text eol=lf
+*.asmref     text eol=lf
+*.shader     text eol=lf
+*.compute    text eol=lf
+*.cginc      text eol=lf
+*.hlsl       text eol=lf
+*.hlslinc    text eol=lf
+*.glsl       text eol=lf
+*.uss        text eol=lf
+*.uxml       text eol=lf
+*.jslib      text eol=lf
+*.rsp        text eol=lf
+*.sln        text eol=lf
+*.csproj     text eol=lf
+*.props      text eol=lf
+*.targets    text eol=lf
+*.ruleset    text eol=lf
+
+# Unity YAML/text assets
+*.meta       text eol=lf
+*.unity      text eol=lf
+*.prefab     text eol=lf
+*.asset      text eol=lf
+*.mat        text eol=lf
+*.anim       text eol=lf
+*.controller text eol=lf
+*.inputactions text eol=lf
+*.scenetemplate text eol=lf
+
+# Config/documentation
+*.json       text eol=lf
+*.md         text eol=lf
+*.txt        text eol=lf
+*.xml        text eol=lf
+*.yml        text eol=lf
+*.yaml       text eol=lf
+*.toml       text eol=lf
+
+# Binary files
+*.png        binary
+*.jpg        binary
+*.jpeg       binary
+*.gif        binary
+*.dll        binary
+*.exe        binary
+*.zip        binary
+*.7z         binary
+*.pdf        binary
