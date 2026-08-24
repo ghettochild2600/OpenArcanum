@@ -17,6 +17,51 @@ namespace Arcanum.Runtime.World
     /// </summary>
     public sealed class WorldObjectSectorLoader : MonoBehaviour
     {
+        private const string ObjectRootName = "WorldObjects";
+        private const uint PortalWallIdentityMask = (0x1FFu << 19) | (7u << 11);
+
+        public enum RenderIssueCategory
+        {
+            MissingPrototype,
+            ZeroArtIdentity,
+            UnsupportedArtType,
+            ResolverMiss,
+            MissingArtFile,
+            SpriteBuildFailure,
+        }
+
+        public sealed class RenderIssue
+        {
+            public RenderIssueCategory Category { get; }
+            public ObjectType ObjectType { get; }
+            public int PrototypeNumber { get; }
+            public uint ArtId { get; }
+            public Vector2Int Tile { get; }
+            public string ResolvedPath { get; }
+            public string Detail { get; }
+
+            internal RenderIssue(
+                RenderIssueCategory category,
+                ObjectInstance instance,
+                uint artId,
+                string resolvedPath,
+                string detail)
+            {
+                Category = category;
+                ObjectType = instance.Type;
+                PrototypeNumber = instance.PrototypeNumber;
+                ArtId = artId;
+                Tile = new Vector2Int(instance.TileX, instance.TileY);
+                ResolvedPath = resolvedPath;
+                Detail = detail;
+            }
+
+            public override string ToString()
+                => $"category={Category}, objectType={ObjectType}, proto={PrototypeNumber}, " +
+                   $"artId=0x{ArtId:X8}, artType={ArtId >> 28}, tile={Tile}, " +
+                   $"path='{ResolvedPath ?? "<none>"}', detail='{Detail}'.";
+        }
+
         private const int ObjectFlagDestroyed = 0x00000001;
         private const int ObjectFlagOff = 0x00000002;
         private const int ObjectFlagDontDraw = 0x00000100;
@@ -40,6 +85,7 @@ namespace Arcanum.Runtime.World
         private bool loadOnStart = true;
 
         private readonly List<WorldObjectSpriteOwner> _spriteOwners = new List<WorldObjectSpriteOwner>();
+        private readonly List<RenderIssue> _renderIssues = new List<RenderIssue>();
         private DatVirtualFileSystem _vfs;
         private ProtoLibrary _prototypes;
         private ObjectArtResolvers _art;
@@ -47,21 +93,27 @@ namespace Arcanum.Runtime.World
 
         public string CurrentSector => sectorPath;
         public IReadOnlyList<WorldObjectSpriteOwner> SpriteOwners => _spriteOwners;
+        public IReadOnlyList<RenderIssue> RenderIssues => _renderIssues;
         public int RenderedObjectCount => _spriteOwners.Count;
+        public int LastRecordCount { get; private set; }
+        public int LastInventoryCount { get; private set; }
+        public int LastSuppressedCount { get; private set; }
+        public int LastDerivedPortalCount { get; private set; }
+        public bool IsLoaded => _objectRoot != null && _objectRoot.gameObject.activeSelf;
 
         private void Start()
         {
             if (loadOnStart) LoadSector(sectorPath);
         }
 
-        public void LoadSector(string path)
+        public bool LoadSector(string path)
         {
             if (!string.IsNullOrWhiteSpace(path)) sectorPath = path;
-            if (!EnsureData()) return;
+            if (!EnsureData()) return false;
             if (!_vfs.Exists(sectorPath))
             {
                 Debug.LogError($"WorldObjectSectorLoader: sector '{sectorPath}' was not found.", this);
-                return;
+                return false;
             }
 
             List<ObjectInstance> instances;
@@ -73,19 +125,23 @@ namespace Arcanum.Runtime.World
             catch (Exception ex)
             {
                 Debug.LogError($"WorldObjectSectorLoader: object read failed for '{sectorPath}': {ex.Message}", this);
-                return;
+                return false;
             }
 
             ClearObjects();
-            var root = new GameObject("WorldObjects");
+            _renderIssues.Clear();
+            LastRecordCount = instances.Count;
+            var root = new GameObject(ObjectRootName);
             root.transform.SetParent(transform, false);
             _objectRoot = root.transform;
+            Dictionary<Vector2Int, List<PortalWallCandidate>> portalWalls = BuildPortalWallContext(instances);
 
             int inherited = 0;
             int suppressed = 0;
             int inventory = 0;
             int unresolvedProto = 0;
             int unresolvedArt = 0;
+            int derivedPortals = 0;
             var byType = new Dictionary<ObjectType, int>();
 
             foreach (ObjectInstance instance in instances)
@@ -103,6 +159,12 @@ namespace Arcanum.Runtime.World
                 else
                 {
                     unresolvedProto++;
+                    AddIssue(
+                        RenderIssueCategory.MissingPrototype,
+                        instance,
+                        0,
+                        null,
+                        "The instance has no ART override and its prototype could not be loaded.");
                     continue;
                 }
 
@@ -119,10 +181,62 @@ namespace Arcanum.Runtime.World
                     continue;
                 }
 
-                string artPath = _art.Resolve(artId);
-                if (artId == 0 || string.IsNullOrEmpty(artPath) || !_vfs.Exists(artPath))
+                string artPath = null;
+                if (artId == 0)
                 {
                     unresolvedArt++;
+                    AddIssue(
+                        RenderIssueCategory.ZeroArtIdentity,
+                        instance,
+                        artId,
+                        null,
+                        "The effective current ART id is zero.");
+                    continue;
+                }
+
+                if (!_art.Supports(ArtId.Type(artId)))
+                {
+                    unresolvedArt++;
+                    AddIssue(
+                        RenderIssueCategory.UnsupportedArtType,
+                        instance,
+                        artId,
+                        null,
+                        "No ordinary world-object ART resolver owns this ART type.");
+                    continue;
+                }
+
+                artPath = _art.Resolve(artId);
+                if (string.IsNullOrEmpty(artPath)
+                    && instance.Type == ObjectType.Portal
+                    && TryResolvePortalFromWall(instance, artId, portalWalls, out uint derivedArtId, out string derivedPath))
+                {
+                    artId = derivedArtId;
+                    artPath = derivedPath;
+                    derivedPortals++;
+                }
+
+                if (string.IsNullOrEmpty(artPath))
+                {
+                    unresolvedArt++;
+                    AddIssue(
+                        RenderIssueCategory.ResolverMiss,
+                        instance,
+                        artId,
+                        null,
+                        "The type-specific resolver found no source path for this ART identity.");
+                    continue;
+                }
+
+                if (!_vfs.Exists(artPath))
+                {
+                    unresolvedArt++;
+                    AddIssue(
+                        RenderIssueCategory.MissingArtFile,
+                        instance,
+                        artId,
+                        artPath,
+                        "The resolver produced a path that is absent from the mounted data.");
                     continue;
                 }
 
@@ -130,6 +244,12 @@ namespace Arcanum.Runtime.World
                 if (worldObject == null)
                 {
                     unresolvedArt++;
+                    AddIssue(
+                        RenderIssueCategory.SpriteBuildFailure,
+                        instance,
+                        artId,
+                        artPath,
+                        "The ART source resolved and existed, but no SpriteRenderer presentation was built.");
                     continue;
                 }
 
@@ -137,18 +257,116 @@ namespace Arcanum.Runtime.World
                 byType[instance.Type]++;
             }
 
+            LastInventoryCount = inventory;
+            LastSuppressedCount = suppressed;
+            LastDerivedPortalCount = derivedPortals;
+
             var typeSummary = new List<string>();
             foreach (KeyValuePair<ObjectType, int> pair in byType)
                 typeSummary.Add($"{pair.Key}={pair.Value}");
             typeSummary.Sort(StringComparer.Ordinal);
 
+            var issueSummary = new List<string>();
+            var issuesByCategory = new Dictionary<RenderIssueCategory, int>();
+            foreach (RenderIssue issue in _renderIssues)
+            {
+                if (!issuesByCategory.ContainsKey(issue.Category)) issuesByCategory[issue.Category] = 0;
+                issuesByCategory[issue.Category]++;
+            }
+            foreach (KeyValuePair<RenderIssueCategory, int> pair in issuesByCategory)
+                issueSummary.Add($"{pair.Key}={pair.Value}");
+            issueSummary.Sort(StringComparer.Ordinal);
+
             Debug.Log(
                 $"WorldObjectSectorLoader: rendered {_spriteOwners.Count}/{instances.Count} placed object(s) from " +
-                $"'{sectorPath}' (inheritedArt={inherited}, suppressed={suppressed}, inventory={inventory}, " +
-                $"unresolvedProto={unresolvedProto}, " +
-                $"unresolvedArt={unresolvedArt}; {string.Join(", ", typeSummary)}).",
+                 $"'{sectorPath}' (inheritedArt={inherited}, suppressed={suppressed}, inventory={inventory}, " +
+                 $"derivedPortals={derivedPortals}, unresolvedProto={unresolvedProto}, " +
+                 $"unresolvedArt={unresolvedArt}, issues=[{string.Join(", ", issueSummary)}]; " +
+                $"{string.Join(", ", typeSummary)}).",
                 this);
+            return true;
         }
+
+        private Dictionary<Vector2Int, List<PortalWallCandidate>> BuildPortalWallContext(
+            IReadOnlyList<ObjectInstance> instances)
+        {
+            var byTile = new Dictionary<Vector2Int, List<PortalWallCandidate>>();
+            foreach (ObjectInstance instance in instances)
+            {
+                if (instance.Type != ObjectType.Wall || !instance.Location.HasValue) continue;
+
+                ObjectProtoInfo proto = _prototypes?.Get(instance.PrototypeNumber);
+                uint wallArtId = instance.CurrentArtId ?? proto?.CurrentArtId ?? 0;
+                if (wallArtId == 0 || ArtId.Type(wallArtId) != ArtId.TypeWall) continue;
+
+                string wallPath = _art.Resolve(wallArtId);
+                uint? derivedArtId = _art.DerivePortalFromWall(wallArtId, wallPath);
+                if (!derivedArtId.HasValue) continue;
+
+                string portalPath = _art.Resolve(derivedArtId.Value);
+                if (string.IsNullOrEmpty(portalPath)) continue;
+
+                var tile = new Vector2Int(instance.TileX, instance.TileY);
+                if (!byTile.TryGetValue(tile, out List<PortalWallCandidate> candidates))
+                {
+                    candidates = new List<PortalWallCandidate>();
+                    byTile.Add(tile, candidates);
+                }
+                candidates.Add(new PortalWallCandidate(derivedArtId.Value, portalPath));
+            }
+            return byTile;
+        }
+
+        private static bool TryResolvePortalFromWall(
+            ObjectInstance portal,
+            uint storedArtId,
+            IReadOnlyDictionary<Vector2Int, List<PortalWallCandidate>> byTile,
+            out uint derivedArtId,
+            out string derivedPath)
+        {
+            derivedArtId = 0;
+            derivedPath = null;
+            var tile = new Vector2Int(portal.TileX, portal.TileY);
+            if (!byTile.TryGetValue(tile, out List<PortalWallCandidate> candidates)) return false;
+
+            bool found = false;
+            foreach (PortalWallCandidate candidate in candidates)
+            {
+                // The shipped generic portal identity still carries the correct portal number and
+                // rotation. Requiring both prevents a same-tile wall from being chosen by proximity.
+                if ((candidate.ArtId & PortalWallIdentityMask) != (storedArtId & PortalWallIdentityMask))
+                    continue;
+
+                if (found && (candidate.ArtId != derivedArtId
+                              || !string.Equals(candidate.Path, derivedPath, StringComparison.OrdinalIgnoreCase)))
+                    return false;
+
+                derivedArtId = candidate.ArtId;
+                derivedPath = candidate.Path;
+                found = true;
+            }
+            return found;
+        }
+
+        private readonly struct PortalWallCandidate
+        {
+            public uint ArtId { get; }
+            public string Path { get; }
+
+            public PortalWallCandidate(uint artId, string path)
+            {
+                ArtId = artId;
+                Path = path;
+            }
+        }
+
+        private void AddIssue(
+            RenderIssueCategory category,
+            ObjectInstance instance,
+            uint artId,
+            string resolvedPath,
+            string detail)
+            => _renderIssues.Add(new RenderIssue(category, instance, artId, resolvedPath, detail));
 
         /// <summary>Recreates every owned presentation from retained source identity.</summary>
         public void RebuildVisuals()
@@ -174,6 +392,13 @@ namespace Arcanum.Runtime.World
             worldObject.Tile = new Vector2Int(instance.TileX, instance.TileY);
             worldObject.ArtId = artId;
             worldObject.PrototypeNumber = instance.PrototypeNumber;
+            int stateFlags = instance.Type == ObjectType.Portal
+                ? instance.PortalFlags ?? proto?.PortalFlags ?? 0
+                : instance.Type == ObjectType.Container
+                    ? instance.ContainerFlags ?? proto?.ContainerFlags ?? 0
+                    : 0;
+            worldObject.Locked = (stateFlags & 0x1) != 0;
+            worldObject.IsOpen = instance.Type == ObjectType.Portal && ((artId >> 14) & 0x1F) != 0;
 
             var visual = new GameObject("Visual");
             visual.transform.SetParent(root.transform, false);
@@ -197,9 +422,13 @@ namespace Arcanum.Runtime.World
 
             if (owner.CurrentSprite == null)
             {
-                DestroyImmediate(root);
+                root.SetActive(false);
+                if (Application.isPlaying) Destroy(root);
+                else DestroyImmediate(root);
                 return null;
             }
+
+            if (instance.Type == ObjectType.Portal) worldObject.PortalOpenable = owner.FrameCount > 1;
 
             _spriteOwners.Add(owner);
             return worldObject;
@@ -309,19 +538,44 @@ namespace Arcanum.Runtime.World
             return true;
         }
 
-        private void ClearObjects()
+        public bool ReloadSector() => LoadSector(sectorPath);
+
+        /// <summary>Releases the currently owned sector presentation without disposing mounted source data.</summary>
+        public int UnloadSector()
         {
+            int removed = ClearObjects();
+            _renderIssues.Clear();
+            LastRecordCount = 0;
+            LastInventoryCount = 0;
+            LastSuppressedCount = 0;
+            LastDerivedPortalCount = 0;
+            return removed;
+        }
+
+        private int ClearObjects()
+        {
+            int removed = _spriteOwners.Count;
             _spriteOwners.Clear();
-            if (_objectRoot == null) return;
-            GameObject oldRoot = _objectRoot.gameObject;
             _objectRoot = null;
-            oldRoot.SetActive(false);
-            if (Application.isPlaying) Destroy(oldRoot);
-            else DestroyImmediate(oldRoot);
+
+            // Find owned roots as well as using the cached reference. This makes the owner recover
+            // cleanly after an Editor domain reload, where non-serialized fields are reset but the
+            // play-mode hierarchy survives.
+            for (int index = transform.childCount - 1; index >= 0; index--)
+            {
+                Transform child = transform.GetChild(index);
+                if (child.name != ObjectRootName) continue;
+                removed = Math.Max(removed, child.GetComponentsInChildren<WorldObjectSpriteOwner>(true).Length);
+                child.gameObject.SetActive(false);
+                if (Application.isPlaying) Destroy(child.gameObject);
+                else DestroyImmediate(child.gameObject);
+            }
+            return removed;
         }
 
         private void OnDestroy()
         {
+            ClearObjects();
             _vfs?.Dispose();
             _vfs = null;
         }
@@ -402,6 +656,31 @@ namespace Arcanum.Runtime.World
                     case ArtId.TypeLight: return _lights?.Resolve(artId);
                     case ArtId.TypeEyeCandy: return _eyeCandy?.Resolve(artId);
                     default: return null;
+                }
+            }
+
+            public uint? DerivePortalFromWall(uint wallArtId, string wallPath)
+                => _portals?.DeriveFromWall(wallArtId, wallPath);
+
+            public bool Supports(int artType)
+            {
+                switch (artType)
+                {
+                    case ArtId.TypeWall:
+                    case ArtId.TypeCritter:
+                    case ArtId.TypePortal:
+                    case ArtId.TypeScenery:
+                    case ArtId.TypeItem:
+                    case ArtId.TypeContainer:
+                    case ArtId.TypeRoof:
+                    case ArtId.TypeFacade:
+                    case ArtId.TypeMonster:
+                    case ArtId.TypeUniqueNpc:
+                    case ArtId.TypeLight:
+                    case ArtId.TypeEyeCandy:
+                        return true;
+                    default:
+                        return false;
                 }
             }
         }
