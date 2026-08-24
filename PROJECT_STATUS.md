@@ -2,15 +2,18 @@
 
 ## Current Objective
 
-Production sector objects now have a real runtime SpriteRenderer owner that
-retains ART source identity, supports exact engine mirroring, and can rebuild
-in place when the graphics mode changes. Real `.sec` and `.mob` map content has
-been validated in Original and Enhanced modes. Terrain remains intentionally
-separate and untouched.
+Production sector objects now have a stable load/rebuild/unload/reload contract.
+All 32 formerly unresolved Dernholm records were classified as wall-owned windows
+and now resolve through the original engine's exact wall-to-portal derivation.
+The real sector renders all 612 non-inventory placed objects with zero unresolved
+ART identities, and lifecycle teardown/reload has been validated without duplicate
+roots, sprite owners, animation components, or owned texture leaks. Terrain remains
+intentionally separate and untouched.
 
-The next objective is to connect this presentation owner to the broader map
-lifecycle and gameplay-state loading as those systems mature, without turning
-it into a global asset manager or beginning terrain replacement.
+The next objective is a narrow map/session coordinator that owns terrain and object
+sector selection together, followed by persistent object identity/state and the
+gameplay-side portal animation scheduler. Do not turn the sprite owner into a global
+asset manager or begin terrain replacement.
 
 ## Current Branch
 
@@ -515,7 +518,7 @@ The editor was returned to Original mode and Play mode was stopped.
 - The new owner is a production runtime component consuming real map data, but the repository still lacks a complete
   shipping map/gameplay lifecycle. Sector streaming, persistent gameplay state, inventory ownership, scripts and full
   interaction construction remain separate work.
-- The 32 unresolved records need a resolver/data-identity audit before claiming every object type in every sector.
+- The former 32 unresolved records were classified and fixed by the subsequent Production Object Lifecycle milestone.
 - Portal frame changes are ready through `WorldObject.SetArt`, but full door/window gameplay state wiring is not part of
   this rendering milestone.
 - Live mode switching is explicit per sector owner; galleries and future owners are not subscribed through a global event.
@@ -523,8 +526,125 @@ The editor was returned to Original mode and Play mode was stopped.
   validation-only.
 - Terrain replacement, bulk extraction/upscaling and original data modification were not started.
 
+## Production Object Lifecycle Milestone
+
+Completed on 2026-08-24 with Unity 6000.0.71f1.
+
+### Unresolved Record Classification
+
+The 32 records left by the first production-sector milestone were classified individually before rendering behavior
+was changed:
+
+- All 32 were `ResolverMiss`; none were missing prototypes, zero ART identities, unsupported types, missing ART files,
+  sprite-build failures, intentionally nonvisual records, inventory children, or suppressed objects.
+- All 32 were portals: 31 instances of prototype 2036 and one instance of prototype 2035.
+- Every stored identity was frame 0 and used a generic door-like portal identity that had no direct `portal.mes` entry.
+- Every unresolved portal had exactly one same-tile wall in an engine-defined window slot. The existing exact port of
+  `a_name_portal_aid_from_wall_aid` derived an authoritative window ART identity and an existing
+  `art/portal/*.art` source for all 32.
+- Resolution now requires the wall-derived portal number and rotation to match the stored portal's number and rotation.
+  If same-tile candidates disagree, the loader leaves the record unresolved rather than guessing.
+
+The final sector result is 612/687 rendered records: 290 scenery, 264 walls, 40 portals, nine containers and nine NPCs.
+The other 75 records are inventory children and remain intentionally absent from map presentation. There are zero
+unresolved prototypes, zero unresolved ART identities and zero render issues.
+
+### Lifecycle and Ownership Trace
+
+`WorldObjectSectorLoader` remains the sector-level owner for ordinary SpriteRenderer entities:
+
+1. `LoadSector` reads the selected `.sec` plus matching `.mob` records before changing the current presentation.
+2. It deactivates and schedules destruction of every previously owned `WorldObjects` root, including roots surviving an
+   Editor domain reload, then creates one new root and one `WorldObjectSpriteOwner` per drawable record.
+3. `RebuildVisuals` recreates each retained frame array in place from ART source identity and preserves same-clip
+   animation phase.
+4. `UnloadSector` immediately deactivates the owned root, clears owner/diagnostic state, and returns the number released.
+5. `ReloadSector` reloads the retained sector path through the same transactional read-then-replace path.
+6. Destroying the loader tears down its roots and disposes its mounted read-only VFS.
+
+State/update ownership discovered during the audit:
+
+- Movement has no gameplay implementation yet. The `WorldObject` root is the placement owner; its visual child carries
+  only authored pixel offsets. No transform compensation was introduced.
+- Facing and animation-clip identity remain encoded in `WorldObject.ArtId`; `SetArt` reaches the sprite owner through the
+  existing narrow `ReRender` callback. Original ART FPS continues to drive `SpriteFrameAnimator`.
+- Initial visibility is authoritative from `OF_DESTROYED`, `OF_OFF`, `OF_DONTDRAW` and inventory ownership. There is no
+  production script/gameplay host yet to mutate visibility after instantiation.
+- Portal/container `Locked` now comes from the instance flag with prototype fallback. Portal `IsOpen` comes from the
+  current ART frame; `PortalOpenable` comes from the decoded ART frame count.
+- `TileMapDemo` owns terrain demonstration and its own sector browser. It is deliberately a sibling, not the object
+  owner, and no shipping map-transition coordinator exists yet. `map.jmp` parsing exists, but nothing currently applies
+  jump points to both sector owners. External lifecycle callers now have explicit object load/unload/reload hooks and
+  cannot leave an active stale object root when they select another object sector.
+
+### Portal Semantics and Presentation API
+
+The portal behavior was checked against `arcanum-ce` `portal.c` and `a_name.c`, not inferred from appearance:
+
+- Frame 0 is closed. Windows use frame 1 as open and switch directly.
+- Doors at rotations 6/0 use frames 4,5,6 to open; rotations 2/4 use frames 1,2,3. Closing reverses the applicable
+  sequence. Frame scheduling uses the original portal ART FPS.
+- Locked, jammed and magically-held flags are interaction state rather than separate visual frames. Busted windows use
+  damaged ART; busted-door destruction is gameplay behavior.
+
+Because the repository has no authoritative gameplay interaction/animation owner yet, this milestone does not invent
+one. `WorldObject.TrySetPortalVisualFrame` is a narrow presentation hook: it validates the authored frame range, shows an
+already-owned frame, updates only the ART frame bits and `IsOpen`, and rejects invalid indices without changing state.
+Gameplay remains responsible for locks, collision, sounds and scheduling the exact frame sequences above.
+
+`WorldObjectSpriteOwner` also reports its last build error and destroys partially built original sprites if a rebuild
+throws before adoption. HD texture lifetime remains owned by the existing HD loader cache.
+
+### Runtime and Test Validation
+
+The existing Unity Editor and real `maps/arcanum1-024-fixed/101602821844.sec` content were used.
+
+- Initial load: 612 owners, one active `WorldObjects` root, 10 `SpriteFrameAnimator` components, 762 owned frames,
+  32 wall-derived windows and zero render issues.
+- In-place rebuild: the same 612 owners, one root, 10 animators, 762 frames and texture count; no duplicate owner or
+  animation components were introduced.
+- Unload: 612 owners reported released, zero active roots immediately, then zero roots/owners/animators/owned frames
+  after deferred destruction. The scene's `ArtFrame` texture count fell by exactly the 762 owned textures (899 to the
+  unrelated ambient 137).
+- Reload: returned to the exact initial ownership/frame/texture metrics with one root and zero render issues.
+- A real two-frame window at 8 FPS changed frame 0 -> 1 -> 0, synchronized `ArtId`/`IsOpen`, and rejected frame 2 without
+  mutation.
+- The lifecycle validation logged `PASS`. The final Unity Console showed zero warnings and zero errors.
+- All 172 edit-mode tests passed, including the new real-sector wall/window derivation case and the ordinary-wall
+  rejection case.
+
+### Files Changed
+
+- `Assets/_Game/Scripts/Runtime/World/WorldObjectSectorLoader.cs`
+- `Assets/_Game/Scripts/Runtime/World/WorldObjectSpriteOwner.cs`
+- `Assets/_Game/Scripts/Runtime/World/WorldObject.cs`
+- `Assets/_Game/Tests/EditMode/PortalArtResolverTests.cs`
+- `Assets/_OpenArcanum/Editor/ProductionHDValidation.cs`
+- `PROJECT_STATUS.md`
+
+### Commits
+
+- `947676d` Resolve sector portals and stabilize lifecycle
+- `5239f0b` Add portal presentation and lifecycle validation
+
+### Remaining Limitations
+
+- `TileMapDemo` and `WorldObjectSectorLoader` are separate sector owners. The former is demo terrain infrastructure,
+  not a shipping map/session owner; its browser does not yet coordinate the object loader.
+- Stable OID-based object mutation/persistence, dynamic creation/destruction, movement, visibility changes, inventory
+  attachment and full script-host integration do not yet exist in the production map path.
+- The exact portal presentation frames are available, but gameplay interaction, collision, sounds, damage/destruction
+  and the authoritative timed door scheduler remain future work.
+- Validation covered one real sector. Other maps may expose additional data/resolver cases and should retain the same
+  explicit issue classification instead of being silently skipped.
+- HD sprites still bypass `RuntimeSpriteAtlas`; exact 4x PNGs are the only supported replacement scale, and local proof
+  artwork remains Git-ignored validation content.
+- Terrain replacement, bulk extraction/upscaling and original game-data modification remain out of scope and were not
+  started.
+
 ## Next Recommended Milestone
 
-Integrate `WorldObjectSectorLoader`/`WorldObjectSpriteOwner` with the eventual map lifecycle: stable object identity,
-sector load/unload, state-driven portal art, and inventory ownership without presenting inventory children. Then decide
-whether ordinary HD sprites need a small atlas/lifetime policy. Keep terrain replacement and bulk conversion separate.
+Add a narrow map/session coordinator that selects terrain and object sectors together and uses the explicit object
+load/unload/reload contract. Introduce stable OID-based state retention across sector transitions, then connect the
+existing script/event interfaces to visibility, movement and the exact portal frame scheduler. Validate multiple maps
+before considering a small ordinary-sprite atlas/lifetime policy. Keep terrain replacement and bulk conversion separate.
