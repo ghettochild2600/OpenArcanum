@@ -128,6 +128,53 @@ namespace Arcanum.Runtime.Art
             Vector2? pivotOverride = null,
             bool mirrorX = false)
         {
+            return CreateSpriteInternal(
+                frame,
+                palette,
+                originalAssetPath: null,
+                rotation: 0,
+                frameIndex: 0,
+                pixelsPerUnit: pixelsPerUnit,
+                pivotOverride: pivotOverride,
+                mirrorX: mirrorX);
+        }
+
+        /// <summary>
+        /// Builds a sprite while retaining the source ART identity needed to find an
+        /// optional Enhanced-mode replacement. The existing overload remains the
+        /// compatibility path for callers that do not yet carry source identity.
+        /// </summary>
+        public static Sprite CreateSprite(
+            ArtFrame frame,
+            ArtPalette palette,
+            string originalAssetPath,
+            int rotation,
+            int frameIndex,
+            float pixelsPerUnit = 100f,
+            Vector2? pivotOverride = null,
+            bool mirrorX = false)
+        {
+            return CreateSpriteInternal(
+                frame,
+                palette,
+                originalAssetPath,
+                rotation,
+                frameIndex,
+                pixelsPerUnit,
+                pivotOverride,
+                mirrorX);
+        }
+
+        private static Sprite CreateSpriteInternal(
+            ArtFrame frame,
+            ArtPalette palette,
+            string originalAssetPath,
+            int rotation,
+            int frameIndex,
+            float pixelsPerUnit,
+            Vector2? pivotOverride,
+            bool mirrorX)
+        {
             if (frame == null)
                 throw new ArgumentNullException(nameof(frame));
 
@@ -152,6 +199,31 @@ namespace Arcanum.Runtime.Art
                 height > 0
                     ? (height - frame.HotY) / (float)height
                     : 0.5f);
+
+            // A replacement is authored for a specific decoded rotation/frame. The
+            // initial proof path does not transform replacement pixels, so mirrored
+            // callers deliberately retain the original ART path for exact orientation.
+            if (!mirrorX
+                && OpenArcanumHDAssetLoader.TryLoadTexture(
+                    originalAssetPath,
+                    rotation,
+                    frameIndex,
+                    width,
+                    height,
+                    out Texture2D hdTexture))
+            {
+                var hdSprite = Sprite.Create(
+                    hdTexture,
+                    new Rect(0, 0, hdTexture.width, hdTexture.height),
+                    pivot,
+                    pixelsPerUnit * OpenArcanumHDAssetLoader.ReplacementScale,
+                    extrude: 0,
+                    meshType: SpriteMeshType.FullRect);
+
+                hdSprite.name = $"HDArtSprite_r{rotation}_f{frameIndex}";
+
+                return hdSprite;
+            }
 
             // Shared atlas (batching): pack into a page and return a sub-rect sprite.
             // Falls back to a standalone texture if no atlas is active or the frame

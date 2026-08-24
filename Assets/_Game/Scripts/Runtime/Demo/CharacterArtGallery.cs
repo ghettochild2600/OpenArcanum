@@ -140,7 +140,13 @@ namespace Arcanum.Runtime.Demo
                     ArtFrame[] frames = art.Rotations[r].Frames;
                     var sprites = new Sprite[frames.Length];
                     for (int f = 0; f < frames.Length; f++)
-                        sprites[f] = ArtTextureFactory.CreateSprite(frames[f], art.PrimaryPalette, PixelsPerUnit);
+                        sprites[f] = ArtTextureFactory.CreateSprite(
+                            frames[f],
+                            art.PrimaryPalette,
+                            p,
+                            r,
+                            f,
+                            PixelsPerUnit);
                     rotations[r] = sprites;
                 }
 

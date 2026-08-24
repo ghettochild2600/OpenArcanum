@@ -23,8 +23,14 @@ namespace OpenArcanum.Rendering
     /// </summary>
     public static class OpenArcanumHDAssetLoader
     {
+        public const int ReplacementScale = 4;
+
         private static readonly Dictionary<string, Texture2D> TextureCache =
             new Dictionary<string, Texture2D>(
+                StringComparer.OrdinalIgnoreCase);
+
+        private static readonly HashSet<string> RejectedReplacementPaths =
+            new HashSet<string>(
                 StringComparer.OrdinalIgnoreCase);
 
         /// <summary>
@@ -57,6 +63,9 @@ namespace OpenArcanum.Rendering
         ///
         ///     0
         ///
+        /// The PNG is accepted only when its width and height are exactly
+        /// <see cref="ReplacementScale"/> times the decoded ART frame dimensions.
+        ///
         /// Expected replacement:
         ///
         ///     HDAssets/
@@ -74,6 +83,8 @@ namespace OpenArcanum.Rendering
             string originalAssetPath,
             int rotation,
             int frame,
+            int originalFrameWidth,
+            int originalFrameHeight,
             out Texture2D texture)
         {
             texture = null;
@@ -101,6 +112,11 @@ namespace OpenArcanum.Rendering
             {
                 texture = cachedTexture;
                 return texture != null;
+            }
+
+            if (RejectedReplacementPaths.Contains(replacementPath))
+            {
+                return false;
             }
 
             if (!File.Exists(replacementPath))
@@ -138,11 +154,40 @@ namespace OpenArcanum.Rendering
 
                 if (!loaded)
                 {
+                    RejectedReplacementPaths.Add(
+                        replacementPath);
+
                     UnityEngine.Object.Destroy(
                         loadedTexture);
 
                     Debug.LogWarning(
                         $"OpenArcanum: Failed to decode HD texture '{replacementPath}'.");
+
+                    return false;
+                }
+
+                int expectedWidth =
+                    originalFrameWidth * ReplacementScale;
+
+                int expectedHeight =
+                    originalFrameHeight * ReplacementScale;
+
+                if (originalFrameWidth <= 0
+                    || originalFrameHeight <= 0
+                    || loadedTexture.width != expectedWidth
+                    || loadedTexture.height != expectedHeight)
+                {
+                    RejectedReplacementPaths.Add(
+                        replacementPath);
+
+                    Debug.LogWarning(
+                        $"OpenArcanum: Rejected HD replacement '{replacementPath}': " +
+                        $"expected exactly {expectedWidth}x{expectedHeight} pixels " +
+                        $"({ReplacementScale}x the original {originalFrameWidth}x{originalFrameHeight} frame), " +
+                        $"but found {loadedTexture.width}x{loadedTexture.height}. Falling back to original ART.");
+
+                    UnityEngine.Object.Destroy(
+                        loadedTexture);
 
                     return false;
                 }
@@ -166,6 +211,9 @@ namespace OpenArcanum.Rendering
             }
             catch (Exception ex)
             {
+                RejectedReplacementPaths.Add(
+                    replacementPath);
+
                 Debug.LogWarning(
                     $"OpenArcanum: Failed loading HD replacement '{replacementPath}': {ex.Message}");
 
@@ -236,6 +284,7 @@ namespace OpenArcanum.Rendering
             }
 
             TextureCache.Clear();
+            RejectedReplacementPaths.Clear();
         }
 
         /// <summary>
