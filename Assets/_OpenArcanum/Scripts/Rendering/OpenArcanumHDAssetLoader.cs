@@ -87,6 +87,30 @@ namespace OpenArcanum.Rendering
             int originalFrameHeight,
             out Texture2D texture)
         {
+            return TryLoadTexture(
+                originalAssetPath,
+                rotation,
+                frame,
+                originalFrameWidth,
+                originalFrameHeight,
+                mirrorX: false,
+                out texture);
+        }
+
+        /// <summary>
+        /// Attempts to load an HD replacement and optionally mirrors its pixels using
+        /// the same horizontal pixel reversal as the original ART rendering path.
+        /// Mirrored variants are cached separately from their source textures.
+        /// </summary>
+        public static bool TryLoadTexture(
+            string originalAssetPath,
+            int rotation,
+            int frame,
+            int originalFrameWidth,
+            int originalFrameHeight,
+            bool mirrorX,
+            out Texture2D texture)
+        {
             texture = null;
 
             // HD replacement artwork is only active in Enhanced mode.
@@ -106,12 +130,29 @@ namespace OpenArcanum.Rendering
                     rotation,
                     frame);
 
+            string cacheKey = mirrorX
+                ? replacementPath + "|mirrorX"
+                : replacementPath;
+
             if (TextureCache.TryGetValue(
-                    replacementPath,
+                    cacheKey,
                     out Texture2D cachedTexture))
             {
                 texture = cachedTexture;
                 return texture != null;
+            }
+
+            if (mirrorX
+                && TextureCache.TryGetValue(
+                    replacementPath,
+                    out Texture2D cachedSourceTexture))
+            {
+                texture = CreateMirroredTexture(
+                    cachedSourceTexture,
+                    replacementPath);
+
+                TextureCache[cacheKey] = texture;
+                return true;
             }
 
             if (RejectedReplacementPaths.Contains(replacementPath))
@@ -201,8 +242,18 @@ namespace OpenArcanum.Rendering
                 TextureCache[replacementPath] =
                     loadedTexture;
 
-                texture =
-                    loadedTexture;
+                if (mirrorX)
+                {
+                    texture = CreateMirroredTexture(
+                        loadedTexture,
+                        replacementPath);
+
+                    TextureCache[cacheKey] = texture;
+                }
+                else
+                {
+                    texture = loadedTexture;
+                }
 
                 Debug.Log(
                     $"OpenArcanum: Loaded HD replacement '{replacementPath}'.");
@@ -219,6 +270,38 @@ namespace OpenArcanum.Rendering
 
                 return false;
             }
+        }
+
+        private static Texture2D CreateMirroredTexture(
+            Texture2D source,
+            string replacementPath)
+        {
+            int width = source.width;
+            int height = source.height;
+            Color32[] sourcePixels = source.GetPixels32();
+            var mirroredPixels = new Color32[sourcePixels.Length];
+
+            for (int y = 0; y < height; y++)
+            {
+                int row = y * width;
+                for (int x = 0; x < width; x++)
+                    mirroredPixels[row + width - 1 - x] = sourcePixels[row + x];
+            }
+
+            var mirrored = new Texture2D(
+                width,
+                height,
+                TextureFormat.RGBA32,
+                mipChain: false)
+            {
+                filterMode = source.filterMode,
+                wrapMode = source.wrapMode,
+                name = $"HD_{Path.GetFileNameWithoutExtension(replacementPath)}_MirrorX"
+            };
+
+            mirrored.SetPixels32(mirroredPixels);
+            mirrored.Apply(updateMipmaps: false);
+            return mirrored;
         }
 
         /// <summary>
@@ -265,6 +348,15 @@ namespace OpenArcanum.Rendering
                     frame);
 
             return File.Exists(path);
+        }
+
+        // SubsystemRegistration also runs when entering Play mode with domain reload disabled.
+        // Starting each runtime session clean prevents an edited or renamed local PNG from
+        // leaving a stale accepted/rejected cache entry behind between validation runs.
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetRuntimeCache()
+        {
+            ClearCache();
         }
 
         /// <summary>

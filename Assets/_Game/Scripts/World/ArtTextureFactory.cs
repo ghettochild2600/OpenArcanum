@@ -200,16 +200,17 @@ namespace Arcanum.Runtime.Art
                     ? (height - frame.HotY) / (float)height
                     : 0.5f);
 
-            // A replacement is authored for a specific decoded rotation/frame. The
-            // initial proof path does not transform replacement pixels, so mirrored
-            // callers deliberately retain the original ART path for exact orientation.
-            if (!mirrorX
-                && OpenArcanumHDAssetLoader.TryLoadTexture(
+            // A replacement is authored for a specific decoded rotation/frame. When
+            // the caller requests TIG_ART_BLT_FLIP_X, the loader reverses replacement
+            // pixels exactly as BuildPixels does for ART while this method retains the
+            // original mirror-specific pivot rule below.
+            if (OpenArcanumHDAssetLoader.TryLoadTexture(
                     originalAssetPath,
                     rotation,
                     frameIndex,
                     width,
                     height,
+                    mirrorX,
                     out Texture2D hdTexture))
             {
                 var hdSprite = Sprite.Create(
@@ -220,7 +221,9 @@ namespace Arcanum.Runtime.Art
                     extrude: 0,
                     meshType: SpriteMeshType.FullRect);
 
-                hdSprite.name = $"HDArtSprite_r{rotation}_f{frameIndex}";
+                hdSprite.name = mirrorX
+                    ? $"HDArtSprite_r{rotation}_f{frameIndex}_MirrorX"
+                    : $"HDArtSprite_r{rotation}_f{frameIndex}";
 
                 return hdSprite;
             }
