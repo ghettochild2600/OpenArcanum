@@ -109,6 +109,11 @@ namespace Arcanum.Runtime.World
         /// <summary>Supplied by the loader: produces the sprite for this object's current state.</summary>
         public Func<WorldObject, Sprite> ReRender;
 
+        /// <summary>Supplied by the presentation owner for stateful portal frame changes. This changes
+        /// only the existing visual frame; gameplay code remains responsible for validating interaction,
+        /// collision, sounds, and scheduling the original engine's frame sequence.</summary>
+        public Func<int, bool> SetVisualFrame;
+
         /// <summary>Swap the art id and refresh the sprite (used when a door opens, etc.).</summary>
         public void SetArt(uint artId)
         {
@@ -118,6 +123,15 @@ namespace Arcanum.Runtime.World
                 Sprite s = ReRender(this);
                 if (s != null) View.sprite = s;
             }
+        }
+
+        /// <summary>Shows an authored portal frame and keeps <see cref="ArtId"/> / <see cref="IsOpen"/>
+        /// synchronized. Returns false when no portal presentation owns that frame.</summary>
+        public bool TrySetPortalVisualFrame(int frameIndex)
+        {
+            if (Type != ObjectType.Portal || SetVisualFrame == null || !SetVisualFrame(frameIndex)) return false;
+            IsOpen = frameIndex != 0;
+            return true;
         }
     }
 }

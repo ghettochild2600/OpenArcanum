@@ -33,6 +33,7 @@ namespace Arcanum.Runtime.World
         public int CurrentFrameIndex => _animator != null ? _animator.CurrentFrame : InitialFrameIndex;
         public Sprite CurrentSprite => _renderer != null ? _renderer.sprite : null;
         public WorldObject WorldObject => _worldObject;
+        public string LastBuildError { get; private set; }
 
         public void Initialize(
             DatVirtualFileSystem vfs,
@@ -59,6 +60,7 @@ namespace Arcanum.Runtime.World
 
             _worldObject.View = _renderer;
             _worldObject.ReRender = ReRender;
+            _worldObject.SetVisualFrame = TryShowVisualFrame;
             Rebuild();
         }
 
@@ -66,11 +68,17 @@ namespace Arcanum.Runtime.World
         public bool Rebuild()
         {
             if (_worldObject == null || _vfs == null) return false;
+            LastBuildError = null;
 
             OriginalAssetPath = _resolvePath(_worldObject.ArtId);
             if (string.IsNullOrEmpty(OriginalAssetPath) || !_vfs.Exists(OriginalAssetPath))
+            {
+                LastBuildError = $"ART source '{OriginalAssetPath ?? "<none>"}' was not found.";
                 return false;
+            }
 
+            Sprite[] rebuilt = null;
+            bool adopted = false;
             try
             {
                 ArtFile art = ArtReader.Read(_vfs.ReadAllBytes(OriginalAssetPath));
@@ -96,7 +104,7 @@ namespace Arcanum.Runtime.World
 
                 InitialFrameIndex = Mathf.Clamp(FrameOf(_worldObject.ArtId), 0, sourceFrames.Length - 1);
                 FramesPerSecond = art.Fps;
-                var rebuilt = new Sprite[sourceFrames.Length];
+                rebuilt = new Sprite[sourceFrames.Length];
                 for (int frameIndex = 0; frameIndex < sourceFrames.Length; frameIndex++)
                 {
                     ArtFrame frame = sourceFrames[frameIndex];
@@ -120,6 +128,7 @@ namespace Arcanum.Runtime.World
 
                 Sprite[] previous = _ownedSprites;
                 _ownedSprites = rebuilt;
+                adopted = true;
                 if (_animate && rebuilt.Length > 1)
                 {
                     _animator ??= GetComponent<SpriteFrameAnimator>() ?? gameObject.AddComponent<SpriteFrameAnimator>();
@@ -137,11 +146,29 @@ namespace Arcanum.Runtime.World
             }
             catch (Exception ex)
             {
+                if (!adopted) DestroySprites(rebuilt);
+                LastBuildError = ex.Message;
                 Debug.LogWarning(
                     $"WorldObjectSpriteOwner: could not build '{OriginalAssetPath}' for " +
                     $"0x{_worldObject.ArtId:X8}: {ex.Message}", this);
                 return false;
             }
+        }
+
+        private bool TryShowVisualFrame(int frameIndex)
+        {
+            if (_worldObject == null
+                || ArtId.Type(_worldObject.ArtId) != ArtId.TypePortal
+                || _ownedSprites == null
+                || frameIndex < 0
+                || frameIndex >= _ownedSprites.Length)
+                return false;
+
+            _worldObject.ArtId = (_worldObject.ArtId & ~(0x1Fu << 14)) | ((uint)frameIndex << 14);
+            InitialFrameIndex = frameIndex;
+            if (_animator != null) _animator.ShowStatic(_ownedSprites[frameIndex]);
+            else if (_renderer != null) _renderer.sprite = _ownedSprites[frameIndex];
+            return true;
         }
 
         private Sprite ReRender(WorldObject worldObject)
@@ -246,6 +273,8 @@ namespace Arcanum.Runtime.World
         {
             if (_worldObject != null && _worldObject.ReRender != null)
                 _worldObject.ReRender = null;
+            if (_worldObject != null && _worldObject.SetVisualFrame != null)
+                _worldObject.SetVisualFrame = null;
             DestroySprites(_ownedSprites);
             _ownedSprites = null;
         }
