@@ -648,3 +648,38 @@ Add a narrow map/session coordinator that selects terrain and object sectors tog
 load/unload/reload contract. Introduce stable OID-based state retention across sector transitions, then connect the
 existing script/event interfaces to visibility, movement and the exact portal frame scheduler. Validate multiple maps
 before considering a small ordinary-sprite atlas/lifetime policy. Keep terrain replacement and bulk conversion separate.
+
+## Authoritative Object Identity Trace (Partial Session-State Milestone)
+
+Completed on 2026-08-24 with Unity 6000.0.71f1.
+
+The production `.sec`/`.mob` reader already retained both serialized 24-byte ObjectIDs: each instance's own ID and an
+item's `OBJ_F_ITEM_PARENT` reference. A typed semantic representation now classifies the original engine variants and
+uses the same equality fields as `objid_is_equal`, instead of treating all 24 bytes (including unused union/padding
+bytes) as identity:
+
+- `A` is an authored permanent numeric ID.
+- `GUID` is an authored 128-bit ID.
+- `P` is a static positional ID containing full tile location, temporary-at-tile ID and map number; it is map-scoped.
+- `NULL` has no authoritative identity and is not eligible for persistent state.
+- `HANDLE` is process-local runtime identity and is not eligible for serialized state.
+- `BLOCKED` marks a prototype record and is not a placed-instance identity.
+
+Prototype identity remains separate from instance identity. Inventory ownership remains the parent ObjectID
+relationship; no inventory record was made visual and no runtime ID was fabricated. The proposed narrow boundary is
+documented in `documentation_unity/world-map-session.md`: sector decoding/presentation stays in
+`WorldObjectSectorLoader`; an OID-indexed map/session coordinator will retain only effective ART/facing/frame, portal
+state, exact lock state and supported visibility; one coordinator-owned scheduler will apply the exact `portal.c`
+frame rules at source ART FPS; terrain remains separate.
+
+Two focused identity tests cover padding/unused-byte-insensitive `A` equality and map-scoped positional key formation.
+All 174 EditMode tests passed in the existing Unity Editor. The final Console showed zero warnings and zero errors.
+
+Commit:
+
+- `567d2d2` Model authoritative Arcanum object identities
+
+The runtime coordinator/scheduler implementation is not yet present. The agent execution safety reviewer classified
+that combined change as a material gameplay-state architecture change and requires an explicit confirmation after
+that risk is disclosed. The working tree was left clean after this status update's commit; no terrain, game data,
+transforms, gameplay systems or HD assets were changed.
