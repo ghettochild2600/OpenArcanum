@@ -73,6 +73,42 @@ namespace Arcanum.Formats.Tests
             Assert.That(off, Is.EqualTo(rec.Length));
         }
 
+        [Test]
+        public void ObjectIdKeysFollowEngineSemanticEquality()
+        {
+            byte[] first = new byte[24];
+            byte[] second = new byte[24];
+            first[0] = second[0] = (byte)ArcanumObjectIdType.Authored;
+            first[8] = second[8] = 0x34;
+            first[9] = second[9] = 0x12;
+            first[4] = 0xAA;   // ignored ObjectID padding
+            second[23] = 0xBB; // ignored union bytes for OID_TYPE_A
+
+            ArcanumObjectId a = ArcanumObjectId.FromBytes(first);
+            ArcanumObjectId b = ArcanumObjectId.FromBytes(second);
+
+            Assert.That(a.IsPersistent, Is.True);
+            Assert.That(a.Key, Is.EqualTo("A_00001234"));
+            Assert.That(a, Is.EqualTo(b));
+            Assert.That(ObjectInstance.OidKey(first), Is.EqualTo(a.Key));
+        }
+
+        [Test]
+        public void PositionalObjectIdIncludesMapScope()
+        {
+            byte[] bytes = new byte[24];
+            bytes[0] = (byte)ArcanumObjectIdType.Positional;
+            WriteInt32(bytes, 8, 101);
+            WriteInt32(bytes, 12, 202);
+            WriteInt32(bytes, 16, 7);
+            WriteInt32(bytes, 20, 42);
+
+            ArcanumObjectId identity = ArcanumObjectId.FromBytes(bytes);
+
+            Assert.That(identity.Key, Is.EqualTo("P_00000065_000000CA_00000007_0000002A"));
+            Assert.That(identity.MapNumber, Is.EqualTo(42));
+        }
+
         // Builds a minimal instance: header + the type's change bitmap (bits set for the given fields) + each
         // field's INT32 value. Fields MUST be passed in field-enum order (ascending ordinal works here, since each
         // is either a common field or in one of the type's groups). Uses the real engine tables via InternalsVisibleTo.
@@ -94,6 +130,12 @@ namespace Arcanum.Formats.Tests
             foreach (uint d in field48) w.Write(d);
             foreach (var (_, val) in int32Fields) w.Write(val); // only the set fields, in enum order
             return ms.ToArray();
+        }
+
+        private static void WriteInt32(byte[] bytes, int offset, int value)
+        {
+            byte[] encoded = System.BitConverter.GetBytes(value);
+            System.Buffer.BlockCopy(encoded, 0, bytes, offset, encoded.Length);
         }
     }
 }

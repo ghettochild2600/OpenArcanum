@@ -102,6 +102,8 @@ namespace Arcanum.Runtime.World
         // Identity + inventory: holders (containers/critters/player) own a list of item WorldObjects.
         public string Oid;               // this object's ObjectID key
         public string ParentOid;         // holder's OID key (items only), else null
+        public ArcanumObjectId Identity { get; internal set; }
+        public ArcanumObjectId ParentIdentity { get; internal set; }
         public List<WorldObject> Inventory;  // lazily created when this object holds items
 
         public List<WorldObject> EnsureInventory() => Inventory ??= new List<WorldObject>();

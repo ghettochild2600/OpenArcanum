@@ -237,8 +237,14 @@ namespace Arcanum.Formats.Objects
         /// <summary>This instance's own object id (24-byte <c>ObjectID</c>) — the key inventory/parent refs point at.</summary>
         public byte[] Oid { get; }
 
+        /// <summary>Semantic form of <see cref="Oid"/>, with engine-compatible equality and classification.</summary>
+        public ArcanumObjectId Identity { get; }
+
         /// <summary>For items, the holder's object id (<c>OBJ_F_ITEM_PARENT</c>); null if on the ground / not an item.</summary>
         public byte[] ParentOid { get; }
+
+        /// <summary>Semantic form of <see cref="ParentOid"/>, or the default/null identity when absent.</summary>
+        public ArcanumObjectId ParentIdentity { get; }
 
         /// <summary>True if this object lives inside a container/critter inventory (so it shouldn't render on the map).</summary>
         public bool IsInInventory => ParentOid != null;
@@ -257,6 +263,8 @@ namespace Arcanum.Formats.Objects
             Description = description;
             Oid = oid;
             ParentOid = parentOid;
+            Identity = ArcanumObjectId.FromBytes(oid);
+            ParentIdentity = ArcanumObjectId.FromBytes(parentOid);
             Flags = flags;
             DialogNum = dialogNum;
             InvLocation = invLocation;
@@ -265,8 +273,12 @@ namespace Arcanum.Formats.Objects
             Worth = worth;
         }
 
-        /// <summary>Stable dictionary key for an <c>ObjectID</c> (hex of its 24 bytes), or null.</summary>
-        public static string OidKey(byte[] oid) => oid == null ? null : System.BitConverter.ToString(oid);
+        /// <summary>Engine-compatible semantic key for a persistent <c>ObjectID</c>, or null.</summary>
+        public static string OidKey(byte[] oid)
+        {
+            ArcanumObjectId identity = ArcanumObjectId.FromBytes(oid);
+            return identity.IsPersistent ? identity.Key : null;
+        }
     }
 
     /// <summary>
