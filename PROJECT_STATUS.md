@@ -642,7 +642,7 @@ The existing Unity Editor and real `maps/arcanum1-024-fixed/101602821844.sec` co
 - Terrain replacement, bulk extraction/upscaling and original game-data modification remain out of scope and were not
   started.
 
-## Next Recommended Milestone
+## Previous Recommendation (Completed)
 
 Add a narrow map/session coordinator that selects terrain and object sectors together and uses the explicit object
 load/unload/reload contract. Introduce stable OID-based state retention across sector transitions, then connect the
@@ -683,3 +683,73 @@ The runtime coordinator/scheduler implementation is not yet present. The agent e
 that combined change as a material gameplay-state architecture change and requires an explicit confirmation after
 that risk is disclosed. The working tree was left clean after this status update's commit; no terrain, game data,
 transforms, gameplay systems or HD assets were changed.
+
+## World Map Session State Milestone
+
+Completed on 2026-09-07 with Unity 6000.0.71f1 on `feature/world-session-state`.
+
+### Architecture and implementation
+
+- `WorldMapSessionCoordinator` owns an in-memory ObjectID-indexed state table, loaded runtime bindings and the single
+  coordinator-ticked portal transition scheduler. Sector decoding and presentation remain in
+  `WorldObjectSectorLoader` and `WorldObjectSpriteOwner`.
+- Persistent state is restored before presentation creation and captured before unload destroys it. The schema is
+  deliberately narrow: effective ART ID, stable portal state, lock/off state, source collision metadata and inventory
+  parent ObjectID.
+- Static `.sec` records serialized with `NULL` receive the original engine's positional identity semantics from full map
+  location, zero-based sector record load index and the authoritative `MapList.mes` map number. `.mob` GUIDs and parent
+  references remain unchanged. Duplicate/colliding persistent IDs are rejected before presentation replacement.
+- Portal transitions use exact facing-dependent source frames and integer `1000 / FPS` timing. Windows switch directly;
+  overlapping work is rejected; unload cancellation restores the last stable state before capture. Presentation cannot
+  independently author managed portal state.
+- Original -> Enhanced -> Original graphics rebuilds preserved runtime/stable ART IDs, portal state, selected frame,
+  position, scale and visual offset without transform compensation.
+
+### Real map validation
+
+- Initial production audit: 687 persistent states (594 positional, 93 GUID), zero nonpersistent placed records, 75
+  inventory records and 75 retained parent references, with no identity collision.
+- The validator loaded `maps/arcanum1-024-fixed/122473678402.sec` and used the seven-frame, 8 FPS door
+  `P_000190AE_0001C864_000000FB_00000001` (prototype 2036, `art/portal/toue3au0.art`, ART ID `0x33102800`, rotation 5).
+- Two cycles passed for Open -> unload -> reload, Close -> unload -> reload, interrupted Opening rollback and interrupted
+  Closing rollback. Frames were 1,2,3 opening and 2,1,0 closing at the original 0.125-second interval.
+- Each reload retained the same state record, 549 owners, five animators, 706 frames, transforms, texture counts,
+  parent/unrelated state and the sector's one pre-existing `UnsupportedArtType` issue signature. No duplicate runtime
+  objects or orphan scheduler jobs remained; final active transition count was zero.
+- Final complete EditMode suite: 200 passed, 0 failed, 0 skipped. Final Unity Console: 0 warnings, 0 errors.
+
+### Files changed
+
+- `Assets/_Game/Scripts/Formats/Objects/ArcanumObjectId.cs`
+- `Assets/_Game/Scripts/Runtime/World/PersistentObjectState.cs`
+- `Assets/_Game/Scripts/Runtime/World/PortalTransitionScheduler.cs`
+- `Assets/_Game/Scripts/Runtime/World/WorldMapSessionCoordinator.cs`
+- `Assets/_Game/Scripts/Runtime/World/WorldObject.cs`
+- `Assets/_Game/Scripts/Runtime/World/WorldObjectSectorLoader.cs`
+- `Assets/_Game/Scripts/Runtime/World/WorldObjectSpriteOwner.cs`
+- `Assets/_Game/Tests/EditMode/Arcanum.Formats.Tests.asmdef`
+- `Assets/_Game/Tests/EditMode/WorldSessionStateTests.cs`
+- `Assets/_OpenArcanum/Editor/WorldSessionValidation.cs`
+- `documentation_unity/world-map-session.md`
+- `PROJECT_STATUS.md`
+
+### Commits
+
+- `1ea9b1a` Add typed in-memory world session state
+- `52395dd` Own portal transitions and unload rollback in session state
+- `1c75cbc` Derive persistent identities for static sector objects
+- `c2049b3` Validate world session persistence and portal timing
+
+### Remaining limitations
+
+- State remains in-memory; save-game serialization is not implemented.
+- The production owner presents one object sector at a time. Dynamic creation/destruction, movement persistence,
+  inventory attachment, scripts, collision, sounds, portal damage and full gameplay interaction policy are later work.
+- The validation sector has one known unsupported ART-type record. Its exact classification remained stable on reload.
+- Terrain, bulk extraction/upscaling and original Arcanum data were not modified.
+
+## Next Recommended Milestone
+
+Connect the completed coordinator to the shared terrain/object map-selection boundary, then add a versioned save/load
+representation for the validated state schema. Preserve ObjectID collision checks and portal rollback rules, and validate
+multi-sector traversal before expanding into dynamic objects or script-host integration.
