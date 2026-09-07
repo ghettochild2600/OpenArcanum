@@ -82,7 +82,7 @@ namespace Arcanum.Formats.Objects
         }
 
         public bool Equals(ArcanumObjectId other)
-            => RawType == other.RawType && string.Equals(Key, other.Key, StringComparison.Ordinal);
+            => RawType == other.RawType && (IsNull || string.Equals(Key, other.Key, StringComparison.Ordinal));
 
         public override bool Equals(object obj) => obj is ArcanumObjectId other && Equals(other);
 
@@ -90,7 +90,7 @@ namespace Arcanum.Formats.Objects
         {
             unchecked
             {
-                return (RawType * 397) ^ (Key == null ? 0 : StringComparer.Ordinal.GetHashCode(Key));
+                return (RawType * 397) ^ (IsNull || Key == null ? 0 : StringComparer.Ordinal.GetHashCode(Key));
             }
         }
 

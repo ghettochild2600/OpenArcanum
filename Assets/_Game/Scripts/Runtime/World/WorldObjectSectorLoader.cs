@@ -90,6 +90,11 @@ namespace Arcanum.Runtime.World
         private ProtoLibrary _prototypes;
         private ObjectArtResolvers _art;
         private Transform _objectRoot;
+        [SerializeField] private WorldMapSessionCoordinator session;
+        private string _registeredSector;
+        public WorldMapSessionCoordinator Session => session != null ? session
+            : session = GetComponent<WorldMapSessionCoordinator>() ?? gameObject.AddComponent<WorldMapSessionCoordinator>();
+        public int LastNonPersistentIdentityCount { get; private set; }
 
         public string CurrentSector => sectorPath;
         public IReadOnlyList<WorldObjectSpriteOwner> SpriteOwners => _spriteOwners;
@@ -128,7 +133,16 @@ namespace Arcanum.Runtime.World
                 return false;
             }
 
+            sectorPath = sectorPath.Replace('\\', '/').ToLowerInvariant();
+            if (!Session.ValidateSector(sectorPath, instances, out string identityError))
+            {
+                Debug.LogError($"WorldObjectSectorLoader: {identityError}", this);
+                return false;
+            }
             ClearObjects();
+            Session.BeginSector(sectorPath);
+            _registeredSector = sectorPath;
+            LastNonPersistentIdentityCount = 0;
             _renderIssues.Clear();
             LastRecordCount = instances.Count;
             var root = new GameObject(ObjectRootName);
@@ -146,6 +160,7 @@ namespace Arcanum.Runtime.World
 
             foreach (ObjectInstance instance in instances)
             {
+                if (!instance.Identity.IsPersistent) LastNonPersistentIdentityCount++;
                 if (!instance.Location.HasValue) continue;
 
                 ObjectProtoInfo proto = _prototypes?.Get(instance.PrototypeNumber);
@@ -169,6 +184,26 @@ namespace Arcanum.Runtime.World
                 }
 
                 int flags = instance.Flags ?? proto?.Flags ?? 0;
+                string artPath = _art.Resolve(artId);
+                if (string.IsNullOrEmpty(artPath)
+                    && instance.Type == ObjectType.Portal
+                    && TryResolvePortalFromWall(instance, artId, portalWalls, out uint derivedArtId, out string derivedPath))
+                {
+                    artId = derivedArtId;
+                    artPath = derivedPath;
+                    derivedPortals++;
+                }
+                int stateFlags = instance.Type == ObjectType.Portal
+                    ? instance.PortalFlags ?? proto?.PortalFlags ?? 0
+                    : instance.Type == ObjectType.Container ? instance.ContainerFlags ?? proto?.ContainerFlags ?? 0 : 0;
+                PersistentObjectState state = Session.GetOrCreate(instance, sectorPath, artId,
+                    (flags & ObjectFlagOff) != 0, (stateFlags & 1) != 0);
+                if (state != null)
+                {
+                    artId = state.ArtId;
+                    artPath = _art.Resolve(artId);
+                    flags = state.Off ? flags | ObjectFlagOff : flags & ~ObjectFlagOff;
+                }
                 if (instance.IsInInventory || (flags & ObjectFlagInventory) != 0)
                 {
                     inventory++;
@@ -181,7 +216,6 @@ namespace Arcanum.Runtime.World
                     continue;
                 }
 
-                string artPath = null;
                 if (artId == 0)
                 {
                     unresolvedArt++;
@@ -204,16 +238,6 @@ namespace Arcanum.Runtime.World
                         null,
                         "No ordinary world-object ART resolver owns this ART type.");
                     continue;
-                }
-
-                artPath = _art.Resolve(artId);
-                if (string.IsNullOrEmpty(artPath)
-                    && instance.Type == ObjectType.Portal
-                    && TryResolvePortalFromWall(instance, artId, portalWalls, out uint derivedArtId, out string derivedPath))
-                {
-                    artId = derivedArtId;
-                    artPath = derivedPath;
-                    derivedPortals++;
                 }
 
                 if (string.IsNullOrEmpty(artPath))
@@ -240,7 +264,7 @@ namespace Arcanum.Runtime.World
                     continue;
                 }
 
-                WorldObject worldObject = CreateWorldObject(instance, artId, artPath, proto);
+                WorldObject worldObject = CreateWorldObject(instance, artId, artPath, proto, state);
                 if (worldObject == null)
                 {
                     unresolvedArt++;
@@ -381,7 +405,8 @@ namespace Arcanum.Runtime.World
             ObjectInstance instance,
             uint artId,
             string artPath,
-            ObjectProtoInfo proto)
+            ObjectProtoInfo proto,
+            PersistentObjectState state)
         {
             var root = new GameObject($"{instance.Type}_{instance.PrototypeNumber}_{instance.TileX}_{instance.TileY}");
             root.transform.SetParent(_objectRoot, false);
@@ -399,6 +424,9 @@ namespace Arcanum.Runtime.World
                     : 0;
             worldObject.Locked = (stateFlags & 0x1) != 0;
             worldObject.IsOpen = instance.Type == ObjectType.Portal && ((artId >> 14) & 0x1F) != 0;
+            worldObject.Identity = instance.Identity;
+            worldObject.ParentIdentity = instance.ParentIdentity;
+            Session.Bind(_registeredSector, state, worldObject);
 
             var visual = new GameObject("Visual");
             visual.transform.SetParent(root.transform, false);
@@ -554,6 +582,8 @@ namespace Arcanum.Runtime.World
 
         private int ClearObjects()
         {
+            if (session != null) session.UnloadSector(_registeredSector);
+            _registeredSector = null;
             int removed = _spriteOwners.Count;
             _spriteOwners.Clear();
             _objectRoot = null;
