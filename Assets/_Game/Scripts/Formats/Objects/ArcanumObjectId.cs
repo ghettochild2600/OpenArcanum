@@ -81,6 +81,19 @@ namespace Arcanum.Formats.Objects
             }
         }
 
+        /// <summary>Creates the engine's persistent identity for a static sector record after load.
+        /// This is <c>objid_id_perm_by_load_order</c>: full location, sector-list temp id and map id.</summary>
+        public static ArcanumObjectId CreatePositional(long location, int temporaryId, int mapNumber)
+        {
+            uint x = unchecked((uint)location);
+            uint y = unchecked((uint)(location >> 32));
+            return new ArcanumObjectId(
+                ArcanumObjectIdType.Positional,
+                (short)ArcanumObjectIdType.Positional,
+                $"P_{x:X8}_{y:X8}_{unchecked((uint)temporaryId):X8}_{unchecked((uint)mapNumber):X8}",
+                mapNumber);
+        }
+
         public bool Equals(ArcanumObjectId other)
             => RawType == other.RawType && (IsNull || string.Equals(Key, other.Key, StringComparison.Ordinal));
 

@@ -27,31 +27,43 @@ namespace Arcanum.Runtime.World
             runtime.Session = this;
         }
 
-        public bool ValidateSector(string sector, IReadOnlyList<ObjectInstance> sources, out string error)
+        public bool ValidateSector(
+            string sector,
+            IReadOnlyList<ObjectInstance> sources,
+            IReadOnlyDictionary<ObjectInstance, ArcanumObjectId> identities,
+            out string error)
         {
             var seen = new HashSet<ArcanumObjectId>();
             foreach (ObjectInstance source in sources)
             {
-                if (!source.Identity.IsPersistent) continue; // Classified by the loader; never fabricate an ID.
-                if (!seen.Add(source.Identity))
+                ArcanumObjectId identity = identities[source];
+                if (!identity.IsPersistent) continue;
+                if (!seen.Add(identity))
                 {
-                    error = $"Duplicate authored ObjectID {source.Identity} in '{sector}'.";
+                    error = $"Duplicate persistent ObjectID {identity} in '{sector}'.";
                     return false;
                 }
-                if (_states.TryGetValue(source.Identity, out var existing) && !existing.Matches(source, sector))
+                if (_states.TryGetValue(identity, out var existing) && !existing.Matches(source, sector))
                 {
-                    error = $"ObjectID collision {source.Identity}: '{existing.SourceSector}' and '{sector}' differ in source metadata.";
+                    error = $"ObjectID collision {identity}: '{existing.SourceSector}' and '{sector}' differ in source metadata.";
                     return false;
                 }
                 foreach (var loaded in _loaded)
-                    if (loaded.Key != sector && loaded.Value.ContainsKey(source.Identity))
+                    if (loaded.Key != sector && loaded.Value.ContainsKey(identity))
                     {
-                        error = $"ObjectID {source.Identity} already loaded by '{loaded.Key}'.";
+                        error = $"ObjectID {identity} already loaded by '{loaded.Key}'.";
                         return false;
                     }
             }
             error = null;
             return true;
+        }
+
+        public bool ValidateSector(string sector, IReadOnlyList<ObjectInstance> sources, out string error)
+        {
+            var identities = new Dictionary<ObjectInstance, ArcanumObjectId>();
+            foreach (ObjectInstance source in sources) identities.Add(source, source.Identity);
+            return ValidateSector(sector, sources, identities, out error);
         }
 
         public void BeginSector(string sector)
@@ -64,18 +76,27 @@ namespace Arcanum.Runtime.World
             _loaded.Add(sector, new Dictionary<ArcanumObjectId, WorldObject>());
         }
 
-        public PersistentObjectState GetOrCreate(ObjectInstance source, string sector, uint artId, bool off, bool locked)
+        public PersistentObjectState GetOrCreate(
+            ObjectInstance source,
+            ArcanumObjectId identity,
+            string sector,
+            uint artId,
+            bool off,
+            bool locked)
         {
-            if (!source.Identity.IsPersistent) return null;
-            if (_states.TryGetValue(source.Identity, out var existing))
+            if (!identity.IsPersistent) return null;
+            if (_states.TryGetValue(identity, out var existing))
             {
-                if (!existing.Matches(source, sector)) throw new InvalidOperationException($"ObjectID collision: {source.Identity}");
+                if (!existing.Matches(source, sector)) throw new InvalidOperationException($"ObjectID collision: {identity}");
                 return existing;
             }
-            var state = new PersistentObjectState(source, sector, artId, off, locked);
-            _states.Add(source.Identity, state);
+            var state = new PersistentObjectState(source, identity, sector, artId, off, locked);
+            _states.Add(identity, state);
             return state;
         }
+
+        public PersistentObjectState GetOrCreate(ObjectInstance source, string sector, uint artId, bool off, bool locked)
+            => GetOrCreate(source, source.Identity, sector, artId, off, locked);
 
         public void Bind(string sector, PersistentObjectState state, WorldObject runtime)
         {

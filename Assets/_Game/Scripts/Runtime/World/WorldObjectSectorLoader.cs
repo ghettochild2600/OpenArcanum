@@ -122,9 +122,11 @@ namespace Arcanum.Runtime.World
             }
 
             List<ObjectInstance> instances;
+            int sectorRecordCount;
             try
             {
                 instances = SectorReader.ReadObjects(_vfs.ReadAllBytes(sectorPath));
+                sectorRecordCount = instances.Count;
                 instances.AddRange(ReadSectorMobiles(sectorPath));
             }
             catch (Exception ex)
@@ -134,7 +136,17 @@ namespace Arcanum.Runtime.World
             }
 
             sectorPath = sectorPath.Replace('\\', '/').ToLowerInvariant();
-            if (!Session.ValidateSector(sectorPath, instances, out string identityError))
+            Dictionary<ObjectInstance, ArcanumObjectId> identities;
+            try
+            {
+                identities = ResolveRuntimeIdentities(sectorPath, instances, sectorRecordCount);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"WorldObjectSectorLoader: identity resolution failed for '{sectorPath}': {ex.Message}", this);
+                return false;
+            }
+            if (!Session.ValidateSector(sectorPath, instances, identities, out string identityError))
             {
                 Debug.LogError($"WorldObjectSectorLoader: {identityError}", this);
                 return false;
@@ -160,7 +172,8 @@ namespace Arcanum.Runtime.World
 
             foreach (ObjectInstance instance in instances)
             {
-                if (!instance.Identity.IsPersistent) LastNonPersistentIdentityCount++;
+                ArcanumObjectId identity = identities[instance];
+                if (!identity.IsPersistent) LastNonPersistentIdentityCount++;
                 if (!instance.Location.HasValue) continue;
 
                 ObjectProtoInfo proto = _prototypes?.Get(instance.PrototypeNumber);
@@ -196,7 +209,7 @@ namespace Arcanum.Runtime.World
                 int stateFlags = instance.Type == ObjectType.Portal
                     ? instance.PortalFlags ?? proto?.PortalFlags ?? 0
                     : instance.Type == ObjectType.Container ? instance.ContainerFlags ?? proto?.ContainerFlags ?? 0 : 0;
-                PersistentObjectState state = Session.GetOrCreate(instance, sectorPath, artId,
+                PersistentObjectState state = Session.GetOrCreate(instance, identity, sectorPath, artId,
                     (flags & ObjectFlagOff) != 0, (stateFlags & 1) != 0);
                 if (state != null)
                 {
@@ -264,7 +277,7 @@ namespace Arcanum.Runtime.World
                     continue;
                 }
 
-                WorldObject worldObject = CreateWorldObject(instance, artId, artPath, proto, state);
+                WorldObject worldObject = CreateWorldObject(instance, identity, artId, artPath, proto, state);
                 if (worldObject == null)
                 {
                     unresolvedArt++;
@@ -309,6 +322,41 @@ namespace Arcanum.Runtime.World
                 $"{string.Join(", ", typeSummary)}).",
                 this);
             return true;
+        }
+
+        private Dictionary<ObjectInstance, ArcanumObjectId> ResolveRuntimeIdentities(
+            string selectedSectorPath,
+            IReadOnlyList<ObjectInstance> instances,
+            int sectorRecordCount)
+        {
+            const string mapListPath = "rules/maplist.mes";
+            if (!_vfs.Exists(mapListPath))
+                throw new DatFormatException($"'{mapListPath}' was not found.");
+
+            string[] parts = selectedSectorPath.Split('/');
+            if (parts.Length < 3 || !long.TryParse(System.IO.Path.GetFileNameWithoutExtension(parts[parts.Length - 1]), out long sectorId))
+                throw new DatFormatException("The sector path does not contain a numeric sector id.");
+            MapList maps = MapList.Read(_vfs.ReadAllBytes(mapListPath));
+            if (!maps.TryGetByName(parts[parts.Length - 2], out MapListEntry map))
+                throw new DatFormatException($"Map '{parts[parts.Length - 2]}' is absent from MapList.mes.");
+
+            long sectorX = sectorId & 0x3FFFFFF;
+            long sectorY = (sectorId >> 26) & 0x3FFFFFF;
+            var result = new Dictionary<ObjectInstance, ArcanumObjectId>(instances.Count);
+            for (int index = 0; index < instances.Count; index++)
+            {
+                ObjectInstance source = instances[index];
+                ArcanumObjectId identity = source.Identity;
+                if (index < sectorRecordCount && identity.IsNull && source.Location.HasValue)
+                {
+                    uint fullX = unchecked((uint)((sectorX << 6) + source.TileX));
+                    uint fullY = unchecked((uint)((sectorY << 6) + source.TileY));
+                    long fullLocation = fullX | ((long)fullY << 32);
+                    identity = ArcanumObjectId.CreatePositional(fullLocation, index, map.MapId);
+                }
+                result.Add(source, identity);
+            }
+            return result;
         }
 
         private Dictionary<Vector2Int, List<PortalWallCandidate>> BuildPortalWallContext(
@@ -403,6 +451,7 @@ namespace Arcanum.Runtime.World
 
         private WorldObject CreateWorldObject(
             ObjectInstance instance,
+            ArcanumObjectId identity,
             uint artId,
             string artPath,
             ObjectProtoInfo proto,
@@ -424,7 +473,7 @@ namespace Arcanum.Runtime.World
                     : 0;
             worldObject.Locked = (stateFlags & 0x1) != 0;
             worldObject.IsOpen = instance.Type == ObjectType.Portal && ((artId >> 14) & 0x1F) != 0;
-            worldObject.Identity = instance.Identity;
+            worldObject.Identity = identity;
             worldObject.ParentIdentity = instance.ParentIdentity;
             Session.Bind(_registeredSector, state, worldObject);
 

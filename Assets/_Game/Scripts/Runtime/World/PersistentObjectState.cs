@@ -17,9 +17,15 @@ namespace Arcanum.Runtime.World
         public bool Locked { get; internal set; }
         public bool PortalOpen { get; internal set; }
 
-        public PersistentObjectState(ObjectInstance source, string sector, uint artId, bool off, bool locked)
+        public PersistentObjectState(
+            ObjectInstance source,
+            ArcanumObjectId identity,
+            string sector,
+            uint artId,
+            bool off,
+            bool locked)
         {
-            Identity = source.Identity;
+            Identity = identity;
             ParentIdentity = source.ParentIdentity;
             SourceSector = sector;
             Type = source.Type;
