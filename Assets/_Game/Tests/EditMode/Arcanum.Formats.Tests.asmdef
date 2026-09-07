@@ -3,6 +3,7 @@
     "rootNamespace": "Arcanum.Formats.Tests",
     "references": [
         "Arcanum.Formats",
+        "Arcanum.Runtime",
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner",
         "Arcanum.Script"
