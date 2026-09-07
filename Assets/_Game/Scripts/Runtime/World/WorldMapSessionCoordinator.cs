@@ -13,6 +13,19 @@ namespace Arcanum.Runtime.World
         public IReadOnlyDictionary<ArcanumObjectId, PersistentObjectState> States => _states;
         public int LoadedSectorCount => _loaded.Count;
         public string CurrentMap { get; private set; }
+        public PortalTransitionScheduler Portals { get; } = new();
+
+        private void Update() => Portals.Tick(Time.deltaTime);
+
+        public void BindPortal(PersistentObjectState state, WorldObject runtime, int frameCount, int fps)
+        {
+            if (state == null) return;
+            Portals.Bind(state, frameCount, fps, (artId, open) =>
+            {
+                if (runtime != null) runtime.ApplyPortalState(artId, open);
+            });
+            runtime.Session = this;
+        }
 
         public bool ValidateSector(string sector, IReadOnlyList<ObjectInstance> sources, out string error)
         {
@@ -75,7 +88,14 @@ namespace Arcanum.Runtime.World
         {
             if (sector == null || !_loaded.TryGetValue(sector, out var bindings)) return;
             foreach (var pair in bindings)
-                if (pair.Value != null) _states[pair.Key].Capture(pair.Value);
+            {
+                Portals.Unbind(pair.Key);
+                if (pair.Value != null)
+                {
+                    _states[pair.Key].Capture(pair.Value);
+                    pair.Value.Session = null;
+                }
+            }
             _loaded.Remove(sector);
         }
 

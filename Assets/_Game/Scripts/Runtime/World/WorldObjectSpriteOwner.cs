@@ -164,7 +164,6 @@ namespace Arcanum.Runtime.World
                 || frameIndex >= _ownedSprites.Length)
                 return false;
 
-            _worldObject.ArtId = (_worldObject.ArtId & ~(0x1Fu << 14)) | ((uint)frameIndex << 14);
             InitialFrameIndex = frameIndex;
             if (_animator != null) _animator.ShowStatic(_ownedSprites[frameIndex]);
             else if (_renderer != null) _renderer.sprite = _ownedSprites[frameIndex];

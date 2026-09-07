@@ -104,6 +104,7 @@ namespace Arcanum.Runtime.World
         public string ParentOid;         // holder's OID key (items only), else null
         public ArcanumObjectId Identity { get; internal set; }
         public ArcanumObjectId ParentIdentity { get; internal set; }
+        public WorldMapSessionCoordinator Session { get; internal set; }
         public List<WorldObject> Inventory;  // lazily created when this object holds items
 
         public List<WorldObject> EnsureInventory() => Inventory ??= new List<WorldObject>();
@@ -131,9 +132,20 @@ namespace Arcanum.Runtime.World
         /// synchronized. Returns false when no portal presentation owns that frame.</summary>
         public bool TrySetPortalVisualFrame(int frameIndex)
         {
+            if (Session != null) return false; // Managed portals can only transition through session state.
             if (Type != ObjectType.Portal || SetVisualFrame == null || !SetVisualFrame(frameIndex)) return false;
+            ArtId = (ArtId & ~(31u << 14)) | ((uint)frameIndex << 14);
             IsOpen = frameIndex != 0;
             return true;
+        }
+
+        public bool RequestPortalOpen(bool open) => Session != null && Session.Portals.Request(Identity, open);
+
+        internal void ApplyPortalState(uint artId, bool open)
+        {
+            ArtId = artId;
+            IsOpen = open;
+            SetVisualFrame?.Invoke(PortalTransitionScheduler.Frame(artId));
         }
     }
 }

@@ -456,7 +456,11 @@ namespace Arcanum.Runtime.World
                 return null;
             }
 
-            if (instance.Type == ObjectType.Portal) worldObject.PortalOpenable = owner.FrameCount > 1;
+            if (instance.Type == ObjectType.Portal)
+            {
+                worldObject.PortalOpenable = owner.FrameCount > 1;
+                Session.BindPortal(state, worldObject, owner.FrameCount, owner.FramesPerSecond);
+            }
 
             _spriteOwners.Add(owner);
             return worldObject;
