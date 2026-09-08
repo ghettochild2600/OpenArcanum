@@ -18,8 +18,6 @@ namespace Arcanum.Runtime.World
 
         [SerializeField, Min(0.1f)] private float walkSpeedTilesPerSecond = 4f;
         [SerializeField] private string playerObjectId;
-        [SerializeField, Tooltip("Development-only: bind a stable real NPC when no authored PC exists in sector data.")]
-        private bool allowDevelopmentNpcFallback;
 
         private readonly DeterministicTilePathfinder _pathfinder = new();
         private readonly List<Vector2Int> _route = new();
@@ -60,19 +58,11 @@ namespace Arcanum.Runtime.World
             if (_loader == null) _loader = GetComponent<WorldObjectSectorLoader>();
             if (_loader == null || !_loader.IsLoaded) return false;
 
-            WorldObject selected = null;
-            if (!string.IsNullOrWhiteSpace(playerObjectId))
-                selected = Find(o => string.Equals(o.Oid, playerObjectId, StringComparison.OrdinalIgnoreCase));
-            selected ??= Find(o => o.Type == ObjectType.Pc);
-            if (selected == null && allowDevelopmentNpcFallback)
-            {
-                var candidates = new List<WorldObject>();
-                foreach (WorldObjectSpriteOwner owner in _loader.SpriteOwners)
-                    if (owner != null && owner.WorldObject != null && owner.WorldObject.Type == ObjectType.Npc)
-                        candidates.Add(owner.WorldObject);
-                candidates.Sort((a, b) => string.CompareOrdinal(a.Oid ?? a.name, b.Oid ?? b.name));
-                if (candidates.Count > 0) selected = candidates[0];
-            }
+            var candidates = new List<WorldObject>();
+            foreach (WorldObjectSpriteOwner owner in _loader.SpriteOwners)
+                if (owner != null && owner.WorldObject != null) candidates.Add(owner.WorldObject);
+            string identity = _loader.Session.PlayerState?.Identity.Key ?? playerObjectId;
+            WorldObject selected = SelectProductionPlayer(candidates, identity);
             return TryBind(selected);
         }
 
@@ -118,7 +108,29 @@ namespace Arcanum.Runtime.World
             if (Player != null) ApplyState(position, StandAnimation, false);
         }
 
-        public void EnableDevelopmentNpcFallback() => allowDevelopmentNpcFallback = true;
+        public void Unbind(WorldObject expected = null)
+        {
+            if (expected != null && Player != expected) return;
+            _follower.Cancel(Player != null ? Player.TilePosition : _follower.Position);
+            Destination = null;
+            _loader?.NavigationMap?.SetControlledObject(null);
+            Player = null;
+            LastPathSucceeded = false;
+        }
+
+        internal static WorldObject SelectProductionPlayer(IEnumerable<WorldObject> objects, string objectId)
+        {
+            WorldObject firstPc = null;
+            foreach (WorldObject candidate in objects)
+            {
+                if (candidate == null || candidate.Type != ObjectType.Pc) continue;
+                if (!string.IsNullOrWhiteSpace(objectId)
+                    && string.Equals(candidate.Oid, objectId, StringComparison.OrdinalIgnoreCase))
+                    return candidate;
+                firstPc ??= candidate;
+            }
+            return string.IsNullOrWhiteSpace(objectId) ? firstPc : null;
+        }
 
         private void ApplyState(Vector2 position, int animation, bool moving)
         {
@@ -126,13 +138,6 @@ namespace Arcanum.Runtime.World
             uint artId = CritterArtResolver.WithAnimRotation(Player.ArtId, animation, _facing);
             artId &= ~(0x1Fu << 14); // runtime frame is owned by SpriteFrameAnimator, not persistent ART bits
             _loader.Session.SetMovementState(Player.Identity, position, artId, moving);
-        }
-
-        private WorldObject Find(Predicate<WorldObject> predicate)
-        {
-            foreach (WorldObjectSpriteOwner owner in _loader.SpriteOwners)
-                if (owner != null && owner.WorldObject != null && predicate(owner.WorldObject)) return owner.WorldObject;
-            return null;
         }
 
         private static bool IsCritterArt(uint artId)

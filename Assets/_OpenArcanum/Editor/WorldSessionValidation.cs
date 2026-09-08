@@ -129,7 +129,7 @@ internal static class WorldSessionValidation
                 .FirstOrDefault(o => !PortalTransitionScheduler.IsWindow(o.WorldObject.ArtId));
             if (owner == null)
             {
-                Check(loader.LoadSector(RealDoorSector), "load real door sector");
+                Check(session.SelectSector(RealDoorSector), "coordinator loads real door terrain and objects");
                 yield return null;
                 owner = loader.SpriteOwners.FirstOrDefault(o => o.WorldObject.Type == ObjectType.Portal
                     && o.WorldObject.Identity.IsPersistent && !PortalTransitionScheduler.IsWindow(o.WorldObject.ArtId)
@@ -244,7 +244,8 @@ internal static class WorldSessionValidation
             yield return null;
         }
         int textures = Textures();
-        Check(loader.UnloadSector() == owners, "unload count");
+        string sector = loader.Session.SelectedSector;
+        loader.Session.ClearSelectedSector();
         loader.Session.enabled = true;
         Check(loader.Session.Portals.ActiveCount == 0 && loader.Session.Portals.BoundCount == 0, "cancel and unbind before destroy");
         Check(stable.PortalOpen == expectedOpen, "last stable state captured");
@@ -254,7 +255,7 @@ internal static class WorldSessionValidation
         Check(loader.GetComponentsInChildren<WorldObject>(true).Length == 0, "no orphan runtime objects");
         Check(loader.GetComponentsInChildren<SpriteFrameAnimator>(true).Length == 0, "no orphan animators");
         Check(Textures() == textures - frames, "owned textures released");
-        Check(loader.ReloadSector(), "reload succeeds");
+        Check(loader.Session.SelectSector(sector), "coordinator reload succeeds");
         yield return null;
         var restored = Find(loader, id);
         Check(restored.WorldObject.IsOpen == expectedOpen && restored.WorldObject.ArtId == stableAid, "stable state restored");

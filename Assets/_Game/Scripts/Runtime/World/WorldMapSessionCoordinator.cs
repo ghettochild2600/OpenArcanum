@@ -1,21 +1,120 @@
 using System;
 using System.Collections.Generic;
 using Arcanum.Formats.Objects;
+using Arcanum.World;
 using UnityEngine;
 
 namespace Arcanum.Runtime.World
 {
-    /// <summary>One in-memory session. No HD loading, terrain ownership, disk saves or interaction rules.</summary>
-    public sealed class WorldMapSessionCoordinator : MonoBehaviour
+    /// <summary>Authoritative in-memory map/sector selection and persistent world/player state.</summary>
+    public sealed class WorldMapSessionCoordinator : MonoBehaviour, ISectorSelectionAuthority
     {
         private readonly Dictionary<ArcanumObjectId, PersistentObjectState> _states = new();
-        private readonly Dictionary<string, Dictionary<ArcanumObjectId, WorldObject>> _loaded = new();
+        private readonly Dictionary<string, Dictionary<ArcanumObjectId, LoadedBinding>> _loaded = new();
+        [SerializeField] private MonoBehaviour terrainSectorOwner;
+        [SerializeField] private MonoBehaviour objectSectorOwner;
+        [SerializeField] private string initialSector;
+        [SerializeField] private bool selectOnStart = true;
+        private ISectorPresentationOwner _terrainOwner;
+        private ISectorPresentationOwner _objectOwner;
+
         public IReadOnlyDictionary<ArcanumObjectId, PersistentObjectState> States => _states;
         public int LoadedSectorCount => _loaded.Count;
         public string CurrentMap { get; private set; }
+        public string SelectedSector { get; private set; }
+        public bool HasSelectedSector => !string.IsNullOrEmpty(SelectedSector);
+        public PersistentPlayerState PlayerState { get; private set; }
         public PortalTransitionScheduler Portals { get; } = new();
+        public event Action<string> SectorUnloading;
+        public event Action<string> SectorSelected;
+
+        private sealed class LoadedBinding
+        {
+            public WorldObject Runtime;
+            public PersistentObjectState ObjectState;
+            public PersistentPlayerState PlayerState;
+        }
+
+        private void Awake()
+        {
+            if (terrainSectorOwner is ISectorPresentationOwner terrain) RegisterTerrainOwner(terrain);
+            if (objectSectorOwner is ISectorPresentationOwner objects) RegisterObjectOwner(objects);
+        }
+
+        private void Start()
+        {
+            if (!selectOnStart || HasSelectedSector) return;
+            string sector = !string.IsNullOrWhiteSpace(initialSector) ? initialSector
+                : _objectOwner?.ConfiguredSector ?? _terrainOwner?.ConfiguredSector;
+            if (!string.IsNullOrWhiteSpace(sector)) SelectSector(sector);
+        }
 
         private void Update() => Portals.Tick(Time.deltaTime);
+
+        public void RegisterTerrainOwner(ISectorPresentationOwner owner)
+        {
+            if (owner == null) throw new ArgumentNullException(nameof(owner));
+            if (_terrainOwner != null && !ReferenceEquals(_terrainOwner, owner))
+                throw new InvalidOperationException("A terrain sector owner is already registered.");
+            _terrainOwner = owner;
+            if (owner is ISectorSelectionClient client) client.BindSelectionAuthority(this);
+        }
+
+        public void RegisterObjectOwner(ISectorPresentationOwner owner)
+        {
+            if (owner == null) throw new ArgumentNullException(nameof(owner));
+            if (_objectOwner != null && !ReferenceEquals(_objectOwner, owner))
+                throw new InvalidOperationException("A world-object sector owner is already registered.");
+            _objectOwner = owner;
+        }
+
+        public bool SelectSector(string sectorPath)
+        {
+            string sector = NormalizeSector(sectorPath);
+            if (sector == null || (_terrainOwner == null && _objectOwner == null)) return false;
+            if (SelectedSector == sector && OwnersPresent(sector)) return true;
+
+            if (HasSelectedSector || _terrainOwner?.IsSectorPresented == true || _objectOwner?.IsSectorPresented == true)
+                ClearSelectedSector();
+            bool terrainReady = _terrainOwner == null || _terrainOwner.PresentSector(sector);
+            bool objectsReady = terrainReady && (_objectOwner == null || _objectOwner.PresentSector(sector));
+            if (!terrainReady || !objectsReady)
+            {
+                _objectOwner?.ClearPresentedSector();
+                _terrainOwner?.ClearPresentedSector();
+                return false;
+            }
+
+            SelectedSector = sector;
+            SectorSelected?.Invoke(sector);
+            return true;
+        }
+
+        public bool ReloadSelectedSector()
+        {
+            string sector = SelectedSector;
+            if (sector == null) return false;
+            ClearSelectedSector();
+            return SelectSector(sector);
+        }
+
+        public void ClearSelectedSector()
+        {
+            string sector = SelectedSector ?? _objectOwner?.PresentedSector ?? _terrainOwner?.PresentedSector;
+            if (sector != null) SectorUnloading?.Invoke(sector);
+            _objectOwner?.ClearPresentedSector();
+            _terrainOwner?.ClearPresentedSector();
+            SelectedSector = null;
+        }
+
+        private bool OwnersPresent(string sector)
+            => (_terrainOwner == null || _terrainOwner.IsSectorPresented && _terrainOwner.PresentedSector == sector)
+               && (_objectOwner == null || _objectOwner.IsSectorPresented && _objectOwner.PresentedSector == sector);
+
+        public static string NormalizeSector(string sectorPath)
+            => string.IsNullOrWhiteSpace(sectorPath)
+                ? null
+                : sectorPath.Replace('\\', '/').Trim().ToLowerInvariant();
 
         public void BindPortal(PersistentObjectState state, WorldObject runtime, int frameCount, int fps)
         {
@@ -73,7 +172,7 @@ namespace Arcanum.Runtime.World
             if (_loaded.Count > 0 && CurrentMap != map)
                 throw new InvalidOperationException("Unload the current map before selecting another map.");
             CurrentMap = map;
-            _loaded.Add(sector, new Dictionary<ArcanumObjectId, WorldObject>());
+            _loaded.Add(sector, new Dictionary<ArcanumObjectId, LoadedBinding>());
         }
 
         public PersistentObjectState GetOrCreate(
@@ -101,20 +200,60 @@ namespace Arcanum.Runtime.World
         public void Bind(string sector, PersistentObjectState state, WorldObject runtime)
         {
             if (state == null) return;
-            _loaded[sector].Add(state.Identity, runtime);
+            _loaded[sector].Add(state.Identity, new LoadedBinding { Runtime = runtime, ObjectState = state });
             state.Restore(runtime);
+        }
+
+        public PersistentPlayerState GetOrCreatePlayer(
+            ArcanumObjectId identity,
+            string sector,
+            Vector2 spawnTile,
+            uint artId)
+        {
+            if (!identity.IsPersistent) throw new ArgumentException("Player identity must be persistent.", nameof(identity));
+            if (_states.ContainsKey(identity)) throw new InvalidOperationException($"Player ObjectID collides with {identity}.");
+            string normalized = NormalizeSector(sector) ?? throw new ArgumentException("Player sector is required.", nameof(sector));
+            if (PlayerState == null)
+                PlayerState = new PersistentPlayerState(identity, normalized, spawnTile, artId);
+            else
+            {
+                if (PlayerState.Identity != identity)
+                    throw new InvalidOperationException("A different production player is already registered.");
+                PlayerState.EnterSector(normalized, spawnTile, artId);
+            }
+            return PlayerState;
+        }
+
+        public void BindPlayer(string sector, PersistentPlayerState state, WorldObject runtime)
+        {
+            if (state == null || runtime == null) throw new ArgumentNullException(state == null ? nameof(state) : nameof(runtime));
+            if (!ReferenceEquals(state, PlayerState)) throw new InvalidOperationException("Player state is not session-owned.");
+            var bindings = _loaded[sector];
+            if (bindings.ContainsKey(state.Identity)) throw new InvalidOperationException("Player is already bound in this sector.");
+            bindings.Add(state.Identity, new LoadedBinding { Runtime = runtime, PlayerState = state });
+            state.Restore(runtime);
+            runtime.Session = this;
         }
 
         /// <summary>Applies a critter movement sample through session-owned state, then updates its runtime view.</summary>
         public bool SetMovementState(ArcanumObjectId identity, Vector2 tilePosition, uint artId, bool moving)
         {
-            if (!_states.TryGetValue(identity, out PersistentObjectState state)) return false;
-            state.TilePosition = tilePosition;
-            state.ArtId = artId;
-            foreach (Dictionary<ArcanumObjectId, WorldObject> sector in _loaded.Values)
-                if (sector.TryGetValue(identity, out WorldObject runtime) && runtime != null)
+            if (_states.TryGetValue(identity, out PersistentObjectState state))
+            {
+                state.TilePosition = tilePosition;
+                state.ArtId = artId;
+            }
+            else if (PlayerState != null && PlayerState.Identity == identity)
+            {
+                PlayerState.TilePosition = tilePosition;
+                PlayerState.ArtId = artId;
+            }
+            else return false;
+
+            foreach (Dictionary<ArcanumObjectId, LoadedBinding> sector in _loaded.Values)
+                if (sector.TryGetValue(identity, out LoadedBinding binding) && binding.Runtime != null)
                 {
-                    runtime.ApplyMovementState(tilePosition, artId, moving);
+                    binding.Runtime.ApplyMovementState(tilePosition, artId, moving);
                     return true;
                 }
             return false;
@@ -126,13 +265,16 @@ namespace Arcanum.Runtime.World
             foreach (var pair in bindings)
             {
                 Portals.Unbind(pair.Key);
-                if (pair.Value != null)
+                LoadedBinding binding = pair.Value;
+                if (binding.Runtime != null)
                 {
-                    _states[pair.Key].Capture(pair.Value);
-                    pair.Value.Session = null;
+                    binding.ObjectState?.Capture(binding.Runtime);
+                    binding.PlayerState?.Capture(binding.Runtime);
+                    binding.Runtime.Session = null;
                 }
             }
             _loaded.Remove(sector);
+            if (_loaded.Count == 0) CurrentMap = null;
         }
 
         private void OnDestroy()

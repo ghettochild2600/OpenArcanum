@@ -19,7 +19,7 @@ namespace Arcanum.World.Demo
     /// Arcanum install via <see cref="GameDataLocator"/> and bundles nothing. Drag to pan, scroll to zoom.
     /// </para>
     /// </summary>
-    public sealed class TileMapDemo : MonoBehaviour
+    public sealed class TileMapDemo : MonoBehaviour, ISectorPresentationOwner, ISectorSelectionClient
     {
         [Header("Source archives (auto-located if left at defaults)")]
         [Tooltip("Archive with tile art + art/tile/tilename.mes + art/facade/facadename.mes (default arcanum2.dat).")]
@@ -64,17 +64,27 @@ namespace Arcanum.World.Demo
         private Vector2 _sectorScroll;
         private string _search = string.Empty;
         private GUIStyle _rich, _selected;
+        private ISectorSelectionAuthority _selectionAuthority;
+        private string _presentedSector;
 
         /// <summary>The module archive sectors are read from (for editor tooling like the Sector Browser).</summary>
         public string ModuleArchiveName => ModuleArchive;
 
         /// <summary>The sector currently selected/rendered.</summary>
-        public string CurrentSector => SectorPath;
+        public string CurrentSector => _selectionAuthority?.SelectedSector ?? _presentedSector ?? SectorPath;
+        public string ConfiguredSector => SectorPath;
+        public string PresentedSector => _presentedSector;
+        public bool IsSectorPresented => _presentedSector != null;
 
         private void Start()
         {
             _dataReady = EnsureData();
-            if (_dataReady) { RefreshSectorList(); RenderCurrentSector(); }
+            if (_dataReady)
+            {
+                RefreshSectorList();
+                if (_selectionAuthority == null) PresentSector(SectorPath);
+                else if (!_selectionAuthority.HasSelectedSector) _selectionAuthority.SelectSector(SectorPath);
+            }
             // In a browser with no data yet, OnGUI shows the upload gate instead of a black screen.
         }
 
@@ -84,8 +94,22 @@ namespace Arcanum.World.Demo
         /// </summary>
         public void LoadSector(string sectorPath)
         {
-            if (!string.IsNullOrEmpty(sectorPath)) SectorPath = sectorPath;
-            if (EnsureData()) RenderCurrentSector();
+            if (_selectionAuthority != null) _selectionAuthority.SelectSector(sectorPath);
+            else PresentSector(sectorPath);
+        }
+
+        public void BindSelectionAuthority(ISectorSelectionAuthority authority) => _selectionAuthority = authority;
+
+        public bool PresentSector(string sectorPath)
+        {
+            if (!string.IsNullOrWhiteSpace(sectorPath)) SectorPath = Normalize(sectorPath);
+            return EnsureData() && RenderCurrentSector();
+        }
+
+        public void ClearPresentedSector()
+        {
+            ClearRendered();
+            _presentedSector = null;
         }
 
         // Mounts the archives and builds the resolvers once; cached across reloads. False on failure (missing
@@ -153,19 +177,19 @@ namespace Arcanum.World.Demo
         }
 
         // Tears down any previously rendered geometry and renders the current SectorPath, then frames the camera.
-        private void RenderCurrentSector()
+        private bool RenderCurrentSector()
         {
-            if (_tileMap == null) return;
+            if (_tileMap == null) return false;
 
             if (!_vfs.Exists(SectorPath))
             {
                 Debug.LogError($"TileMapDemo: sector '{SectorPath}' not found in '{ModuleArchive}'.", this);
-                return;
+                return false;
             }
 
             SectorTerrain terrain;
             try { terrain = SectorReader.ReadTerrain(_vfs.ReadAllBytes(SectorPath)); }
-            catch (System.Exception ex) { Debug.LogError($"TileMapDemo: terrain read failed: {ex.Message}", this); return; }
+            catch (System.Exception ex) { Debug.LogError($"TileMapDemo: terrain read failed: {ex.Message}", this); return false; }
 
             ClearRendered();
             // Render at the world origin (the global tile offset only matters when stitching adjacent sectors),
@@ -178,7 +202,9 @@ namespace Arcanum.World.Demo
 
             Debug.Log($"TileMapDemo: rendered '{SectorPath}' ({SectorTerrain.Size}×{SectorTerrain.Size} tiles, " +
                       $"{_tileMap.BlendMisses} cumulative blend miss(es)).", this);
+            _presentedSector = Normalize(SectorPath);
             ConfigureCamera();
+            return true;
         }
 
         // Destroys previously rendered children (terrain mesh / per-tile sprites) before a reload.
@@ -357,7 +383,8 @@ namespace Arcanum.World.Demo
                     }
                     _dataReady = true;
                     if (!_vfs.Exists(SectorPath)) SectorPath = _sectors[0]; // default sector may not be in this module
-                    RenderCurrentSector();
+                    if (_selectionAuthority != null) _selectionAuthority.SelectSector(SectorPath);
+                    else PresentSector(SectorPath);
                 },
                 err => _uploadStatus = "Upload cancelled or failed: " + err);
         }
@@ -376,6 +403,13 @@ namespace Arcanum.World.Demo
         private GUIStyle Selected() =>
             _selected ??= new GUIStyle(GUI.skin.button) { normal = { textColor = new Color(0.6f, 1f, 0.6f) } };
 
-        private void OnDestroy() => _vfs?.Dispose();
+        private static string Normalize(string sectorPath)
+            => sectorPath.Replace('\\', '/').Trim().ToLowerInvariant();
+
+        private void OnDestroy()
+        {
+            ClearPresentedSector();
+            _vfs?.Dispose();
+        }
     }
 }

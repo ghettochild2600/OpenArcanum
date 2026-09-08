@@ -10,24 +10,18 @@ safe/adapt/avoid reuse boundaries, and defines a dependency-ordered M1–M13 roa
 
 ## Current Objective
 
-Production sector objects now have a stable load/rebuild/unload/reload contract.
-All 32 formerly unresolved Dernholm records were classified as wall-owned windows
-and now resolve through the original engine's exact wall-to-portal derivation.
-The real sector renders all 612 non-inventory placed objects with zero unresolved
-ART identities, and lifecycle teardown/reload has been validated without duplicate
-roots, sprite owners, animation components, or owned texture leaks. Terrain remains
-intentionally separate and untouched.
+M1A is complete. `WorldMapSessionCoordinator` is the authoritative normalized sector selector and drives both terrain
+and world-object presentation. A session-owned production PC now has deterministic gameplay identity, source-valid
+critter presentation identity, explicit spawn/bind/unbind behavior, no NPC fallback, and state that survives graphics
+rebuild plus sector unload/reload without duplicate scene owners.
 
-The next objective is a narrow map/session coordinator that owns terrain and object
-sector selection together, followed by persistent object identity/state and the
-gameplay-side portal animation scheduler. Do not turn the sprite owner into a global
-asset manager or begin terrain replacement.
+The next objective is M1B: cross-sector destination continuation through the same coordinator while preserving the
+source-grid navigation rules and the same session-owned PC. Do not begin interaction, inventory, combat, dialogue,
+progression, save serialization, or dynamic blocker work in that slice.
 
 ## Current Branch
 
-Expected branch:
-
-feature/hd-texture-replacements
+Expected branch: `feature/player-navigation`
 
 Always verify the actual Git branch before doing work. Git is authoritative if it disagrees with this document.
 
@@ -767,8 +761,8 @@ Completed on 2026-09-07 with Unity 6000.0.71f1 on `feature/player-navigation`.
 - `SectorNavigationMap` combines the authored sector block mask, tile `/b` flags, non-walkable facades, ordinary object
   blockers, directional wall pieces and live portal state. `OF_NO_BLOCK` is preserved, and diagonal steps check both
   source-adjacent wall edges rather than cutting corners.
-- A real persistent PC is preferred. The validation scene alone enables a stable real-NPC fallback because original PCs
-  are created dynamically rather than serialized in the sector. Shipping behavior does not silently pick an NPC.
+- The production lifecycle creates and explicitly binds a deterministic session-owned PC. No production or validation
+  path silently selects a sector-authored NPC.
 - Valid new destinations replace active routes; blocked and unreachable destinations fail without partial movement.
   Movement uses fractional tile coordinates, source direction/facing mappings, WALK action 1 and STAND action 0.
 - The session coordinator owns movement position/ART state. Graphics rebuilds preserve gameplay position, while an
@@ -812,14 +806,40 @@ Completed on 2026-09-07 with Unity 6000.0.71f1 on `feature/player-navigation`.
 
 ### Remaining limitations
 
-- Navigation remains sector-local; the shared terrain/object sector transition owner is not implemented.
-- Production PC creation/binding from character selection or save data is not implemented.
+- Navigation remains sector-local; M1A later added shared terrain/object selection, while cross-sector continuation
+  remains M1B.
+- M1A later added a deterministic production PC lifecycle; character-creation and save-data initialization remain out
+  of scope.
 - Dynamic blockers, critter avoidance, interaction range, combat movement, scripts and save serialization are later work.
 - Original game data, terrain replacement and bulk asset conversion were not modified.
 
+## M1A Shared Sector and Production PC Lifecycle
+
+Completed on 2026-09-07 with Unity 6000.0.71f1 on `feature/player-navigation`.
+
+- `WorldMapSessionCoordinator.SelectSector` owns normalized selection and drives `TileMapDemo` terrain plus
+  `WorldObjectSectorLoader` objects through presentation-owner interfaces. Selection and unload events drive the
+  dedicated `ProductionPlayerLifecycle`; neither presentation owner is gameplay authority.
+- `PersistentPlayerState` owns deterministic GUID identity
+  `G_C9B7E725_E71A_F54A_B1E4_0A62FA6BCA01`, sector, fractional position, and critter ART state independently of Unity
+  objects. Spawn, bind, unbind, rebuild, unload, and reload preserve that record. Navigation binds only its explicit PC;
+  the former validation NPC fallback was removed.
+- The production presentation uses source-valid base ART ID `0x28100000` (human male, villager clothes, unarmed,
+  `STAND`). The normal critter resolver maps it to `art/critter/hmm/hmmv1xaa.art`. The interrupted `0x18100000`
+  placeholder was type `1` (wall), not a critter; no NPC substitution or renderer bypass was introduced.
+- Validation: M1 lifecycle 7/7, PlayerNavigation 21/21, complete EditMode 228/228, all with 0 failures or skips. A
+  physical Game-view click moved the visible PC; real-sector validation passed shared selection, graphics rebuild,
+  unload/reload restoration, post-reload movement, and exactly one coordinator, loader, lifecycle, navigation
+  controller, object root, PC presentation, and PC sprite owner. Final Unity Console: 0 warnings, 0 errors.
+- Final ownership/call graph and lifecycle contract:
+  [`documentation_unity/m1-shared-sector-pc-lifecycle.md`](documentation_unity/m1-shared-sector-pc-lifecycle.md).
+- Remaining M1 work is M1B cross-sector destination continuation only. Save serialization, dynamic blockers and all
+  interaction/inventory/combat/dialogue/progression work remain later milestones.
+
 ## Next Recommended Milestone
 
-Connect navigation and the completed coordinator to a shared terrain/object sector-selection boundary, including
-cross-sector destination continuation. Then bind the production PC lifecycle and add a versioned save/load
-representation for the validated state schema. Preserve ObjectID collision checks, portal rollback and source-grid
-edge rules while validating multi-sector traversal before dynamic blockers, combat movement or script-host integration.
+Implement M1B cross-sector destination continuation through the completed coordinator. Carry the destination intent
+across a boundary, select both presentations together, re-project the same session-owned PC at the correct entry tile,
+and resume deterministic source-grid navigation. Preserve ObjectID collision checks, portal rollback, ART identity,
+and edge traversal rules. Do not add save serialization, dynamic blockers, interactions, inventory, combat, dialogue,
+or progression in M1B.

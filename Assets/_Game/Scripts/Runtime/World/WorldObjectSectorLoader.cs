@@ -7,6 +7,7 @@ using Arcanum.Formats.Objects;
 using Arcanum.Formats.Text;
 using Arcanum.Formats.Tiles;
 using Arcanum.Formats.World;
+using Arcanum.World;
 using UnityEngine;
 
 namespace Arcanum.Runtime.World
@@ -16,7 +17,7 @@ namespace Arcanum.Runtime.World
     /// It consumes real sector instances, resolves inherited prototype ART ids, and creates
     /// runtime <see cref="WorldObject"/> presentations. Terrain remains a separate owner.
     /// </summary>
-    public sealed class WorldObjectSectorLoader : MonoBehaviour
+    public sealed class WorldObjectSectorLoader : MonoBehaviour, ISectorPresentationOwner
     {
         private const string ObjectRootName = "WorldObjects";
         private const uint PortalWallIdentityMask = (0x1FFu << 19) | (7u << 11);
@@ -97,7 +98,10 @@ namespace Arcanum.Runtime.World
             : session = GetComponent<WorldMapSessionCoordinator>() ?? gameObject.AddComponent<WorldMapSessionCoordinator>();
         public int LastNonPersistentIdentityCount { get; private set; }
 
-        public string CurrentSector => sectorPath;
+        public string CurrentSector => session?.SelectedSector ?? _registeredSector ?? sectorPath;
+        public string ConfiguredSector => sectorPath;
+        public string PresentedSector => _registeredSector;
+        public bool IsSectorPresented => IsLoaded && _registeredSector != null;
         public IReadOnlyList<WorldObjectSpriteOwner> SpriteOwners => _spriteOwners;
         public IReadOnlyList<RenderIssue> RenderIssues => _renderIssues;
         public int RenderedObjectCount => _spriteOwners.Count;
@@ -109,12 +113,18 @@ namespace Arcanum.Runtime.World
         public float PixelsPerUnit => pixelsPerUnit;
         public bool IsLoaded => _objectRoot != null && _objectRoot.gameObject.activeSelf;
 
+        private void Awake() => Session.RegisterObjectOwner(this);
+
         private void Start()
         {
-            if (loadOnStart) LoadSector(sectorPath);
+            if (loadOnStart && !Session.HasSelectedSector) Session.SelectSector(sectorPath);
         }
 
-        public bool LoadSector(string path)
+        public bool LoadSector(string path) => Session.SelectSector(path);
+        public bool PresentSector(string path) => LoadSectorPresentation(path);
+        public void ClearPresentedSector() => ClearSectorPresentation();
+
+        private bool LoadSectorPresentation(string path)
         {
             if (!string.IsNullOrWhiteSpace(path)) sectorPath = path;
             if (!EnsureData()) return false;
@@ -465,6 +475,55 @@ namespace Arcanum.Runtime.World
             Debug.Log($"WorldObjectSectorLoader: rebuilt {rebuilt}/{_spriteOwners.Count} visual owner(s).", this);
         }
 
+        /// <summary>Creates the production PC presentation for session-owned player state.</summary>
+        public WorldObject CreatePlayerPresentation(PersistentPlayerState player)
+        {
+            if (player == null || !IsSectorPresented || player.Sector != _registeredSector) return null;
+            foreach (WorldObjectSpriteOwner existing in _spriteOwners)
+                if (existing != null && existing.WorldObject != null && existing.WorldObject.Identity == player.Identity)
+                    return existing.WorldObject;
+
+            string artPath = _art.Resolve(player.ArtId);
+            if (string.IsNullOrEmpty(artPath) || !_vfs.Exists(artPath))
+            {
+                var mounts = new List<string>();
+                foreach (DatArchive mount in _vfs.Mounts) mounts.Add(System.IO.Path.GetFileName(mount.FilePath));
+                Debug.LogError($"WorldObjectSectorLoader: production PC ART 0x{player.ArtId:X8} path " +
+                    $"'{artPath ?? "<none>"}' was absent; mounts=[{string.Join(", ", mounts)}].", this);
+                return null;
+            }
+
+            var root = new GameObject($"Pc_Production_{player.Identity}");
+            root.transform.SetParent(_objectRoot, false);
+            var worldObject = root.AddComponent<WorldObject>();
+            worldObject.Type = ObjectType.Pc;
+            worldObject.Tile = new Vector2Int(Mathf.RoundToInt(player.TilePosition.x), Mathf.RoundToInt(player.TilePosition.y));
+            worldObject.TilePosition = player.TilePosition;
+            worldObject.ArtId = player.ArtId;
+            worldObject.PixelsPerUnit = pixelsPerUnit;
+            worldObject.Identity = player.Identity;
+            worldObject.Oid = player.Identity.Key;
+
+            var visual = new GameObject("Visual");
+            visual.transform.SetParent(root.transform, false);
+            var renderer = visual.AddComponent<SpriteRenderer>();
+            renderer.sortingOrder = (worldObject.Tile.x + worldObject.Tile.y) * 2 + 1;
+            var owner = visual.AddComponent<WorldObjectSpriteOwner>();
+            owner.Initialize(_vfs, _art.Resolve, worldObject, 0, 0, pixelsPerUnit, true);
+            if (owner.CurrentSprite == null)
+            {
+                root.SetActive(false);
+                if (Application.isPlaying) Destroy(root);
+                else DestroyImmediate(root);
+                return null;
+            }
+
+            Session.BindPlayer(_registeredSector, player, worldObject);
+            NavigationMap?.Register(worldObject, 0);
+            _spriteOwners.Add(owner);
+            return worldObject;
+        }
+
         private WorldObject CreateWorldObject(
             ObjectInstance instance,
             ArcanumObjectId identity,
@@ -637,10 +696,19 @@ namespace Arcanum.Runtime.World
             return true;
         }
 
-        public bool ReloadSector() => LoadSector(sectorPath);
+        public bool ReloadSector() => Session.HasSelectedSector
+            ? Session.ReloadSelectedSector()
+            : Session.SelectSector(sectorPath);
 
         /// <summary>Releases the currently owned sector presentation without disposing mounted source data.</summary>
         public int UnloadSector()
+        {
+            int removed = _spriteOwners.Count;
+            Session.ClearSelectedSector();
+            return removed;
+        }
+
+        private int ClearSectorPresentation()
         {
             int removed = ClearObjects();
             _renderIssues.Clear();
@@ -677,7 +745,7 @@ namespace Arcanum.Runtime.World
 
         private void OnDestroy()
         {
-            ClearObjects();
+            ClearSectorPresentation();
             _vfs?.Dispose();
             _vfs = null;
         }

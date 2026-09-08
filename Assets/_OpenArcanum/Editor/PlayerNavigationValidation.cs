@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using Arcanum.Runtime.World;
+using Arcanum.World.Demo;
 using OpenArcanum.Rendering;
 using UnityEditor;
 using UnityEditor.TestTools.TestRunner.Api;
@@ -11,12 +12,42 @@ using Object = UnityEngine.Object;
 
 internal static class PlayerNavigationValidation
 {
+    [MenuItem("OpenArcanum/Player Navigation/Run M1A Lifecycle EditMode Tests")]
+    private static void RunM1LifecycleTests()
+    {
+        if (Application.isPlaying) throw new InvalidOperationException("Stop Play mode before EditMode tests.");
+        var api = ScriptableObject.CreateInstance<TestRunnerApi>();
+        api.RegisterCallbacks(new M1LifecycleResults(api));
+        api.Execute(new ExecutionSettings(new Filter
+        {
+            testMode = TestMode.EditMode,
+            categoryNames = new[] { "M1Lifecycle" }
+        }));
+    }
+
+    private sealed class M1LifecycleResults : ICallbacks
+    {
+        private readonly TestRunnerApi _api;
+        public M1LifecycleResults(TestRunnerApi api) => _api = api;
+        public void RunStarted(ITestAdaptor testsToRun) { }
+        public void TestStarted(ITestAdaptor test) { }
+        public void TestFinished(ITestResultAdaptor result) { }
+        public void RunFinished(ITestResultAdaptor result)
+        {
+            TestRunnerApi.SaveResultToFile(result, "Logs/M1A-Lifecycle-EditMode.xml");
+            Debug.Log($"M1A lifecycle FOCUSED EditMode suite: {result.TestStatus}; " +
+                $"passed={result.PassCount}; failed={result.FailCount}; skipped={result.SkipCount}.");
+            _api.UnregisterCallbacks(this);
+            Object.DestroyImmediate(_api);
+        }
+    }
+
     [MenuItem("OpenArcanum/Player Navigation/Run Focused EditMode Tests")]
     private static void RunFocusedTests()
     {
         if (Application.isPlaying) throw new InvalidOperationException("Stop Play mode before EditMode tests.");
         var api = ScriptableObject.CreateInstance<TestRunnerApi>();
-        api.RegisterCallbacks(new FocusedResults());
+        api.RegisterCallbacks(new FocusedResults(api));
         api.Execute(new ExecutionSettings(new Filter
         {
             testMode = TestMode.EditMode,
@@ -26,6 +57,8 @@ internal static class PlayerNavigationValidation
 
     private sealed class FocusedResults : ICallbacks
     {
+        private readonly TestRunnerApi _api;
+        public FocusedResults(TestRunnerApi api) => _api = api;
         public void RunStarted(ITestAdaptor testsToRun) { }
         public void TestStarted(ITestAdaptor test) { }
         public void TestFinished(ITestResultAdaptor result) { }
@@ -34,6 +67,8 @@ internal static class PlayerNavigationValidation
             TestRunnerApi.SaveResultToFile(result, "Logs/PlayerNavigation-EditMode.xml");
             Debug.Log($"Player navigation FOCUSED EditMode suite: {result.TestStatus}; " +
                 $"passed={result.PassCount}; failed={result.FailCount}; skipped={result.SkipCount}.");
+            _api.UnregisterCallbacks(this);
+            Object.DestroyImmediate(_api);
         }
     }
 
@@ -44,9 +79,11 @@ internal static class PlayerNavigationValidation
         var loader = Object.FindFirstObjectByType<WorldObjectSectorLoader>();
         var navigation = Object.FindFirstObjectByType<PlayerNavigationController>();
         var clickInput = Object.FindFirstObjectByType<PlayerClickMoveInput>();
-        if (loader == null || navigation == null || clickInput == null || !loader.IsLoaded)
+        var lifecycle = Object.FindFirstObjectByType<ProductionPlayerLifecycle>();
+        var session = Object.FindFirstObjectByType<WorldMapSessionCoordinator>();
+        if (loader == null || navigation == null || clickInput == null || lifecycle == null || session == null || !loader.IsLoaded)
             throw new InvalidOperationException("Load the TestTerrain real sector first.");
-        loader.StartCoroutine(Validate(loader, navigation, clickInput));
+        loader.StartCoroutine(Validate(loader, navigation, clickInput, lifecycle, session));
     }
 
     private static void Check(bool condition, string label)
@@ -55,14 +92,19 @@ internal static class PlayerNavigationValidation
     }
 
     private static IEnumerator Validate(WorldObjectSectorLoader loader, PlayerNavigationController navigation,
-        PlayerClickMoveInput clickInput)
+        PlayerClickMoveInput clickInput, ProductionPlayerLifecycle lifecycle, WorldMapSessionCoordinator session)
     {
         Check(clickInput.LastClickedTile.HasValue && clickInput.LastClickAccepted,
             "physical Game-view click accepted as a route");
-        navigation.EnableDevelopmentNpcFallback();
-        Check(navigation.TryBindConfiguredPlayer(), "bind stable real NPC fallback");
+        Check(lifecycle.SpawnAndBind(), "bind deterministic production PC");
         WorldObject player = navigation.Player;
-        Check(player != null && player.Identity.IsPersistent, "persistent runtime player");
+        Check(player != null && player.Type == Arcanum.Formats.Objects.ObjectType.Pc
+            && player.Identity == ProductionPlayerLifecycle.DefaultPlayerIdentity, "persistent production player");
+        PersistentPlayerState playerState = session.PlayerState;
+        const uint runtimePoseMask = (0x1Fu << 6) | (0x7u << 11);
+        Check((player.ArtId & ~runtimePoseMask) == 0x28100000u,
+            "source-valid production PC presentation ART");
+        CheckSharedSelectionAndUniqueComposition(loader, navigation, lifecycle, session);
         Vector2Int start = player.Tile;
         Check(loader.NavigationMap.IsWalkable(start), "controlled player removed from static occupancy");
 
@@ -87,6 +129,10 @@ internal static class PlayerNavigationValidation
             ? GraphicsMode.Enhanced : GraphicsMode.Original);
         loader.RebuildVisuals();
         Check(navigation.Player.TilePosition == beforeRebuild, "graphics rebuild preserves gameplay position");
+        Check(ReferenceEquals(session.PlayerState, playerState)
+            && navigation.Player.Identity == ProductionPlayerLifecycle.DefaultPlayerIdentity,
+            "graphics rebuild preserves session-owned PC identity/state");
+        CheckSharedSelectionAndUniqueComposition(loader, navigation, lifecycle, session);
         OpenArcanumGraphicsSettings.SetRuntimeMode(savedMode);
         loader.RebuildVisuals();
         yield return null;
@@ -94,12 +140,18 @@ internal static class PlayerNavigationValidation
             "movement continues after graphics rebuild");
 
         Vector2 persisted = navigation.Player.TilePosition;
-        string sector = loader.CurrentSector;
-        Check(loader.UnloadSector() > 0, "unload moving sector");
+        var identity = navigation.Player.Identity;
+        string sector = session.SelectedSector;
+        session.ClearSelectedSector();
         yield return null;
-        Check(loader.LoadSector(sector), "reload moving sector");
+        Check(navigation.Player == null && lifecycle.Presentation == null,
+            "sector unload unbinds production presentation");
+        Check(CountNamedRoots("WorldObjects") == 0, "sector unload removes object presentation root");
+        Check(session.SelectSector(sector), "coordinator reloads terrain and objects");
         yield return null;
-        Check(navigation.TryBindConfiguredPlayer(), "rebind after reload");
+        Check(navigation.Player != null && navigation.Player.Identity == identity, "production PC rebound after reload");
+        Check(ReferenceEquals(session.PlayerState, playerState), "reload preserves session-owned PC state instance");
+        CheckSharedSelectionAndUniqueComposition(loader, navigation, lifecycle, session);
         Check(Vector2.Distance(navigation.Player.TilePosition, persisted) < 0.001f,
             "fractional movement position restored");
         Check(((navigation.Player.ArtId >> 6) & 0x1F) == 0 && !navigation.Player.IsMoving,
@@ -117,9 +169,46 @@ internal static class PlayerNavigationValidation
         Check(!navigation.IsMoving, "route completes");
         Check(navigation.Player.Tile == final, "destination reached");
         Check(((navigation.Player.ArtId >> 6) & 0x1F) == 0, "STAND action after arrival");
-        Debug.Log($"Player navigation real-sector PASS: sector={loader.CurrentSector}; " +
+        Debug.Log($"Player navigation real-sector PASS: sector={session.SelectedSector}; " +
             $"player={navigation.Player.Identity}; start={start}; destination={final}; " +
-            "click routing, replacement, source obstacles, graphics rebuild, unload/reload, WALK/STAND verified.");
+            "shared terrain/object selection, production PC lifecycle, click routing, replacement, source obstacles, " +
+            "graphics rebuild, unload/reload, unique presentation ownership and WALK/STAND verified.");
+    }
+
+    private static void CheckSharedSelectionAndUniqueComposition(WorldObjectSectorLoader loader,
+        PlayerNavigationController navigation, ProductionPlayerLifecycle lifecycle,
+        WorldMapSessionCoordinator session)
+    {
+        var terrain = Object.FindFirstObjectByType<TileMapDemo>();
+        Check(terrain != null && terrain.PresentedSector == session.SelectedSector
+            && loader.PresentedSector == session.SelectedSector,
+            "one normalized selection drives terrain and objects");
+        Check(Object.FindObjectsByType<WorldMapSessionCoordinator>(FindObjectsInactive.Include,
+            FindObjectsSortMode.None).Length == 1, "one session coordinator");
+        Check(Object.FindObjectsByType<WorldObjectSectorLoader>(FindObjectsInactive.Include,
+            FindObjectsSortMode.None).Length == 1, "one world-object loader");
+        Check(Object.FindObjectsByType<PlayerNavigationController>(FindObjectsInactive.Include,
+            FindObjectsSortMode.None).Length == 1, "one navigation controller");
+        Check(Object.FindObjectsByType<ProductionPlayerLifecycle>(FindObjectsInactive.Include,
+            FindObjectsSortMode.None).Length == 1, "one production-player lifecycle");
+        Check(CountNamedRoots("WorldObjects") == 1, "one WorldObjects presentation root");
+
+        int playerOwners = 0;
+        foreach (WorldObjectSpriteOwner owner in loader.SpriteOwners)
+            if (owner != null && owner.WorldObject != null
+                && owner.WorldObject.Identity == ProductionPlayerLifecycle.DefaultPlayerIdentity)
+                playerOwners++;
+        Check(playerOwners == 1 && lifecycle.Presentation == navigation.Player,
+            "one production PC presentation and SpriteOwner");
+    }
+
+    private static int CountNamedRoots(string name)
+    {
+        int count = 0;
+        foreach (Transform transform in Object.FindObjectsByType<Transform>(FindObjectsInactive.Include,
+                     FindObjectsSortMode.None))
+            if (transform.name == name) count++;
+        return count;
     }
 
     private static Vector2Int FindReachable(SectorNavigationMap map, DeterministicTilePathfinder finder,

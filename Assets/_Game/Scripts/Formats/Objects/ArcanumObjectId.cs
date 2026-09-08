@@ -94,6 +94,16 @@ namespace Arcanum.Formats.Objects
                 mapNumber);
         }
 
+        /// <summary>Creates a stable GUID identity for a runtime object whose identity is not sector-authored.</summary>
+        public static ArcanumObjectId CreateGuid(Guid guid)
+        {
+            byte[] guidBytes = guid.ToByteArray();
+            var serialized = new byte[SerializedSize];
+            serialized[0] = (byte)ArcanumObjectIdType.Guid;
+            Array.Copy(guidBytes, 0, serialized, 8, guidBytes.Length);
+            return FromBytes(serialized);
+        }
+
         public bool Equals(ArcanumObjectId other)
             => RawType == other.RawType && (IsNull || string.Equals(Key, other.Key, StringComparison.Ordinal));
 

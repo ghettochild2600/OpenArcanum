@@ -140,7 +140,7 @@ internal static class ProductionHDValidation
             MesReader.Read(vfs.ReadAllBytes("art/portal/portal.mes")));
         foreach (WorldObjectSectorLoader loader in loaders)
         {
-            if (loader.RenderedObjectCount == 0) loader.LoadSector(loader.CurrentSector);
+            if (loader.RenderedObjectCount == 0) loader.Session.SelectSector(loader.CurrentSector);
             WorldObjectSpriteOwner[] owners = Object.FindObjectsByType<WorldObjectSpriteOwner>(
                 FindObjectsInactive.Exclude,
                 FindObjectsSortMode.None);
@@ -199,11 +199,17 @@ internal static class ProductionHDValidation
         OpenArcanumGraphicsSettings.SetRuntimeMode(GraphicsMode.Original);
         OpenArcanumHDAssetLoader.ClearCache();
 
-        bool loaded = loader.LoadSector(loader.CurrentSector);
+        bool loaded = loader.Session.SelectSector(loader.CurrentSector);
         yield return null;
         LifecycleSnapshot baseline = LifecycleSnapshot.Capture(loader);
+        int productionPlayers = 0;
+        foreach (WorldObjectSpriteOwner candidate in loader.SpriteOwners)
+            if (candidate.WorldObject != null
+                && candidate.WorldObject.Identity == ProductionPlayerLifecycle.DefaultPlayerIdentity)
+                productionPlayers++;
         bool baselineValid = loaded
-            && baseline.OwnerCount == 612
+            && baseline.OwnerCount == 613
+            && productionPlayers == 1
             && baseline.RootCount == 1
             && baseline.IssueCount == 0
             && baseline.DerivedPortalCount == 32;
@@ -213,12 +219,14 @@ internal static class ProductionHDValidation
         yield return null;
         LifecycleSnapshot rebuilt = LifecycleSnapshot.Capture(loader);
 
-        int removed = loader.UnloadSector();
+        int removed = loader.RenderedObjectCount;
+        string sector = loader.Session.SelectedSector;
+        loader.Session.ClearSelectedSector();
         int activeRootsImmediatelyAfterUnload = CountRoots(loader, activeOnly: true);
         yield return null;
         LifecycleSnapshot unloaded = LifecycleSnapshot.Capture(loader);
 
-        bool reloaded = loader.ReloadSector();
+        bool reloaded = loader.Session.SelectSector(sector);
         yield return null;
         LifecycleSnapshot reloadedSnapshot = LifecycleSnapshot.Capture(loader);
 

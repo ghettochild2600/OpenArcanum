@@ -131,6 +131,8 @@ GameObject:
   - component: {fileID: 304840129}
   - component: {fileID: 304840131}
   - component: {fileID: 304840132}
+  - component: {fileID: 304840133}
+  - component: {fileID: 304840134}
   m_Layer: 0
   m_Name: WorldObjectSectorLoader
   m_TagString: Untagged
@@ -159,6 +161,7 @@ MonoBehaviour:
   sectorPath: maps/arcanum1-024-fixed/101602821844.sec
   pixelsPerUnit: 100
   loadOnStart: 1
+  session: {fileID: 304840133}
 --- !u!114 &304840131
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -173,7 +176,6 @@ MonoBehaviour:
   m_EditorClassIdentifier:
   walkSpeedTilesPerSecond: 4
   playerObjectId:
-  allowDevelopmentNpcFallback: 1
 --- !u!114 &304840132
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -188,6 +190,36 @@ MonoBehaviour:
   m_EditorClassIdentifier:
   gameCamera: {fileID: 0}
   dragThresholdPixels: 6
+--- !u!114 &304840133
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 304840128}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 24b09018f2ab98d4893b356840f68347, type: 3}
+  m_Name:
+  m_EditorClassIdentifier:
+  terrainSectorOwner: {fileID: 512962630}
+  objectSectorOwner: {fileID: 304840129}
+  initialSector: maps/arcanum1-024-fixed/101602821844.sec
+  selectOnStart: 1
+--- !u!114 &304840134
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 304840128}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9a20343cc6dc4d0199e1e6af674a30f9, type: 3}
+  m_Name:
+  m_EditorClassIdentifier:
+  spawnTile: {x: 36, y: 58}
+  playerArtId: 672137216
 --- !u!4 &304840130
 Transform:
   m_ObjectHideFlags: 0

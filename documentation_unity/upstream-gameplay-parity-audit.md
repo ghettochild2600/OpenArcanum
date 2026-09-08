@@ -255,6 +255,11 @@ Deliver one authoritative selection boundary for terrain and object sectors, cro
 dynamic-PC identity, spawn/bind/unbind, and graphics rebuild survival. Effort: **medium**. Risk: ownership and coordinate
 seams. Validate repeated boundary crossings, interrupted routes, reloads, and zero duplicate/leaked owners.
 
+M1A completed on 2026-09-07: one normalized coordinator now drives terrain and object presentation; a session-owned
+deterministic production PC is created, rendered through source-valid critter ART, bound without NPC fallback, and
+survives visual rebuild plus unload/reload without duplicate owners. See
+[`m1-shared-sector-pc-lifecycle.md`](m1-shared-sector-pc-lifecycle.md). Cross-sector route continuation remains M1B.
+
 ### M2 — Interaction kernel and object commands
 
 Deliver target selection, use/examine intents, range approach/stop, transactional door/container actions, cancellation,
