@@ -1,5 +1,13 @@
 # OpenArcanum Project Status
 
+## Gameplay-Parity Audit
+
+A comprehensive research-only audit was completed on 2026-09-07. The current branch contains all 24 commits from the
+published upstream `master` and is 31 commits ahead; no published upstream gameplay branch or release is available to
+merge. The audit grades every major gameplay domain, separates parsers/demos from production call paths, identifies
+safe/adapt/avoid reuse boundaries, and defines a dependency-ordered M1–M13 roadmap. See
+[`documentation_unity/upstream-gameplay-parity-audit.md`](documentation_unity/upstream-gameplay-parity-audit.md).
+
 ## Current Objective
 
 Production sector objects now have a stable load/rebuild/unload/reload contract.
