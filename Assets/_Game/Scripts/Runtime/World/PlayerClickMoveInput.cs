@@ -13,6 +13,9 @@ namespace Arcanum.Runtime.World
         private WorldObjectSectorLoader _loader;
         private Vector3 _pressPosition;
 
+        public Vector2Int? LastClickedTile { get; private set; }
+        public bool LastClickAccepted { get; private set; }
+
         private void Awake()
         {
             _navigation = GetComponent<PlayerNavigationController>();
@@ -32,8 +35,8 @@ namespace Arcanum.Runtime.World
             Vector3 world = cam.ScreenToWorldPoint(screen);
             Vector3 local = _loader.transform.InverseTransformPoint(world);
             Vector2Int tile = IsoProjection.WorldToTile(local, _loader.PixelsPerUnit);
-            if (!_loader.NavigationMap.IsWalkable(tile)) return;
-            _navigation.TrySetDestination(tile);
+            LastClickedTile = tile;
+            LastClickAccepted = _loader.NavigationMap.IsWalkable(tile) && _navigation.TrySetDestination(tile);
         }
     }
 }

@@ -43,9 +43,10 @@ internal static class PlayerNavigationValidation
         if (!Application.isPlaying) throw new InvalidOperationException("Enter Play mode first.");
         var loader = Object.FindFirstObjectByType<WorldObjectSectorLoader>();
         var navigation = Object.FindFirstObjectByType<PlayerNavigationController>();
-        if (loader == null || navigation == null || !loader.IsLoaded)
+        var clickInput = Object.FindFirstObjectByType<PlayerClickMoveInput>();
+        if (loader == null || navigation == null || clickInput == null || !loader.IsLoaded)
             throw new InvalidOperationException("Load the TestTerrain real sector first.");
-        loader.StartCoroutine(Validate(loader, navigation));
+        loader.StartCoroutine(Validate(loader, navigation, clickInput));
     }
 
     private static void Check(bool condition, string label)
@@ -53,8 +54,11 @@ internal static class PlayerNavigationValidation
         if (!condition) throw new InvalidOperationException("Player navigation validation FAIL: " + label);
     }
 
-    private static IEnumerator Validate(WorldObjectSectorLoader loader, PlayerNavigationController navigation)
+    private static IEnumerator Validate(WorldObjectSectorLoader loader, PlayerNavigationController navigation,
+        PlayerClickMoveInput clickInput)
     {
+        Check(clickInput.LastClickedTile.HasValue && clickInput.LastClickAccepted,
+            "physical Game-view click accepted as a route");
         navigation.EnableDevelopmentNpcFallback();
         Check(navigation.TryBindConfiguredPlayer(), "bind stable real NPC fallback");
         WorldObject player = navigation.Player;
