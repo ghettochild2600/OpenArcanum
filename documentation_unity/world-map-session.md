@@ -44,12 +44,18 @@ default real sector this changed the audit from 93 GUID states plus 594 identity
 - portal open/closed state;
 - lock and visibility/off state;
 - source sector, type, prototype and authored location for collision validation;
-- parent ObjectID for inventory/reference continuity.
+- parent ObjectID for inventory/reference continuity;
+- fractional sector-local tile position for controlled-critter movement.
 
 Loading creates or reuses each record and applies it to the new `WorldObject`. Unloading cancels portal work, restores
 the last stable portal state, captures supported runtime values, unbinds the object, then destroys presentation
 ownership. Reloading reuses the same state objects. State is intentionally in-memory only; save-game serialization and
 off-sector time-event continuation are later milestones.
+
+Controlled-critter movement samples are written through the coordinator before presentation updates. If a sector is
+unloaded mid-step, the fractional position is retained while WALK is normalized to STAND with the same facing, so a
+reload never resumes a stale visual action or loses the gameplay position. Navigation details are documented in
+`player-navigation.md`.
 
 ## Portal transitions
 
@@ -105,7 +111,7 @@ checks without mutating gameplay state. The final Unity Console showed zero warn
 
 - State is session-memory only; no save-game serialization exists yet.
 - Only one object sector is presented at a time, while state can accumulate from visited sectors.
-- Dynamic creation/destruction, movement persistence, inventory attachment, scripts, collision, sounds, damage and full
+- Dynamic creation/destruction, inventory attachment, scripts, collision, sounds, damage and full
   portal interaction policy remain outside this slice.
 - The validation sector has one known unsupported ART-type record; its exact classification remains stable on reload.
 - Terrain replacement, bulk extraction/upscaling and original game-data modification were not started.

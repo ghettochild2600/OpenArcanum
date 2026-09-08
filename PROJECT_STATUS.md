@@ -743,13 +743,75 @@ Completed on 2026-09-07 with Unity 6000.0.71f1 on `feature/world-session-state`.
 ### Remaining limitations
 
 - State remains in-memory; save-game serialization is not implemented.
-- The production owner presents one object sector at a time. Dynamic creation/destruction, movement persistence,
+- The production owner presents one object sector at a time. Dynamic creation/destruction,
   inventory attachment, scripts, collision, sounds, portal damage and full gameplay interaction policy are later work.
 - The validation sector has one known unsupported ART-type record. Its exact classification remained stable on reload.
 - Terrain, bulk extraction/upscaling and original Arcanum data were not modified.
 
+## Player Navigation Milestone
+
+Completed on 2026-09-07 with Unity 6000.0.71f1 on `feature/player-navigation`.
+
+### Architecture and behavior
+
+- TestTerrain now routes undragged ground clicks through the existing camera/isometric projection into a deterministic,
+  eight-direction source-grid pathfinder. Unity NavMesh and colliders are not used.
+- `SectorNavigationMap` combines the authored sector block mask, tile `/b` flags, non-walkable facades, ordinary object
+  blockers, directional wall pieces and live portal state. `OF_NO_BLOCK` is preserved, and diagonal steps check both
+  source-adjacent wall edges rather than cutting corners.
+- A real persistent PC is preferred. The validation scene alone enables a stable real-NPC fallback because original PCs
+  are created dynamically rather than serialized in the sector. Shipping behavior does not silently pick an NPC.
+- Valid new destinations replace active routes; blocked and unreachable destinations fail without partial movement.
+  Movement uses fractional tile coordinates, source direction/facing mappings, WALK action 1 and STAND action 0.
+- The session coordinator owns movement position/ART state. Graphics rebuilds preserve gameplay position, while an
+  unload during movement retains the fractional position and normalizes the reloaded action to STAND at the same facing.
+
+### Validation
+
+- Focused PlayerNavigation EditMode category: 21 passed, 0 failed, 0 skipped.
+- Complete EditMode suite: 221 passed, 0 failed, 0 skipped.
+- Computer Use entered Play mode on real `maps/arcanum1-024-fixed/101602821844.sec`, issued a physical Game-view ground
+  click and verified that `PlayerClickMoveInput` accepted it as a route.
+- Real-sector validation used persistent NPC `G_1CA8B264_6113_F24C_BFDD_ED869173A4A7` and passed source-edge traversal,
+  route replacement, blocked-target rejection, graphics rebuild during movement, fractional unload/reload restoration,
+  post-reload routing and WALK -> STAND arrival. It completed at tile `(36,58)`.
+- The final Unity Console showed zero warnings and zero errors.
+
+### Files changed
+
+- `Assets/_Game/Scenes/TestTerrain.unity`
+- `Assets/_Game/Scripts/Runtime/World/DeterministicTilePathfinder.cs`
+- `Assets/_Game/Scripts/Runtime/World/PersistentObjectState.cs`
+- `Assets/_Game/Scripts/Runtime/World/PlayerClickMoveInput.cs`
+- `Assets/_Game/Scripts/Runtime/World/PlayerNavigationController.cs`
+- `Assets/_Game/Scripts/Runtime/World/SectorNavigationMap.cs`
+- `Assets/_Game/Scripts/Runtime/World/TileRouteFollower.cs`
+- `Assets/_Game/Scripts/Runtime/World/WorldMapSessionCoordinator.cs`
+- `Assets/_Game/Scripts/Runtime/World/WorldObject.cs`
+- `Assets/_Game/Scripts/Runtime/World/WorldObjectSectorLoader.cs`
+- `Assets/_Game/Tests/EditMode/Arcanum.Formats.Tests.asmdef`
+- `Assets/_Game/Tests/EditMode/PlayerNavigationTests.cs`
+- `Assets/_Game/Tests/EditMode/WorldSessionStateTests.cs`
+- `Assets/_OpenArcanum/Editor/PlayerNavigationValidation.cs`
+- `documentation_unity/player-navigation.md`
+- `documentation_unity/world-map-session.md`
+- `PROJECT_STATUS.md`
+
+### Commits
+
+- `acf94bc` Implement source-faithful player navigation
+- `29ee5e3` Validate physical click navigation
+
+### Remaining limitations
+
+- Navigation remains sector-local; the shared terrain/object sector transition owner is not implemented.
+- Production PC creation/binding from character selection or save data is not implemented.
+- Dynamic blockers, critter avoidance, interaction range, combat movement, scripts and save serialization are later work.
+- Original game data, terrain replacement and bulk asset conversion were not modified.
+
 ## Next Recommended Milestone
 
-Connect the completed coordinator to the shared terrain/object map-selection boundary, then add a versioned save/load
-representation for the validated state schema. Preserve ObjectID collision checks and portal rollback rules, and validate
-multi-sector traversal before expanding into dynamic objects or script-host integration.
+Connect navigation and the completed coordinator to a shared terrain/object sector-selection boundary, including
+cross-sector destination continuation. Then bind the production PC lifecycle and add a versioned save/load
+representation for the validated state schema. Preserve ObjectID collision checks, portal rollback and source-grid
+edge rules while validating multi-sector traversal before dynamic blockers, combat movement or script-host integration.
