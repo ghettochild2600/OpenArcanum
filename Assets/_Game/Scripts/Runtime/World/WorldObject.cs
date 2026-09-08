@@ -23,6 +23,10 @@ namespace Arcanum.Runtime.World
         public int Worth;                // OBJ_F_ITEM_WORTH — base coin value (items only)
         public WeaponFields WeaponData;  // parsed OBJ_F_WEAPON_* (weapon items only)
         public bool Blocks;              // contributes to the walkability grid
+        public int SourceFlags;           // effective OBJ_F_FLAGS used by source-semantic traversal
+        public Vector2 TilePosition;      // fractional sector-local gameplay position
+        public bool IsMoving;
+        public float PixelsPerUnit { get; internal set; } = 100f;
 
         // Interaction state (extend per type as features land).
         public bool IsOpen;              // portals/doors
@@ -146,6 +150,16 @@ namespace Arcanum.Runtime.World
             ArtId = artId;
             IsOpen = open;
             SetVisualFrame?.Invoke(PortalTransitionScheduler.Frame(artId));
+        }
+
+        internal void ApplyMovementState(Vector2 tilePosition, uint artId, bool moving)
+        {
+            TilePosition = tilePosition;
+            Tile = new Vector2Int(Mathf.RoundToInt(tilePosition.x), Mathf.RoundToInt(tilePosition.y));
+            IsMoving = moving;
+            transform.localPosition = IsoProjection.TileToWorld(tilePosition.x, tilePosition.y, PixelsPerUnit);
+            if (View != null) View.sortingOrder = (Tile.x + Tile.y) * 2 + 1;
+            if (ArtId != artId) SetArt(artId);
         }
     }
 }

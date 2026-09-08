@@ -5,6 +5,7 @@ using Arcanum.Formats.Art;
 using Arcanum.Formats.Database;
 using Arcanum.Formats.Objects;
 using Arcanum.Formats.Text;
+using Arcanum.Formats.Tiles;
 using Arcanum.Formats.World;
 using UnityEngine;
 
@@ -104,6 +105,8 @@ namespace Arcanum.Runtime.World
         public int LastInventoryCount { get; private set; }
         public int LastSuppressedCount { get; private set; }
         public int LastDerivedPortalCount { get; private set; }
+        public SectorNavigationMap NavigationMap { get; private set; }
+        public float PixelsPerUnit => pixelsPerUnit;
         public bool IsLoaded => _objectRoot != null && _objectRoot.gameObject.activeSelf;
 
         private void Start()
@@ -123,11 +126,19 @@ namespace Arcanum.Runtime.World
 
             List<ObjectInstance> instances;
             int sectorRecordCount;
+            byte[] sectorBytes;
+            SectorNavigationMap navigationMap;
             try
             {
-                instances = SectorReader.ReadObjects(_vfs.ReadAllBytes(sectorPath));
+                sectorBytes = _vfs.ReadAllBytes(sectorPath);
+                instances = SectorReader.ReadObjects(sectorBytes);
                 sectorRecordCount = instances.Count;
                 instances.AddRange(ReadSectorMobiles(sectorPath));
+                var tileNames = TileNameTable.FromMes(MesReader.Read(_vfs.ReadAllBytes("art/tile/tilename.mes")));
+                navigationMap = new SectorNavigationMap(
+                    SectorReader.ReadTerrain(sectorBytes),
+                    SectorReader.ReadBlockMask(sectorBytes),
+                    tileNames);
             }
             catch (Exception ex)
             {
@@ -152,6 +163,7 @@ namespace Arcanum.Runtime.World
                 return false;
             }
             ClearObjects();
+            NavigationMap = navigationMap;
             Session.BeginSector(sectorPath);
             _registeredSector = sectorPath;
             LastNonPersistentIdentityCount = 0;
@@ -289,6 +301,10 @@ namespace Arcanum.Runtime.World
                         "The ART source resolved and existed, but no SpriteRenderer presentation was built.");
                     continue;
                 }
+
+                worldObject.SourceFlags = flags;
+                worldObject.Blocks = (flags & 0x00000400) == 0;
+                NavigationMap.Register(worldObject, flags);
 
                 if (!byType.ContainsKey(instance.Type)) byType[instance.Type] = 0;
                 byType[instance.Type]++;
@@ -465,6 +481,8 @@ namespace Arcanum.Runtime.World
             worldObject.Type = instance.Type;
             worldObject.Tile = new Vector2Int(instance.TileX, instance.TileY);
             worldObject.ArtId = artId;
+            worldObject.TilePosition = new Vector2(instance.TileX, instance.TileY);
+            worldObject.PixelsPerUnit = pixelsPerUnit;
             worldObject.PrototypeNumber = instance.PrototypeNumber;
             int stateFlags = instance.Type == ObjectType.Portal
                 ? instance.PortalFlags ?? proto?.PortalFlags ?? 0
@@ -640,6 +658,7 @@ namespace Arcanum.Runtime.World
             int removed = _spriteOwners.Count;
             _spriteOwners.Clear();
             _objectRoot = null;
+            NavigationMap = null;
 
             // Find owned roots as well as using the cached reference. This makes the owner recover
             // cleanly after an Editor domain reload, where non-serialized fields are reset but the

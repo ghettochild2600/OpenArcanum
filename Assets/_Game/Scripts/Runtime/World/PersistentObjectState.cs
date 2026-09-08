@@ -1,4 +1,6 @@
+using Arcanum.Formats.Art;
 using Arcanum.Formats.Objects;
+using UnityEngine;
 
 namespace Arcanum.Runtime.World
 {
@@ -16,6 +18,7 @@ namespace Arcanum.Runtime.World
         public bool Off { get; internal set; }
         public bool Locked { get; internal set; }
         public bool PortalOpen { get; internal set; }
+        public Vector2 TilePosition { get; internal set; }
 
         public PersistentObjectState(
             ObjectInstance source,
@@ -34,6 +37,9 @@ namespace Arcanum.Runtime.World
             ArtId = artId;
             Off = off;
             Locked = locked;
+            TilePosition = source.Location.HasValue
+                ? new Vector2(source.TileX, source.TileY)
+                : Vector2.zero;
             // portal.c portal_is_open: CURRENT_AID frame != 0, including prototype fallback.
             PortalOpen = Type == ObjectType.Portal && ((artId >> 14) & 31) != 0;
         }
@@ -52,14 +58,29 @@ namespace Arcanum.Runtime.World
             runtime.Off = Off;
             runtime.Locked = Locked;
             runtime.IsOpen = PortalOpen;
+            runtime.ApplyMovementState(TilePosition, ArtId, false);
         }
 
         internal void Capture(WorldObject runtime)
         {
             // Portal ArtId and logical state are owned by PortalTransitionScheduler, never by a sprite.
-            if (Type != ObjectType.Portal) ArtId = runtime.ArtId;
+            if (Type != ObjectType.Portal)
+            {
+                ArtId = runtime.ArtId;
+                if (runtime.IsMoving && IsCritterArt(ArtId))
+                    ArtId = CritterArtResolver.WithAnimRotation(ArtId, 0, CritterArtResolver.RotationOf(ArtId));
+                TilePosition = runtime.TilePosition;
+            }
             Off = runtime.Off;
             Locked = runtime.Locked;
+        }
+
+        private static bool IsCritterArt(uint artId)
+        {
+            int type = Arcanum.Formats.Art.ArtId.Type(artId);
+            return type == Arcanum.Formats.Art.ArtId.TypeCritter
+                   || type == Arcanum.Formats.Art.ArtId.TypeMonster
+                   || type == Arcanum.Formats.Art.ArtId.TypeUniqueNpc;
         }
     }
 }

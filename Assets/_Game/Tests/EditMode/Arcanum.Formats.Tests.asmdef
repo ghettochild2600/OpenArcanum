@@ -4,6 +4,7 @@
     "references": [
         "Arcanum.Formats",
         "Arcanum.Runtime",
+        "Arcanum.World",
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner",
         "Arcanum.Script"

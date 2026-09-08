@@ -129,6 +129,8 @@ GameObject:
   m_Component:
   - component: {fileID: 304840130}
   - component: {fileID: 304840129}
+  - component: {fileID: 304840131}
+  - component: {fileID: 304840132}
   m_Layer: 0
   m_Name: WorldObjectSectorLoader
   m_TagString: Untagged
@@ -157,6 +159,35 @@ MonoBehaviour:
   sectorPath: maps/arcanum1-024-fixed/101602821844.sec
   pixelsPerUnit: 100
   loadOnStart: 1
+--- !u!114 &304840131
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 304840128}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 36015a6f39236fc4c90f2cb85d0344a4, type: 3}
+  m_Name:
+  m_EditorClassIdentifier:
+  walkSpeedTilesPerSecond: 4
+  playerObjectId:
+  allowDevelopmentNpcFallback: 1
+--- !u!114 &304840132
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 304840128}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e388786af58d67242bc63267697278b4, type: 3}
+  m_Name:
+  m_EditorClassIdentifier:
+  gameCamera: {fileID: 0}
+  dragThresholdPixels: 6
 --- !u!4 &304840130
 Transform:
   m_ObjectHideFlags: 0

@@ -105,6 +105,21 @@ namespace Arcanum.Runtime.World
             state.Restore(runtime);
         }
 
+        /// <summary>Applies a critter movement sample through session-owned state, then updates its runtime view.</summary>
+        public bool SetMovementState(ArcanumObjectId identity, Vector2 tilePosition, uint artId, bool moving)
+        {
+            if (!_states.TryGetValue(identity, out PersistentObjectState state)) return false;
+            state.TilePosition = tilePosition;
+            state.ArtId = artId;
+            foreach (Dictionary<ArcanumObjectId, WorldObject> sector in _loaded.Values)
+                if (sector.TryGetValue(identity, out WorldObject runtime) && runtime != null)
+                {
+                    runtime.ApplyMovementState(tilePosition, artId, moving);
+                    return true;
+                }
+            return false;
+        }
+
         public void UnloadSector(string sector)
         {
             if (sector == null || !_loaded.TryGetValue(sector, out var bindings)) return;

@@ -127,6 +127,23 @@ namespace Arcanum.Formats.Tests
             Assert.That(_session.States.Count, Is.EqualTo(1));
         }
 
+        [Test, Category("PlayerNavigation")] public void MovementPositionPersistsAndInterruptedWalkReturnsIdle()
+        {
+            uint stand = ((uint)Arcanum.Formats.Art.ArtId.TypeCritter << 28) | (4u << 11);
+            var source = Source(type: ObjectType.Npc, artId: stand);
+            var state = State(source); var runtime = Runtime(state);
+            uint walk = Arcanum.Formats.Art.CritterArtResolver.WithAnimRotation(stand, 1, 6);
+            Assert.That(_session.SetMovementState(state.Identity, new Vector2(8.5f, 9.25f), walk, true), Is.True);
+            _session.UnloadSector(Sector);
+            Object.DestroyImmediate(runtime.gameObject);
+            _session.BeginSector(Sector);
+            var restored = Runtime(State(source));
+            Assert.That(restored.TilePosition, Is.EqualTo(new Vector2(8.5f, 9.25f)));
+            Assert.That((restored.ArtId >> 6) & 0x1F, Is.Zero);
+            Assert.That(Arcanum.Formats.Art.CritterArtResolver.RotationOf(restored.ArtId), Is.EqualTo(6));
+            Assert.That(restored.IsMoving, Is.False);
+        }
+
         [TestCase(0, 4, 5, 6)] [TestCase(1, 4, 5, 6)] [TestCase(2, 1, 2, 3)]
         [TestCase(3, 1, 2, 3)] [TestCase(4, 1, 2, 3)] [TestCase(5, 1, 2, 3)]
         [TestCase(6, 4, 5, 6)] [TestCase(7, 4, 5, 6)]
