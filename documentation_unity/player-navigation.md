@@ -10,9 +10,8 @@ Player navigation uses the decoded Arcanum sector grid; it does not use Unity Na
 `WorldMapSessionCoordinator` -> `WorldObject` -> existing sprite presentation
 
 `WorldObjectSectorLoader` builds one `SectorNavigationMap` from the same sector bytes and object records used for the
-visible map. The controller selects a real persistent PC runtime object when one exists. Because the current test sector
-does not author the dynamically-created original player, TestTerrain alone enables a narrowly-scoped development
-fallback to the stable first real NPC. Shipping behavior does not silently select an NPC.
+visible map. `ProductionPlayerLifecycle` projects the deterministic session-owned PC and explicitly binds navigation
+to it. No production or validation path silently selects a sector-authored NPC.
 
 Click input converts Game-view screen coordinates through the existing camera and `IsoProjection.WorldToTile`. A mouse
 gesture exceeding six pixels remains a camera drag and is not movement intent. Invalid or blocked destinations are
@@ -34,7 +33,7 @@ controlled critter is removed from static occupancy without ignoring another occ
 
 ## Routing and movement
 
-`DeterministicTilePathfinder` performs eight-direction A* over a single 64x64 sector. Every source-grid step has equal
+`DeterministicTilePathfinder` performs eight-direction A* over each loaded 64x64 sector. Every source-grid step has equal
 base cost, a one-point direction-change tie breaker, fixed neighbor order and stable index tie resolution. Identical
 inputs therefore return identical routes. Failed searches return no partial route.
 
@@ -43,28 +42,30 @@ directions consume one tile step, preserving the grid's movement semantics. Faci
 direction mapping. While moving, critter ART uses action 1 (WALK); arrival, cancellation and reload use action 0
 (STAND). The runtime frame bits remain owned by the existing sprite animator.
 
-Position and ART state pass through `WorldMapSessionCoordinator`, so Original/Enhanced visual rebuilds cannot change
-the route position. Unloading mid-route retains the exact fractional position and restores STAND at the same facing;
-the player can bind and route again after reload.
+Position, ART state, and map-global destination intent pass through `WorldMapSessionCoordinator`. `SectorCoordinate`
+derives the current 64×64 sector and local presentation position from the authoritative global position.
+`CrossSectorBoundaryPlanner` chooses deterministic cardinal exits and the coordinator switches terrain and objects
+together. The same PC is re-projected at the wrapped entry, held there for one Update so a load-inflated delta cannot
+skip the pose, and then automatically continues. Target-side blocked or unreachable final-sector entries are rejected
+and the next legal source exit is tried deterministically. Original/Enhanced rebuilds cannot change navigation state.
 
 ## Validation
 
-The focused Unity EditMode category passed 21/21 tests. Coverage includes tile/world round trips, explicit blocks,
+The focused Unity `PlayerNavigation` EditMode category passed 21/21 tests; `M1BNavigation` passed 11/11. Coverage includes tile/world round trips, explicit blocks,
 directional wall edges, obstacle detours, unreachable destinations, deterministic output, all eight facing mappings,
 smooth completion, route replacement, WALK/STAND ART bits and interrupted-movement persistence. The complete EditMode
-suite passed 221/221 with zero failures or skips.
+suite passed 239/239 with zero failures or skips.
 
-Computer Use validation ran TestTerrain with real `maps/arcanum1-024-fixed/101602821844.sec` data. A physical Game-view
-ground click was accepted by `PlayerClickMoveInput`. The repeatable real-sector validator then verified a persistent
-NPC fallback (`G_1CA8B264_6113_F24C_BFDD_ED869173A4A7`), valid source edges, active-route replacement, blocked-target
-rejection, continued movement across a graphics rebuild, fractional position plus STAND restoration across
-unload/reload, and successful movement after reload. It completed at tile `(36,58)` and logged PASS. The final Console
-contained informational asset/load messages only, with no warnings or errors.
+Computer Use validation ran TestTerrain on real sectors `101602821844.sec` and `101602821845.sec`. The production PC
+completed A→B→A→B→A with strict exact-entry observations, preserved global intent, correct WALK/facing and STAND,
+graphics rebuilds during traversal, missing-edge rejection, stable persistent object/portal values, and no duplicate
+runtime or presentation owners. The final Console contained informational asset/load messages only, with no warnings
+or errors. See [`m1b-cross-sector-navigation.md`](m1b-cross-sector-navigation.md).
 
 ## Remaining limitations
 
-- Navigation is currently sector-local; crossing sector/map boundaries is not yet connected to a shared map owner.
-- The production player lifecycle still needs to create/bind the actual PC from character selection or save data.
+- Contiguous source-sector traversal is implemented; map-to-map jump/teleport flow and a world-map destination UI are not.
+- Character-creation/save-data initialization of the production PC remains future work; the runtime lifecycle itself is authoritative.
 - Dynamic blocker movement, critter-to-critter avoidance, interaction range, combat movement and script events are not
   implemented.
 - Save-game serialization remains outside the in-memory session state.

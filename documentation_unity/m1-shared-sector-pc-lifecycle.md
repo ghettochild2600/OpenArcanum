@@ -102,9 +102,11 @@ authorities.
   one coordinator, loader, lifecycle, navigation controller, `WorldObjects` root, production PC presentation, and PC
   `WorldObjectSpriteOwner`; the final Unity Console contained 0 warnings and 0 errors.
 
-## Remaining M1 work
+## M1B extension
 
-M1A is complete. The next bounded slice is cross-sector continuation: preserve a destination intent across an
-authoritative sector boundary, select/present the adjacent sector through the coordinator, place the same session-owned
-PC at the correct entry tile, and resume source-grid routing. Save serialization and all interaction/combat/inventory/
+M1B completed the remaining M1 work on 2026-09-08. Map-global position and destination intent now survive
+coordinator-owned sector changes; deterministic boundary routing re-projects this same PC identity at an exact wrapped
+entry and resumes source-grid navigation after a one-Update entry presentation hold. See
+[`m1b-cross-sector-navigation.md`](m1b-cross-sector-navigation.md) for the final call graph, boundary fallback contract,
+real A→B→A→B→A validation, and remaining limitations. Save serialization and all interaction/combat/inventory/
 dialogue/progression work remain out of scope.

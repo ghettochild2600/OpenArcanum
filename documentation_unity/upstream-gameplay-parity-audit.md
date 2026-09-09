@@ -109,14 +109,14 @@ Evidence abbreviations used in the table:
 |---|:---:|---|---|---|
 | Foundations: DAT/VFS and MES reading | A | `Formats/Database`, `Formats/Text`; used by real-sector loaders and validated against clean data | Same core is upstream | Reuse unchanged; harden malformed-data diagnostics only as needed. |
 | Foundations: ART/BMP decoding and resolvers | A | `Formats/Art`, `World/ArtTextureFactory`; production object/terrain presentation | Same base, with local identity/HD/lifecycle hardening | Keep source semantics authoritative. |
-| Foundations: sector/map/area/jump/world-map readers | C | `Formats/World` has readers; sector loading is live, but shared terrain/object transitions and world travel are not | Same parser set upstream | Reuse readers; build a typed map/session layer around them. |
+| Foundations: sector/map/area/jump/world-map readers | B | `Formats/World` readers feed coordinated contiguous-sector traversal; map-to-map/world-map travel is not connected | Same parser set upstream | Reuse readers; extend the typed session boundary for jump/world-map travel later. |
 | Foundations: object/prototype field decoding | B | `Formats/Objects` parses extensive critter/item/script/inventory fields; production loader copies many into `WorldObject` | Same broad parser core upstream; local identity fixes add value | Reuse, but translate raw arrays/flags into typed gameplay state. |
 | Foundations: stable object identity | A | `ArcanumObjectId`, `PersistentObjectState`, `WorldMapSessionCoordinator`; real-sector validation | Local-only | Make this the authoritative key for all future state and saves. |
 | Foundations: production sector object lifecycle | A | `WorldObjectSectorLoader` + `WorldObjectSpriteOwner`; validated load/rebuild/unload/reload | Local-only; upstream relied on demos | Extend narrowly; do not make sprite ownership the gameplay authority. |
 | Foundations: portal state/animation | A | Session-owned `PortalTransitionScheduler`; rollback and interrupted-transition tests | Local-only | Reuse as the model for transactional object actions. |
-| Foundations: sector-local click navigation | A | Deterministic source-grid A*, input/controller/follower; physical Game-view validation | Public upstream has no published A* implementation despite README claim | Reuse; add cross-sector ownership and dynamic reservations separately. |
-| Foundations: cross-sector traversal | F | Explicitly listed as remaining in `player-navigation.md`; no shared terrain/object sector selector | Only data readers upstream | New implementation required. |
-| Foundations: production PC creation/binding | F | Navigation validation uses a real-NPC fallback; no character/save selection lifecycle | Upstream has only race/art demo pieces | New authoritative PC aggregate required. |
+| Foundations: source-grid player navigation | A | Deterministic per-sector A*, global destination continuation, exact boundary entry, physical Game-view validation | Public upstream has no published A* implementation despite README claim | Reuse; add dynamic reservations separately. |
+| Foundations: cross-sector traversal | A | Coordinator drives both owners; global PC intent continues across deterministic cardinal boundaries with safe fallback | Only data readers upstream | Reuse for contiguous maps; add jump/world-map travel separately. |
+| Foundations: production PC creation/binding | A | Deterministic session-owned PC GUID, source-valid critter ART, explicit lifecycle, no NPC fallback | Upstream has only race/art demo pieces | Reuse; character-creation/save initialization is later work. |
 | Interaction: targeting, use/examine dispatch, range | F | Script numbers are stored on `WorldObject`, but no production dispatcher invokes them | No published upstream implementation | Build after PC binding; route through object identity and navigation. |
 | Interaction: doors | C | Portal open/close and lock state exist; no key checks, use scripts, damage, lockpick, or AI policy | README claim is not present as published production code | Extend session action model; integrate script host and skills. |
 | Interaction: containers/loot | D | Object/inventory fields and container events exist; no open/loot transaction or UI call path | No published controller | Build with inventory transactions and persistent containment. |
@@ -255,10 +255,13 @@ Deliver one authoritative selection boundary for terrain and object sectors, cro
 dynamic-PC identity, spawn/bind/unbind, and graphics rebuild survival. Effort: **medium**. Risk: ownership and coordinate
 seams. Validate repeated boundary crossings, interrupted routes, reloads, and zero duplicate/leaked owners.
 
-M1A completed on 2026-09-07: one normalized coordinator now drives terrain and object presentation; a session-owned
-deterministic production PC is created, rendered through source-valid critter ART, bound without NPC fallback, and
-survives visual rebuild plus unload/reload without duplicate owners. See
-[`m1-shared-sector-pc-lifecycle.md`](m1-shared-sector-pc-lifecycle.md). Cross-sector route continuation remains M1B.
+M1 completed across M1A (2026-09-07) and M1B (2026-09-08): one normalized coordinator drives terrain and object
+presentation; a session-owned deterministic production PC is created through source-valid critter ART without NPC
+fallback; map-global destination intent continues through deterministic cardinal boundaries; exact wrapped entries are
+presented before automatic continuation; and repeated real A→B→A traversal preserves identity, persistent object/portal
+state, graphics rebuild invariants, and unique ownership. See
+[`m1-shared-sector-pc-lifecycle.md`](m1-shared-sector-pc-lifecycle.md) and
+[`m1b-cross-sector-navigation.md`](m1b-cross-sector-navigation.md).
 
 ### M2 — Interaction kernel and object commands
 

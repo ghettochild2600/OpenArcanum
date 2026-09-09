@@ -10,14 +10,14 @@ safe/adapt/avoid reuse boundaries, and defines a dependency-ordered M1–M13 roa
 
 ## Current Objective
 
-M1A is complete. `WorldMapSessionCoordinator` is the authoritative normalized sector selector and drives both terrain
-and world-object presentation. A session-owned production PC now has deterministic gameplay identity, source-valid
-critter presentation identity, explicit spawn/bind/unbind behavior, no NPC fallback, and state that survives graphics
-rebuild plus sector unload/reload without duplicate scene owners.
+M1 is complete. `WorldMapSessionCoordinator` is the authoritative normalized sector selector for terrain, world
+objects, and contiguous cross-sector PC traversal. The deterministic session-owned production PC carries canonical
+map-global position and destination intent, is re-projected at exact wrapped boundary entries, and automatically resumes
+source-grid routing without NPC fallback or duplicate presentation ownership.
 
-The next objective is M1B: cross-sector destination continuation through the same coordinator while preserving the
-source-grid navigation rules and the same session-owned PC. Do not begin interaction, inventory, combat, dialogue,
-progression, save serialization, or dynamic blocker work in that slice.
+The next roadmap objective is M2: a bounded interaction kernel and transactional object commands. It must keep rules in
+authoritative session/gameplay services rather than presentation components. Inventory, combat, dialogue, character
+progression, save serialization, and unrelated dynamic blocker work remain outside that first M2 slice.
 
 ## Current Branch
 
@@ -833,13 +833,36 @@ Completed on 2026-09-07 with Unity 6000.0.71f1 on `feature/player-navigation`.
   controller, object root, PC presentation, and PC sprite owner. Final Unity Console: 0 warnings, 0 errors.
 - Final ownership/call graph and lifecycle contract:
   [`documentation_unity/m1-shared-sector-pc-lifecycle.md`](documentation_unity/m1-shared-sector-pc-lifecycle.md).
-- Remaining M1 work is M1B cross-sector destination continuation only. Save serialization, dynamic blockers and all
+- M1B subsequently completed cross-sector destination continuation. Save serialization, dynamic blockers and all
   interaction/inventory/combat/dialogue/progression work remain later milestones.
+
+## M1B Cross-Sector Traversal and Route Continuation
+
+Completed on 2026-09-08 with Unity 6000.0.71f1 on `feature/player-navigation`.
+
+- Canonical PC location and destination intent are map-global tiles. `SectorCoordinate` derives 64×64 sector identity,
+  packed source filename, and local presentation position.
+- `CrossSectorBoundaryPlanner` deterministically selects reachable cardinal source exits. The coordinator captures and
+  unloads the old sector, relocates the same PC state, selects both target owners, and lets the lifecycle re-project the
+  same GUID through the ordinary critter renderer.
+- Target-side blocked or final-destination-unreachable entries are rolled back through the coordinator and excluded for
+  that active intent so the next legal crossing is tried. Exhaustion stops safely in the last valid sector.
+- One post-transition Update presents the exact wrapped entry before movement resumes, preventing a load-inflated delta
+  from skipping that lifecycle pose. The global intent and accepted local route remain active.
+- Real validation completed `101602821844.sec` → `101602821845.sec` → A → B → A with correct WALK/facing, exact entries,
+  automatic continuation, STAND arrival, a missing-west-edge rejection, Original/Enhanced/reverted rebuilds, stable
+  PC/object/portal state, and exactly one coordinator, terrain owner, loader/root, lifecycle, navigation controller, PC
+  runtime/presentation, and PC sprite owner.
+- Validation: M1B 11/11, M1A 7/7, PlayerNavigation 21/21, WorldSessionStateTests 27/27,
+  PortalArtResolverTests 2/2, and complete EditMode 239/239. Final Unity Console: 0 warnings, 0 errors.
+- Architecture and detailed validation: [`documentation_unity/m1b-cross-sector-navigation.md`](documentation_unity/m1b-cross-sector-navigation.md).
+- Remaining limitations are map-to-map/world-map travel, scene-reload continuation, dynamic critter reservations, and
+  save serialization. Interaction, inventory, combat, dialogue, progression, and M2 work were not started.
 
 ## Next Recommended Milestone
 
-Implement M1B cross-sector destination continuation through the completed coordinator. Carry the destination intent
-across a boundary, select both presentations together, re-project the same session-owned PC at the correct entry tile,
-and resume deterministic source-grid navigation. Preserve ObjectID collision checks, portal rollback, ART identity,
-and edge traversal rules. Do not add save serialization, dynamic blockers, interactions, inventory, combat, dialogue,
-or progression in M1B.
+Implement the first bounded M2 interaction-kernel slice: represent a player object-command intent, deterministic target
+selection, approach-to-range/stop behavior, cancellation, and explicit success/failure results. Route a real door use
+through `WorldMapSessionCoordinator` and the existing portal scheduler without placing rules in `WorldObject`, sprite
+owners, loaders, or demo components. Preserve M1 global navigation/identity/lifecycle contracts. Do not begin inventory,
+combat, dialogue, character progression, or save serialization in that slice.
