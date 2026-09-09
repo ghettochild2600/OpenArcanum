@@ -121,6 +121,8 @@ namespace Arcanum.Runtime.World
         }
 
         public bool LoadSector(string path) => Session.SelectSector(path);
+        public bool SectorExists(string path)
+            => EnsureData() && _vfs.Exists(WorldMapSessionCoordinator.NormalizeSector(path));
         public bool PresentSector(string path) => LoadSectorPresentation(path);
         public void ClearPresentedSector() => ClearSectorPresentation();
 

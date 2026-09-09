@@ -96,6 +96,29 @@ namespace Arcanum.Runtime.World
             return !OddEdgeBlocked(from, rotation);
         }
 
+        /// <summary>Checks the current sector's side of one cardinal boundary crossing.</summary>
+        public bool CanExit(Vector2Int from, int rotation)
+        {
+            if ((rotation & 1) == 0 || rotation < 0 || rotation >= IsoProjection.DirDelta.Length
+                || !IsWalkable(from)) return false;
+            Vector2Int outside = from + IsoProjection.DirDelta[rotation];
+            if (Contains(outside)) return false;
+            return !OddEdgeBlocked(from, rotation);
+        }
+
+        public bool CanCrossBoundaryTo(SectorNavigationMap adjacent, Vector2Int exitTile, int rotation)
+        {
+            if (adjacent == null || !CanExit(exitTile, rotation)) return false;
+            Vector2Int entry = EntryTile(exitTile, rotation);
+            return adjacent.CanExit(entry, (rotation + 4) & 7);
+        }
+
+        public static Vector2Int EntryTile(Vector2Int exitTile, int rotation)
+        {
+            Vector2Int outside = exitTile + IsoProjection.DirDelta[rotation];
+            return new Vector2Int((outside.x + Size) % Size, (outside.y + Size) % Size);
+        }
+
         private bool OddEdgeBlocked(Vector2Int from, int rotation)
         {
             Vector2Int to = from + IsoProjection.DirDelta[rotation];

@@ -245,7 +245,7 @@ namespace Arcanum.Runtime.World
             }
             else if (PlayerState != null && PlayerState.Identity == identity)
             {
-                PlayerState.TilePosition = tilePosition;
+                PlayerState.SetLocalPosition(SelectedSector ?? PlayerState.Sector, tilePosition);
                 PlayerState.ArtId = artId;
             }
             else return false;
@@ -256,6 +256,36 @@ namespace Arcanum.Runtime.World
                     binding.Runtime.ApplyMovementState(tilePosition, artId, moving);
                     return true;
                 }
+            return false;
+        }
+
+        public void SetPlayerDestination(Vector2Int destination)
+        {
+            if (PlayerState == null) throw new InvalidOperationException("No production player is registered.");
+            PlayerState.SetDestination(destination);
+        }
+
+        public void ClearPlayerDestination() => PlayerState?.ClearDestination();
+
+        /// <summary>Captures/unloads the old projection, relocates the same player state, then selects both new owners.</summary>
+        public bool TryTransitionPlayer(string targetSector, Vector2 entryTile, uint artId)
+        {
+            if (PlayerState == null || !HasSelectedSector) return false;
+            string target = NormalizeSector(targetSector);
+            if (!SectorCoordinate.TryParse(target, out SectorCoordinate targetCoordinate)
+                || !SectorCoordinate.TryParse(SelectedSector, out SectorCoordinate currentCoordinate)
+                || targetCoordinate.MapPath != currentCoordinate.MapPath)
+                return false;
+
+            string previousSector = SelectedSector;
+            Vector2 previousMapPosition = PlayerState.MapPosition;
+            uint previousArtId = PlayerState.ArtId;
+            ClearSelectedSector();
+            PlayerState.Relocate(target, entryTile, artId);
+            if (SelectSector(target)) return true;
+
+            PlayerState.RestoreMapPosition(currentCoordinate.MapPath, previousMapPosition, previousArtId);
+            SelectSector(previousSector);
             return false;
         }
 
