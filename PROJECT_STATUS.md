@@ -859,10 +859,42 @@ Completed on 2026-09-08 with Unity 6000.0.71f1 on `feature/player-navigation`.
 - Remaining limitations are map-to-map/world-map travel, scene-reload continuation, dynamic critter reservations, and
   save serialization. Interaction, inventory, combat, dialogue, progression, and M2 work were not started.
 
+## M2A Interaction Kernel and Real Portal Use
+
+Completed on 2026-09-08 with Unity 6000.0.71f1 on `feature/interaction-kernel`.
+
+- `WorldInteractionCommand` carries persistent actor/target identities, `Use`, and an optional map-global interaction
+  position. `WorldInteractionResult` returns an explicit success, accepted-approach, validation failure, block,
+  unsupported, or cancellation result.
+- `PlayerClickMoveInput` performs presentation-assisted alpha hit testing but passes only `ArcanumObjectId` to
+  gameplay. Portal overlap resolves by render order then lexical ObjectID; a miss remains ordinary ground movement.
+- `PlayerInteractionController` owns only transient `Idle/Approaching/Executing/Completed/Cancelled` intent.
+  `InteractionApproachPlanner` reuses deterministic source-grid A* to choose the shortest reachable range tile. Manual
+  movement, another target, unload/disappearance, or route failure clears the pending command with no stale execution.
+- `WorldMapSessionCoordinator.ExecuteInteraction` is the authoritative boundary. It resolves session-owned actor,
+  target, canonical positions, lock state, and effective `SAP_USE`; applies the source range-two Chebyshev rule; and
+  delegates unscripted portal toggles to the existing scheduler. Script-bearing doors return `Unsupported`; locked
+  doors return `Blocked`. No presentation component owns gameplay state.
+- Real Play Mode proof used sector `maps/arcanum1-024-fixed/122473678402.sec`, door
+  `P_00019096_0001C870_00000164_00000001`, prototype 2036, `art/portal/toue3au0.art`, ART ID `0x33102800`, rotation 5,
+  seven frames at 8 FPS. A physical Game-view click selected that exact ObjectID and opened it. The edge became
+  passable, the PC walked through, a second Use closed/reblocked it, distant approach executed automatically, and Open
+  state survived unload/reload.
+- The same live run passed cancellation, target replacement, Original/Enhanced rebuild during pending intent, stable
+  PC/door state identity, unique coordinator/loader/navigation/interaction/PC presentation ownership, and no stale
+  portal work. It recorded 0 new warnings and 0 errors.
+- Validation: M2A 16/16, PlayerNavigation 21/21, M1A 7/7, M1B 11/11, WorldSessionStateTests 27/27,
+  PortalArtResolverTests 2/2, complete EditMode 255/255; no failures or skips. Final compilation was clean.
+- Full architecture and limitations: [`documentation_unity/m2a-interaction-kernel.md`](documentation_unity/m2a-interaction-kernel.md).
+
+Remaining M2 limitations: targeting/default behavior is portal-only; `SAP_USE` scripts, keys/lock resolution, sounds,
+Examine, containers/items, unloaded cross-sector target discovery, cursor/UI affordances, and save serialization are not
+implemented. Inventory, dialogue, combat, quests, and progression were not started.
+
 ## Next Recommended Milestone
 
-Implement the first bounded M2 interaction-kernel slice: represent a player object-command intent, deterministic target
-selection, approach-to-range/stop behavior, cancellation, and explicit success/failure results. Route a real door use
-through `WorldMapSessionCoordinator` and the existing portal scheduler without placing rules in `WorldObject`, sprite
-owners, loaders, or demo components. Preserve M1 global navigation/identity/lifecycle contracts. Do not begin inventory,
-combat, dialogue, character progression, or save serialization in that slice.
+M2A is now complete. The exact recommended next task is M2B: add the production `SAP_USE` script-dispatch boundary for
+already-supported world objects, beginning with one source-authored scripted portal case. Preserve the M2A
+command/result, ObjectID targeting, approach, cancellation, session ownership, and scheduler contracts. Define how a
+script permits or suppresses the existing portal default without implementing inventory, dialogue, combat, quests,
+character progression, save serialization, or a broad context/UI system.
