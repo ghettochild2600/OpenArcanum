@@ -552,6 +552,8 @@ namespace Arcanum.Runtime.World
                     : 0;
             worldObject.Locked = (stateFlags & 0x1) != 0;
             worldObject.IsOpen = instance.Type == ObjectType.Portal && ((artId >> 14) & 0x1F) != 0;
+            state.UseScriptNum = instance.UseScriptNum != 0 ? instance.UseScriptNum : proto?.UseScriptNum ?? 0;
+            worldObject.UseScriptNum = state.UseScriptNum;
             worldObject.Identity = identity;
             worldObject.ParentIdentity = instance.ParentIdentity;
             Session.Bind(_registeredSector, state, worldObject);

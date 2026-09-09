@@ -235,6 +235,55 @@ namespace Arcanum.Runtime.World
             runtime.Session = this;
         }
 
+        public bool TryGetObjectState(ArcanumObjectId identity, out PersistentObjectState state)
+            => _states.TryGetValue(identity, out state);
+
+        public bool TryGetLoadedObject(ArcanumObjectId identity, out WorldObject runtime)
+        {
+            foreach (Dictionary<ArcanumObjectId, LoadedBinding> sector in _loaded.Values)
+                if (sector.TryGetValue(identity, out LoadedBinding binding) && binding.Runtime != null)
+                {
+                    runtime = binding.Runtime;
+                    return true;
+                }
+            runtime = null;
+            return false;
+        }
+
+        /// <summary>Validates and commits one gameplay interaction; presentation never decides the result.</summary>
+        public WorldInteractionResult ExecuteInteraction(WorldInteractionCommand command)
+        {
+            if (PlayerState == null || PlayerState.Identity != command.Actor)
+                return new WorldInteractionResult(command, WorldInteractionResultCode.ActorNotFound);
+            if (!_states.TryGetValue(command.Target, out PersistentObjectState targetState) || targetState.Off
+                || !TryGetLoadedObject(command.Target, out WorldObject target))
+                return new WorldInteractionResult(command, WorldInteractionResultCode.TargetNotFound);
+            if (command.Type != WorldInteractionCommandType.Use)
+                return new WorldInteractionResult(command, WorldInteractionResultCode.Unsupported);
+            if (targetState.Type != ObjectType.Portal || target.Type != ObjectType.Portal)
+                return new WorldInteractionResult(command, WorldInteractionResultCode.InvalidTarget);
+            if (!SectorCoordinate.TryParse(targetState.SourceSector, out SectorCoordinate targetSector))
+                return new WorldInteractionResult(command, WorldInteractionResultCode.TargetNotFound);
+            Vector2 targetPosition = targetSector.ToGlobal(targetState.TilePosition);
+            if (!InteractionRangeRules.IsWithin(PlayerState.MapPosition, targetPosition,
+                    InteractionRangeRules.PortalUseRange))
+                return new WorldInteractionResult(command, WorldInteractionResultCode.OutOfRange);
+            // A production script host is a later milestone. Never bypass an authored SAP_USE script.
+            if (targetState.UseScriptNum != 0)
+                return new WorldInteractionResult(command, WorldInteractionResultCode.Unsupported);
+            // Key/lock resolution is outside M2A; conservatively preserve the closed authoritative state.
+            if (targetState.Locked)
+                return new WorldInteractionResult(command, WorldInteractionResultCode.Blocked);
+            if (!Portals.TryGetPhase(command.Target, out PortalPhase phase)
+                || phase == PortalPhase.Opening || phase == PortalPhase.Closing)
+                return new WorldInteractionResult(command, WorldInteractionResultCode.Blocked);
+
+            bool open = phase == PortalPhase.Closed;
+            return Portals.Request(command.Target, open)
+                ? new WorldInteractionResult(command, WorldInteractionResultCode.Success, open)
+                : new WorldInteractionResult(command, WorldInteractionResultCode.Blocked);
+        }
+
         /// <summary>Applies a critter movement sample through session-owned state, then updates its runtime view.</summary>
         public bool SetMovementState(ArcanumObjectId identity, Vector2 tilePosition, uint artId, bool moving)
         {

@@ -44,6 +44,18 @@ namespace Arcanum.Runtime.World
                 : e.State.PortalOpen ? PortalPhase.Open : PortalPhase.Closed;
         }
 
+        public bool TryGetPhase(ArcanumObjectId id, out PortalPhase phase)
+        {
+            if (!_entries.TryGetValue(id, out Entry e))
+            {
+                phase = default;
+                return false;
+            }
+            phase = e.Active ? (e.Opening ? PortalPhase.Opening : PortalPhase.Closing)
+                : e.State.PortalOpen ? PortalPhase.Open : PortalPhase.Closed;
+            return true;
+        }
+
         public static int Frame(uint artId) => (int)((artId >> 14) & 31);
         public static bool IsWindow(uint artId) => (artId & (1u << 10)) != 0;
         public static int OpenFrame(uint artId)

@@ -36,6 +36,7 @@ namespace Arcanum.Runtime.World
         public Vector2Int? Destination { get; private set; }
         public Vector2Int? GlobalDestination => _loader?.Session.PlayerState?.Destination;
         public IReadOnlyList<Vector2Int> Route => _route;
+        public event Action DestinationRequested;
 
         private void Awake() => _loader = GetComponent<WorldObjectSectorLoader>();
 
@@ -92,6 +93,8 @@ namespace Arcanum.Runtime.World
         public bool TryBind(WorldObject player)
         {
             if (player == null || !IsCritterArt(player.ArtId) || !player.Identity.IsPersistent) return false;
+            if (_loader == null) _loader = GetComponent<WorldObjectSectorLoader>();
+            if (_loader == null) return false;
             CancelSegment(player.TilePosition);
             Player = player;
             _facing = CritterArtResolver.RotationOf(player.ArtId);
@@ -112,6 +115,7 @@ namespace Arcanum.Runtime.World
         public bool TrySetGlobalDestination(Vector2Int destination)
         {
             if (Player == null || _loader?.NavigationMap == null) return false;
+            DestinationRequested?.Invoke();
             CancelRoute();
             _rejectedBoundaryExits.Clear();
             _loader.Session.SetPlayerDestination(destination);

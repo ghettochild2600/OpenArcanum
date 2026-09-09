@@ -17,6 +17,7 @@ namespace Arcanum.Runtime.World
         public uint ArtId { get; internal set; }
         public bool Off { get; internal set; }
         public bool Locked { get; internal set; }
+        public int UseScriptNum { get; internal set; }
         public bool PortalOpen { get; internal set; }
         public Vector2 TilePosition { get; internal set; }
 
@@ -57,6 +58,7 @@ namespace Arcanum.Runtime.World
             runtime.ArtId = ArtId;
             runtime.Off = Off;
             runtime.Locked = Locked;
+            runtime.UseScriptNum = UseScriptNum;
             runtime.IsOpen = PortalOpen;
             runtime.ApplyMovementState(TilePosition, ArtId, false);
         }
