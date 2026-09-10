@@ -73,6 +73,11 @@ boundary. It resolves semantic `ArcanumObjectId` values against session-owned st
 position for range, refuses authored `SAP_USE` scripts until a production script host exists, refuses locked doors
 until key rules exist, and delegates the toggle to the already-bound `PortalTransitionScheduler`.
 
+This paragraph records the completed M2A boundary. M2B subsequently replaced the blanket scripted-portal refusal with
+the bounded, fail-closed production dispatch described in
+[`m2b-sap-use-dispatch.md`](m2b-sap-use-dispatch.md); the M2A command, identity, approach, scheduler, and presentation
+contracts remain unchanged.
+
 Effective `SAP_USE` identity is copied from instance/prototype data into `PersistentObjectState`; it is not owned by a
 sprite or GameObject. The scheduler remains the sole owner of Opening/Closing progress and stable `PortalOpen` state.
 `WorldObject` is the loaded domain projection consumed by navigation and presentation. `WorldObjectSpriteOwner` only

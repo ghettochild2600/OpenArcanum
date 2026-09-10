@@ -887,14 +887,45 @@ Completed on 2026-09-08 with Unity 6000.0.71f1 on `feature/interaction-kernel`.
   PortalArtResolverTests 2/2, complete EditMode 255/255; no failures or skips. Final compilation was clean.
 - Full architecture and limitations: [`documentation_unity/m2a-interaction-kernel.md`](documentation_unity/m2a-interaction-kernel.md).
 
-Remaining M2 limitations: targeting/default behavior is portal-only; `SAP_USE` scripts, keys/lock resolution, sounds,
-Examine, containers/items, unloaded cross-sector target discovery, cursor/UI affordances, and save serialization are not
-implemented. Inventory, dialogue, combat, quests, and progression were not started.
+At the M2A checkpoint, remaining M2 limitations were portal-only targeting/default behavior, production `SAP_USE`,
+keys/lock resolution, sounds, Examine, containers/items, unloaded cross-sector target discovery, cursor/UI affordances,
+and save serialization. M2B addresses only the first bounded `SAP_USE` case below. Inventory, dialogue, combat, quests,
+and progression were not started.
+
+## M2B Production SAP_USE Dispatch
+
+Completed on 2026-09-09 with Unity 6000.0.71f1 on `feature/interaction-kernel`.
+
+- `WorldMapSessionCoordinator.ExecuteInteraction` remains authoritative for actor/target identity, range, state, lock
+  policy, and portal scheduling. It now delegates attached use scripts to a session-bound `WorldUseScriptDispatcher`
+  before deciding whether the existing built-in portal action may run.
+- `WorldObjectSectorLoader` loads the production `ScriptDatabase` from the read-only game VFS and binds the resolver to
+  the session. Session-owned `ScriptGlobals` and persistent ObjectID state survive visual rebuild and sector reload;
+  the loader, `WorldObject`, sprite owners, input, and demo components do not own gameplay decisions.
+- Production dispatch uses opaque stable ObjectID references for Triggerer and Attachee. The PC remains the M1
+  deterministic identity `G_C9B7E725_E71A_F54A_B1E4_0A62FA6BCA01`; its one-presentation lifecycle and source-valid
+  `0x28100000` critter ART contract are unchanged, with no NPC substitution.
+- `ScriptVm.ExecuteStrict` distinguishes executed, missing, empty, invalid-context/line, unsupported, runaway, and
+  runtime-error outcomes. The bounded production policy preflights the full script and every non-success result fails
+  closed. Script success communicates only skip-default or run-default; only the existing coordinator/scheduler path
+  can change portal state.
+- The authentic target is `scr/01162door_to_the_panarii_offices_use.scr` in
+  `maps/caladon-panarrii temple/67108865.sec`. Script 1162 returns run-default only when global flag 2087 equals 1 and
+  otherwise suppresses the built-in portal action. Physical validation used portal
+  `P_0000005E_0000005F_000000F6_0000003B`.
+- A literal Game-view click selected that stable ID, moved the production PC through the existing source-grid route,
+  executed SAP_USE on arrival, and scheduled the portal toggle only on the source-authorized branch. Clear-flag
+  suppression, rebuild, full unload/reload, authoritative PC/portal/script-state identity, unique owners/controllers,
+  and 0 new warnings/errors also passed.
+- Validation: M2B 8/8, M2A 16/16, PlayerNavigation 21/21, M1A 7/7, M1B 11/11, and complete EditMode 263/263; no
+  failures or skips. Final compilation was clean.
+- Full architecture, lifecycle/default contract, source decision, and limitations:
+  [`documentation_unity/m2b-sap-use-dispatch.md`](documentation_unity/m2b-sap-use-dispatch.md).
 
 ## Next Recommended Milestone
 
-M2A is now complete. The exact recommended next task is M2B: add the production `SAP_USE` script-dispatch boundary for
-already-supported world objects, beginning with one source-authored scripted portal case. Preserve the M2A
-command/result, ObjectID targeting, approach, cancellation, session ownership, and scheduler contracts. Define how a
-script permits or suppresses the existing portal default without implementing inventory, dialogue, combat, quests,
-character progression, save serialization, or a broad context/UI system.
+M2B is now complete. The exact recommended next task is M2C: research one additional source-authored portal SAP_USE
+family and extend the production policy/host only for the minimum new condition or action semantics that case requires.
+Preserve strict preflight, explicit fail-closed results, stable ObjectID context, session-owned state, the M2A approach
+and cancellation lifecycle, and scheduler-only portal mutation. Do not begin inventory, containers, dialogue, combat,
+quests, character progression, save serialization, or a broad context/UI system.
