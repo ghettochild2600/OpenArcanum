@@ -209,10 +209,10 @@ namespace Arcanum.Formats.Tests
         }
 
         [Test]
-        public void ScriptedAndLockedPortalsAreExplicitlyRefused()
+        public void UnboundScriptSourceAndLockedPortalsAreExplicitlyRefused()
         {
             WorldObject scripted = Portal(1, 3, 1, useScript: 42);
-            Assert.That(_interaction.TryUse(scripted.Identity).Code, Is.EqualTo(WorldInteractionResultCode.Unsupported));
+            Assert.That(_interaction.TryUse(scripted.Identity).Code, Is.EqualTo(WorldInteractionResultCode.ScriptUnavailable));
             WorldObject locked = Portal(2, 2, 3, locked: true);
             Assert.That(_interaction.TryUse(locked.Identity).Code, Is.EqualTo(WorldInteractionResultCode.Blocked));
             Assert.That(_session.Portals.ActiveCount, Is.Zero);

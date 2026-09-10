@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using Arcanum.Formats.Objects;
+using Arcanum.Formats.Script;
+using Arcanum.Script;
 using Arcanum.World;
 using UnityEngine;
 
@@ -25,6 +27,8 @@ namespace Arcanum.Runtime.World
         public bool HasSelectedSector => !string.IsNullOrEmpty(SelectedSector);
         public PersistentPlayerState PlayerState { get; private set; }
         public PortalTransitionScheduler Portals { get; } = new();
+        public ScriptGlobals ScriptGlobals { get; } = new();
+        public WorldUseScriptDispatcher UseScripts { get; private set; }
         public event Action<string> SectorUnloading;
         public event Action<string> SectorSelected;
 
@@ -67,6 +71,15 @@ namespace Arcanum.Runtime.World
                 throw new InvalidOperationException("A world-object sector owner is already registered.");
             _objectOwner = owner;
         }
+
+        public void BindUseScriptSource(ScriptDatabase scripts)
+        {
+            if (scripts == null) throw new ArgumentNullException(nameof(scripts));
+            UseScripts = new WorldUseScriptDispatcher(this, scripts.Get, ScriptGlobals);
+        }
+
+        public void BindUseScriptSource(Func<int, ScriptFile> resolveScript)
+            => UseScripts = new WorldUseScriptDispatcher(this, resolveScript, ScriptGlobals);
 
         public bool SelectSector(string sectorPath)
         {
@@ -268,21 +281,54 @@ namespace Arcanum.Runtime.World
             if (!InteractionRangeRules.IsWithin(PlayerState.MapPosition, targetPosition,
                     InteractionRangeRules.PortalUseRange))
                 return new WorldInteractionResult(command, WorldInteractionResultCode.OutOfRange);
-            // A production script host is a later milestone. Never bypass an authored SAP_USE script.
+            int scriptNum = targetState.UseScriptNum;
+            ScriptExecutionResult scriptResult = default;
             if (targetState.UseScriptNum != 0)
-                return new WorldInteractionResult(command, WorldInteractionResultCode.Unsupported);
+            {
+                if (UseScripts == null)
+                    return new WorldInteractionResult(command, WorldInteractionResultCode.ScriptUnavailable,
+                        scriptNum: scriptNum);
+                scriptResult = UseScripts.DispatchUse(command.Actor, command.Target, scriptNum);
+                if (!scriptResult.Succeeded)
+                {
+                    WorldInteractionResultCode failure = scriptResult.Status switch
+                    {
+                        ScriptExecutionStatus.MissingScript => WorldInteractionResultCode.ScriptMissing,
+                        ScriptExecutionStatus.UnsupportedOpcode or ScriptExecutionStatus.EmptyScript
+                            => WorldInteractionResultCode.ScriptUnsupported,
+                        _ => WorldInteractionResultCode.ScriptFailed,
+                    };
+                    return new WorldInteractionResult(command, failure, scriptNum: scriptNum,
+                        scriptStatus: scriptResult.Status, scriptRunDefault: false);
+                }
+                if (!scriptResult.RunDefault)
+                    return new WorldInteractionResult(command, WorldInteractionResultCode.Success,
+                        scriptNum: scriptNum, scriptStatus: scriptResult.Status, scriptRunDefault: false);
+            }
             // Key/lock resolution is outside M2A; conservatively preserve the closed authoritative state.
             if (targetState.Locked)
-                return new WorldInteractionResult(command, WorldInteractionResultCode.Blocked);
+                return new WorldInteractionResult(command, WorldInteractionResultCode.Blocked,
+                    scriptNum: scriptNum, scriptStatus: ScriptStatus(scriptNum, scriptResult),
+                    scriptRunDefault: ScriptDefault(scriptNum, scriptResult));
             if (!Portals.TryGetPhase(command.Target, out PortalPhase phase)
                 || phase == PortalPhase.Opening || phase == PortalPhase.Closing)
-                return new WorldInteractionResult(command, WorldInteractionResultCode.Blocked);
+                return new WorldInteractionResult(command, WorldInteractionResultCode.Blocked,
+                    scriptNum: scriptNum, scriptStatus: ScriptStatus(scriptNum, scriptResult),
+                    scriptRunDefault: ScriptDefault(scriptNum, scriptResult));
 
             bool open = phase == PortalPhase.Closed;
             return Portals.Request(command.Target, open)
-                ? new WorldInteractionResult(command, WorldInteractionResultCode.Success, open)
-                : new WorldInteractionResult(command, WorldInteractionResultCode.Blocked);
+                ? new WorldInteractionResult(command, WorldInteractionResultCode.Success, open, scriptNum,
+                    ScriptStatus(scriptNum, scriptResult), ScriptDefault(scriptNum, scriptResult))
+                : new WorldInteractionResult(command, WorldInteractionResultCode.Blocked, scriptNum: scriptNum,
+                    scriptStatus: ScriptStatus(scriptNum, scriptResult), scriptRunDefault: ScriptDefault(scriptNum, scriptResult));
         }
+
+        private static ScriptExecutionStatus? ScriptStatus(int scriptNum, ScriptExecutionResult result)
+            => scriptNum != 0 ? result.Status : null;
+
+        private static bool? ScriptDefault(int scriptNum, ScriptExecutionResult result)
+            => scriptNum != 0 ? result.RunDefault : null;
 
         /// <summary>Applies a critter movement sample through session-owned state, then updates its runtime view.</summary>
         public bool SetMovementState(ArcanumObjectId identity, Vector2 tilePosition, uint artId, bool moving)

@@ -34,6 +34,12 @@ namespace Arcanum.Script
         private readonly IScriptHost _host;
         private readonly IScriptGlobals _globals;
         private readonly HashSet<string> _warned = new HashSet<string>(); // log each unimplemented opcode once
+        private bool _strictExecution;
+
+        private sealed class UnsupportedOpcodeException : System.Exception
+        {
+            public UnsupportedOpcodeException(string message) : base(message) { }
+        }
 
         /// <summary>Warning sink for unimplemented opcodes (the runtime wires Debug.LogWarning). Static so the
         /// assembly stays engine-free (<c>noEngineReferences</c>); null ⇒ silent.</summary>
@@ -59,6 +65,47 @@ namespace Arcanum.Script
         {
             if (file == null || file.Entries.Count == 0) return true;
 
+            return ExecuteCore(file, ctx, startLine, out _);
+        }
+
+        /// <summary>Production execution entry point. Missing/malformed scripts, unsupported opcodes,
+        /// host exceptions, invalid flow and runaway execution are explicit failures and never permit default behavior.</summary>
+        public ScriptExecutionResult ExecuteStrict(ScriptFile file, ScriptContext ctx, int startLine = 0)
+        {
+            if (file == null) return new ScriptExecutionResult(ScriptExecutionStatus.MissingScript);
+            if (file.Entries.Count == 0) return new ScriptExecutionResult(ScriptExecutionStatus.EmptyScript);
+            if (ctx == null) return new ScriptExecutionResult(ScriptExecutionStatus.InvalidContext);
+            if ((uint)startLine >= (uint)file.Entries.Count)
+                return new ScriptExecutionResult(ScriptExecutionStatus.InvalidStartLine);
+
+            bool previous = _strictExecution;
+            _strictExecution = true;
+            try
+            {
+                bool runDefault = ExecuteCore(file, ctx, startLine, out ScriptExecutionStatus failure);
+                return failure == ScriptExecutionStatus.Executed
+                    ? new ScriptExecutionResult(ScriptExecutionStatus.Executed, runDefault)
+                    : new ScriptExecutionResult(failure);
+            }
+            catch (UnsupportedOpcodeException ex)
+            {
+                return new ScriptExecutionResult(ScriptExecutionStatus.UnsupportedOpcode, detail: ex.Message);
+            }
+            catch (System.Exception ex)
+            {
+                return new ScriptExecutionResult(ScriptExecutionStatus.RuntimeError, detail: ex.Message);
+            }
+            finally
+            {
+                _strictExecution = previous;
+            }
+        }
+
+        private bool ExecuteCore(ScriptFile file, ScriptContext ctx, int startLine,
+            out ScriptExecutionStatus failure)
+        {
+            failure = ScriptExecutionStatus.Executed;
+
             int line = startLine;
             bool runDefault = false;
 
@@ -81,9 +128,10 @@ namespace Arcanum.Script
                 if (next == ReturnAndSkipDefault || next == ReturnAndRunDefault)
                 {
                     runDefault = next == ReturnAndRunDefault;
-                    break;
+                    return runDefault;
                 }
             }
+            failure = ScriptExecutionStatus.Runaway;
             return runDefault;
         }
 
@@ -621,6 +669,7 @@ namespace Arcanum.Script
 
         private void WarnOnce(string what)
         {
+            if (_strictExecution) throw new UnsupportedOpcodeException(what);
             if (_warned.Add(what))
                 Log?.Invoke($"[ScriptVm] unimplemented {what} — treated as default (see Docs/Scripting.md).");
         }

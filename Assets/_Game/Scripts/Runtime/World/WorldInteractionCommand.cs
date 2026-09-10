@@ -1,4 +1,5 @@
 using Arcanum.Formats.Objects;
+using Arcanum.Script;
 using UnityEngine;
 
 namespace Arcanum.Runtime.World
@@ -17,6 +18,10 @@ namespace Arcanum.Runtime.World
         Blocked,
         Unsupported,
         Cancelled,
+        ScriptUnavailable,
+        ScriptMissing,
+        ScriptUnsupported,
+        ScriptFailed,
     }
 
     /// <summary>One immutable gameplay command identified only by persistent domain identities.</summary>
@@ -46,15 +51,22 @@ namespace Arcanum.Runtime.World
         public WorldInteractionCommand Command { get; }
         public WorldInteractionResultCode Code { get; }
         public bool? RequestedPortalOpen { get; }
+        public int ScriptNum { get; }
+        public ScriptExecutionStatus? ScriptStatus { get; }
+        public bool? ScriptRunDefault { get; }
         public bool IsSuccess => Code == WorldInteractionResultCode.Success;
         public bool IsAccepted => IsSuccess || Code == WorldInteractionResultCode.Approaching;
 
         public WorldInteractionResult(WorldInteractionCommand command, WorldInteractionResultCode code,
-            bool? requestedPortalOpen = null)
+            bool? requestedPortalOpen = null, int scriptNum = 0,
+            ScriptExecutionStatus? scriptStatus = null, bool? scriptRunDefault = null)
         {
             Command = command;
             Code = code;
             RequestedPortalOpen = requestedPortalOpen;
+            ScriptNum = scriptNum;
+            ScriptStatus = scriptStatus;
+            ScriptRunDefault = scriptRunDefault;
         }
     }
 

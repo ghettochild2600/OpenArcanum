@@ -4,6 +4,7 @@ using Arcanum.Formats;
 using Arcanum.Formats.Art;
 using Arcanum.Formats.Database;
 using Arcanum.Formats.Objects;
+using Arcanum.Formats.Script;
 using Arcanum.Formats.Text;
 using Arcanum.Formats.Tiles;
 using Arcanum.Formats.World;
@@ -697,6 +698,7 @@ namespace Arcanum.Runtime.World
             _vfs = vfs;
             _prototypes = new ProtoLibrary(protoDirectory ?? string.Empty);
             _art = new ObjectArtResolvers(_vfs);
+            Session.BindUseScriptSource(ScriptDatabase.Load(_vfs));
             return true;
         }
 
