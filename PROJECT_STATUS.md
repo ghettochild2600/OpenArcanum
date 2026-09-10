@@ -924,8 +924,15 @@ Completed on 2026-09-09 with Unity 6000.0.71f1 on `feature/interaction-kernel`.
 
 ## Next Recommended Milestone
 
-M2B is now complete. The exact recommended next task is M2C: research one additional source-authored portal SAP_USE
-family and extend the production policy/host only for the minimum new condition or action semantics that case requires.
-Preserve strict preflight, explicit fail-closed results, stable ObjectID context, session-owned state, the M2A approach
-and cancellation lifecycle, and scheduler-only portal mutation. Do not begin inventory, containers, dialogue, combat,
-quests, character progression, save serialization, or a broad context/UI system.
+The M2C candidate gate was completed on 2026-09-10 against all 22 distinct SAP_USE script numbers attached to placed
+portal records. Script 1162 is the only GREEN family within the bounded constraints and is already M2B-supported. Every
+additional family requires an excluded owning domain: message/dialog presentation, persistent delayed scripts and
+sound, map/sector travel state, quest/lock rules, NPC/combat loops, dynamic object creation, or trap lifecycle. No
+production or test code was changed, and the strict whitelist was not widened. See
+[`documentation_unity/m2c-sap-use-family.md`](documentation_unity/m2c-sap-use-family.md) for the candidate table and
+rejection evidence.
+
+The exact recommended next milestone is M3A: define typed session-owned containment/inventory state, deterministic
+dynamic item identity, and atomic transfer transactions without UI or script integration. Defer additional SAP_USE
+admission until each candidate's real owning domain exists; do not add inert host behavior merely to whitelist an
+opcode.
