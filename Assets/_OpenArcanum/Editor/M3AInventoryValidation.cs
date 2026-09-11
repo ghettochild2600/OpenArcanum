@@ -65,6 +65,15 @@ internal static class M3AInventoryValidation
             Check(created.Succeeded && created.State.Identity.Key == "D_0000000000000001",
                 "deterministic dynamic item identity");
             Check(ProjectionCount(loader, created.State) == 0, "created contained item is not projected");
+            var createdIdentity = created.State.Identity;
+            loader.RebuildVisuals();
+            yield return null;
+            Check(created.State.Identity == createdIdentity && created.State.ParentIdentity == player.Identity
+                                                           && ProjectionCount(loader, created.State) == 0,
+                "visual rebuild preserves dynamic item identity and containment");
+            ItemCreationResult afterRebuild = session.CreateItem(8127, ObjectPlacement.ContainedBy(player.Identity));
+            Check(afterRebuild.Succeeded && afterRebuild.State.Identity.Key == "D_0000000000000002",
+                "visual rebuild preserves dynamic identity allocation state");
 
             Check(session.ReloadSelectedSector(), "sector reload");
             yield return null;
@@ -72,11 +81,13 @@ internal static class M3AInventoryValidation
                 "reload preserves PC containment");
             Check(session.TryTransitionPlayer(SectorB, new Vector2(0, 58), player.ArtId), "PC crosses to sector B");
             yield return null;
-            Check(child.ParentIdentity == player.Identity && created.State.ParentIdentity == player.Identity,
+            Check(child.ParentIdentity == player.Identity && created.State.ParentIdentity == player.Identity
+                                                       && afterRebuild.State.ParentIdentity == player.Identity,
                 "PC inventory survives crossing");
             Check(session.TryTransitionPlayer(SectorA, new Vector2(63, 58), player.ArtId), "PC returns to sector A");
             yield return null;
-            Check(ProjectionCount(loader, child) == 0 && ProjectionCount(loader, created.State) == 0,
+            Check(ProjectionCount(loader, child) == 0 && ProjectionCount(loader, created.State) == 0
+                                                      && ProjectionCount(loader, afterRebuild.State) == 0,
                 "return does not duplicate contained items");
 
             Check(session.TransferItem(child.Identity, child.Placement,
@@ -99,11 +110,25 @@ internal static class M3AInventoryValidation
                 "one production PC lifecycle");
             Check(Object.FindObjectsByType<PlayerNavigationController>(FindObjectsSortMode.None).Length == 1,
                 "one navigation controller");
+            Check(Object.FindObjectsByType<Transform>(FindObjectsInactive.Include, FindObjectsSortMode.None)
+                          .Count(root => root.name == "WorldObjects") == 1,
+                "one sector object root");
+            Check(Object.FindObjectsByType<WorldObject>(FindObjectsInactive.Include, FindObjectsSortMode.None)
+                          .Count(runtime => runtime.Identity == player.Identity) == 1,
+                "one production PC runtime");
+            Check(Object.FindObjectsByType<WorldObjectSpriteOwner>(FindObjectsInactive.Include,
+                              FindObjectsSortMode.None)
+                          .Count(owner => owner.WorldObject != null && owner.WorldObject.Identity == player.Identity) == 1,
+                "one production PC sprite owner");
             Check(loader.GetComponentsInChildren<WorldObjectSpriteOwner>(true).Length == loader.SpriteOwners.Count,
                 "no duplicate or orphan sprite owners");
+            Check(loader.SpriteOwners.Where(owner => owner != null && owner.WorldObject != null)
+                          .GroupBy(owner => owner.WorldObject.Identity).All(group => group.Count() == 1),
+                "one world presentation per persistent identity");
             Check(errors == 0 && warnings == 0, $"no new Unity warnings/errors (warnings={warnings}, errors={errors})");
             Debug.Log($"M3A inventory validation PASS: realContainer={container.Identity}; realChild={child.Identity}; " +
-                      $"dynamic={created.State.Identity}; authoredProto={child.PrototypeNumber}; " +
+                      $"dynamic={created.State.Identity}; afterRebuild={afterRebuild.State.Identity}; " +
+                      $"authoredProto={child.PrototypeNumber}; " +
                       $"containerProto={container.PrototypeNumber}; warnings={warnings}; errors={errors}.");
         }
         finally { Application.logMessageReceived -= Count; }

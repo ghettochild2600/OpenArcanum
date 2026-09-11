@@ -155,10 +155,12 @@ WorldSessionState 27/27, and PortalArtResolver 2/2.
 
 The Play Mode harness loaded A and reconstructed the authored pair with no child projection; moved the child to world,
 rebuilt one projection, moved it into the production PC, created `D_0000000000000001` from prototype 8127 in the PC,
-reloaded A, crossed to B and returned, then dropped both items at distinct authoritative tiles. Both identities and PC
-ownership survived, each dropped item had exactly one ordinary projection, and there was one coordinator, loader,
-production PC lifecycle, navigation controller, object root, and consistent sprite-owner set. The final harness result
-was `warnings=0; errors=0`; the Unity Console also showed zero warnings and zero errors.
+rebuilt again, and proved the next allocation was exactly `D_0000000000000002`. It then reloaded A, crossed to B and
+returned, and dropped the authored child plus the first dynamic item at distinct authoritative tiles. Identities and PC
+ownership survived, each dropped item had exactly one ordinary projection, and explicit assertions found one
+coordinator, loader, production PC lifecycle, navigation controller, `WorldObjects` root, production PC runtime, and PC
+sprite owner, with one presentation per persistent identity. The final harness result was `warnings=0; errors=0`; the
+Unity Console also showed zero warnings and zero errors.
 
 ## Remaining boundary and recommended M3B
 

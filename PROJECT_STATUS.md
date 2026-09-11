@@ -943,8 +943,10 @@ Completed on 2026-09-11 with Unity 6000.0.71f1 on `feature/inventory-state`.
   `G_0435F503_6600_6342_97B2_6D9E1A85A2F2` (prototype 8127), with exact decoded parent equal to the container.
 - Validation: M3A 8/8, M2B 8/8, M2A 16/16, PlayerNavigation 21/21, M1A 7/7, M1B 11/11,
   WorldSessionState 27/27, PortalArtResolver 2/2, and complete EditMode 271/271; zero failures or skips. The real Play
-  Mode harness transferred the authored child and dynamic `D_0000000000000001`, rebuilt, reloaded, crossed sectors,
-  returned, and restored exactly one world projection for each. Final Unity Console/harness: 0 warnings, 0 errors.
+  Mode harness transferred the authored child and dynamic `D_0000000000000001`, proved a rebuild retained containment
+  and the next allocation `D_0000000000000002`, reloaded, crossed sectors, returned, and restored exactly one world
+  projection for each dropped item. It explicitly found one `WorldObjects` root, PC runtime, and PC sprite owner. Final
+  Unity Console/harness: 0 warnings, 0 errors.
 - Full source semantics, API/result contract, call graph, validation, and limitations:
   [`documentation_unity/m3a-inventory-state.md`](documentation_unity/m3a-inventory-state.md).
 
