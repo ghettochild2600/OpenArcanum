@@ -11,6 +11,8 @@ namespace Arcanum.Formats.Objects
         Authored = 1,
         Guid = 2,
         Positional = 3,
+        /// <summary>OpenArcanum session-created identity; never emitted by original authored data.</summary>
+        SessionDynamic = 4,
     }
 
     /// <summary>
@@ -27,12 +29,14 @@ namespace Arcanum.Formats.Objects
         public int? MapNumber { get; }
 
         public bool IsPersistent => RawType >= (short)ArcanumObjectIdType.Authored
-                                    && RawType <= (short)ArcanumObjectIdType.Positional;
+                                    && RawType <= (short)ArcanumObjectIdType.SessionDynamic;
+        public bool IsAuthored => RawType >= (short)ArcanumObjectIdType.Authored
+                                  && RawType <= (short)ArcanumObjectIdType.Positional;
         public bool IsRuntimeHandle => Type == ArcanumObjectIdType.Handle;
         public bool IsPrototypeMarker => Type == ArcanumObjectIdType.Blocked;
         public bool IsNull => Type == ArcanumObjectIdType.Null;
         public bool IsKnownType => RawType >= (short)ArcanumObjectIdType.Handle
-                                   && RawType <= (short)ArcanumObjectIdType.Positional;
+                                   && RawType <= (short)ArcanumObjectIdType.SessionDynamic;
 
         private ArcanumObjectId(ArcanumObjectIdType type, short rawType, string key, int? mapNumber = null)
         {
@@ -75,6 +79,8 @@ namespace Arcanum.Formats.Objects
                     return new ArcanumObjectId(type, rawType,
                         $"P_{x:X8}_{y:X8}_{temporaryId:X8}_{unchecked((uint)map):X8}", map);
                 }
+                case ArcanumObjectIdType.SessionDynamic:
+                    return new ArcanumObjectId(type, rawType, $"D_{ReadUInt64(bytes, 8):X16}");
                 default:
                     return new ArcanumObjectId(type, rawType,
                         $"Invalid_{unchecked((ushort)rawType):X4}_{BitConverter.ToString(bytes)}");
@@ -101,6 +107,15 @@ namespace Arcanum.Formats.Objects
             var serialized = new byte[SerializedSize];
             serialized[0] = (byte)ArcanumObjectIdType.Guid;
             Array.Copy(guidBytes, 0, serialized, 8, guidBytes.Length);
+            return FromBytes(serialized);
+        }
+
+        /// <summary>Creates a deterministic, session-local identity disjoint from authored A/G/P values.</summary>
+        public static ArcanumObjectId CreateSessionDynamic(ulong sequence)
+        {
+            var serialized = new byte[SerializedSize];
+            serialized[0] = (byte)ArcanumObjectIdType.SessionDynamic;
+            for (int index = 0; index < 8; index++) serialized[8 + index] = (byte)(sequence >> (index * 8));
             return FromBytes(serialized);
         }
 

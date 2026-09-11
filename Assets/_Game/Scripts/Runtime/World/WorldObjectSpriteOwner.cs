@@ -263,9 +263,15 @@ namespace Arcanum.Runtime.World
                 if (sprite == null) continue;
                 Texture2D texture = sprite.texture;
                 bool ownsTexture = texture != null && texture.name == "ArtFrame";
-                Destroy(sprite);
-                if (ownsTexture) Destroy(texture);
+                DestroyOwned(sprite);
+                if (ownsTexture) DestroyOwned(texture);
             }
+        }
+
+        private static void DestroyOwned(UnityEngine.Object owned)
+        {
+            if (Application.isPlaying) Destroy(owned);
+            else DestroyImmediate(owned);
         }
 
         private void OnDestroy()

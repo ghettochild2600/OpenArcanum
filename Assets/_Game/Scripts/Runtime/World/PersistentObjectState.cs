@@ -9,7 +9,9 @@ namespace Arcanum.Runtime.World
     public sealed class PersistentObjectState
     {
         public ArcanumObjectId Identity { get; }
-        public ArcanumObjectId ParentIdentity { get; }
+        public ArcanumObjectId AuthoredParentIdentity { get; }
+        public ArcanumObjectId ParentIdentity => Placement.Kind == ObjectPlacementKind.Contained
+            ? Placement.ParentIdentity : default;
         public string SourceSector { get; }
         public ObjectType Type { get; }
         public int PrototypeNumber { get; }
@@ -20,6 +22,8 @@ namespace Arcanum.Runtime.World
         public int UseScriptNum { get; internal set; }
         public bool PortalOpen { get; internal set; }
         public Vector2 TilePosition { get; internal set; }
+        public ObjectPlacement Placement { get; internal set; }
+        public bool IsRuntimeCreated { get; }
 
         public PersistentObjectState(
             ObjectInstance source,
@@ -30,7 +34,7 @@ namespace Arcanum.Runtime.World
             bool locked)
         {
             Identity = identity;
-            ParentIdentity = source.ParentIdentity;
+            AuthoredParentIdentity = source.ParentIdentity;
             SourceSector = sector;
             Type = source.Type;
             PrototypeNumber = source.PrototypeNumber;
@@ -41,13 +45,29 @@ namespace Arcanum.Runtime.World
             TilePosition = source.Location.HasValue
                 ? new Vector2(source.TileX, source.TileY)
                 : Vector2.zero;
+            Placement = source.ParentIdentity.IsPersistent
+                ? ObjectPlacement.ContainedBy(source.ParentIdentity)
+                : ObjectPlacement.InWorld(sector, TilePosition);
             // portal.c portal_is_open: CURRENT_AID frame != 0, including prototype fallback.
             PortalOpen = Type == ObjectType.Portal && ((artId >> 14) & 31) != 0;
         }
 
+        internal PersistentObjectState(ObjectProtoInfo prototype, ArcanumObjectId identity,
+            string creationSector, ObjectPlacement placement)
+        {
+            Identity = identity;
+            SourceSector = creationSector;
+            Type = prototype.Type;
+            PrototypeNumber = prototype.ProtoNumber;
+            ArtId = prototype.CurrentArtId;
+            Placement = placement;
+            TilePosition = placement.Kind == ObjectPlacementKind.World ? placement.TilePosition : Vector2.zero;
+            IsRuntimeCreated = true;
+        }
+
         internal bool Matches(ObjectInstance source, string sector)
             => SourceSector == sector && Type == source.Type && PrototypeNumber == source.PrototypeNumber
-               && AuthoredLocation == source.Location && ParentIdentity == source.ParentIdentity;
+               && AuthoredLocation == source.Location && AuthoredParentIdentity == source.ParentIdentity;
 
         internal void Restore(WorldObject runtime)
         {
@@ -72,6 +92,8 @@ namespace Arcanum.Runtime.World
                 if (runtime.IsMoving && IsCritterArt(ArtId))
                     ArtId = CritterArtResolver.WithAnimRotation(ArtId, 0, CritterArtResolver.RotationOf(ArtId));
                 TilePosition = runtime.TilePosition;
+                if (Placement.Kind == ObjectPlacementKind.World)
+                    Placement = ObjectPlacement.InWorld(Placement.Sector, TilePosition);
             }
             Off = runtime.Off;
             Locked = runtime.Locked;

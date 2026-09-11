@@ -19,6 +19,8 @@ namespace Arcanum.Runtime.World
         [SerializeField] private bool selectOnStart = true;
         private ISectorPresentationOwner _terrainOwner;
         private ISectorPresentationOwner _objectOwner;
+        private Func<int, ObjectProtoInfo> _resolvePrototype;
+        private ulong _nextDynamicIdentity = 1;
 
         public IReadOnlyDictionary<ArcanumObjectId, PersistentObjectState> States => _states;
         public int LoadedSectorCount => _loaded.Count;
@@ -31,6 +33,7 @@ namespace Arcanum.Runtime.World
         public WorldUseScriptDispatcher UseScripts { get; private set; }
         public event Action<string> SectorUnloading;
         public event Action<string> SectorSelected;
+        public event Action<PersistentObjectState, ObjectPlacement, ObjectPlacement> ObjectPlacementChanged;
 
         private sealed class LoadedBinding
         {
@@ -80,6 +83,9 @@ namespace Arcanum.Runtime.World
 
         public void BindUseScriptSource(Func<int, ScriptFile> resolveScript)
             => UseScripts = new WorldUseScriptDispatcher(this, resolveScript, ScriptGlobals);
+
+        public void BindPrototypeSource(Func<int, ObjectProtoInfo> resolvePrototype)
+            => _resolvePrototype = resolvePrototype ?? throw new ArgumentNullException(nameof(resolvePrototype));
 
         public bool SelectSector(string sectorPath)
         {
@@ -146,6 +152,8 @@ namespace Arcanum.Runtime.World
             out string error)
         {
             var seen = new HashSet<ArcanumObjectId>();
+            var incomingTypes = new Dictionary<ArcanumObjectId, ObjectType>();
+            var candidateParents = new Dictionary<ArcanumObjectId, ArcanumObjectId>();
             foreach (ObjectInstance source in sources)
             {
                 ArcanumObjectId identity = identities[source];
@@ -166,15 +174,70 @@ namespace Arcanum.Runtime.World
                         error = $"ObjectID {identity} already loaded by '{loaded.Key}'.";
                         return false;
                     }
+                incomingTypes.Add(identity, source.Type);
+                candidateParents[identity] = _states.TryGetValue(identity, out PersistentObjectState retained)
+                    ? retained.ParentIdentity : source.ParentIdentity;
+            }
+
+            var validationParents = new Dictionary<ArcanumObjectId, ArcanumObjectId>();
+            foreach (PersistentObjectState state in _states.Values)
+                validationParents[state.Identity] = state.ParentIdentity;
+            foreach (KeyValuePair<ArcanumObjectId, ArcanumObjectId> pair in candidateParents)
+                validationParents[pair.Key] = pair.Value;
+
+            foreach (KeyValuePair<ArcanumObjectId, ArcanumObjectId> pair in validationParents)
+            {
+                ArcanumObjectId parent = pair.Value;
+                if (!parent.IsPersistent) continue;
+                if (pair.Key == parent)
+                {
+                    error = $"ObjectID {pair.Key} cannot contain itself.";
+                    return false;
+                }
+                if (TryResolveKnownType(parent, incomingTypes, out ObjectType parentType)
+                    && !IsInventoryOwnerType(parentType))
+                {
+                    error = $"Inventory parent {parent} has unsupported owner type {parentType}.";
+                    return false;
+                }
+                var visited = new HashSet<ArcanumObjectId> { pair.Key };
+                ArcanumObjectId ancestor = parent;
+                while (ancestor.IsPersistent)
+                {
+                    if (!visited.Add(ancestor))
+                    {
+                        error = $"Inventory relationship for {pair.Key} contains a cycle at {ancestor}.";
+                        return false;
+                    }
+                    if (validationParents.TryGetValue(ancestor, out ArcanumObjectId incomingParent))
+                        ancestor = incomingParent;
+                    else break;
+                }
             }
             error = null;
             return true;
         }
 
+        private bool TryResolveKnownType(ArcanumObjectId identity,
+            IReadOnlyDictionary<ArcanumObjectId, ObjectType> incoming, out ObjectType type)
+        {
+            if (PlayerState != null && PlayerState.Identity == identity)
+            {
+                type = ObjectType.Pc;
+                return true;
+            }
+            if (_states.TryGetValue(identity, out PersistentObjectState state))
+            {
+                type = state.Type;
+                return true;
+            }
+            return incoming.TryGetValue(identity, out type);
+        }
+
         public bool ValidateSector(string sector, IReadOnlyList<ObjectInstance> sources, out string error)
         {
             var identities = new Dictionary<ObjectInstance, ArcanumObjectId>();
-            foreach (ObjectInstance source in sources) identities.Add(source, source.Identity);
+            foreach (ObjectInstance source in sources) identities[source] = source.Identity;
             return ValidateSector(sector, sources, identities, out error);
         }
 
@@ -250,6 +313,133 @@ namespace Arcanum.Runtime.World
 
         public bool TryGetObjectState(ArcanumObjectId identity, out PersistentObjectState state)
             => _states.TryGetValue(identity, out state);
+
+        public bool TryGetPlacement(ArcanumObjectId identity, out ObjectPlacement placement)
+        {
+            if (_states.TryGetValue(identity, out PersistentObjectState state))
+            {
+                placement = state.Placement;
+                return true;
+            }
+            if (PlayerState != null && PlayerState.Identity == identity)
+            {
+                placement = ObjectPlacement.InWorld(PlayerState.Sector, PlayerState.TilePosition);
+                return true;
+            }
+            placement = default;
+            return false;
+        }
+
+        public IReadOnlyList<ArcanumObjectId> ChildrenOf(ArcanumObjectId parent)
+        {
+            var children = new List<ArcanumObjectId>();
+            foreach (PersistentObjectState state in _states.Values)
+                if (state.Placement.Kind == ObjectPlacementKind.Contained
+                    && state.Placement.ParentIdentity == parent)
+                    children.Add(state.Identity);
+            children.Sort((left, right) => string.CompareOrdinal(left.Key, right.Key));
+            return children;
+        }
+
+        public bool IsWorldPresentationEligible(PersistentObjectState state, string sector)
+            => state != null && !state.Off && state.Placement.Kind == ObjectPlacementKind.World
+               && string.Equals(state.Placement.Sector, NormalizeSector(sector), StringComparison.Ordinal);
+
+        /// <summary>Validates and commits one raw containment transfer. Gameplay/equipment rules are separate.</summary>
+        public InventoryTransferResult TransferItem(ArcanumObjectId itemIdentity, ObjectPlacement source,
+            ObjectPlacement destination)
+        {
+            if (!_states.TryGetValue(itemIdentity, out PersistentObjectState item))
+                return new InventoryTransferResult(InventoryResultCode.ItemNotFound, itemIdentity, default, destination);
+            ObjectPlacement previous = item.Placement;
+            if (!IsItemType(item.Type))
+                return new InventoryTransferResult(InventoryResultCode.InvalidItemType, itemIdentity, previous, destination);
+            if (previous != source)
+                return new InventoryTransferResult(InventoryResultCode.SourceMismatch, itemIdentity, previous, destination);
+            InventoryResultCode validation = ValidateDestination(itemIdentity, destination);
+            if (validation != InventoryResultCode.Success)
+                return new InventoryTransferResult(validation, itemIdentity, previous, destination);
+            if (previous == destination)
+                return new InventoryTransferResult(InventoryResultCode.AlreadyAtDestination, itemIdentity, previous, destination);
+
+            item.Placement = destination;
+            if (destination.Kind == ObjectPlacementKind.World) item.TilePosition = destination.TilePosition;
+            ObjectPlacementChanged?.Invoke(item, previous, destination);
+            return new InventoryTransferResult(InventoryResultCode.Success, itemIdentity, previous, destination);
+        }
+
+        public ItemCreationResult CreateItem(int prototypeNumber, ObjectPlacement destination)
+        {
+            if (_resolvePrototype == null)
+                return new ItemCreationResult(InventoryResultCode.PrototypeSourceUnavailable);
+            ObjectProtoInfo prototype = _resolvePrototype(prototypeNumber);
+            if (prototype == null) return new ItemCreationResult(InventoryResultCode.PrototypeNotFound);
+            if (!IsItemType(prototype.Type)) return new ItemCreationResult(InventoryResultCode.InvalidItemType);
+            InventoryResultCode validation = ValidateDestination(default, destination);
+            if (validation != InventoryResultCode.Success) return new ItemCreationResult(validation);
+
+            ArcanumObjectId identity;
+            do
+            {
+                if (_nextDynamicIdentity == 0) return new ItemCreationResult(InventoryResultCode.IdentityExhausted);
+                identity = ArcanumObjectId.CreateSessionDynamic(_nextDynamicIdentity++);
+            } while (_states.ContainsKey(identity) || PlayerState != null && PlayerState.Identity == identity);
+
+            string creationSector = destination.Kind == ObjectPlacementKind.World
+                ? destination.Sector : SelectedSector ?? PlayerState?.Sector;
+            var state = new PersistentObjectState(prototype, identity, creationSector, destination);
+            _states.Add(identity, state);
+            ObjectPlacementChanged?.Invoke(state, default, destination);
+            return new ItemCreationResult(InventoryResultCode.Success, state);
+        }
+
+        private InventoryResultCode ValidateDestination(ArcanumObjectId child, ObjectPlacement destination)
+        {
+            if (destination.Kind == ObjectPlacementKind.World)
+                return string.IsNullOrEmpty(destination.Sector)
+                    ? InventoryResultCode.InvalidDestination : InventoryResultCode.Success;
+            if (destination.Kind != ObjectPlacementKind.Contained || !destination.ParentIdentity.IsPersistent)
+                return InventoryResultCode.InvalidDestination;
+            if (child.IsPersistent && child == destination.ParentIdentity) return InventoryResultCode.SelfParent;
+            if (!TryResolveKnownType(destination.ParentIdentity,
+                    new Dictionary<ArcanumObjectId, ObjectType>(), out ObjectType parentType))
+                return InventoryResultCode.ParentNotFound;
+            if (!IsInventoryOwnerType(parentType)) return InventoryResultCode.InvalidParentType;
+
+            var visited = new HashSet<ArcanumObjectId>();
+            if (child.IsPersistent) visited.Add(child);
+            ArcanumObjectId ancestor = destination.ParentIdentity;
+            while (ancestor.IsPersistent)
+            {
+                if (!visited.Add(ancestor)) return InventoryResultCode.CycleDetected;
+                if (!_states.TryGetValue(ancestor, out PersistentObjectState state)
+                    || state.Placement.Kind != ObjectPlacementKind.Contained)
+                    break;
+                ancestor = state.Placement.ParentIdentity;
+            }
+            return InventoryResultCode.Success;
+        }
+
+        public bool UnbindPresentation(string sector, ArcanumObjectId identity)
+        {
+            if (sector == null || !_loaded.TryGetValue(sector, out Dictionary<ArcanumObjectId, LoadedBinding> bindings)
+                || !bindings.TryGetValue(identity, out LoadedBinding binding)) return false;
+            Portals.Unbind(identity);
+            if (binding.Runtime != null)
+            {
+                binding.ObjectState?.Capture(binding.Runtime);
+                binding.PlayerState?.Capture(binding.Runtime);
+                binding.Runtime.Session = null;
+            }
+            bindings.Remove(identity);
+            return true;
+        }
+
+        private static bool IsItemType(ObjectType type)
+            => type >= ObjectType.Weapon && type <= ObjectType.Generic;
+
+        private static bool IsInventoryOwnerType(ObjectType type)
+            => type == ObjectType.Container || type == ObjectType.Pc || type == ObjectType.Npc;
 
         public bool TryGetLoadedObject(ArcanumObjectId identity, out WorldObject runtime)
         {

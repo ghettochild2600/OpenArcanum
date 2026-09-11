@@ -64,6 +64,24 @@ namespace Arcanum.Runtime.World
             if (obj.Identity.IsPersistent) _ordinaryObjects[obj.Identity] = obj.Tile;
         }
 
+        public void Unregister(WorldObject obj)
+        {
+            if (obj == null || !Contains(obj.Tile)) return;
+            if (obj.Type == ObjectType.Wall || obj.Type == ObjectType.Portal)
+            {
+                if (_edgeObjects.TryGetValue(obj.Tile, out List<WorldObject> objects))
+                {
+                    objects.Remove(obj);
+                    if (objects.Count == 0) _edgeObjects.Remove(obj.Tile);
+                }
+                return;
+            }
+            if (!_ordinaryObjects.Remove(obj.Identity)) return;
+            _objectBlockers[Index(obj.Tile.x, obj.Tile.y)] = Math.Max(0,
+                _objectBlockers[Index(obj.Tile.x, obj.Tile.y)] - 1);
+            if (_controlledIdentity == obj.Identity) _controlledIdentity = default;
+        }
+
         /// <summary>Removes the controlled critter from static occupancy without ignoring other occupants.</summary>
         public void SetControlledObject(WorldObject obj)
         {

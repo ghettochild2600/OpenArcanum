@@ -89,6 +89,8 @@ namespace Arcanum.Runtime.World
 
         private readonly List<WorldObjectSpriteOwner> _spriteOwners = new List<WorldObjectSpriteOwner>();
         private readonly List<RenderIssue> _renderIssues = new List<RenderIssue>();
+        private readonly Dictionary<ArcanumObjectId, ObjectInstance> _sourceInstances = new();
+        private readonly Dictionary<ArcanumObjectId, ObjectProtoInfo> _sourcePrototypes = new();
         private DatVirtualFileSystem _vfs;
         private ProtoLibrary _prototypes;
         private ObjectArtResolvers _art;
@@ -114,7 +116,19 @@ namespace Arcanum.Runtime.World
         public float PixelsPerUnit => pixelsPerUnit;
         public bool IsLoaded => _objectRoot != null && _objectRoot.gameObject.activeSelf;
 
-        private void Awake() => Session.RegisterObjectOwner(this);
+        private void Awake()
+        {
+            BindSessionAuthority();
+        }
+
+        /// <summary>Idempotently binds this presentation owner to session authority.</summary>
+        public void BindSessionAuthority()
+        {
+            WorldMapSessionCoordinator authority = Session;
+            authority.RegisterObjectOwner(this);
+            authority.ObjectPlacementChanged -= OnObjectPlacementChanged;
+            authority.ObjectPlacementChanged += OnObjectPlacementChanged;
+        }
 
         private void Start()
         {
@@ -241,10 +255,20 @@ namespace Arcanum.Runtime.World
                     artId = state.ArtId;
                     artPath = _art.Resolve(artId);
                     flags = state.Off ? flags | ObjectFlagOff : flags & ~ObjectFlagOff;
+                    _sourceInstances[identity] = instance;
+                    _sourcePrototypes[identity] = proto;
                 }
-                if (instance.IsInInventory || (flags & ObjectFlagInventory) != 0)
+                bool contained = state != null
+                    ? state.Placement.Kind == ObjectPlacementKind.Contained
+                    : instance.IsInInventory || (flags & ObjectFlagInventory) != 0;
+                if (contained)
                 {
                     inventory++;
+                    continue;
+                }
+                if (state != null && !Session.IsWorldPresentationEligible(state, sectorPath))
+                {
+                    suppressed++;
                     continue;
                 }
 
@@ -478,6 +502,74 @@ namespace Arcanum.Runtime.World
             Debug.Log($"WorldObjectSectorLoader: rebuilt {rebuilt}/{_spriteOwners.Count} visual owner(s).", this);
         }
 
+        private void OnObjectPlacementChanged(PersistentObjectState state, ObjectPlacement previous,
+            ObjectPlacement current)
+        {
+            if (state == null || !IsSectorPresented) return;
+            bool wasHere = previous.Kind == ObjectPlacementKind.World
+                           && previous.Sector == _registeredSector;
+            bool isHere = current.Kind == ObjectPlacementKind.World
+                          && current.Sector == _registeredSector;
+            if (wasHere && !isHere) RemovePresentation(state.Identity);
+            else if (!wasHere && isHere) CreatePresentation(state);
+        }
+
+        private bool RemovePresentation(ArcanumObjectId identity)
+        {
+            WorldObjectSpriteOwner owner = _spriteOwners.Find(candidate => candidate != null
+                && candidate.WorldObject != null && candidate.WorldObject.Identity == identity);
+            if (owner == null) return false;
+            WorldObject runtime = owner.WorldObject;
+            NavigationMap?.Unregister(runtime);
+            Session.UnbindPresentation(_registeredSector, identity);
+            _spriteOwners.Remove(owner);
+            GameObject root = runtime.gameObject;
+            root.SetActive(false);
+            if (Application.isPlaying) Destroy(root);
+            else DestroyImmediate(root);
+            return true;
+        }
+
+        private bool CreatePresentation(PersistentObjectState state)
+        {
+            if (!Session.IsWorldPresentationEligible(state, _registeredSector)) return false;
+            foreach (WorldObjectSpriteOwner existing in _spriteOwners)
+                if (existing != null && existing.WorldObject != null && existing.WorldObject.Identity == state.Identity)
+                    return true;
+
+            ObjectInstance instance;
+            ObjectProtoInfo proto;
+            if (!_sourceInstances.TryGetValue(state.Identity, out instance))
+            {
+                int x = Mathf.RoundToInt(state.Placement.TilePosition.x);
+                int y = Mathf.RoundToInt(state.Placement.TilePosition.y);
+                long location = unchecked((uint)x) | ((long)unchecked((uint)y) << 32);
+                instance = new ObjectInstance(state.Type, state.PrototypeNumber, location, state.ArtId, 0, 0);
+                proto = _prototypes?.Get(state.PrototypeNumber);
+            }
+            else _sourcePrototypes.TryGetValue(state.Identity, out proto);
+
+            string artPath = _art.Resolve(state.ArtId);
+            if (string.IsNullOrEmpty(artPath) || !_vfs.Exists(artPath))
+            {
+                Debug.LogError($"WorldObjectSectorLoader: cannot project {state.Identity} at {state.Placement}; " +
+                               $"ART 0x{state.ArtId:X8} resolved to '{artPath ?? "<none>"}'.", this);
+                return false;
+            }
+            WorldObject runtime = CreateWorldObject(instance, state.Identity, state.ArtId, artPath, proto, state);
+            if (runtime == null)
+            {
+                Debug.LogError($"WorldObjectSectorLoader: sprite build failed while projecting {state.Identity} " +
+                               $"from '{artPath}'.", this);
+                return false;
+            }
+            int flags = instance.Flags ?? proto?.Flags ?? 0;
+            runtime.SourceFlags = flags & ~ObjectFlagInventory;
+            runtime.Blocks = (runtime.SourceFlags & 0x00000400) == 0;
+            NavigationMap?.Register(runtime, runtime.SourceFlags);
+            return true;
+        }
+
         /// <summary>Creates the production PC presentation for session-owned player state.</summary>
         public WorldObject CreatePlayerPresentation(PersistentPlayerState player)
         {
@@ -562,7 +654,7 @@ namespace Arcanum.Runtime.World
             var visual = new GameObject("Visual");
             visual.transform.SetParent(root.transform, false);
             var renderer = visual.AddComponent<SpriteRenderer>();
-            renderer.sortingOrder = (instance.TileX + instance.TileY) * 2 + 1;
+            renderer.sortingOrder = (worldObject.Tile.x + worldObject.Tile.y) * 2 + 1;
 
             bool animate = instance.Type == ObjectType.Pc
                 || instance.Type == ObjectType.Npc
@@ -581,6 +673,7 @@ namespace Arcanum.Runtime.World
 
             if (owner.CurrentSprite == null)
             {
+                Session.UnbindPresentation(_registeredSector, identity);
                 root.SetActive(false);
                 if (Application.isPlaying) Destroy(root);
                 else DestroyImmediate(root);
@@ -698,6 +791,7 @@ namespace Arcanum.Runtime.World
             _vfs = vfs;
             _prototypes = new ProtoLibrary(protoDirectory ?? string.Empty);
             _art = new ObjectArtResolvers(_vfs);
+            Session.BindPrototypeSource(_prototypes.Get);
             Session.BindUseScriptSource(ScriptDatabase.Load(_vfs));
             return true;
         }
@@ -731,6 +825,8 @@ namespace Arcanum.Runtime.World
             _registeredSector = null;
             int removed = _spriteOwners.Count;
             _spriteOwners.Clear();
+            _sourceInstances.Clear();
+            _sourcePrototypes.Clear();
             _objectRoot = null;
             NavigationMap = null;
 
@@ -751,6 +847,7 @@ namespace Arcanum.Runtime.World
 
         private void OnDestroy()
         {
+            if (session != null) session.ObjectPlacementChanged -= OnObjectPlacementChanged;
             ClearSectorPresentation();
             _vfs?.Dispose();
             _vfs = null;
