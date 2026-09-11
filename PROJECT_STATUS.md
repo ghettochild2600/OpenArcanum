@@ -10,18 +10,17 @@ safe/adapt/avoid reuse boundaries, and defines a dependency-ordered M1–M13 roa
 
 ## Current Objective
 
-M1 is complete. `WorldMapSessionCoordinator` is the authoritative normalized sector selector for terrain, world
-objects, and contiguous cross-sector PC traversal. The deterministic session-owned production PC carries canonical
-map-global position and destination intent, is re-projected at exact wrapped boundary entries, and automatically resumes
-source-grid routing without NPC fallback or duplicate presentation ownership.
+M1 traversal, the bounded M2 interaction/SAP_USE kernel, and M3A inventory state are complete.
+`WorldMapSessionCoordinator` now owns typed `World` / `Contained(parent)` placement, atomic raw item transfers, and
+deterministic session-created item identities independently of Unity presentation.
 
-The next roadmap objective is M2: a bounded interaction kernel and transactional object commands. It must keep rules in
-authoritative session/gameplay services rather than presentation components. Inventory, combat, dialogue, character
-progression, save serialization, and unrelated dynamic blocker work remain outside that first M2 slice.
+The next recommended objective is M3B: source-faithful pickup/drop and owner-to-owner inventory command rules built on
+the M3A transaction. Inventory/equipment UI, slots, stacks, weight/capacity, economy, combat item use, scripts, and save
+serialization remain outside that bounded slice.
 
 ## Current Branch
 
-Expected branch: `feature/player-navigation`
+Expected branch: `feature/inventory-state`
 
 Always verify the actual Git branch before doing work. Git is authoritative if it disagrees with this document.
 
@@ -922,6 +921,33 @@ Completed on 2026-09-09 with Unity 6000.0.71f1 on `feature/interaction-kernel`.
 - Full architecture, lifecycle/default contract, source decision, and limitations:
   [`documentation_unity/m2b-sap-use-dispatch.md`](documentation_unity/m2b-sap-use-dispatch.md).
 
+## M3A Authoritative Inventory State
+
+Completed on 2026-09-11 with Unity 6000.0.71f1 on `feature/inventory-state`.
+
+- `PersistentObjectState` retains immutable authored `OBJ_F_ITEM_PARENT` and separately owns one current typed
+  `World(normalized sector, tile)` or `Contained(parent ObjectID)` placement. The session coordinator is authoritative;
+  GameObject/Transform hierarchy and all world-object/sprite/loader components are presentation only.
+- `TransferItem(itemId, expectedSource, destination)` validates source, item/owner types, destination, self/cycle rules,
+  and commits one placement or nothing. Typed failures leave placement, identity, and child relationships unchanged.
+  Unresolved authored parents are preserved because real sector data can reference an owner absent from that load;
+  newly requested destinations must resolve to a session-owned container, PC, or NPC.
+- Runtime creation resolves a real item prototype before registering `SessionDynamic` ObjectID type 4. The monotonic
+  per-session sequence begins at `D_0000000000000001`, is stable across transfers/reloads/traversal, and cannot collide
+  structurally with authored A/G/P identity variants. It is an in-memory contract pending M6 save-schema work.
+- Presentation observes committed placement events. Containment removes ordinary rendering and navigation occupancy;
+  returning to world uses the existing object/ART path and restores one projection at the authoritative tile. Visual
+  rebuild, unload/reload, and PC A→B→A traversal do not rewrite ownership or duplicate state/presentation.
+- Real fixture: sector `maps/arcanum1-024-fixed/101602821844.sec`, container
+  `G_8F454608_E327_1341_B85B_E7A5402D4758` (prototype 3052), armor child
+  `G_0435F503_6600_6342_97B2_6D9E1A85A2F2` (prototype 8127), with exact decoded parent equal to the container.
+- Validation: M3A 8/8, M2B 8/8, M2A 16/16, PlayerNavigation 21/21, M1A 7/7, M1B 11/11,
+  WorldSessionState 27/27, PortalArtResolver 2/2, and complete EditMode 271/271; zero failures or skips. The real Play
+  Mode harness transferred the authored child and dynamic `D_0000000000000001`, rebuilt, reloaded, crossed sectors,
+  returned, and restored exactly one world projection for each. Final Unity Console/harness: 0 warnings, 0 errors.
+- Full source semantics, API/result contract, call graph, validation, and limitations:
+  [`documentation_unity/m3a-inventory-state.md`](documentation_unity/m3a-inventory-state.md).
+
 ## Next Recommended Milestone
 
 The M2C candidate gate was completed on 2026-09-10 against all 22 distinct SAP_USE script numbers attached to placed
@@ -932,7 +958,8 @@ production or test code was changed, and the strict whitelist was not widened. S
 [`documentation_unity/m2c-sap-use-family.md`](documentation_unity/m2c-sap-use-family.md) for the candidate table and
 rejection evidence.
 
-The exact recommended next milestone is M3A: define typed session-owned containment/inventory state, deterministic
-dynamic item identity, and atomic transfer transactions without UI or script integration. Defer additional SAP_USE
-admission until each candidate's real owning domain exists; do not add inert host behavior merely to whitelist an
-opcode.
+The exact recommended next milestone is M3B: implement source-faithful pickup/drop and owner-to-owner inventory command
+rules on top of M3A's atomic placement transaction. Connect stable M2 actor/target identities to explicit, rule-checked
+item movement and validate a real ground-item/container lifecycle. Continue to defer UI, equipment, stacking,
+weight/capacity, economy, combat item use, script integration, destruction/decay, and save serialization. Additional
+SAP_USE families remain deferred until their owning domains exist.
