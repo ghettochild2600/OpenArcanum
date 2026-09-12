@@ -250,7 +250,10 @@ namespace Arcanum.Runtime.World
                     : instance.Type == ObjectType.Container ? instance.ContainerFlags ?? proto?.ContainerFlags ?? 0 : 0;
                 PersistentObjectState state = Session.GetOrCreate(instance, identity, sectorPath, artId,
                     (flags & ObjectFlagOff) != 0, (stateFlags & 1) != 0,
-                    instance.ItemFlags ?? proto?.ItemFlags ?? 0);
+                    instance.ItemFlags ?? proto?.ItemFlags ?? 0,
+                    instance.InvAid ?? proto?.InvAid,
+                    instance.WeaponFlags ?? proto?.Weapon?.Flags ?? 0,
+                    instance.GenericFlags ?? proto?.GenericFlags ?? 0);
                 if (state != null)
                 {
                     artId = state.ArtId;
@@ -260,7 +263,7 @@ namespace Arcanum.Runtime.World
                     _sourcePrototypes[identity] = proto;
                 }
                 bool contained = state != null
-                    ? state.Placement.Kind == ObjectPlacementKind.Contained
+                    ? state.Placement.Kind != ObjectPlacementKind.World
                     : instance.IsInInventory || (flags & ObjectFlagInventory) != 0;
                 if (contained)
                 {

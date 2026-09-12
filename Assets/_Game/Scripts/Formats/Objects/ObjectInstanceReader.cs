@@ -192,6 +192,12 @@ namespace Arcanum.Formats.Objects
         /// <summary>For items, <c>OBJ_F_ITEM_FLAGS</c> (<c>OIF_*</c>: identified, no_pickup, no_display, …); null if unset.</summary>
         public int? ItemFlags { get; internal set; }
 
+        /// <summary>For generic items, <c>OBJ_F_GENERIC_FLAGS</c>; bit 0 uses the torch/shield worn location.</summary>
+        public int? GenericFlags { get; internal set; }
+
+        /// <summary>Nullable raw <c>OBJ_F_WEAPON_FLAGS</c> override, retained separately from merged weapon defaults.</summary>
+        public int? WeaponFlags { get; internal set; }
+
         /// <summary>For gold piles, <c>OBJ_F_GOLD_QUANTITY</c> — the number of coins; null otherwise.</summary>
         public int? GoldQuantity { get; internal set; }
 
@@ -343,6 +349,7 @@ namespace Arcanum.Formats.Objects
 
         // Weapon group (OBJ_F_WEAPON_*): begins at ordinal 111.
         private const int F_WEAPON_FLAGS = 112;
+        private const int F_GENERIC_FLAGS = 211;
         private const int F_WEAPON_BONUS_TO_HIT = 114;
         private const int F_WEAPON_DAMAGE_LOWER = 116; // INT32_ARRAY, indexed by damage type (0..4)
         private const int F_WEAPON_DAMAGE_UPPER = 117; // INT32_ARRAY
@@ -463,7 +470,8 @@ namespace Arcanum.Formats.Objects
             uint? lightAid = null;
             int? lightColor = null;
             int? sceneryFlags = null;
-            int? hpPoints = null, itemFlags = null, goldQuantity = null, critterFlags = null, critterFlags2 = null;
+            int? hpPoints = null, itemFlags = null, genericFlags = null, weaponFlags = null, goldQuantity = null,
+                critterFlags = null, critterFlags2 = null;
             int? portrait = null, faction = null, portalFlags = null, containerFlags = null;
             int? lockDifficulty = null, keyId = null;
             int? writtenSubtype = null, textStartLine = null, textEndLine = null;
@@ -627,6 +635,10 @@ namespace Arcanum.Formats.Objects
                         itemFlags = I32(b, o);
                         o += 4;
                         break;
+                    case F_GENERIC_FLAGS:
+                        genericFlags = I32(b, o);
+                        o += 4;
+                        break;
                     case F_GOLD_QUANTITY:
                         goldQuantity = I32(b, o);
                         o += 4;
@@ -710,7 +722,8 @@ namespace Arcanum.Formats.Objects
                         o += 4;
                         break;
                     case F_WEAPON_FLAGS when wf != null:
-                        wf.Flags = I32(b, o);
+                        weaponFlags = I32(b, o);
+                        wf.Flags = weaponFlags.Value;
                         o += 4;
                         break;
                     case F_WEAPON_BONUS_TO_HIT when wf != null:
@@ -840,6 +853,8 @@ namespace Arcanum.Formats.Objects
                 ArmorResist = armorResist,
                 HpPoints = hpPoints,
                 ItemFlags = itemFlags,
+                GenericFlags = genericFlags,
+                WeaponFlags = weaponFlags,
                 GoldQuantity = goldQuantity,
                 CritterFlags = critterFlags,
                 CritterFlags2 = critterFlags2,

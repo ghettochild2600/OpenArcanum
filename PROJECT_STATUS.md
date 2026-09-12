@@ -10,14 +10,14 @@ safe/adapt/avoid reuse boundaries, and defines a dependency-ordered M1–M13 roa
 
 ## Current Objective
 
-M1 traversal, the bounded M2 interaction/SAP_USE kernel, and M3A-M3B inventory state/commands are complete.
-`WorldMapSessionCoordinator` owns typed `World` / `Contained(parent)` placement, atomic raw item transfers,
-deterministic session-created item identities, and source-faithful pickup/drop/owner-transfer policy independently of
-Unity presentation.
+M1 traversal, the bounded M2 interaction/SAP_USE kernel, and M3A-M3C inventory/command/equipment state are complete.
+`WorldMapSessionCoordinator` owns typed `World`, `Contained(parent)`, and `Equipped(parent, wornLocation)` placement,
+atomic raw item transfers and equipment replacement, deterministic session-created item identities, and source-faithful
+pickup/drop/owner-transfer policy independently of Unity presentation.
 
-The next recommended objective is M3C: authoritative equipment-location state and atomic equip/unequip commands for
-source worn locations 1000-1008. Inventory/equipment UI, stacking/quantities, weight/capacity, economy, combat item
-effects, scripts, and save serialization remain outside that bounded slice.
+The next recommended objective is M3D: authoritative stack quantity state and atomic compatible-stack merge/split
+transactions. Inventory/equipment UI, weight/capacity, economy, combat item effects/consumption, scripts, and save
+serialization remain outside that bounded slice.
 
 ## Current Branch
 
@@ -980,6 +980,34 @@ Completed on 2026-09-12 with Unity 6000.0.71f1 on `feature/inventory-commands`.
 - Full source boundary, ownership graph, fixture, and validation:
   [`documentation_unity/m3b-inventory-commands.md`](documentation_unity/m3b-inventory-commands.md).
 
+## M3C Authoritative Equipment State
+
+Completed on 2026-09-12 with Unity 6000.0.71f1 on `feature/inventory-commands`.
+
+- `ObjectPlacement` now distinguishes `World`, ordinary `Contained(parent)`, and source-typed
+  `Equipped(parent, WornLocation)`. The exact values are Helmet 1000, Ring1 1001, Ring2 1002, Medallion 1003,
+  Weapon 1004, Shield 1005, Armor 1006, Gauntlet 1007, and Boots 1008.
+- `WorldMapSessionCoordinator` owns equip/unequip eligibility and state. It exposes deterministic ordinary-inventory,
+  slot-occupant, worn-location, and equipped-item queries; presentation hierarchy is never queried.
+- Occupied-slot replacement commits new equipment and displaced ordinary containment before notifying observers.
+  `OIF_NO_DROP` removal failures, invalid owners/items/locations, incompatible slots, and fixed-two-hand/shield conflicts
+  mutate nothing. Generic transfer cannot remove an equipped item without the equipment command boundary.
+- The loader retains inventory ART, weapon flags, and generic flags needed for minimum source eligibility. Authored worn
+  locations enter the session directly as equipment, duplicate authored slot membership is rejected, and equipped
+  items are never independently world-presented.
+- Real fixture: armor `G_0435F503_6600_6342_97B2_6D9E1A85A2F2`, prototype 8127, world ART `0x60040082`, inventory
+  ART `0x60041082`, item flags `0`, decoded Armor location 1006, from real container
+  `G_8F454608_E327_1341_B85B_E7A5402D4758` in `maps/arcanum1-024-fixed/101602821844.sec`.
+- Computer Use literal-click validation passed pickup, Equip, occupied-slot swap with `D_0000000000000001`, reverse
+  swap, Original/Enhanced rebuild, A-to-B-to-A traversal, reload, Unequip, Drop, final reload, dynamic equip/reload,
+  unique state/membership/presentation, and deterministic production-PC ownership. The harness recorded 0 new warnings
+  and 0 errors.
+- Validation: M3C 13/13, M3B 13/13, M3A 8/8, M2B 8/8, M2A 16/16, PlayerNavigation 21/21, M1A 7/7,
+  M1B 11/11, WorldSessionState 27/27, PortalArtResolver 2/2, and complete EditMode 297/297. All had 0 failures,
+  skips, or inconclusive tests; final compilation was clean.
+- Source boundary, atomic contract, call graph, fixture, and deferred effects:
+  [`documentation_unity/m3c-equipment-state.md`](documentation_unity/m3c-equipment-state.md).
+
 ## Next Recommended Milestone
 
 The M2C candidate gate was completed on 2026-09-10 against all 22 distinct SAP_USE script numbers attached to placed
@@ -990,8 +1018,8 @@ production or test code was changed, and the strict whitelist was not widened. S
 [`documentation_unity/m2c-sap-use-family.md`](documentation_unity/m2c-sap-use-family.md) for the candidate table and
 rejection evidence.
 
-The exact recommended next milestone is M3C: add authoritative equipment-location state and atomic equip/unequip
-commands for source worn locations 1000-1008. Validate slot compatibility, replacement/unequip behavior, identity and
-containment invariants, failed transaction rollback, rebuild, and sector reload without introducing inventory UI.
-Continue to defer stacking/quantities, weight/capacity, economy, combat item effects, script integration, destruction,
-decay, and save serialization. Additional SAP_USE families remain deferred until their owning domains exist.
+The exact recommended next milestone is M3D: add authoritative stack quantity state and atomic compatible-stack
+merge/split transactions with explicit identity behavior, failure rollback, world/containment projection, dynamic-item
+parity, and reload/rebuild validation. Continue to defer inventory UI, weight/capacity, economy, combat consumption,
+script integration, destruction, decay, and save serialization. Additional SAP_USE families remain deferred until
+their owning domains exist.

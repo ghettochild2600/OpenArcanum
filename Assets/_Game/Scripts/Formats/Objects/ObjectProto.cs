@@ -164,6 +164,9 @@ namespace Arcanum.Formats.Objects
         /// <summary><c>OBJ_F_ITEM_FLAGS</c> (<c>OIF_*</c>) / <c>OBJ_F_GOLD_QUANTITY</c>; null if not an item / gold.</summary>
         public int? ItemFlags { get; internal set; }
 
+        /// <summary><c>OBJ_F_GENERIC_FLAGS</c>; bit 0 marks a generic item as using the shield/torch slot.</summary>
+        public int? GenericFlags { get; internal set; }
+
         public int? GoldQuantity { get; internal set; }
 
         /// <summary><c>OBJ_F_CRITTER_FLAGS</c> / <c>FLAGS2</c> (dead, sleeping, animal, …) and the portrait id; null
@@ -276,6 +279,7 @@ namespace Arcanum.Formats.Objects
                         ArmorResist = p.ArmorResist,
                         HpPoints = p.HpPoints,
                         ItemFlags = p.ItemFlags,
+                        GenericFlags = p.GenericFlags,
                         GoldQuantity = p.GoldQuantity,
                         CritterFlags = p.CritterFlags,
                         CritterFlags2 = p.CritterFlags2,

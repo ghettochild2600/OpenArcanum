@@ -10,7 +10,7 @@ namespace Arcanum.Runtime.World
     {
         public ArcanumObjectId Identity { get; }
         public ArcanumObjectId AuthoredParentIdentity { get; }
-        public ArcanumObjectId ParentIdentity => Placement.Kind == ObjectPlacementKind.Contained
+        public ArcanumObjectId ParentIdentity => Placement.Kind is ObjectPlacementKind.Contained or ObjectPlacementKind.Equipped
             ? Placement.ParentIdentity : default;
         public string SourceSector { get; }
         public ObjectType Type { get; }
@@ -21,6 +21,9 @@ namespace Arcanum.Runtime.World
         public bool Locked { get; internal set; }
         public int UseScriptNum { get; internal set; }
         public int ItemFlags { get; }
+        public uint? InventoryArtId { get; }
+        public int WeaponFlags { get; }
+        public int GenericFlags { get; }
         public bool PortalOpen { get; internal set; }
         public Vector2 TilePosition { get; internal set; }
         public ObjectPlacement Placement { get; internal set; }
@@ -33,7 +36,10 @@ namespace Arcanum.Runtime.World
             uint artId,
             bool off,
             bool locked,
-            int itemFlags = 0)
+            int itemFlags = 0,
+            uint? inventoryArtId = null,
+            int weaponFlags = 0,
+            int genericFlags = 0)
         {
             Identity = identity;
             AuthoredParentIdentity = source.ParentIdentity;
@@ -45,11 +51,16 @@ namespace Arcanum.Runtime.World
             Off = off;
             Locked = locked;
             ItemFlags = itemFlags;
+            InventoryArtId = inventoryArtId;
+            WeaponFlags = weaponFlags;
+            GenericFlags = genericFlags;
             TilePosition = source.Location.HasValue
                 ? new Vector2(source.TileX, source.TileY)
                 : Vector2.zero;
             Placement = source.ParentIdentity.IsPersistent
-                ? ObjectPlacement.ContainedBy(source.ParentIdentity)
+                ? WornLocations.TryFromSource(source.InvLocation, out WornLocation wornLocation)
+                    ? ObjectPlacement.EquippedBy(source.ParentIdentity, wornLocation)
+                    : ObjectPlacement.ContainedBy(source.ParentIdentity)
                 : ObjectPlacement.InWorld(sector, TilePosition);
             // portal.c portal_is_open: CURRENT_AID frame != 0, including prototype fallback.
             PortalOpen = Type == ObjectType.Portal && ((artId >> 14) & 31) != 0;
@@ -64,6 +75,9 @@ namespace Arcanum.Runtime.World
             PrototypeNumber = prototype.ProtoNumber;
             ArtId = prototype.CurrentArtId;
             ItemFlags = prototype.ItemFlags ?? 0;
+            InventoryArtId = prototype.InvAid;
+            WeaponFlags = prototype.Weapon?.Flags ?? 0;
+            GenericFlags = prototype.GenericFlags ?? 0;
             Placement = placement;
             TilePosition = placement.Kind == ObjectPlacementKind.World ? placement.TilePosition : Vector2.zero;
             IsRuntimeCreated = true;

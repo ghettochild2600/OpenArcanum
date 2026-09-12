@@ -99,7 +99,7 @@ namespace Arcanum.Runtime.World
                 return Complete(command, WorldInteractionResultCode.ItemNotFound);
             if (!IsItemType(itemState.Type))
                 return Complete(command, WorldInteractionResultCode.InvalidItem);
-            if (itemState.Placement.Kind == ObjectPlacementKind.Contained)
+            if (itemState.Placement.Kind != ObjectPlacementKind.World)
                 return Complete(command, WorldInteractionResultCode.AlreadyContained);
             if (itemState.Off || !session.TryGetLoadedObject(item, out WorldObject runtime)
                 || runtime.Type != itemState.Type)

@@ -214,6 +214,31 @@ namespace Arcanum.Runtime.World
                     else break;
                 }
             }
+
+            var occupiedWornLocations = new Dictionary<(ArcanumObjectId, WornLocation), ArcanumObjectId>();
+            foreach (PersistentObjectState state in _states.Values)
+                if (state.Placement.Kind == ObjectPlacementKind.Equipped)
+                    occupiedWornLocations[(state.ParentIdentity, state.Placement.WornLocation)] = state.Identity;
+            foreach (ObjectInstance source in sources)
+            {
+                ArcanumObjectId identity = identities[source];
+                if (!identity.IsPersistent) continue;
+                ObjectPlacement placement = _states.TryGetValue(identity, out PersistentObjectState retained)
+                    ? retained.Placement
+                    : source.ParentIdentity.IsPersistent
+                      && WornLocations.TryFromSource(source.InvLocation, out WornLocation location)
+                        ? ObjectPlacement.EquippedBy(source.ParentIdentity, location)
+                        : default;
+                if (placement.Kind != ObjectPlacementKind.Equipped) continue;
+                var key = (placement.ParentIdentity, placement.WornLocation);
+                if (occupiedWornLocations.TryGetValue(key, out ArcanumObjectId occupant) && occupant != identity)
+                {
+                    error = $"Equipment location {(int)placement.WornLocation} for {placement.ParentIdentity} "
+                            + $"is occupied by both {occupant} and {identity}.";
+                    return false;
+                }
+                occupiedWornLocations[key] = identity;
+            }
             error = null;
             return true;
         }
@@ -258,7 +283,10 @@ namespace Arcanum.Runtime.World
             uint artId,
             bool off,
             bool locked,
-            int itemFlags = 0)
+            int itemFlags = 0,
+            uint? inventoryArtId = null,
+            int weaponFlags = 0,
+            int genericFlags = 0)
         {
             if (!identity.IsPersistent) return null;
             if (_states.TryGetValue(identity, out var existing))
@@ -266,13 +294,16 @@ namespace Arcanum.Runtime.World
                 if (!existing.Matches(source, sector)) throw new InvalidOperationException($"ObjectID collision: {identity}");
                 return existing;
             }
-            var state = new PersistentObjectState(source, identity, sector, artId, off, locked, itemFlags);
+            var state = new PersistentObjectState(source, identity, sector, artId, off, locked, itemFlags,
+                inventoryArtId, weaponFlags, genericFlags);
             _states.Add(identity, state);
             return state;
         }
 
-        public PersistentObjectState GetOrCreate(ObjectInstance source, string sector, uint artId, bool off, bool locked)
-            => GetOrCreate(source, source.Identity, sector, artId, off, locked);
+        public PersistentObjectState GetOrCreate(ObjectInstance source, string sector, uint artId, bool off, bool locked,
+            int itemFlags = 0, uint? inventoryArtId = null, int weaponFlags = 0, int genericFlags = 0)
+            => GetOrCreate(source, source.Identity, sector, artId, off, locked, itemFlags, inventoryArtId,
+                weaponFlags, genericFlags);
 
         public void Bind(string sector, PersistentObjectState state, WorldObject runtime)
         {
@@ -342,6 +373,195 @@ namespace Arcanum.Runtime.World
             return children;
         }
 
+        /// <summary>Returns the exact item occupying one source worn location, independent of presentation.</summary>
+        public bool TryGetEquippedItem(ArcanumObjectId owner, WornLocation location,
+            out PersistentObjectState item)
+        {
+            item = null;
+            if (!WornLocations.IsValid(location)) return false;
+            foreach (PersistentObjectState candidate in _states.Values)
+                if (candidate.Placement.Kind == ObjectPlacementKind.Equipped
+                    && candidate.Placement.ParentIdentity == owner
+                    && candidate.Placement.WornLocation == location)
+                {
+                    if (item == null || string.CompareOrdinal(candidate.Identity.Key, item.Identity.Key) < 0)
+                        item = candidate;
+                }
+            return item != null;
+        }
+
+        /// <summary>Returns the source worn location currently carried by an item.</summary>
+        public bool TryGetWornLocation(ArcanumObjectId itemIdentity, out WornLocation location)
+        {
+            if (_states.TryGetValue(itemIdentity, out PersistentObjectState item)
+                && item.Placement.Kind == ObjectPlacementKind.Equipped)
+            {
+                location = item.Placement.WornLocation;
+                return true;
+            }
+            location = default;
+            return false;
+        }
+
+        /// <summary>Enumerates equipment deterministically by source location, then stable ObjectID.</summary>
+        public IReadOnlyList<PersistentObjectState> EquippedItems(ArcanumObjectId owner)
+        {
+            var equipped = new List<PersistentObjectState>();
+            foreach (PersistentObjectState state in _states.Values)
+                if (state.Placement.Kind == ObjectPlacementKind.Equipped
+                    && state.Placement.ParentIdentity == owner)
+                    equipped.Add(state);
+            equipped.Sort((left, right) =>
+            {
+                int byLocation = left.Placement.WornLocation.CompareTo(right.Placement.WornLocation);
+                return byLocation != 0 ? byLocation : string.CompareOrdinal(left.Identity.Key, right.Identity.Key);
+            });
+            return equipped;
+        }
+
+        /// <summary>
+        /// Atomically equips an already-owned item. On replacement both placements are committed before observers run.
+        /// </summary>
+        public EquipmentTransactionResult EquipItem(ArcanumObjectId actorIdentity,
+            ArcanumObjectId itemIdentity, WornLocation location)
+        {
+            EquipmentResultCode ownerValidation = ValidateEquipmentOwner(actorIdentity);
+            if (ownerValidation != EquipmentResultCode.Success)
+                return EquipmentFailure(ownerValidation, actorIdentity, itemIdentity, location);
+            if (!_states.TryGetValue(itemIdentity, out PersistentObjectState item))
+                return EquipmentFailure(EquipmentResultCode.ItemNotFound, actorIdentity, itemIdentity, location);
+            if (!IsItemType(item.Type))
+                return EquipmentFailure(EquipmentResultCode.InvalidItemType, actorIdentity, itemIdentity, location);
+            if (!WornLocations.IsValid(location))
+                return EquipmentFailure(EquipmentResultCode.InvalidWornLocation, actorIdentity, itemIdentity, location);
+            if (item.Placement.Kind == ObjectPlacementKind.Equipped
+                && item.Placement.ParentIdentity == actorIdentity
+                && item.Placement.WornLocation == location)
+                return EquipmentFailure(EquipmentResultCode.AlreadyEquipped, actorIdentity, itemIdentity, location);
+            if (item.Placement.Kind is not (ObjectPlacementKind.Contained or ObjectPlacementKind.Equipped)
+                || item.Placement.ParentIdentity != actorIdentity)
+                return EquipmentFailure(EquipmentResultCode.ItemNotOwned, actorIdentity, itemIdentity, location);
+            if (!IsCompatibleWith(item, location))
+                return EquipmentFailure(EquipmentResultCode.IncompatibleWornLocation, actorIdentity, itemIdentity,
+                    location);
+            if ((item.ItemFlags & 0x20) != 0)
+                return EquipmentFailure(EquipmentResultCode.NotRemovable, actorIdentity, itemIdentity, location);
+            if (ConflictsWithHands(actorIdentity, item, location))
+                return EquipmentFailure(EquipmentResultCode.NoFreeHand, actorIdentity, itemIdentity, location);
+
+            TryGetEquippedItem(actorIdentity, location, out PersistentObjectState displaced);
+            if (displaced != null && displaced.Identity != itemIdentity && (displaced.ItemFlags & 0x20) != 0)
+                return EquipmentFailure(EquipmentResultCode.NotRemovable, actorIdentity, itemIdentity, location,
+                    displaced.Identity);
+
+            ObjectPlacement itemPrevious = item.Placement;
+            ObjectPlacement itemDestination = ObjectPlacement.EquippedBy(actorIdentity, location);
+            ObjectPlacement displacedPrevious = default;
+            ObjectPlacement displacedDestination = default;
+            if (displaced != null && displaced.Identity != itemIdentity)
+            {
+                displacedPrevious = displaced.Placement;
+                displacedDestination = ObjectPlacement.ContainedBy(actorIdentity);
+            }
+
+            // Commit the complete transaction before callbacks. An observer of either event sees the final pair.
+            item.Placement = itemDestination;
+            if (displaced != null && displaced.Identity != itemIdentity)
+                displaced.Placement = displacedDestination;
+            if (displaced != null && displaced.Identity != itemIdentity)
+                ObjectPlacementChanged?.Invoke(displaced, displacedPrevious, displacedDestination);
+            ObjectPlacementChanged?.Invoke(item, itemPrevious, itemDestination);
+            return new EquipmentTransactionResult(EquipmentResultCode.Success, actorIdentity, itemIdentity, location,
+                displaced?.Identity ?? default);
+        }
+
+        /// <summary>Atomically returns the item in a source worn location to ordinary containment.</summary>
+        public EquipmentTransactionResult UnequipItem(ArcanumObjectId actorIdentity, WornLocation location)
+        {
+            EquipmentResultCode ownerValidation = ValidateEquipmentOwner(actorIdentity);
+            if (ownerValidation != EquipmentResultCode.Success)
+                return EquipmentFailure(ownerValidation, actorIdentity, default, location);
+            if (!WornLocations.IsValid(location))
+                return EquipmentFailure(EquipmentResultCode.InvalidWornLocation, actorIdentity, default, location);
+            if (!TryGetEquippedItem(actorIdentity, location, out PersistentObjectState item))
+                return EquipmentFailure(EquipmentResultCode.SlotEmpty, actorIdentity, default, location);
+            if ((item.ItemFlags & 0x20) != 0)
+                return EquipmentFailure(EquipmentResultCode.NotRemovable, actorIdentity, item.Identity, location);
+
+            ObjectPlacement previous = item.Placement;
+            ObjectPlacement destination = ObjectPlacement.ContainedBy(actorIdentity);
+            item.Placement = destination;
+            ObjectPlacementChanged?.Invoke(item, previous, destination);
+            return new EquipmentTransactionResult(EquipmentResultCode.Success, actorIdentity, item.Identity, location);
+        }
+
+        private EquipmentResultCode ValidateEquipmentOwner(ArcanumObjectId actorIdentity)
+        {
+            if (!TryResolveKnownType(actorIdentity, new Dictionary<ArcanumObjectId, ObjectType>(),
+                    out ObjectType actorType))
+                return EquipmentResultCode.ActorNotFound;
+            return actorType is ObjectType.Pc or ObjectType.Npc
+                ? EquipmentResultCode.Success : EquipmentResultCode.InvalidActorType;
+        }
+
+        private static EquipmentTransactionResult EquipmentFailure(EquipmentResultCode code,
+            ArcanumObjectId actorIdentity, ArcanumObjectId itemIdentity, WornLocation location,
+            ArcanumObjectId displacedIdentity = default)
+            => new(code, actorIdentity, itemIdentity, location, displacedIdentity);
+
+        private bool ConflictsWithHands(ArcanumObjectId actorIdentity, PersistentObjectState item,
+            WornLocation location)
+        {
+            const int fixedTwoHanded = 0x0004 | 0x0008;
+            if (location == WornLocation.Weapon && (item.WeaponFlags & fixedTwoHanded) == fixedTwoHanded)
+                return TryGetEquippedItem(actorIdentity, WornLocation.Shield, out _);
+            if (location == WornLocation.Shield
+                && TryGetEquippedItem(actorIdentity, WornLocation.Weapon, out PersistentObjectState weapon))
+                return (weapon.WeaponFlags & fixedTwoHanded) == fixedTwoHanded;
+            return false;
+        }
+
+        private static bool IsCompatibleWith(PersistentObjectState item, WornLocation location)
+        {
+            if (!TryGetNaturalWornLocation(item, out WornLocation natural)) return false;
+            return natural == WornLocation.Ring1
+                ? location is WornLocation.Ring1 or WornLocation.Ring2
+                : natural == location;
+        }
+
+        /// <summary>Decodes the source slot family from item type, inventory ART coverage, and generic flags.</summary>
+        public static bool TryGetNaturalWornLocation(PersistentObjectState item, out WornLocation location)
+        {
+            if (item != null && item.Type == ObjectType.Weapon)
+            {
+                location = WornLocation.Weapon;
+                return true;
+            }
+            if (item != null && item.Type == ObjectType.Generic && (item.GenericFlags & 0x0001) != 0)
+            {
+                location = WornLocation.Shield;
+                return true;
+            }
+            if (item == null || item.Type != ObjectType.Armor || !item.InventoryArtId.HasValue)
+            {
+                location = default;
+                return false;
+            }
+
+            location = ((item.InventoryArtId.Value >> 14) & 0x7) switch
+            {
+                0 => WornLocation.Armor,
+                1 => WornLocation.Shield,
+                2 => WornLocation.Helmet,
+                3 => WornLocation.Gauntlet,
+                4 => WornLocation.Boots,
+                5 => WornLocation.Ring1,
+                6 => WornLocation.Medallion,
+                _ => default,
+            };
+            return WornLocations.IsValid(location);
+        }
+
         public bool IsWorldPresentationEligible(PersistentObjectState state, string sector)
             => state != null && !state.Off && state.Placement.Kind == ObjectPlacementKind.World
                && string.Equals(state.Placement.Sector, NormalizeSector(sector), StringComparison.Ordinal);
@@ -357,6 +577,9 @@ namespace Arcanum.Runtime.World
                 return new InventoryTransferResult(InventoryResultCode.InvalidItemType, itemIdentity, previous, destination);
             if (previous != source)
                 return new InventoryTransferResult(InventoryResultCode.SourceMismatch, itemIdentity, previous, destination);
+            if (previous.Kind == ObjectPlacementKind.Equipped)
+                return new InventoryTransferResult(InventoryResultCode.EquipmentCommandRequired, itemIdentity, previous,
+                    destination);
             InventoryResultCode validation = ValidateDestination(itemIdentity, destination);
             if (validation != InventoryResultCode.Success)
                 return new InventoryTransferResult(validation, itemIdentity, previous, destination);
@@ -414,7 +637,7 @@ namespace Arcanum.Runtime.World
             {
                 if (!visited.Add(ancestor)) return InventoryResultCode.CycleDetected;
                 if (!_states.TryGetValue(ancestor, out PersistentObjectState state)
-                    || state.Placement.Kind != ObjectPlacementKind.Contained)
+                    || state.Placement.Kind == ObjectPlacementKind.World)
                     break;
                 ancestor = state.Placement.ParentIdentity;
             }
@@ -531,7 +754,7 @@ namespace Arcanum.Runtime.World
                 return new WorldInteractionResult(command, WorldInteractionResultCode.ItemNotFound);
             if (!IsItemType(item.Type))
                 return new WorldInteractionResult(command, WorldInteractionResultCode.InvalidItem);
-            if (item.Placement.Kind == ObjectPlacementKind.Contained)
+            if (item.Placement.Kind != ObjectPlacementKind.World)
                 return new WorldInteractionResult(command, WorldInteractionResultCode.AlreadyContained);
             if (item.Off || item.Placement.Kind != ObjectPlacementKind.World
                 || item.Placement.Sector != SelectedSector || PlayerState.Sector != SelectedSector
