@@ -128,6 +128,8 @@ namespace Arcanum.Runtime.World
             authority.RegisterObjectOwner(this);
             authority.ObjectPlacementChanged -= OnObjectPlacementChanged;
             authority.ObjectPlacementChanged += OnObjectPlacementChanged;
+            authority.ObjectStateRemoved -= OnObjectStateRemoved;
+            authority.ObjectStateRemoved += OnObjectStateRemoved;
         }
 
         private void Start()
@@ -253,7 +255,18 @@ namespace Arcanum.Runtime.World
                     instance.ItemFlags ?? proto?.ItemFlags ?? 0,
                     instance.InvAid ?? proto?.InvAid,
                     instance.WeaponFlags ?? proto?.Weapon?.Flags ?? 0,
-                    instance.GenericFlags ?? proto?.GenericFlags ?? 0);
+                    instance.GenericFlags ?? proto?.GenericFlags ?? 0,
+                    instance.Type switch
+                    {
+                        ObjectType.Ammo => instance.AmmoQuantity ?? proto?.AmmoQuantity,
+                        ObjectType.Gold => instance.GoldQuantity ?? proto?.GoldQuantity,
+                        _ => null,
+                    });
+                if (state == null && Session.IsObjectRemoved(identity))
+                {
+                    suppressed++;
+                    continue;
+                }
                 if (state != null)
                 {
                     artId = state.ArtId;
@@ -528,6 +541,13 @@ namespace Arcanum.Runtime.World
                           && current.Sector == _registeredSector;
             if (wasHere && !isHere) RemovePresentation(state.Identity);
             else if (!wasHere && isHere) CreatePresentation(state);
+        }
+
+        private void OnObjectStateRemoved(PersistentObjectState state, ObjectPlacement previous)
+        {
+            if (state == null || !IsSectorPresented) return;
+            if (previous.Kind == ObjectPlacementKind.World && previous.Sector == _registeredSector)
+                RemovePresentation(state.Identity);
         }
 
         private bool RemovePresentation(ArcanumObjectId identity)
@@ -864,6 +884,7 @@ namespace Arcanum.Runtime.World
         private void OnDestroy()
         {
             if (session != null) session.ObjectPlacementChanged -= OnObjectPlacementChanged;
+            if (session != null) session.ObjectStateRemoved -= OnObjectStateRemoved;
             ClearSectorPresentation();
             _vfs?.Dispose();
             _vfs = null;

@@ -10,14 +10,14 @@ safe/adapt/avoid reuse boundaries, and defines a dependency-ordered M1–M13 roa
 
 ## Current Objective
 
-M1 traversal, the bounded M2 interaction/SAP_USE kernel, and M3A-M3C inventory/command/equipment state are complete.
+M1 traversal, the bounded M2 interaction/SAP_USE kernel, and M3A-M3D inventory/command/equipment/stack state are complete.
 `WorldMapSessionCoordinator` owns typed `World`, `Contained(parent)`, and `Equipped(parent, wornLocation)` placement,
-atomic raw item transfers and equipment replacement, deterministic session-created item identities, and source-faithful
-pickup/drop/owner-transfer policy independently of Unity presentation.
+atomic raw item transfers/equipment replacement/stack merge and split, deterministic session-created item identities,
+and source-faithful pickup/drop/owner-transfer policy independently of Unity presentation.
 
-The next recommended objective is M3D: authoritative stack quantity state and atomic compatible-stack merge/split
-transactions. Inventory/equipment UI, weight/capacity, economy, combat item effects/consumption, scripts, and save
-serialization remain outside that bounded slice.
+The next recommended objective is M4A: authoritative PC/NPC base attributes and derived-stat inputs. This supplies the
+source-faithful Strength state needed before a later bounded M3E adds item weight and carry/container capacity guards.
+Inventory/equipment UI, economy, combat, progression, dialogue, scripts, and save serialization remain deferred.
 
 ## Current Branch
 
@@ -1008,6 +1008,46 @@ Completed on 2026-09-12 with Unity 6000.0.71f1 on `feature/inventory-commands`.
 - Source boundary, atomic contract, call graph, fixture, and deferred effects:
   [`documentation_unity/m3c-equipment-state.md`](documentation_unity/m3c-equipment-state.md).
 
+## M3D Authoritative Stack Quantities and Atomic Merge/Split
+
+Completed on 2026-09-12 with Unity 6000.0.71f1 on `feature/inventory-commands`.
+
+- Source analysis established that only Ammo (`OBJ_F_AMMO_QUANTITY`) and Gold (`OBJ_F_GOLD_QUANTITY`) are stacks.
+  Both serialize as signed Int32 instance/prototype fields; quantity one remains a stack, canonical Ammo defaults to 10,
+  Gold defaults to 1, and no smaller type/prototype maximum exists. M3D validates `1..Int32.MaxValue` and rejects
+  overflow or invalid loaded/requested values explicitly.
+- `PersistentObjectState.StackQuantity` is the sole runtime quantity authority. Loader registration applies the exact
+  instance override or prototype default. Placement transfers, sector traversal/reload, and graphics rebuild never
+  derive or rewrite quantity through GameObjects, sprite owners, or duplicate presentation.
+- State restore projects quantity one-way into the existing `WorldObject.AmmoQuantity`/`GoldQuantity` cache for
+  source-compatible runtime consumers. Capture never reads those cache values back, so they remain non-authoritative.
+- Source stack compatibility is exact prototype equality between positive Ammo/Gold stacks. Instance flags,
+  descriptions, scripts, condition/charge, magic/tech state, owner, and inventory cell are not source compatibility
+  fields. Placement and same-owner requirements are validated separately by the transaction.
+- `MergeStacks` atomically moves a requested quantity between same-owner ordinary `Contained` stacks. The destination
+  ObjectID survives; a partial source retains its identity/remainder, while a fully consumed source is removed and
+  tombstoned. `SplitStack` retains the source ObjectID/remainder and allocates exactly one new `D_` identity through
+  M3A's existing monotonic allocator. Every failure leaves quantity, placement, membership, and identity state intact.
+- M3A/M3B insertion into a PC/NPC/container now automatically merges a compatible incoming stack exactly as source
+  `item_insert`: the pre-existing destination-owner identity survives and the incoming identity is consumed. World
+  drops do not merge; explicit world/equipped split or merge is rejected. Loader removal observes only committed state,
+  and authored tombstones suppress reload resurrection/presentation.
+- Real fixture: Ammo `G_9239E097_A8D2_C147_9F58_76077340C60E`, prototype 7059, source quantity 60, world ART
+  `0x60000041`, item flags 0, `SAP_USE` 0, authored in real container
+  `G_8F454608_E327_1341_B85B_E7A5402D4758` (prototype 3052) in
+  `maps/arcanum1-024-fixed/101602821844.sec`. Real incompatible proof used Ammo
+  `G_FBFA4631_D97D_D740_9636_F131B2FD9F7B`, prototype 7058, quantity 70.
+- Computer Use literal-click validation passed pickup at quantity 60, a 25/35 split into
+  `D_0000000000000001`, PC-to-real-container transfer, source-style transfer-back merge with the authored destination
+  surviving, drop, one world projection, reload, A-to-B-to-A traversal, and Original/Enhanced/reverted rebuild. A
+  dynamic prototype-7059 stack used `D_0000000000000002`, split to `D_0000000000000003`, merged with `D_2` surviving
+  at quantity 10, and the next creation received `D_0000000000000004`. The harness recorded 0 new warnings and 0 errors.
+- Validation: M3D 18/18, M3C 13/13, M3B 13/13, M3A 8/8, M2B 8/8, M2A 16/16,
+  PlayerNavigation 21/21, M1A 7/7, M1B 11/11, WorldSessionState 27/27, PortalArtResolver 2/2, and complete EditMode
+  315/315. All had 0 failures, skips, or inconclusive tests; final compilation was clean.
+- Full source evidence, transaction/identity contract, final ownership graph, fixtures, and validation:
+  [`documentation_unity/m3d-stack-state.md`](documentation_unity/m3d-stack-state.md).
+
 ## Next Recommended Milestone
 
 The M2C candidate gate was completed on 2026-09-10 against all 22 distinct SAP_USE script numbers attached to placed
@@ -1018,8 +1058,9 @@ production or test code was changed, and the strict whitelist was not widened. S
 [`documentation_unity/m2c-sap-use-family.md`](documentation_unity/m2c-sap-use-family.md) for the candidate table and
 rejection evidence.
 
-The exact recommended next milestone is M3D: add authoritative stack quantity state and atomic compatible-stack
-merge/split transactions with explicit identity behavior, failure rollback, world/containment projection, dynamic-item
-parity, and reload/rebuild validation. Continue to defer inventory UI, weight/capacity, economy, combat consumption,
-script integration, destruction, decay, and save serialization. Additional SAP_USE families remain deferred until
-their owning domains exist.
+The exact recommended next milestone is M4A: add authoritative PC/NPC base attributes and narrow derived-stat inputs,
+beginning with a fresh source audit and retaining raw Strength and related critter state independently of Unity
+presentation. This is the prerequisite for a later M3E implementation of item weight, PC carry capacity,
+container-capacity transfer guards, and encumbrance without placeholder character rules. M4A must continue to defer
+level progression, combat, dialogue, spell/technology effects, inventory UI, economy, script-host expansion, and save
+serialization. Additional SAP_USE families remain deferred until their owning domains exist.

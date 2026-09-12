@@ -12,6 +12,7 @@ namespace Arcanum.Runtime.World
     public sealed class WorldMapSessionCoordinator : MonoBehaviour, ISectorSelectionAuthority
     {
         private readonly Dictionary<ArcanumObjectId, PersistentObjectState> _states = new();
+        private readonly HashSet<ArcanumObjectId> _removedObjectIdentities = new();
         private readonly Dictionary<string, Dictionary<ArcanumObjectId, LoadedBinding>> _loaded = new();
         [SerializeField] private MonoBehaviour terrainSectorOwner;
         [SerializeField] private MonoBehaviour objectSectorOwner;
@@ -34,6 +35,10 @@ namespace Arcanum.Runtime.World
         public event Action<string> SectorUnloading;
         public event Action<string> SectorSelected;
         public event Action<PersistentObjectState, ObjectPlacement, ObjectPlacement> ObjectPlacementChanged;
+        public event Action<PersistentObjectState, int, int> ObjectQuantityChanged;
+        public event Action<PersistentObjectState, ObjectPlacement> ObjectStateRemoved;
+
+        public const int MaxStackQuantity = int.MaxValue;
 
         private sealed class LoadedBinding
         {
@@ -163,6 +168,7 @@ namespace Arcanum.Runtime.World
                     error = $"Duplicate persistent ObjectID {identity} in '{sector}'.";
                     return false;
                 }
+                if (_removedObjectIdentities.Contains(identity)) continue;
                 if (_states.TryGetValue(identity, out var existing) && !existing.Matches(source, sector))
                 {
                     error = $"ObjectID collision {identity}: '{existing.SourceSector}' and '{sector}' differ in source metadata.";
@@ -286,24 +292,27 @@ namespace Arcanum.Runtime.World
             int itemFlags = 0,
             uint? inventoryArtId = null,
             int weaponFlags = 0,
-            int genericFlags = 0)
+            int genericFlags = 0,
+            int? stackQuantity = null)
         {
             if (!identity.IsPersistent) return null;
+            if (_removedObjectIdentities.Contains(identity)) return null;
             if (_states.TryGetValue(identity, out var existing))
             {
                 if (!existing.Matches(source, sector)) throw new InvalidOperationException($"ObjectID collision: {identity}");
                 return existing;
             }
             var state = new PersistentObjectState(source, identity, sector, artId, off, locked, itemFlags,
-                inventoryArtId, weaponFlags, genericFlags);
+                inventoryArtId, weaponFlags, genericFlags, stackQuantity);
             _states.Add(identity, state);
             return state;
         }
 
         public PersistentObjectState GetOrCreate(ObjectInstance source, string sector, uint artId, bool off, bool locked,
-            int itemFlags = 0, uint? inventoryArtId = null, int weaponFlags = 0, int genericFlags = 0)
+            int itemFlags = 0, uint? inventoryArtId = null, int weaponFlags = 0, int genericFlags = 0,
+            int? stackQuantity = null)
             => GetOrCreate(source, source.Identity, sector, artId, off, locked, itemFlags, inventoryArtId,
-                weaponFlags, genericFlags);
+                weaponFlags, genericFlags, stackQuantity);
 
         public void Bind(string sector, PersistentObjectState state, WorldObject runtime)
         {
@@ -345,6 +354,8 @@ namespace Arcanum.Runtime.World
 
         public bool TryGetObjectState(ArcanumObjectId identity, out PersistentObjectState state)
             => _states.TryGetValue(identity, out state);
+
+        public bool IsObjectRemoved(ArcanumObjectId identity) => _removedObjectIdentities.Contains(identity);
 
         public bool TryGetPlacement(ArcanumObjectId identity, out ObjectPlacement placement)
         {
@@ -562,6 +573,121 @@ namespace Arcanum.Runtime.World
             return WornLocations.IsValid(location);
         }
 
+        /// <summary>Source stack compatibility: positive Gold/Ammo quantities and the exact same prototype.</summary>
+        public bool CanStack(ArcanumObjectId leftIdentity, ArcanumObjectId rightIdentity)
+            => leftIdentity != rightIdentity
+               && _states.TryGetValue(leftIdentity, out PersistentObjectState left)
+               && _states.TryGetValue(rightIdentity, out PersistentObjectState right)
+               && CanStack(left, right);
+
+        public static bool CanStack(PersistentObjectState left, PersistentObjectState right)
+            => left != null && right != null && left.Identity != right.Identity
+               && left.StackQuantity is > 0 && right.StackQuantity is > 0
+               && left.Type is ObjectType.Ammo or ObjectType.Gold
+               && right.Type == left.Type
+               && right.PrototypeNumber == left.PrototypeNumber;
+
+        /// <summary>
+        /// Moves a requested quantity into a same-owner ordinary inventory stack. The destination identity survives.
+        /// </summary>
+        public StackMergeResult MergeStacks(ArcanumObjectId sourceIdentity,
+            ArcanumObjectId destinationIdentity, int? requestedQuantity = null)
+        {
+            if (!_states.TryGetValue(sourceIdentity, out PersistentObjectState source))
+                return StackMergeFailure(StackResultCode.SourceNotFound, sourceIdentity, destinationIdentity);
+            if (!_states.TryGetValue(destinationIdentity, out PersistentObjectState destination))
+                return StackMergeFailure(StackResultCode.DestinationNotFound, sourceIdentity, destinationIdentity);
+            if (sourceIdentity == destinationIdentity)
+                return StackMergeFailure(StackResultCode.SameObject, sourceIdentity, destinationIdentity);
+            if (!source.StackQuantity.HasValue || !destination.StackQuantity.HasValue)
+                return StackMergeFailure(StackResultCode.NotStackable, sourceIdentity, destinationIdentity);
+            if (!CanStack(source, destination))
+                return StackMergeFailure(StackResultCode.Incompatible, sourceIdentity, destinationIdentity);
+            if (source.Placement.Kind != ObjectPlacementKind.Contained
+                || destination.Placement.Kind != ObjectPlacementKind.Contained
+                || source.Placement.ParentIdentity != destination.Placement.ParentIdentity)
+                return StackMergeFailure(StackResultCode.InvalidPlacement, sourceIdentity, destinationIdentity);
+
+            int quantity = requestedQuantity ?? source.StackQuantity.Value;
+            if (quantity < 1 || quantity > source.StackQuantity.Value)
+                return StackMergeFailure(StackResultCode.InvalidQuantity, sourceIdentity, destinationIdentity);
+            if ((long)destination.StackQuantity.Value + quantity > MaxStackQuantity)
+                return StackMergeFailure(StackResultCode.QuantityOverflow, sourceIdentity, destinationIdentity);
+            return CommitStackMerge(source, destination, quantity);
+        }
+
+        /// <summary>Splits an ordinary contained Gold/Ammo stack while preserving its identity.</summary>
+        public StackSplitResult SplitStack(ArcanumObjectId sourceIdentity, int quantity)
+        {
+            if (!_states.TryGetValue(sourceIdentity, out PersistentObjectState source))
+                return new StackSplitResult(StackResultCode.SourceNotFound, sourceIdentity);
+            if (!source.StackQuantity.HasValue)
+                return new StackSplitResult(StackResultCode.NotStackable, sourceIdentity);
+            if (source.Placement.Kind != ObjectPlacementKind.Contained)
+                return new StackSplitResult(StackResultCode.InvalidPlacement, sourceIdentity,
+                    source.StackQuantity.Value);
+            if (quantity < 1 || quantity >= source.StackQuantity.Value)
+                return new StackSplitResult(StackResultCode.InvalidQuantity, sourceIdentity,
+                    source.StackQuantity.Value);
+            if (!TryAllocateDynamicIdentity(out ArcanumObjectId identity))
+                return new StackSplitResult(StackResultCode.IdentityExhausted, sourceIdentity,
+                    source.StackQuantity.Value);
+
+            int previousQuantity = source.StackQuantity.Value;
+            int remainingQuantity = previousQuantity - quantity;
+            var created = new PersistentObjectState(source, identity, source.Placement, quantity);
+
+            // Commit both authoritative states before observers can inspect the transaction.
+            source.StackQuantity = remainingQuantity;
+            _states.Add(identity, created);
+            ObjectQuantityChanged?.Invoke(source, previousQuantity, remainingQuantity);
+            ObjectPlacementChanged?.Invoke(created, default, created.Placement);
+            return new StackSplitResult(StackResultCode.Success, sourceIdentity, remainingQuantity, created);
+        }
+
+        private StackMergeResult CommitStackMerge(PersistentObjectState source,
+            PersistentObjectState destination, int quantity)
+        {
+            int sourcePrevious = source.StackQuantity.Value;
+            int destinationPrevious = destination.StackQuantity.Value;
+            int sourceRemaining = sourcePrevious - quantity;
+            int destinationQuantity = destinationPrevious + quantity;
+            ObjectPlacement sourcePlacement = source.Placement;
+
+            destination.StackQuantity = destinationQuantity;
+            if (sourceRemaining == 0)
+            {
+                _states.Remove(source.Identity);
+                _removedObjectIdentities.Add(source.Identity);
+            }
+            else source.StackQuantity = sourceRemaining;
+
+            // All mutations precede callbacks: observers see the final quantity table and tombstone.
+            ObjectQuantityChanged?.Invoke(destination, destinationPrevious, destinationQuantity);
+            if (sourceRemaining == 0) ObjectStateRemoved?.Invoke(source, sourcePlacement);
+            else ObjectQuantityChanged?.Invoke(source, sourcePrevious, sourceRemaining);
+            return new StackMergeResult(StackResultCode.Success, source.Identity, destination.Identity, quantity,
+                sourceRemaining, destinationQuantity, sourceRemaining == 0);
+        }
+
+        private static StackMergeResult StackMergeFailure(StackResultCode code,
+            ArcanumObjectId sourceIdentity, ArcanumObjectId destinationIdentity)
+            => new(code, sourceIdentity, destinationIdentity);
+
+        private PersistentObjectState FindCompatibleContainedStack(PersistentObjectState source,
+            ArcanumObjectId parentIdentity)
+        {
+            PersistentObjectState match = null;
+            foreach (PersistentObjectState candidate in _states.Values)
+                if (candidate.Identity != source.Identity
+                    && candidate.Placement.Kind == ObjectPlacementKind.Contained
+                    && candidate.Placement.ParentIdentity == parentIdentity
+                    && CanStack(source, candidate)
+                    && (match == null || string.CompareOrdinal(candidate.Identity.Key, match.Identity.Key) < 0))
+                    match = candidate;
+            return match;
+        }
+
         public bool IsWorldPresentationEligible(PersistentObjectState state, string sector)
             => state != null && !state.Off && state.Placement.Kind == ObjectPlacementKind.World
                && string.Equals(state.Placement.Sector, NormalizeSector(sector), StringComparison.Ordinal);
@@ -586,6 +712,20 @@ namespace Arcanum.Runtime.World
             if (previous == destination)
                 return new InventoryTransferResult(InventoryResultCode.AlreadyAtDestination, itemIdentity, previous, destination);
 
+            if (destination.Kind == ObjectPlacementKind.Contained && item.StackQuantity.HasValue)
+            {
+                PersistentObjectState existing = FindCompatibleContainedStack(item, destination.ParentIdentity);
+                if (existing != null)
+                {
+                    if ((long)existing.StackQuantity.Value + item.StackQuantity.Value > MaxStackQuantity)
+                        return new InventoryTransferResult(InventoryResultCode.QuantityOverflow, itemIdentity, previous,
+                            destination, existing.Identity);
+                    CommitStackMerge(item, existing, item.StackQuantity.Value);
+                    return new InventoryTransferResult(InventoryResultCode.Success, itemIdentity, previous,
+                        destination, existing.Identity, true);
+                }
+            }
+
             item.Placement = destination;
             if (destination.Kind == ObjectPlacementKind.World) item.TilePosition = destination.TilePosition;
             ObjectPlacementChanged?.Invoke(item, previous, destination);
@@ -602,12 +742,8 @@ namespace Arcanum.Runtime.World
             InventoryResultCode validation = ValidateDestination(default, destination);
             if (validation != InventoryResultCode.Success) return new ItemCreationResult(validation);
 
-            ArcanumObjectId identity;
-            do
-            {
-                if (_nextDynamicIdentity == 0) return new ItemCreationResult(InventoryResultCode.IdentityExhausted);
-                identity = ArcanumObjectId.CreateSessionDynamic(_nextDynamicIdentity++);
-            } while (_states.ContainsKey(identity) || PlayerState != null && PlayerState.Identity == identity);
+            if (!TryAllocateDynamicIdentity(out ArcanumObjectId identity))
+                return new ItemCreationResult(InventoryResultCode.IdentityExhausted);
 
             string creationSector = destination.Kind == ObjectPlacementKind.World
                 ? destination.Sector : SelectedSector ?? PlayerState?.Sector;
@@ -615,6 +751,21 @@ namespace Arcanum.Runtime.World
             _states.Add(identity, state);
             ObjectPlacementChanged?.Invoke(state, default, destination);
             return new ItemCreationResult(InventoryResultCode.Success, state);
+        }
+
+        private bool TryAllocateDynamicIdentity(out ArcanumObjectId identity)
+        {
+            do
+            {
+                if (_nextDynamicIdentity == 0)
+                {
+                    identity = default;
+                    return false;
+                }
+                identity = ArcanumObjectId.CreateSessionDynamic(_nextDynamicIdentity++);
+            } while (_states.ContainsKey(identity) || _removedObjectIdentities.Contains(identity)
+                     || PlayerState != null && PlayerState.Identity == identity);
+            return true;
         }
 
         private InventoryResultCode ValidateDestination(ArcanumObjectId child, ObjectPlacement destination)

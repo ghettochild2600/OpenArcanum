@@ -114,6 +114,7 @@ namespace Arcanum.Runtime.World
         PrototypeNotFound,
         IdentityExhausted,
         EquipmentCommandRequired,
+        QuantityOverflow,
     }
 
     public readonly struct InventoryTransferResult
@@ -122,15 +123,20 @@ namespace Arcanum.Runtime.World
         public ArcanumObjectId ItemIdentity { get; }
         public ObjectPlacement Previous { get; }
         public ObjectPlacement Destination { get; }
+        public ArcanumObjectId MergedIntoIdentity { get; }
+        public bool SourceConsumed { get; }
         public bool Succeeded => Code == InventoryResultCode.Success;
 
         internal InventoryTransferResult(InventoryResultCode code, ArcanumObjectId itemIdentity,
-            ObjectPlacement previous, ObjectPlacement destination)
+            ObjectPlacement previous, ObjectPlacement destination, ArcanumObjectId mergedIntoIdentity = default,
+            bool sourceConsumed = false)
         {
             Code = code;
             ItemIdentity = itemIdentity;
             Previous = previous;
             Destination = destination;
+            MergedIntoIdentity = mergedIntoIdentity;
+            SourceConsumed = sourceConsumed;
         }
     }
 
@@ -181,6 +187,65 @@ namespace Arcanum.Runtime.World
             ItemIdentity = itemIdentity;
             WornLocation = wornLocation;
             DisplacedItemIdentity = displacedItemIdentity;
+        }
+    }
+
+    public enum StackResultCode
+    {
+        Success,
+        SourceNotFound,
+        DestinationNotFound,
+        SameObject,
+        NotStackable,
+        Incompatible,
+        InvalidQuantity,
+        QuantityOverflow,
+        InvalidPlacement,
+        IdentityExhausted,
+    }
+
+    /// <summary>Result of one all-or-nothing quantity move into a surviving destination stack.</summary>
+    public readonly struct StackMergeResult
+    {
+        public StackResultCode Code { get; }
+        public ArcanumObjectId SourceIdentity { get; }
+        public ArcanumObjectId DestinationIdentity { get; }
+        public int MovedQuantity { get; }
+        public int SourceQuantity { get; }
+        public int DestinationQuantity { get; }
+        public bool SourceConsumed { get; }
+        public bool Succeeded => Code == StackResultCode.Success;
+
+        internal StackMergeResult(StackResultCode code, ArcanumObjectId sourceIdentity,
+            ArcanumObjectId destinationIdentity, int movedQuantity = 0, int sourceQuantity = 0,
+            int destinationQuantity = 0, bool sourceConsumed = false)
+        {
+            Code = code;
+            SourceIdentity = sourceIdentity;
+            DestinationIdentity = destinationIdentity;
+            MovedQuantity = movedQuantity;
+            SourceQuantity = sourceQuantity;
+            DestinationQuantity = destinationQuantity;
+            SourceConsumed = sourceConsumed;
+        }
+    }
+
+    /// <summary>Result of one all-or-nothing split that preserves the source and creates one session identity.</summary>
+    public readonly struct StackSplitResult
+    {
+        public StackResultCode Code { get; }
+        public ArcanumObjectId SourceIdentity { get; }
+        public int SourceQuantity { get; }
+        public PersistentObjectState CreatedState { get; }
+        public bool Succeeded => Code == StackResultCode.Success;
+
+        internal StackSplitResult(StackResultCode code, ArcanumObjectId sourceIdentity,
+            int sourceQuantity = 0, PersistentObjectState createdState = null)
+        {
+            Code = code;
+            SourceIdentity = sourceIdentity;
+            SourceQuantity = sourceQuantity;
+            CreatedState = createdState;
         }
     }
 }

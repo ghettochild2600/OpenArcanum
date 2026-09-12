@@ -24,6 +24,8 @@ namespace Arcanum.Runtime.World
         public uint? InventoryArtId { get; }
         public int WeaponFlags { get; }
         public int GenericFlags { get; }
+        /// <summary>Source Ammo/Gold quantity. Null means this object type is singular and cannot stack.</summary>
+        public int? StackQuantity { get; internal set; }
         public bool PortalOpen { get; internal set; }
         public Vector2 TilePosition { get; internal set; }
         public ObjectPlacement Placement { get; internal set; }
@@ -39,7 +41,8 @@ namespace Arcanum.Runtime.World
             int itemFlags = 0,
             uint? inventoryArtId = null,
             int weaponFlags = 0,
-            int genericFlags = 0)
+            int genericFlags = 0,
+            int? stackQuantity = null)
         {
             Identity = identity;
             AuthoredParentIdentity = source.ParentIdentity;
@@ -54,6 +57,7 @@ namespace Arcanum.Runtime.World
             InventoryArtId = inventoryArtId;
             WeaponFlags = weaponFlags;
             GenericFlags = genericFlags;
+            StackQuantity = ValidateStackQuantity(Type, stackQuantity);
             TilePosition = source.Location.HasValue
                 ? new Vector2(source.TileX, source.TileY)
                 : Vector2.zero;
@@ -78,6 +82,33 @@ namespace Arcanum.Runtime.World
             InventoryArtId = prototype.InvAid;
             WeaponFlags = prototype.Weapon?.Flags ?? 0;
             GenericFlags = prototype.GenericFlags ?? 0;
+            StackQuantity = ValidateStackQuantity(Type, Type switch
+            {
+                ObjectType.Ammo => prototype.AmmoQuantity,
+                ObjectType.Gold => prototype.GoldQuantity,
+                _ => null,
+            });
+            Placement = placement;
+            TilePosition = placement.Kind == ObjectPlacementKind.World ? placement.TilePosition : Vector2.zero;
+            IsRuntimeCreated = true;
+        }
+
+        internal PersistentObjectState(PersistentObjectState source, ArcanumObjectId identity,
+            ObjectPlacement placement, int stackQuantity)
+        {
+            Identity = identity;
+            SourceSector = source.SourceSector;
+            Type = source.Type;
+            PrototypeNumber = source.PrototypeNumber;
+            ArtId = source.ArtId;
+            Off = source.Off;
+            Locked = source.Locked;
+            UseScriptNum = source.UseScriptNum;
+            ItemFlags = source.ItemFlags;
+            InventoryArtId = source.InventoryArtId;
+            WeaponFlags = source.WeaponFlags;
+            GenericFlags = source.GenericFlags;
+            StackQuantity = ValidateStackQuantity(Type, stackQuantity);
             Placement = placement;
             TilePosition = placement.Kind == ObjectPlacementKind.World ? placement.TilePosition : Vector2.zero;
             IsRuntimeCreated = true;
@@ -98,6 +129,8 @@ namespace Arcanum.Runtime.World
             runtime.Locked = Locked;
             runtime.UseScriptNum = UseScriptNum;
             runtime.ItemFlags = ItemFlags;
+            runtime.AmmoQuantity = Type == ObjectType.Ammo ? StackQuantity.GetValueOrDefault() : 0;
+            runtime.GoldQuantity = Type == ObjectType.Gold ? StackQuantity.GetValueOrDefault() : 0;
             runtime.IsOpen = PortalOpen;
             runtime.ApplyMovementState(TilePosition, ArtId, false);
         }
@@ -124,6 +157,22 @@ namespace Arcanum.Runtime.World
             return type == Arcanum.Formats.Art.ArtId.TypeCritter
                    || type == Arcanum.Formats.Art.ArtId.TypeMonster
                    || type == Arcanum.Formats.Art.ArtId.TypeUniqueNpc;
+        }
+
+        private static int? ValidateStackQuantity(ObjectType type, int? quantity)
+        {
+            bool stackable = type is ObjectType.Ammo or ObjectType.Gold;
+            if (!stackable)
+            {
+                if (quantity.HasValue)
+                    throw new System.ArgumentException($"{type} does not have a source quantity field.",
+                        nameof(quantity));
+                return null;
+            }
+            if (!quantity.HasValue || quantity.Value < 1)
+                throw new System.ArgumentOutOfRangeException(nameof(quantity), quantity,
+                    $"{type} quantity must be in the positive Int32 source range.");
+            return quantity.Value;
         }
     }
 }
