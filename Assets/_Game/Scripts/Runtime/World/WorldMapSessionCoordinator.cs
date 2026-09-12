@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Arcanum.Formats.Objects;
 using Arcanum.Formats.Script;
+using Arcanum.Runtime.Character;
 using Arcanum.Script;
 using Arcanum.World;
 using UnityEngine;
@@ -29,6 +30,7 @@ namespace Arcanum.Runtime.World
         public string SelectedSector { get; private set; }
         public bool HasSelectedSector => !string.IsNullOrEmpty(SelectedSector);
         public PersistentPlayerState PlayerState { get; private set; }
+        public CharacterStatService Characters { get; } = new();
         public PortalTransitionScheduler Portals { get; } = new();
         public ScriptGlobals ScriptGlobals { get; } = new();
         public WorldUseScriptDispatcher UseScripts { get; private set; }
@@ -330,12 +332,13 @@ namespace Arcanum.Runtime.World
             if (!identity.IsPersistent) throw new ArgumentException("Player identity must be persistent.", nameof(identity));
             if (_states.ContainsKey(identity)) throw new InvalidOperationException($"Player ObjectID collides with {identity}.");
             string normalized = NormalizeSector(sector) ?? throw new ArgumentException("Player sector is required.", nameof(sector));
+            if (PlayerState != null && PlayerState.Identity != identity)
+                throw new InvalidOperationException("A different production player is already registered.");
+            Characters.GetOrCreateDevelopmentPlayer(identity);
             if (PlayerState == null)
                 PlayerState = new PersistentPlayerState(identity, normalized, spawnTile, artId);
             else
             {
-                if (PlayerState.Identity != identity)
-                    throw new InvalidOperationException("A different production player is already registered.");
                 PlayerState.EnterSector(normalized, spawnTile, artId);
             }
             return PlayerState;

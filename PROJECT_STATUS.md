@@ -10,13 +10,14 @@ safe/adapt/avoid reuse boundaries, and defines a dependency-ordered M1–M13 roa
 
 ## Current Objective
 
-M1 traversal, the bounded M2 interaction/SAP_USE kernel, and M3A-M3D inventory/command/equipment/stack state are complete.
+M1 traversal, the bounded M2 interaction/SAP_USE kernel, M3A-M3D inventory/command/equipment/stack state, and M4A
+authoritative PC/NPC primary attributes are complete.
 `WorldMapSessionCoordinator` owns typed `World`, `Contained(parent)`, and `Equipped(parent, wornLocation)` placement,
 atomic raw item transfers/equipment replacement/stack merge and split, deterministic session-created item identities,
 and source-faithful pickup/drop/owner-transfer policy independently of Unity presentation.
 
-The next recommended objective is M4A: authoritative PC/NPC base attributes and derived-stat inputs. This supplies the
-source-faithful Strength state needed before a later bounded M3E adds item weight and carry/container capacity guards.
+The next recommended objective is M3E: source-faithful item weight, effective-Strength carry capacity, container
+capacity, and atomic transfer guards. M4A now supplies the authoritative effective Strength input for that work.
 Inventory/equipment UI, economy, combat, progression, dialogue, scripts, and save serialization remain deferred.
 
 ## Current Branch
@@ -1048,6 +1049,38 @@ Completed on 2026-09-12 with Unity 6000.0.71f1 on `feature/inventory-commands`.
 - Full source evidence, transaction/identity contract, final ownership graph, fixtures, and validation:
   [`documentation_unity/m3d-stack-state.md`](documentation_unity/m3d-stack-state.md).
 
+## M4A Authoritative PC/NPC Primary Attributes
+
+Completed on 2026-09-12 with Unity 6000.0.71f1 on `feature/inventory-commands`.
+
+- Source analysis established that PC and NPC base stats share `OBJ_F_CRITTER_STAT_BASE_IDX` (field 220), a 28-slot
+  Int32 array whose first eight source IDs are Strength 0, Dexterity 1, Constitution 2, Beauty 3, Intelligence 4,
+  Perception 5, Willpower 6, and Charisma 7. All default to 8 and ordinarily range from 1 to 20, with the documented
+  source race-specific maxima. An instance inherits the prototype array wholesale and the engine copies that whole
+  array on first override, so initialization uses `instance.StatBase ?? prototype.StatBase`, never per-slot merging.
+- `WorldMapSessionCoordinator.Characters` owns one `CharacterStatService`. Its `PersistentCharacterState` records are
+  keyed by stable `ArcanumObjectId`, carry immutable typed base attributes plus explicit race/gender inputs, and survive
+  graphics/presentation teardown and sector lifecycle independently of `WorldObject`, GameObject, Transform, or sprite
+  owners. Invalid identities, object types, source arrays, IDs, ranges, collisions, and unknown queries fail explicitly.
+- Effective queries implement only fully audited retail Race effects 64-74 and Female effect 330, followed by the
+  original race-aware final clamp. Race/Gender replacement removes the prior contribution without mutating base.
+  Background/environment, poison, item/equipment, spell, injury, tech, class, bless/curse, and other effect operators
+  remain explicit deferred inputs.
+- The deterministic development PC is explicitly Human Male with all eight base/effective values 8; ART is not an
+  attribute source. Effective Strength is available through the typed character service for the next carry-capacity
+  consumer, but M4A computes neither carry weight nor damage.
+- Real fixture: female Human NPC `G_33CE5E06_F4AC_3A4B_B98E_9AB36C467E6F`, prototype 17101, from
+  `maps/arcanum1-024-fixed/101602821844.sec`. Its prototype is all 8s; its whole instance base override is
+  `[10,9,15,10,10,10,8,10]` and its effective values are `[9,9,16,10,10,10,8,10]` in source order.
+- Computer Use Play Mode validation passed the real NPC and production PC queries, Female add/remove proof,
+  Original/Enhanced/reverted rebuild, NPC unload/reload, PC A-to-B-to-A traversal, stable state reference/identity,
+  unique presentation ownership, and production-PC navigation binding. It recorded 0 new warnings and 0 errors.
+- Validation: M4A 13/13, M3D 18/18, M3C 13/13, M3B 13/13, M3A 8/8, M2B 8/8, M2A 16/16,
+  PlayerNavigation 21/21, M1A 7/7, M1B 11/11, WorldSessionState 27/27, PortalArtResolver 2/2, and complete EditMode
+  328/328. All had 0 failures, skips, or inconclusive tests; final compilation was clean.
+- Full source mapping, limits, effect boundary, fixture, ownership graph, and validation:
+  [`documentation_unity/m4a-character-attributes.md`](documentation_unity/m4a-character-attributes.md).
+
 ## Next Recommended Milestone
 
 The M2C candidate gate was completed on 2026-09-10 against all 22 distinct SAP_USE script numbers attached to placed
@@ -1058,9 +1091,9 @@ production or test code was changed, and the strict whitelist was not widened. S
 [`documentation_unity/m2c-sap-use-family.md`](documentation_unity/m2c-sap-use-family.md) for the candidate table and
 rejection evidence.
 
-The exact recommended next milestone is M4A: add authoritative PC/NPC base attributes and narrow derived-stat inputs,
-beginning with a fresh source audit and retaining raw Strength and related critter state independently of Unity
-presentation. This is the prerequisite for a later M3E implementation of item weight, PC carry capacity,
-container-capacity transfer guards, and encumbrance without placeholder character rules. M4A must continue to defer
-level progression, combat, dialogue, spell/technology effects, inventory UI, economy, script-host expansion, and save
-serialization. Additional SAP_USE families remain deferred until their owning domains exist.
+The exact recommended next milestone is M3E: implement source-faithful item weight, PC carry capacity from M4A's typed
+effective Strength query, container capacity, and atomic transfer guards. Audit the original weight-unit conversions,
+inventory-owner rules, capacity comparisons, failure/result semantics, and all affected insertion paths before changing
+production code. Keep encumbrance movement penalties, equipment stat effects, leveling, combat, dialogue, inventory UI,
+economy, script-host expansion, and save serialization deferred. Additional SAP_USE families remain deferred until
+their owning domains exist.

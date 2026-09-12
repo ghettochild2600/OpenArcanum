@@ -250,6 +250,9 @@ namespace Arcanum.Runtime.World
                 int stateFlags = instance.Type == ObjectType.Portal
                     ? instance.PortalFlags ?? proto?.PortalFlags ?? 0
                     : instance.Type == ObjectType.Container ? instance.ContainerFlags ?? proto?.ContainerFlags ?? 0 : 0;
+                if (identity.IsPersistent && (instance.Type is ObjectType.Pc or ObjectType.Npc))
+                    Session.Characters.GetOrCreateSourceCharacter(identity, instance.Type, instance.PrototypeNumber,
+                        instance.StatBase, proto?.StatBase);
                 PersistentObjectState state = Session.GetOrCreate(instance, identity, sectorPath, artId,
                     (flags & ObjectFlagOff) != 0, (stateFlags & 1) != 0,
                     instance.ItemFlags ?? proto?.ItemFlags ?? 0,
