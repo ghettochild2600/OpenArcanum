@@ -22,6 +22,7 @@ namespace Arcanum.Runtime.Character
             });
 
         public IReadOnlyDictionary<ArcanumObjectId, PersistentCharacterState> States => _states;
+        public event Action<ArcanumObjectId> EffectiveAttributesChanged;
 
         public PersistentCharacterState GetOrCreateDevelopmentPlayer(ArcanumObjectId identity)
         {
@@ -59,10 +60,18 @@ namespace Arcanum.Runtime.Character
             => Get(identity).GetEffective(attribute);
 
         /// <summary>Mirrors source race replacement: remove the old Race-caused effect, then apply 64 + race.</summary>
-        public void SetRace(ArcanumObjectId identity, CharacterRace race) => Get(identity).SetRace(race);
+        public void SetRace(ArcanumObjectId identity, CharacterRace race)
+        {
+            Get(identity).SetRace(race);
+            EffectiveAttributesChanged?.Invoke(identity);
+        }
 
         /// <summary>Mirrors source gender replacement: remove the old Gender effect, then apply 330 for Female.</summary>
-        public void SetGender(ArcanumObjectId identity, CharacterGender gender) => Get(identity).SetGender(gender);
+        public void SetGender(ArcanumObjectId identity, CharacterGender gender)
+        {
+            Get(identity).SetGender(gender);
+            EffectiveAttributesChanged?.Invoke(identity);
+        }
 
         private PersistentCharacterState GetOrCreate(ArcanumObjectId identity, ObjectType objectType,
             int? prototypeNumber, CharacterAttributeSet attributes, CharacterRace race, CharacterGender gender,

@@ -85,10 +85,8 @@ namespace Arcanum.Formats.Objects
         /// 11999+range/100 (<c>dialog_copy_npc_override_msg</c>); 0 = none.</summary>
         public int DialogOverrideNum { get; internal set; }
 
-        /// <summary><c>OBJ_F_HP_DAMAGE</c> — damage taken. A critter is dead (engine <c>critter_is_dead</c>:
-        /// <c>hp_current ≤ 0</c>) when this reaches max HP; crash-site bodies are placed with the 32000 kill
-        /// sentinel. 0 = none.</summary>
-        public int HpDamage { get; internal set; }
+        /// <summary><c>OBJ_F_HP_DAMAGE</c> — accumulated damage, or null when inherited from the prototype.</summary>
+        public int? HpDamage { get; internal set; }
 
         /// <summary>For NPCs, <c>OBJ_F_NPC_REACTION_BASE</c>: the authored starting reaction toward the PC
         /// (engine default 50 = neutral); null if inherited from the prototype.</summary>
@@ -188,6 +186,15 @@ namespace Arcanum.Formats.Objects
         /// <summary>Base max HP (<c>OBJ_F_HP_PTS</c>): a critter is dead when <c>HP_PTS − <see cref="HpDamage"/> ≤ 0</c>.
         /// Usually authored on the prototype; null if not overridden here.</summary>
         public int? HpPoints { get; internal set; }
+
+        /// <summary><c>OBJ_F_HP_ADJ</c> — signed maximum-HP adjustment; null when inherited.</summary>
+        public int? HpAdjustment { get; internal set; }
+
+        /// <summary>Source critter fatigue points, adjustment, and accumulated damage; null when inherited.</summary>
+        public int? FatiguePoints { get; internal set; }
+
+        public int? FatigueAdjustment { get; internal set; }
+        public int? FatigueDamage { get; internal set; }
 
         /// <summary>For items, <c>OBJ_F_ITEM_FLAGS</c> (<c>OIF_*</c>: identified, no_pickup, no_display, …); null if unset.</summary>
         public int? ItemFlags { get; internal set; }
@@ -307,7 +314,8 @@ namespace Arcanum.Formats.Objects
         private const int F_OFFSET_X = 3;                    // OBJ_F_OFFSET_X (common field)
         private const int F_OFFSET_Y = 4;                    // OBJ_F_OFFSET_Y
         private const int F_FLAGS = 19;                      // OBJ_F_FLAGS (common INT32) → OF_* bitset
-        private const int F_HP_DAMAGE = 29;                  // OBJ_F_HP_DAMAGE — critter is dead when this ≥ max HP (crash bodies = 32000)
+        private const int F_HP_ADJ = 28;                     // OBJ_F_HP_ADJ — signed maximum-HP adjustment
+        private const int F_HP_DAMAGE = 29;                  // OBJ_F_HP_DAMAGE — accumulated damage
         private const int F_DESCRIPTION = 23;                // OBJ_F_DESCRIPTION (common INT32) → description.mes id
         private const int F_SCRIPTS = 32;                    // OBJ_F_SCRIPTS_IDX (SCRIPT array, indexed by SAP_*)
         private const int F_ITEM_PARENT = 88;                // OBJ_F_ITEM_PARENT (HANDLE) → holder's ObjectID
@@ -336,6 +344,9 @@ namespace Arcanum.Formats.Objects
         // OBJ_F_CRITTER_STAT_BASE_IDX (INT32_ARRAY) — base stats keyed by STAT_*: STR..CHA = 0..7, LEVEL = 17,
         // ALIGNMENT = 19, GENDER = 26, RACE = 27. We read the whole STAT_COUNT-sized array (absent keys read 0).
         private const int F_CRITTER_STAT_BASE = 220;
+        private const int F_CRITTER_FATIGUE_PTS = 224;
+        private const int F_CRITTER_FATIGUE_ADJ = 225;
+        private const int F_CRITTER_FATIGUE_DAMAGE = 226;
         private const int StatCount = 28;               // STAT_COUNT
         private const int F_RESISTANCE = 31;            // OBJ_F_RESISTANCE_IDX (common INT32_ARRAY) — base damage resistances
         private const int F_ARMOR_RESISTANCE_ADJ = 154; // OBJ_F_ARMOR_RESISTANCE_ADJ_IDX (INT32_ARRAY) — armour resist bonus
@@ -449,7 +460,7 @@ namespace Arcanum.Formats.Objects
             int buyObjectScriptNum = 0;
             int dialogOverrideNum = 0;
             int willKosScriptNum = 0;
-            int hpDamage = 0;
+            int? hpDamage = null;
             int? reactionBase = null;
             int? retailPriceMultiplier = null;
             byte[] substituteInventoryOid = null;
@@ -470,7 +481,8 @@ namespace Arcanum.Formats.Objects
             uint? lightAid = null;
             int? lightColor = null;
             int? sceneryFlags = null;
-            int? hpPoints = null, itemFlags = null, genericFlags = null, weaponFlags = null, goldQuantity = null,
+            int? hpPoints = null, hpAdjustment = null, fatiguePoints = null, fatigueAdjustment = null,
+                fatigueDamage = null, itemFlags = null, genericFlags = null, weaponFlags = null, goldQuantity = null,
                 critterFlags = null, critterFlags2 = null;
             int? portrait = null, faction = null, portalFlags = null, containerFlags = null;
             int? lockDifficulty = null, keyId = null;
@@ -629,6 +641,22 @@ namespace Arcanum.Formats.Objects
                         break;
                     case F_HP_PTS:
                         hpPoints = I32(b, o);
+                        o += 4;
+                        break;
+                    case F_HP_ADJ:
+                        hpAdjustment = I32(b, o);
+                        o += 4;
+                        break;
+                    case F_CRITTER_FATIGUE_PTS:
+                        fatiguePoints = I32(b, o);
+                        o += 4;
+                        break;
+                    case F_CRITTER_FATIGUE_ADJ:
+                        fatigueAdjustment = I32(b, o);
+                        o += 4;
+                        break;
+                    case F_CRITTER_FATIGUE_DAMAGE:
+                        fatigueDamage = I32(b, o);
                         o += 4;
                         break;
                     case F_ITEM_FLAGS:
@@ -826,6 +854,10 @@ namespace Arcanum.Formats.Objects
                 BuyObjectScriptNum = buyObjectScriptNum,
                 DialogOverrideNum = dialogOverrideNum,
                 HpDamage = hpDamage,
+                HpAdjustment = hpAdjustment,
+                FatiguePoints = fatiguePoints,
+                FatigueAdjustment = fatigueAdjustment,
+                FatigueDamage = fatigueDamage,
                 ReactionBase = reactionBase,
                 RetailPriceMultiplier = retailPriceMultiplier,
                 SubstituteInventoryOid = substituteInventoryOid,

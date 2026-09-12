@@ -70,7 +70,6 @@ namespace Arcanum.Runtime.World
         // Combat/death state. (The full project also lazily attaches a character model — stats,
         // skills, effects — here; that layer hasn't migrated to this repository yet.)
         public bool IsDead;
-        public int HpDamage;             // OBJ_F_HP_DAMAGE — damage taken; current HP = MaxHp − HpDamage (see Docs/Combat.md)
         public bool IsFollower;          // NPCs: recruited into the party via a dialog `jo` (join) effect
         public int ReactionBase = 50;    // NPCs: OBJ_F_NPC_REACTION_BASE — authored starting reaction (50 = neutral)
         public int RetailPriceMultiplier; // NPCs: OBJ_F_NPC_RETAIL_PRICE_MULTIPLIER — barter markup % (0 = unset)

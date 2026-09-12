@@ -10,16 +10,18 @@ safe/adapt/avoid reuse boundaries, and defines a dependency-ordered M1–M13 roa
 
 ## Current Objective
 
-M1 traversal, the bounded M2 interaction/SAP_USE kernel, M3A-M3E inventory/command/equipment/stack/capacity state, and
-M4A authoritative PC/NPC primary attributes are complete.
+M1 traversal, the bounded M2 interaction/SAP_USE kernel, M3A-M3E inventory/command/equipment/stack/capacity state,
+M4A authoritative PC/NPC primary attributes, and M4B authoritative character vitality are complete.
 `WorldMapSessionCoordinator` owns typed `World`, `Contained(parent)`, and `Equipped(parent, wornLocation)` placement,
 atomic raw item transfers/equipment replacement/stack merge and split, deterministic session-created item identities,
 source-faithful pickup/drop/owner-transfer policy, and pre-mutation weight/grid-capacity guards independently of Unity
 presentation.
+`CharacterStatService` and the session-owned `CharacterVitalityService` provide stable ObjectID-keyed attributes,
+source inputs, accumulated HP/Fatigue damage, and derived maximum/current vitality with no Unity presentation authority.
 
-The next recommended objective is M4B: authoritative maximum/current hit points and fatigue derived from typed character
-state. Inventory/equipment UI, encumbrance consequences, economy, combat, progression, dialogue, scripts, and save
-serialization remain deferred.
+The next recommended objective is M4C — Skill and Progression State, beginning with source storage, rank, XP/level,
+point-pool, initialization, prerequisite, and ordering semantics. Inventory/equipment UI, encumbrance consequences,
+economy, combat, dialogue, script-host expansion, and save serialization remain deferred.
 
 ## Current Branch
 
@@ -1050,6 +1052,37 @@ Completed on 2026-09-12 with Unity 6000.0.71f1 on `feature/inventory-commands`.
 - Full source evidence, transaction/identity contract, final ownership graph, fixtures, and validation:
   [`documentation_unity/m3d-stack-state.md`](documentation_unity/m3d-stack-state.md).
 
+## M4B Authoritative Character Vitality
+
+Completed on 2026-09-12 with Unity 6000.0.71f1 on `feature/inventory-commands`.
+
+- Source analysis established six independently inherited Int32 scalars: HP points/adjustment/damage at common fields
+  27-29 and fatigue points/adjustment/damage at critter fields 224-226. The whole 28-slot stat array remains inherited
+  as one value. Points and damage floor at zero; adjustments remain signed; Level is clamped to 0..51.
+- Maximum HP is `4 * HP points + HP adjustment + effective Willpower + 2 * (effective Strength + Level) + 4`.
+  Maximum Fatigue is `4 * fatigue points + fatigue adjustment + 2 * (Level + effective Constitution) + effective
+  Willpower + 4`. Current values are maximum minus accumulated damage; over-damage is retained without introducing
+  death or unconsciousness policy.
+- `WorldMapSessionCoordinator.Vitality` owns one `CharacterVitalityService`. Persistent records are keyed by stable
+  `ArcanumObjectId`, consume M4A effective attributes rather than decoding them again, and survive sector and Unity
+  presentation lifecycles. Race/Gender maximum changes shift damage by the maximum delta to preserve current values
+  where possible. `WorldObject` and sprite/GameObject owners contain no vitality counter or authority.
+- The production Human Male PC is explicitly Level 1 with zero vitality points/adjustments/damage and starts at HP
+  30/30 and Fatigue 30/30. Real Human Female NPC `G_33CE5E06_F4AC_3A4B_B98E_9AB36C467E6F`, prototype 17101, in
+  `maps/arcanum1-024-fixed/101602821844.sec` resolves Level 21, HP adjustment 4 and fatigue damage 4, producing HP
+  76/76 and Fatigue 82/86.
+- Physical Play Mode validation applied controlled NPC damage to HP 71/76 and Fatigue 75/86 and production-PC
+  damage/restoration to HP 26/30 and Fatigue 25/30. Exact state/reference identity survived Original/Enhanced/Original
+  rebuild, NPC unload/reload, PC A-to-B-to-A traversal, and presentation recreation. There was one vitality record and
+  presentation per identity, unique session/presentation owners, 0 new warnings, and 0 errors.
+- Validation: M4B 20/20, M4A 13/13, M3E 21/21, M3D 18/18, M3C 13/13, M3B 13/13, M3A 8/8, M2B 8/8,
+  M2A 16/16, PlayerNavigation 21/21, M1A 7/7, M1B 11/11, WorldSessionState 27/27, PortalArtResolver 2/2, and complete
+  EditMode 369/369. Every run had 0 failures, skips, or inconclusive tests; final compilation was clean.
+- Full source audit, formulas, representation, lifecycle contract, final ownership graph, fixture, and validation:
+  [`documentation_unity/m4b-character-vitality.md`](documentation_unity/m4b-character-vitality.md).
+- Deferred: death, unconsciousness, regeneration, combat, healing items/spells, poison, equipment/spell/background
+  effects, leveling, skills, UI, resting, encumbrance consequences, script-host integration, and save serialization.
+
 ## M4A Authoritative PC/NPC Primary Attributes
 
 Completed on 2026-09-12 with Unity 6000.0.71f1 on `feature/inventory-commands`.
@@ -1123,9 +1156,9 @@ production or test code was changed, and the strict whitelist was not widened. S
 [`documentation_unity/m2c-sap-use-family.md`](documentation_unity/m2c-sap-use-family.md) for the candidate table and
 rejection evidence.
 
-The exact recommended next milestone is M4B: implement authoritative maximum/current hit points and fatigue as a bounded
-character-state slice. Audit the original formulas, clamps, prototype/instance inputs, initialization, and atomic
-damage/heal/fatigue transaction boundaries before changing production code. Keep combat resolution, regeneration
-scheduling, death/unconsciousness, equipment/spell/background effects, progression, encumbrance consequences, UI,
+The exact recommended next milestone is **M4C — Skill and Progression State**. Begin with a source audit of skill
+storage/ranks, XP and Level fields/thresholds, point pools, prerequisites and ordering, and PC/NPC initialization. Then
+implement only the smallest presentation-independent, ObjectID-keyed authoritative state justified by that audit.
+Keep combat, UI, dialogue, scripted progression rewards, background/equipment/spell effects, encumbrance consequences,
 economy, script-host expansion, and save serialization deferred. Additional SAP_USE families remain deferred until
 their owning domains exist.

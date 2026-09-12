@@ -281,6 +281,10 @@ Deliver PC/NPC typed attributes, derived stats, HP/fatigue, skills, alignment/re
 allocation rules. Effort: **large**. Risk: undocumented formulas and ordering. Validate golden calculations against the
 original/decompilation across races, backgrounds, aptitude, equipment changes, damage/heal, and level thresholds.
 
+Milestone terminology: **M4A — Character Attributes** and **M4B — Character Vitality** are complete. The next bounded
+slice is **M4C — Skill and Progression State**; combat, presentation UI, dialogue rewards, and save serialization remain
+owned by later milestones.
+
 ### M5 — Production script host, dialogue, and minimal quest vertical slice
 
 Connect real focus objects, globals, local script state, use/examine/dialog attachment points, dialogue UI, quest

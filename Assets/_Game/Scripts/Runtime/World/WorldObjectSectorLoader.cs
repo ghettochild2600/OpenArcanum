@@ -8,6 +8,7 @@ using Arcanum.Formats.Script;
 using Arcanum.Formats.Text;
 using Arcanum.Formats.Tiles;
 using Arcanum.Formats.World;
+using Arcanum.Runtime.Character;
 using Arcanum.World;
 using UnityEngine;
 
@@ -251,8 +252,20 @@ namespace Arcanum.Runtime.World
                     ? instance.PortalFlags ?? proto?.PortalFlags ?? 0
                     : instance.Type == ObjectType.Container ? instance.ContainerFlags ?? proto?.ContainerFlags ?? 0 : 0;
                 if (identity.IsPersistent && (instance.Type is ObjectType.Pc or ObjectType.Npc))
+                {
                     Session.Characters.GetOrCreateSourceCharacter(identity, instance.Type, instance.PrototypeNumber,
                         instance.StatBase, proto?.StatBase);
+                    CharacterVitalitySource vitalitySource = CharacterVitalitySource.Resolve(
+                        instance.StatBase, proto?.StatBase,
+                        instance.HpPoints, proto?.HpPoints,
+                        instance.HpAdjustment, proto?.HpAdjustment,
+                        instance.HpDamage, proto?.HpDamage,
+                        instance.FatiguePoints, proto?.FatiguePoints,
+                        instance.FatigueAdjustment, proto?.FatigueAdjustment,
+                        instance.FatigueDamage, proto?.FatigueDamage);
+                    Session.Vitality.GetOrCreateSourceCharacter(identity, instance.Type, instance.PrototypeNumber,
+                        vitalitySource);
+                }
                 PersistentObjectState state = Session.GetOrCreate(instance, identity, sectorPath, artId,
                     (flags & ObjectFlagOff) != 0, (stateFlags & 1) != 0,
                     instance.ItemFlags ?? proto?.ItemFlags ?? 0,

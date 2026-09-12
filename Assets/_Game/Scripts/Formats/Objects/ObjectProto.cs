@@ -161,6 +161,12 @@ namespace Arcanum.Formats.Objects
         /// critter is dead; null if unset on the prototype.</summary>
         public int? HpPoints { get; internal set; }
 
+        public int? HpAdjustment { get; internal set; }
+        public int? HpDamage { get; internal set; }
+        public int? FatiguePoints { get; internal set; }
+        public int? FatigueAdjustment { get; internal set; }
+        public int? FatigueDamage { get; internal set; }
+
         /// <summary><c>OBJ_F_ITEM_FLAGS</c> (<c>OIF_*</c>) / <c>OBJ_F_GOLD_QUANTITY</c>; null if not an item / gold.</summary>
         public int? ItemFlags { get; internal set; }
 
@@ -278,6 +284,11 @@ namespace Arcanum.Formats.Objects
                         Resistances = p.Resistances,
                         ArmorResist = p.ArmorResist,
                         HpPoints = p.HpPoints,
+                        HpAdjustment = p.HpAdjustment,
+                        HpDamage = p.HpDamage,
+                        FatiguePoints = p.FatiguePoints,
+                        FatigueAdjustment = p.FatigueAdjustment,
+                        FatigueDamage = p.FatigueDamage,
                         ItemFlags = p.ItemFlags,
                         GenericFlags = p.GenericFlags,
                         GoldQuantity = p.GoldQuantity,

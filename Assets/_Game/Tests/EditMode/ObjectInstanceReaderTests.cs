@@ -18,7 +18,8 @@ namespace Arcanum.Formats.Tests
         [Test]
         public void SurfacedFieldsAreInt32()
         {
-            int[] fields = { 27, 46, 47, 48, 56, 57, 58, 87, 165, 186, 202, 203, 204, 218, 219, 231, 292 };
+            int[] fields = { 27, 28, 29, 46, 47, 48, 56, 57, 58, 87, 165, 186, 202, 203, 204, 218, 219,
+                224, 225, 226, 231, 292 };
             foreach (int f in fields)
                 Assert.That(ObjectFieldData.OdType[f], Is.EqualTo(OdTypeInt32), $"field ordinal {f} must be INT32");
         }
@@ -39,10 +40,16 @@ namespace Arcanum.Formats.Tests
         [Test]
         public void ReadsNpcCritterAndFactionFields()
         {
-            byte[] rec = BuildInstance(ObjectType.Npc, (27, 30), (218, 0x01), (231, 17), (292, 5)); // HP_PTS, CRITTER_FLAGS, PORTRAIT, FACTION
+            byte[] rec = BuildInstance(ObjectType.Npc, (27, 3), (28, -2), (29, 7), (218, 0x01),
+                (224, 4), (225, -1), (226, 9), (231, 17), (292, 5));
             int off = 0;
             ObjectInstance inst = ObjectInstanceReader.Read(rec, ref off);
-            Assert.That(inst.HpPoints, Is.EqualTo(30));
+            Assert.That(inst.HpPoints, Is.EqualTo(3));
+            Assert.That(inst.HpAdjustment, Is.EqualTo(-2));
+            Assert.That(inst.HpDamage, Is.EqualTo(7));
+            Assert.That(inst.FatiguePoints, Is.EqualTo(4));
+            Assert.That(inst.FatigueAdjustment, Is.EqualTo(-1));
+            Assert.That(inst.FatigueDamage, Is.EqualTo(9));
             Assert.That(inst.CritterFlags, Is.EqualTo(0x01));
             Assert.That(inst.Portrait, Is.EqualTo(17));
             Assert.That(inst.Faction, Is.EqualTo(5));
@@ -68,6 +75,11 @@ namespace Arcanum.Formats.Tests
             int off = 0;
             ObjectInstance inst = ObjectInstanceReader.Read(rec, ref off);
             Assert.That(inst.HpPoints, Is.Null);
+            Assert.That(inst.HpAdjustment, Is.Null);
+            Assert.That(inst.HpDamage, Is.Null);
+            Assert.That(inst.FatiguePoints, Is.Null);
+            Assert.That(inst.FatigueAdjustment, Is.Null);
+            Assert.That(inst.FatigueDamage, Is.Null);
             Assert.That(inst.GoldQuantity, Is.Null);
             Assert.That(inst.ItemFlags, Is.Null);
             Assert.That(off, Is.EqualTo(rec.Length));
