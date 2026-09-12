@@ -115,6 +115,8 @@ namespace Arcanum.Runtime.World
         IdentityExhausted,
         EquipmentCommandRequired,
         QuantityOverflow,
+        TooHeavy,
+        NoRoom,
     }
 
     public readonly struct InventoryTransferResult
@@ -167,6 +169,7 @@ namespace Arcanum.Runtime.World
         NotRemovable,
         AlreadyEquipped,
         SlotEmpty,
+        NoRoom,
     }
 
     /// <summary>Result of one all-or-nothing equipment placement transaction.</summary>
@@ -202,6 +205,8 @@ namespace Arcanum.Runtime.World
         QuantityOverflow,
         InvalidPlacement,
         IdentityExhausted,
+        TooHeavy,
+        NoRoom,
     }
 
     /// <summary>Result of one all-or-nothing quantity move into a surviving destination stack.</summary>

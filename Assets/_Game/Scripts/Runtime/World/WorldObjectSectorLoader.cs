@@ -264,7 +264,10 @@ namespace Arcanum.Runtime.World
                         ObjectType.Ammo => instance.AmmoQuantity ?? proto?.AmmoQuantity,
                         ObjectType.Gold => instance.GoldQuantity ?? proto?.GoldQuantity,
                         _ => null,
-                    });
+                    },
+                    instance.Weight ?? proto?.Weight ?? 0,
+                    ResolveInventoryFootprint(instance.InvAid ?? proto?.InvAid),
+                    instance.InvLocation);
                 if (state == null && Session.IsObjectRemoved(identity))
                 {
                     suppressed++;
@@ -532,6 +535,27 @@ namespace Arcanum.Runtime.World
             foreach (WorldObjectSpriteOwner owner in _spriteOwners)
                 if (owner != null && owner.Rebuild()) rebuilt++;
             Debug.Log($"WorldObjectSectorLoader: rebuilt {rebuilt}/{_spriteOwners.Count} visual owner(s).", this);
+        }
+
+        private InventoryFootprint ResolveInventoryFootprint(uint? inventoryArtId)
+        {
+            if (!inventoryArtId.HasValue || _art == null || _vfs == null) return InventoryFootprint.OneCell;
+            try
+            {
+                string path = _art.Resolve(inventoryArtId.Value);
+                if (string.IsNullOrEmpty(path) || !_vfs.Exists(path)) return InventoryFootprint.OneCell;
+                ArtFile art = ArtReader.Read(_vfs.ReadAllBytes(path));
+                if (art.Rotations.Count == 0 || art.Rotations[0].Frames.Length == 0)
+                    return InventoryFootprint.OneCell;
+                ArtFrame frame = art.Rotations[0].Frames[0];
+                return new InventoryFootprint(Math.Max(1, (frame.Width + 31) / 32),
+                    Math.Max(1, (frame.Height + 31) / 32));
+            }
+            catch
+            {
+                // item_check_insert falls back to a one-cell inventory object when inventory ART cannot be read.
+                return InventoryFootprint.OneCell;
+            }
         }
 
         private void OnObjectPlacementChanged(PersistentObjectState state, ObjectPlacement previous,
@@ -831,6 +855,7 @@ namespace Arcanum.Runtime.World
             _prototypes = new ProtoLibrary(protoDirectory ?? string.Empty);
             _art = new ObjectArtResolvers(_vfs);
             Session.BindPrototypeSource(_prototypes.Get);
+            Session.BindInventoryFootprintSource(ResolveInventoryFootprint);
             Session.BindUseScriptSource(ScriptDatabase.Load(_vfs));
             return true;
         }

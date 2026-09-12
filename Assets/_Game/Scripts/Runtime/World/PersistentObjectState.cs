@@ -24,6 +24,12 @@ namespace Arcanum.Runtime.World
         public uint? InventoryArtId { get; }
         public int WeaponFlags { get; }
         public int GenericFlags { get; }
+        /// <summary>Effective stored OBJ_F_ITEM_WEIGHT (instance override, otherwise prototype).</summary>
+        public int UnitWeight { get; }
+        /// <summary>First inventory ART frame rounded up to source 32-pixel grid cells.</summary>
+        public InventoryFootprint InventoryFootprint { get; }
+        /// <summary>Source ordinary inventory grid origin, or a worn-location value while equipped.</summary>
+        public int InventoryLocation { get; internal set; }
         /// <summary>Source Ammo/Gold quantity. Null means this object type is singular and cannot stack.</summary>
         public int? StackQuantity { get; internal set; }
         public bool PortalOpen { get; internal set; }
@@ -42,7 +48,10 @@ namespace Arcanum.Runtime.World
             uint? inventoryArtId = null,
             int weaponFlags = 0,
             int genericFlags = 0,
-            int? stackQuantity = null)
+            int? stackQuantity = null,
+            int? unitWeight = null,
+            InventoryFootprint? inventoryFootprint = null,
+            int? inventoryLocation = null)
         {
             Identity = identity;
             AuthoredParentIdentity = source.ParentIdentity;
@@ -57,6 +66,8 @@ namespace Arcanum.Runtime.World
             InventoryArtId = inventoryArtId;
             WeaponFlags = weaponFlags;
             GenericFlags = genericFlags;
+            UnitWeight = unitWeight ?? source.Weight ?? 0;
+            InventoryFootprint = inventoryFootprint ?? InventoryFootprint.OneCell;
             StackQuantity = ValidateStackQuantity(Type, stackQuantity);
             TilePosition = source.Location.HasValue
                 ? new Vector2(source.TileX, source.TileY)
@@ -66,12 +77,18 @@ namespace Arcanum.Runtime.World
                     ? ObjectPlacement.EquippedBy(source.ParentIdentity, wornLocation)
                     : ObjectPlacement.ContainedBy(source.ParentIdentity)
                 : ObjectPlacement.InWorld(sector, TilePosition);
+            InventoryLocation = Placement.Kind == ObjectPlacementKind.World
+                ? -1
+                : Placement.Kind == ObjectPlacementKind.Equipped
+                    ? (int)Placement.WornLocation
+                    : inventoryLocation ?? source.InvLocation;
             // portal.c portal_is_open: CURRENT_AID frame != 0, including prototype fallback.
             PortalOpen = Type == ObjectType.Portal && ((artId >> 14) & 31) != 0;
         }
 
         internal PersistentObjectState(ObjectProtoInfo prototype, ArcanumObjectId identity,
-            string creationSector, ObjectPlacement placement)
+            string creationSector, ObjectPlacement placement, InventoryFootprint inventoryFootprint,
+            int inventoryLocation = -1)
         {
             Identity = identity;
             SourceSector = creationSector;
@@ -82,6 +99,8 @@ namespace Arcanum.Runtime.World
             InventoryArtId = prototype.InvAid;
             WeaponFlags = prototype.Weapon?.Flags ?? 0;
             GenericFlags = prototype.GenericFlags ?? 0;
+            UnitWeight = prototype.Weight;
+            InventoryFootprint = inventoryFootprint;
             StackQuantity = ValidateStackQuantity(Type, Type switch
             {
                 ObjectType.Ammo => prototype.AmmoQuantity,
@@ -89,12 +108,14 @@ namespace Arcanum.Runtime.World
                 _ => null,
             });
             Placement = placement;
+            InventoryLocation = placement.Kind == ObjectPlacementKind.Equipped
+                ? (int)placement.WornLocation : inventoryLocation;
             TilePosition = placement.Kind == ObjectPlacementKind.World ? placement.TilePosition : Vector2.zero;
             IsRuntimeCreated = true;
         }
 
         internal PersistentObjectState(PersistentObjectState source, ArcanumObjectId identity,
-            ObjectPlacement placement, int stackQuantity)
+            ObjectPlacement placement, int stackQuantity, int inventoryLocation)
         {
             Identity = identity;
             SourceSector = source.SourceSector;
@@ -108,8 +129,12 @@ namespace Arcanum.Runtime.World
             InventoryArtId = source.InventoryArtId;
             WeaponFlags = source.WeaponFlags;
             GenericFlags = source.GenericFlags;
+            UnitWeight = source.UnitWeight;
+            InventoryFootprint = source.InventoryFootprint;
             StackQuantity = ValidateStackQuantity(Type, stackQuantity);
             Placement = placement;
+            InventoryLocation = placement.Kind == ObjectPlacementKind.Equipped
+                ? (int)placement.WornLocation : inventoryLocation;
             TilePosition = placement.Kind == ObjectPlacementKind.World ? placement.TilePosition : Vector2.zero;
             IsRuntimeCreated = true;
         }

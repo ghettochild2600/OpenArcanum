@@ -22,6 +22,8 @@ namespace Arcanum.Runtime.World
         private ISectorPresentationOwner _terrainOwner;
         private ISectorPresentationOwner _objectOwner;
         private Func<int, ObjectProtoInfo> _resolvePrototype;
+        private Func<uint?, InventoryFootprint> _resolveInventoryFootprint;
+        private InventoryCapacityService _inventoryCapacity;
         private ulong _nextDynamicIdentity = 1;
 
         public IReadOnlyDictionary<ArcanumObjectId, PersistentObjectState> States => _states;
@@ -31,6 +33,8 @@ namespace Arcanum.Runtime.World
         public bool HasSelectedSector => !string.IsNullOrEmpty(SelectedSector);
         public PersistentPlayerState PlayerState { get; private set; }
         public CharacterStatService Characters { get; } = new();
+        public InventoryCapacityService InventoryCapacity
+            => _inventoryCapacity ??= new InventoryCapacityService(this);
         public PortalTransitionScheduler Portals { get; } = new();
         public ScriptGlobals ScriptGlobals { get; } = new();
         public WorldUseScriptDispatcher UseScripts { get; private set; }
@@ -93,6 +97,10 @@ namespace Arcanum.Runtime.World
 
         public void BindPrototypeSource(Func<int, ObjectProtoInfo> resolvePrototype)
             => _resolvePrototype = resolvePrototype ?? throw new ArgumentNullException(nameof(resolvePrototype));
+
+        public void BindInventoryFootprintSource(Func<uint?, InventoryFootprint> resolveInventoryFootprint)
+            => _resolveInventoryFootprint = resolveInventoryFootprint
+                ?? throw new ArgumentNullException(nameof(resolveInventoryFootprint));
 
         public bool SelectSector(string sectorPath)
         {
@@ -295,7 +303,10 @@ namespace Arcanum.Runtime.World
             uint? inventoryArtId = null,
             int weaponFlags = 0,
             int genericFlags = 0,
-            int? stackQuantity = null)
+            int? stackQuantity = null,
+            int? unitWeight = null,
+            InventoryFootprint? inventoryFootprint = null,
+            int? inventoryLocation = null)
         {
             if (!identity.IsPersistent) return null;
             if (_removedObjectIdentities.Contains(identity)) return null;
@@ -305,16 +316,18 @@ namespace Arcanum.Runtime.World
                 return existing;
             }
             var state = new PersistentObjectState(source, identity, sector, artId, off, locked, itemFlags,
-                inventoryArtId, weaponFlags, genericFlags, stackQuantity);
+                inventoryArtId, weaponFlags, genericFlags, stackQuantity, unitWeight, inventoryFootprint,
+                inventoryLocation);
             _states.Add(identity, state);
             return state;
         }
 
         public PersistentObjectState GetOrCreate(ObjectInstance source, string sector, uint artId, bool off, bool locked,
             int itemFlags = 0, uint? inventoryArtId = null, int weaponFlags = 0, int genericFlags = 0,
-            int? stackQuantity = null)
+            int? stackQuantity = null, int? unitWeight = null, InventoryFootprint? inventoryFootprint = null,
+            int? inventoryLocation = null)
             => GetOrCreate(source, source.Identity, sector, artId, off, locked, itemFlags, inventoryArtId,
-                weaponFlags, genericFlags, stackQuantity);
+                weaponFlags, genericFlags, stackQuantity, unitWeight, inventoryFootprint, inventoryLocation);
 
         public void Bind(string sector, PersistentObjectState state, WorldObject runtime)
         {
@@ -472,16 +485,28 @@ namespace Arcanum.Runtime.World
             ObjectPlacement itemDestination = ObjectPlacement.EquippedBy(actorIdentity, location);
             ObjectPlacement displacedPrevious = default;
             ObjectPlacement displacedDestination = default;
+            int displacedInventoryLocation = -1;
             if (displaced != null && displaced.Identity != itemIdentity)
             {
                 displacedPrevious = displaced.Placement;
                 displacedDestination = ObjectPlacement.ContainedBy(actorIdentity);
+                ArcanumObjectId excluded = itemPrevious.Kind == ObjectPlacementKind.Contained
+                    ? item.Identity : default;
+                displacedInventoryLocation = InventoryCapacity.FindInventoryLocation(actorIdentity,
+                    displaced.InventoryFootprint, excluded);
+                if (displacedInventoryLocation < 0)
+                    return EquipmentFailure(EquipmentResultCode.NoRoom, actorIdentity, itemIdentity, location,
+                        displaced.Identity);
             }
 
             // Commit the complete transaction before callbacks. An observer of either event sees the final pair.
             item.Placement = itemDestination;
+            item.InventoryLocation = (int)location;
             if (displaced != null && displaced.Identity != itemIdentity)
+            {
                 displaced.Placement = displacedDestination;
+                displaced.InventoryLocation = displacedInventoryLocation;
+            }
             if (displaced != null && displaced.Identity != itemIdentity)
                 ObjectPlacementChanged?.Invoke(displaced, displacedPrevious, displacedDestination);
             ObjectPlacementChanged?.Invoke(item, itemPrevious, itemDestination);
@@ -504,7 +529,11 @@ namespace Arcanum.Runtime.World
 
             ObjectPlacement previous = item.Placement;
             ObjectPlacement destination = ObjectPlacement.ContainedBy(actorIdentity);
+            int inventoryLocation = InventoryCapacity.FindInventoryLocation(actorIdentity, item.InventoryFootprint);
+            if (inventoryLocation < 0)
+                return EquipmentFailure(EquipmentResultCode.NoRoom, actorIdentity, item.Identity, location);
             item.Placement = destination;
+            item.InventoryLocation = inventoryLocation;
             ObjectPlacementChanged?.Invoke(item, previous, destination);
             return new EquipmentTransactionResult(EquipmentResultCode.Success, actorIdentity, item.Identity, location);
         }
@@ -616,6 +645,8 @@ namespace Arcanum.Runtime.World
                 return StackMergeFailure(StackResultCode.InvalidQuantity, sourceIdentity, destinationIdentity);
             if ((long)destination.StackQuantity.Value + quantity > MaxStackQuantity)
                 return StackMergeFailure(StackResultCode.QuantityOverflow, sourceIdentity, destinationIdentity);
+            if (!InventoryCapacity.CanMergeWithinOwner(source, destination, quantity))
+                return StackMergeFailure(StackResultCode.TooHeavy, sourceIdentity, destinationIdentity);
             return CommitStackMerge(source, destination, quantity);
         }
 
@@ -632,13 +663,19 @@ namespace Arcanum.Runtime.World
             if (quantity < 1 || quantity >= source.StackQuantity.Value)
                 return new StackSplitResult(StackResultCode.InvalidQuantity, sourceIdentity,
                     source.StackQuantity.Value);
+            InventoryAcceptance acceptance = InventoryCapacity.EvaluateSplit(source, quantity);
+            if (!acceptance.Succeeded)
+                return new StackSplitResult(acceptance.Code == InventoryResultCode.TooHeavy
+                        ? StackResultCode.TooHeavy : StackResultCode.NoRoom,
+                    sourceIdentity, source.StackQuantity.Value);
             if (!TryAllocateDynamicIdentity(out ArcanumObjectId identity))
                 return new StackSplitResult(StackResultCode.IdentityExhausted, sourceIdentity,
                     source.StackQuantity.Value);
 
             int previousQuantity = source.StackQuantity.Value;
             int remainingQuantity = previousQuantity - quantity;
-            var created = new PersistentObjectState(source, identity, source.Placement, quantity);
+            var created = new PersistentObjectState(source, identity, source.Placement, quantity,
+                acceptance.InventoryLocation);
 
             // Commit both authoritative states before observers can inspect the transaction.
             source.StackQuantity = remainingQuantity;
@@ -715,21 +752,33 @@ namespace Arcanum.Runtime.World
             if (previous == destination)
                 return new InventoryTransferResult(InventoryResultCode.AlreadyAtDestination, itemIdentity, previous, destination);
 
+            PersistentObjectState existing = null;
             if (destination.Kind == ObjectPlacementKind.Contained && item.StackQuantity.HasValue)
             {
-                PersistentObjectState existing = FindCompatibleContainedStack(item, destination.ParentIdentity);
+                existing = FindCompatibleContainedStack(item, destination.ParentIdentity);
                 if (existing != null)
                 {
                     if ((long)existing.StackQuantity.Value + item.StackQuantity.Value > MaxStackQuantity)
                         return new InventoryTransferResult(InventoryResultCode.QuantityOverflow, itemIdentity, previous,
                             destination, existing.Identity);
-                    CommitStackMerge(item, existing, item.StackQuantity.Value);
-                    return new InventoryTransferResult(InventoryResultCode.Success, itemIdentity, previous,
-                        destination, existing.Identity, true);
                 }
             }
 
+            InventoryAcceptance acceptance = destination.Kind == ObjectPlacementKind.Contained
+                ? InventoryCapacity.Evaluate(item, destination.ParentIdentity, existing)
+                : InventoryAcceptance.Accept(-1);
+            if (!acceptance.Succeeded)
+                return new InventoryTransferResult(acceptance.Code, itemIdentity, previous, destination,
+                    existing?.Identity ?? default);
+            if (existing != null)
+            {
+                CommitStackMerge(item, existing, item.StackQuantity.Value);
+                return new InventoryTransferResult(InventoryResultCode.Success, itemIdentity, previous,
+                    destination, existing.Identity, true);
+            }
+
             item.Placement = destination;
+            item.InventoryLocation = acceptance.InventoryLocation;
             if (destination.Kind == ObjectPlacementKind.World) item.TilePosition = destination.TilePosition;
             ObjectPlacementChanged?.Invoke(item, previous, destination);
             return new InventoryTransferResult(InventoryResultCode.Success, itemIdentity, previous, destination);
@@ -745,12 +794,20 @@ namespace Arcanum.Runtime.World
             InventoryResultCode validation = ValidateDestination(default, destination);
             if (validation != InventoryResultCode.Success) return new ItemCreationResult(validation);
 
+            InventoryFootprint footprint = _resolveInventoryFootprint?.Invoke(prototype.InvAid)
+                                           ?? InventoryFootprint.OneCell;
+            InventoryAcceptance acceptance = destination.Kind == ObjectPlacementKind.Contained
+                ? InventoryCapacity.EvaluatePrototype(prototype, footprint, destination.ParentIdentity)
+                : InventoryAcceptance.Accept(-1);
+            if (!acceptance.Succeeded) return new ItemCreationResult(acceptance.Code);
+
             if (!TryAllocateDynamicIdentity(out ArcanumObjectId identity))
                 return new ItemCreationResult(InventoryResultCode.IdentityExhausted);
 
             string creationSector = destination.Kind == ObjectPlacementKind.World
                 ? destination.Sector : SelectedSector ?? PlayerState?.Sector;
-            var state = new PersistentObjectState(prototype, identity, creationSector, destination);
+            var state = new PersistentObjectState(prototype, identity, creationSector, destination, footprint,
+                acceptance.InventoryLocation);
             _states.Add(identity, state);
             ObjectPlacementChanged?.Invoke(state, default, destination);
             return new ItemCreationResult(InventoryResultCode.Success, state);
@@ -813,10 +870,10 @@ namespace Arcanum.Runtime.World
             return true;
         }
 
-        private static bool IsItemType(ObjectType type)
+        public static bool IsItemType(ObjectType type)
             => type >= ObjectType.Weapon && type <= ObjectType.Generic;
 
-        private static bool IsInventoryOwnerType(ObjectType type)
+        public static bool IsInventoryOwnerType(ObjectType type)
             => type == ObjectType.Container || type == ObjectType.Pc || type == ObjectType.Npc;
 
         public bool TryGetLoadedObject(ArcanumObjectId identity, out WorldObject runtime)
@@ -985,6 +1042,8 @@ namespace Arcanum.Runtime.World
                     or InventoryResultCode.CycleDetected => WorldInteractionResultCode.InvalidDestination,
                 InventoryResultCode.AlreadyAtDestination => WorldInteractionResultCode.AlreadyContained,
                 InventoryResultCode.SourceMismatch => WorldInteractionResultCode.SourceOwnerMismatch,
+                InventoryResultCode.TooHeavy => WorldInteractionResultCode.TooHeavy,
+                InventoryResultCode.NoRoom => WorldInteractionResultCode.NoRoom,
                 _ => WorldInteractionResultCode.TransferFailed,
             };
             return new WorldInteractionResult(command, code, inventoryStatus: transfer.Code);

@@ -30,6 +30,8 @@ namespace Arcanum.Runtime.World
         InvalidDestination,
         NotDroppable,
         TransferFailed,
+        TooHeavy,
+        NoRoom,
     }
 
     /// <summary>One immutable gameplay command identified only by persistent domain identities.</summary>

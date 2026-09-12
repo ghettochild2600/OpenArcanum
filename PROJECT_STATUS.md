@@ -10,15 +10,16 @@ safe/adapt/avoid reuse boundaries, and defines a dependency-ordered M1–M13 roa
 
 ## Current Objective
 
-M1 traversal, the bounded M2 interaction/SAP_USE kernel, M3A-M3D inventory/command/equipment/stack state, and M4A
-authoritative PC/NPC primary attributes are complete.
+M1 traversal, the bounded M2 interaction/SAP_USE kernel, M3A-M3E inventory/command/equipment/stack/capacity state, and
+M4A authoritative PC/NPC primary attributes are complete.
 `WorldMapSessionCoordinator` owns typed `World`, `Contained(parent)`, and `Equipped(parent, wornLocation)` placement,
 atomic raw item transfers/equipment replacement/stack merge and split, deterministic session-created item identities,
-and source-faithful pickup/drop/owner-transfer policy independently of Unity presentation.
+source-faithful pickup/drop/owner-transfer policy, and pre-mutation weight/grid-capacity guards independently of Unity
+presentation.
 
-The next recommended objective is M3E: source-faithful item weight, effective-Strength carry capacity, container
-capacity, and atomic transfer guards. M4A now supplies the authoritative effective Strength input for that work.
-Inventory/equipment UI, economy, combat, progression, dialogue, scripts, and save serialization remain deferred.
+The next recommended objective is M4B: authoritative maximum/current hit points and fatigue derived from typed character
+state. Inventory/equipment UI, encumbrance consequences, economy, combat, progression, dialogue, scripts, and save
+serialization remain deferred.
 
 ## Current Branch
 
@@ -1081,6 +1082,37 @@ Completed on 2026-09-12 with Unity 6000.0.71f1 on `feature/inventory-commands`.
 - Full source mapping, limits, effect boundary, fixture, ownership graph, and validation:
   [`documentation_unity/m4a-character-attributes.md`](documentation_unity/m4a-character-attributes.md).
 
+## M3E Source-Faithful Inventory Weight and Capacity
+
+Completed on 2026-09-12 with Unity 6000.0.71f1 on `feature/inventory-commands`.
+
+- Retail `OBJ_F_ITEM_WEIGHT` is retained as an integer in tenths of a pound after instance-over-prototype resolution.
+  Ordinary items contribute it once; Gold contributes zero; Ammo contributes `storedWeight * floor(quantity / 4)`.
+  Direct contained and equipped items count, with no recursive nested-container load.
+- The session-owned `InventoryCapacityService` derives all load and capacity from persistent state. PC/NPC carry
+  capacity is `clamp(500 * effective Strength, 300, 10000)` through M4A's typed service; the Human Male production PC
+  is Strength 8/capacity 4000 and the real Human Female NPC fixture is Strength 9/capacity 4500.
+- Source container room is geometry rather than an invented weight field: critters use a 10x12 grid and ordinary
+  containers use 10x96. Inventory ART first-frame dimensions round up to 32-pixel cells with a 1x1 source fallback;
+  deterministic first-fit placement and compatible-stack footprint reuse match the admitted source behavior.
+- Transfer, dynamic creation, automatic/explicit merge, split, unequip, and slot replacement validate the committed
+  final weight/grid state before placement, quantity, tombstone, identity allocation, callback, or presentation
+  mutation. Explicit `TooHeavy` and `NoRoom` outcomes preserve the complete pre-command state.
+- Authentic fixtures were Food 10078 `G_8781D726_74FE_0846_AD0A_88EE591B6383` (weight 50, footprint 1x2), Ammo 7059
+  `G_9239E097_A8D2_C147_9F58_76077340C60E` (quantity 60, total weight 15, footprint 2x1), Container 3052
+  `G_8F454608_E327_1341_B85B_E7A5402D4758` (960 cells), and NPC 17101
+  `G_33CE5E06_F4AC_3A4B_B98E_9AB36C467E6F`.
+- Computer Use literal-click validation succeeded exactly at capacity, then proved an over-capacity dynamic pickup
+  returned `TooHeavy` with unchanged identity/placement/load/presentation and no stale pending command. The same run
+  passed PC/container transfer, finite-grid `NoRoom`, Ammo split/merge, weighted equip/unequip, dynamic `D_` behavior,
+  foreign-sector relocation, Original/Enhanced/reverted rebuild, unload/reload, B-to-A-to-B traversal, and unique
+  presentation/session/controller ownership. It recorded 0 new warnings and 0 errors.
+- Validation: M3E 21/21, M4A 13/13, M3D 18/18, M3C 13/13, M3B 13/13, M3A 8/8, M2B 8/8, M2A 16/16,
+  PlayerNavigation 21/21, M1A 7/7, M1B 11/11, WorldSessionState 27/27, PortalArtResolver 2/2, and complete EditMode
+  349/349. Every run had 0 failures, skips, or inconclusive tests; final compilation was clean.
+- Full source audit, runtime contract, ownership graph, boundary behavior, fixtures, validation, and deferred effects:
+  [`documentation_unity/m3e-capacity-state.md`](documentation_unity/m3e-capacity-state.md).
+
 ## Next Recommended Milestone
 
 The M2C candidate gate was completed on 2026-09-10 against all 22 distinct SAP_USE script numbers attached to placed
@@ -1091,9 +1123,9 @@ production or test code was changed, and the strict whitelist was not widened. S
 [`documentation_unity/m2c-sap-use-family.md`](documentation_unity/m2c-sap-use-family.md) for the candidate table and
 rejection evidence.
 
-The exact recommended next milestone is M3E: implement source-faithful item weight, PC carry capacity from M4A's typed
-effective Strength query, container capacity, and atomic transfer guards. Audit the original weight-unit conversions,
-inventory-owner rules, capacity comparisons, failure/result semantics, and all affected insertion paths before changing
-production code. Keep encumbrance movement penalties, equipment stat effects, leveling, combat, dialogue, inventory UI,
+The exact recommended next milestone is M4B: implement authoritative maximum/current hit points and fatigue as a bounded
+character-state slice. Audit the original formulas, clamps, prototype/instance inputs, initialization, and atomic
+damage/heal/fatigue transaction boundaries before changing production code. Keep combat resolution, regeneration
+scheduling, death/unconsciousness, equipment/spell/background effects, progression, encumbrance consequences, UI,
 economy, script-host expansion, and save serialization deferred. Additional SAP_USE families remain deferred until
 their owning domains exist.
