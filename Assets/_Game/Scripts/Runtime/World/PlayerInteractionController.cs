@@ -69,7 +69,7 @@ namespace Arcanum.Runtime.World
 
             if (!TryTargetMapPosition(targetState, out Vector2 targetPosition)
                 || !InteractionRangeRules.IsWithin(session.PlayerState.MapPosition, targetPosition,
-                    InteractionRangeRules.PortalUseRange))
+                    InteractionRangeRules.For(command.Type)))
             {
                 Resolve(command, WorldInteractionResultCode.NoReachableInteractionPosition, true);
                 return;
@@ -79,41 +79,55 @@ namespace Arcanum.Runtime.World
 
         public WorldInteractionResult TryUse(ArcanumObjectId target)
         {
-            if (Phase == PlayerInteractionPhase.ApproachingTarget && PendingCommand.HasValue)
-                Resolve(PendingCommand.Value, WorldInteractionResultCode.Cancelled, true);
-
-            if (!TryResolveDependencies())
-            {
-                var unavailable = new WorldInteractionCommand(default, target, WorldInteractionCommandType.Use);
-                return Complete(unavailable, WorldInteractionResultCode.ActorNotFound);
-            }
-
-            WorldMapSessionCoordinator session = _loader.Session;
-            ArcanumObjectId actor = session.PlayerState?.Identity ?? default;
-            var command = new WorldInteractionCommand(actor, target, WorldInteractionCommandType.Use);
-            if (session.PlayerState == null || !actor.IsPersistent)
+            WorldInteractionCommand command = BeginCommand(target, WorldInteractionCommandType.Use);
+            if (!TryResolveActor(command, out WorldMapSessionCoordinator session))
                 return Complete(command, WorldInteractionResultCode.ActorNotFound);
             if (!session.TryGetObjectState(target, out PersistentObjectState targetState)
                 || !session.TryGetLoadedObject(target, out WorldObject runtime))
                 return Complete(command, WorldInteractionResultCode.TargetNotFound);
             if (targetState.Type != ObjectType.Portal || runtime.Type != ObjectType.Portal)
                 return Complete(command, WorldInteractionResultCode.InvalidTarget);
+            return TryApproachOrExecute(command, targetState, InteractionRangeRules.PortalUseRange);
+        }
+
+        public WorldInteractionResult TryPickUp(ArcanumObjectId item)
+        {
+            WorldInteractionCommand command = BeginCommand(item, WorldInteractionCommandType.PickUp);
+            if (!TryResolveActor(command, out WorldMapSessionCoordinator session))
+                return Complete(command, WorldInteractionResultCode.ActorNotFound);
+            if (!session.TryGetObjectState(item, out PersistentObjectState itemState))
+                return Complete(command, WorldInteractionResultCode.ItemNotFound);
+            if (!IsItemType(itemState.Type))
+                return Complete(command, WorldInteractionResultCode.InvalidItem);
+            if (itemState.Placement.Kind == ObjectPlacementKind.Contained)
+                return Complete(command, WorldInteractionResultCode.AlreadyContained);
+            if (itemState.Off || !session.TryGetLoadedObject(item, out WorldObject runtime)
+                || runtime.Type != itemState.Type)
+                return Complete(command, WorldInteractionResultCode.ItemNotInWorld);
+            return TryApproachOrExecute(command, itemState, InteractionRangeRules.ItemPickupRange);
+        }
+
+        private WorldInteractionResult TryApproachOrExecute(WorldInteractionCommand command,
+            PersistentObjectState targetState, int range)
+        {
+            WorldMapSessionCoordinator session = _loader.Session;
             if (!TryTargetMapPosition(targetState, out Vector2 targetPosition))
                 return Complete(command, WorldInteractionResultCode.TargetNotFound);
             if (InteractionRangeRules.IsWithin(session.PlayerState.MapPosition, targetPosition,
-                    InteractionRangeRules.PortalUseRange))
+                    range))
                 return Execute(command.At(Vector2Int.RoundToInt(session.PlayerState.MapPosition)));
             if (!SectorCoordinate.TryParse(session.SelectedSector, out SectorCoordinate sector)
-                || targetState.SourceSector != sector.Path)
+                || targetState.Placement.Kind != ObjectPlacementKind.World
+                || targetState.Placement.Sector != sector.Path)
                 return Complete(command, WorldInteractionResultCode.TargetNotFound);
 
             if (_navigation.Player == null || _loader.NavigationMap == null)
                 return Complete(command, WorldInteractionResultCode.ActorNotFound);
 
             Vector2Int start = Vector2Int.RoundToInt(_navigation.Player.TilePosition);
-            Vector2Int targetTile = Vector2Int.RoundToInt(targetState.TilePosition);
+            Vector2Int targetTile = Vector2Int.RoundToInt(targetState.Placement.TilePosition);
             if (!_approachPlanner.TryPlan(_loader.NavigationMap, start, targetTile,
-                    InteractionRangeRules.PortalUseRange, out Vector2Int localDestination, _approachRoute))
+                    range, out Vector2Int localDestination, _approachRoute))
                 return Complete(command, WorldInteractionResultCode.NoReachableInteractionPosition);
 
             _approachDestination = Vector2Int.RoundToInt(sector.ToGlobal(localDestination));
@@ -129,6 +143,22 @@ namespace Arcanum.Runtime.World
             if (!routeAccepted)
                 return Resolve(command, WorldInteractionResultCode.NoReachableInteractionPosition, false);
             return accepted;
+        }
+
+        private WorldInteractionCommand BeginCommand(ArcanumObjectId target, WorldInteractionCommandType type)
+        {
+            if (Phase == PlayerInteractionPhase.ApproachingTarget && PendingCommand.HasValue)
+                Resolve(PendingCommand.Value, WorldInteractionResultCode.Cancelled, true);
+            TryResolveDependencies();
+            ArcanumObjectId actor = _loader?.Session.PlayerState?.Identity ?? default;
+            return new WorldInteractionCommand(actor, target, type);
+        }
+
+        private bool TryResolveActor(WorldInteractionCommand command, out WorldMapSessionCoordinator session)
+        {
+            session = TryResolveDependencies() ? _loader.Session : null;
+            return session?.PlayerState != null && command.Actor.IsPersistent
+                   && session.PlayerState.Identity == command.Actor;
         }
 
         public WorldInteractionResult CancelPending()
@@ -189,14 +219,18 @@ namespace Arcanum.Runtime.World
 
         private static bool TryTargetMapPosition(PersistentObjectState state, out Vector2 position)
         {
-            if (state != null && SectorCoordinate.TryParse(state.SourceSector, out SectorCoordinate sector))
+            if (state != null && state.Placement.Kind == ObjectPlacementKind.World
+                && SectorCoordinate.TryParse(state.Placement.Sector, out SectorCoordinate sector))
             {
-                position = sector.ToGlobal(state.TilePosition);
+                position = sector.ToGlobal(state.Placement.TilePosition);
                 return true;
             }
             position = default;
             return false;
         }
+
+        private static bool IsItemType(ObjectType type)
+            => type >= ObjectType.Weapon && type <= ObjectType.Generic;
 
         private bool TryResolveDependencies()
         {

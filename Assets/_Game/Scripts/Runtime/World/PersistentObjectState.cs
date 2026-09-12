@@ -20,6 +20,7 @@ namespace Arcanum.Runtime.World
         public bool Off { get; internal set; }
         public bool Locked { get; internal set; }
         public int UseScriptNum { get; internal set; }
+        public int ItemFlags { get; }
         public bool PortalOpen { get; internal set; }
         public Vector2 TilePosition { get; internal set; }
         public ObjectPlacement Placement { get; internal set; }
@@ -31,7 +32,8 @@ namespace Arcanum.Runtime.World
             string sector,
             uint artId,
             bool off,
-            bool locked)
+            bool locked,
+            int itemFlags = 0)
         {
             Identity = identity;
             AuthoredParentIdentity = source.ParentIdentity;
@@ -42,6 +44,7 @@ namespace Arcanum.Runtime.World
             ArtId = artId;
             Off = off;
             Locked = locked;
+            ItemFlags = itemFlags;
             TilePosition = source.Location.HasValue
                 ? new Vector2(source.TileX, source.TileY)
                 : Vector2.zero;
@@ -60,6 +63,7 @@ namespace Arcanum.Runtime.World
             Type = prototype.Type;
             PrototypeNumber = prototype.ProtoNumber;
             ArtId = prototype.CurrentArtId;
+            ItemFlags = prototype.ItemFlags ?? 0;
             Placement = placement;
             TilePosition = placement.Kind == ObjectPlacementKind.World ? placement.TilePosition : Vector2.zero;
             IsRuntimeCreated = true;
@@ -79,6 +83,7 @@ namespace Arcanum.Runtime.World
             runtime.Off = Off;
             runtime.Locked = Locked;
             runtime.UseScriptNum = UseScriptNum;
+            runtime.ItemFlags = ItemFlags;
             runtime.IsOpen = PortalOpen;
             runtime.ApplyMovementState(TilePosition, ArtId, false);
         }

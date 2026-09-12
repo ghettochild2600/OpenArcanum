@@ -249,7 +249,8 @@ namespace Arcanum.Runtime.World
                     ? instance.PortalFlags ?? proto?.PortalFlags ?? 0
                     : instance.Type == ObjectType.Container ? instance.ContainerFlags ?? proto?.ContainerFlags ?? 0 : 0;
                 PersistentObjectState state = Session.GetOrCreate(instance, identity, sectorPath, artId,
-                    (flags & ObjectFlagOff) != 0, (stateFlags & 1) != 0);
+                    (flags & ObjectFlagOff) != 0, (stateFlags & 1) != 0,
+                    instance.ItemFlags ?? proto?.ItemFlags ?? 0);
                 if (state != null)
                 {
                     artId = state.ArtId;
@@ -347,6 +348,17 @@ namespace Arcanum.Runtime.World
                 byType[instance.Type]++;
             }
 
+            int retained = 0;
+            foreach (PersistentObjectState state in Session.States.Values)
+            {
+                // Source records above own all of their normal suppression rules. This pass is only
+                // for session-retained items created in, or moved into, the active sector.
+                if (_sourceInstances.ContainsKey(state.Identity)
+                    || !Session.IsWorldPresentationEligible(state, sectorPath))
+                    continue;
+                if (CreatePresentation(state)) retained++;
+            }
+
             LastInventoryCount = inventory;
             LastSuppressedCount = suppressed;
             LastDerivedPortalCount = derivedPortals;
@@ -370,6 +382,7 @@ namespace Arcanum.Runtime.World
             Debug.Log(
                 $"WorldObjectSectorLoader: rendered {_spriteOwners.Count}/{instances.Count} placed object(s) from " +
                  $"'{sectorPath}' (inheritedArt={inherited}, suppressed={suppressed}, inventory={inventory}, " +
+                 $"retained={retained}, " +
                  $"derivedPortals={derivedPortals}, unresolvedProto={unresolvedProto}, " +
                  $"unresolvedArt={unresolvedArt}, issues=[{string.Join(", ", issueSummary)}]; " +
                 $"{string.Join(", ", typeSummary)}).",

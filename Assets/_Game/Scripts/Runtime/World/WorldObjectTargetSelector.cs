@@ -11,21 +11,29 @@ namespace Arcanum.Runtime.World
         public static bool TrySelectPortal(IEnumerable<WorldObjectSpriteOwner> owners, Vector2 worldPoint,
             out ArcanumObjectId identity)
         {
-            var objects = new List<WorldObject>();
-            if (owners == null)
-            {
-                identity = default;
-                return false;
-            }
-            foreach (WorldObjectSpriteOwner owner in owners)
-                if (owner != null && owner.WorldObject != null) objects.Add(owner.WorldObject);
+            List<WorldObject> objects = Collect(owners);
             return TrySelectPortal(objects, worldPoint, out identity);
         }
 
         public static bool TrySelectPortal(IEnumerable<WorldObject> objects, Vector2 worldPoint,
             out ArcanumObjectId identity)
+            => TrySelect(objects, worldPoint, candidate => candidate.Type == ObjectType.Portal,
+                out identity, out _);
+
+        public static bool TrySelectInteractionTarget(IEnumerable<WorldObjectSpriteOwner> owners, Vector2 worldPoint,
+            out ArcanumObjectId identity, out ObjectType type)
+            => TrySelect(Collect(owners), worldPoint,
+                candidate => candidate.Type == ObjectType.Portal || IsItemType(candidate.Type), out identity, out type);
+
+        public static bool TrySelectItem(IEnumerable<WorldObject> objects, Vector2 worldPoint,
+            out ArcanumObjectId identity)
+            => TrySelect(objects, worldPoint, candidate => IsItemType(candidate.Type), out identity, out _);
+
+        private static bool TrySelect(IEnumerable<WorldObject> objects, Vector2 worldPoint,
+            Func<WorldObject, bool> accepts, out ArcanumObjectId identity, out ObjectType type)
         {
             identity = default;
+            type = default;
             SpriteRenderer bestRenderer = null;
             string bestKey = null;
             if (objects == null) return false;
@@ -33,7 +41,7 @@ namespace Arcanum.Runtime.World
             foreach (WorldObject candidate in objects)
             {
                 SpriteRenderer renderer = candidate?.View;
-                if (candidate == null || candidate.Type != ObjectType.Portal || candidate.Off
+                if (candidate == null || !accepts(candidate) || candidate.Off
                     || !candidate.Identity.IsPersistent || renderer == null || renderer.sprite == null
                     || !renderer.enabled || !renderer.gameObject.activeInHierarchy)
                     continue;
@@ -47,9 +55,22 @@ namespace Arcanum.Runtime.World
                 bestRenderer = renderer;
                 bestKey = key;
                 identity = candidate.Identity;
+                type = candidate.Type;
             }
             return bestRenderer != null;
         }
+
+        private static List<WorldObject> Collect(IEnumerable<WorldObjectSpriteOwner> owners)
+        {
+            var objects = new List<WorldObject>();
+            if (owners == null) return objects;
+            foreach (WorldObjectSpriteOwner owner in owners)
+                if (owner != null && owner.WorldObject != null) objects.Add(owner.WorldObject);
+            return objects;
+        }
+
+        private static bool IsItemType(ObjectType type)
+            => type >= ObjectType.Weapon && type <= ObjectType.Generic;
 
         private static bool ContainsVisiblePixel(SpriteRenderer renderer, Vector2 worldPoint)
         {

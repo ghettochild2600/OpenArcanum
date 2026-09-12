@@ -257,7 +257,8 @@ namespace Arcanum.Runtime.World
             string sector,
             uint artId,
             bool off,
-            bool locked)
+            bool locked,
+            int itemFlags = 0)
         {
             if (!identity.IsPersistent) return null;
             if (_states.TryGetValue(identity, out var existing))
@@ -265,7 +266,7 @@ namespace Arcanum.Runtime.World
                 if (!existing.Matches(source, sector)) throw new InvalidOperationException($"ObjectID collision: {identity}");
                 return existing;
             }
-            var state = new PersistentObjectState(source, identity, sector, artId, off, locked);
+            var state = new PersistentObjectState(source, identity, sector, artId, off, locked, itemFlags);
             _states.Add(identity, state);
             return state;
         }
@@ -458,11 +459,21 @@ namespace Arcanum.Runtime.World
         {
             if (PlayerState == null || PlayerState.Identity != command.Actor)
                 return new WorldInteractionResult(command, WorldInteractionResultCode.ActorNotFound);
+            return command.Type switch
+            {
+                WorldInteractionCommandType.Use => ExecuteUse(command),
+                WorldInteractionCommandType.PickUp => ExecutePickUp(command),
+                WorldInteractionCommandType.Drop => ExecuteDrop(command),
+                WorldInteractionCommandType.Transfer => ExecuteOwnerTransfer(command),
+                _ => new WorldInteractionResult(command, WorldInteractionResultCode.Unsupported),
+            };
+        }
+
+        private WorldInteractionResult ExecuteUse(WorldInteractionCommand command)
+        {
             if (!_states.TryGetValue(command.Target, out PersistentObjectState targetState) || targetState.Off
                 || !TryGetLoadedObject(command.Target, out WorldObject target))
                 return new WorldInteractionResult(command, WorldInteractionResultCode.TargetNotFound);
-            if (command.Type != WorldInteractionCommandType.Use)
-                return new WorldInteractionResult(command, WorldInteractionResultCode.Unsupported);
             if (targetState.Type != ObjectType.Portal || target.Type != ObjectType.Portal)
                 return new WorldInteractionResult(command, WorldInteractionResultCode.InvalidTarget);
             if (!SectorCoordinate.TryParse(targetState.SourceSector, out SectorCoordinate targetSector))
@@ -512,6 +523,94 @@ namespace Arcanum.Runtime.World
                     ScriptStatus(scriptNum, scriptResult), ScriptDefault(scriptNum, scriptResult))
                 : new WorldInteractionResult(command, WorldInteractionResultCode.Blocked, scriptNum: scriptNum,
                     scriptStatus: ScriptStatus(scriptNum, scriptResult), scriptRunDefault: ScriptDefault(scriptNum, scriptResult));
+        }
+
+        private WorldInteractionResult ExecutePickUp(WorldInteractionCommand command)
+        {
+            if (!_states.TryGetValue(command.Target, out PersistentObjectState item))
+                return new WorldInteractionResult(command, WorldInteractionResultCode.ItemNotFound);
+            if (!IsItemType(item.Type))
+                return new WorldInteractionResult(command, WorldInteractionResultCode.InvalidItem);
+            if (item.Placement.Kind == ObjectPlacementKind.Contained)
+                return new WorldInteractionResult(command, WorldInteractionResultCode.AlreadyContained);
+            if (item.Off || item.Placement.Kind != ObjectPlacementKind.World
+                || item.Placement.Sector != SelectedSector || PlayerState.Sector != SelectedSector
+                || !TryGetLoadedObject(command.Target, out WorldObject runtime)
+                || runtime.Type != item.Type)
+                return new WorldInteractionResult(command, WorldInteractionResultCode.ItemNotInWorld);
+            if (!SectorCoordinate.TryParse(item.Placement.Sector, out SectorCoordinate sector))
+                return new WorldInteractionResult(command, WorldInteractionResultCode.ItemNotInWorld);
+            Vector2 targetPosition = sector.ToGlobal(item.Placement.TilePosition);
+            if (!InteractionRangeRules.IsWithin(PlayerState.MapPosition, targetPosition,
+                    InteractionRangeRules.ItemPickupRange))
+                return new WorldInteractionResult(command, WorldInteractionResultCode.OutOfRange);
+
+            return FromInventoryTransfer(command, TransferItem(item.Identity, item.Placement,
+                ObjectPlacement.ContainedBy(command.Actor)));
+        }
+
+        private WorldInteractionResult ExecuteDrop(WorldInteractionCommand command)
+        {
+            if (!_states.TryGetValue(command.Target, out PersistentObjectState item))
+                return new WorldInteractionResult(command, WorldInteractionResultCode.ItemNotFound);
+            if (!IsItemType(item.Type))
+                return new WorldInteractionResult(command, WorldInteractionResultCode.InvalidItem);
+            if (item.Placement.Kind != ObjectPlacementKind.Contained
+                || item.Placement.ParentIdentity != command.Actor)
+                return new WorldInteractionResult(command, WorldInteractionResultCode.SourceOwnerMismatch);
+            if ((item.ItemFlags & 0x00000020) != 0)
+                return new WorldInteractionResult(command, WorldInteractionResultCode.NotDroppable);
+            if (!command.InventoryDestination.HasValue
+                || !IsValidActiveWorldDestination(command.InventoryDestination.Value))
+                return new WorldInteractionResult(command, WorldInteractionResultCode.InvalidDestination);
+            return FromInventoryTransfer(command, TransferItem(item.Identity, item.Placement,
+                command.InventoryDestination.Value));
+        }
+
+        private WorldInteractionResult ExecuteOwnerTransfer(WorldInteractionCommand command)
+        {
+            if (!_states.TryGetValue(command.Target, out PersistentObjectState item))
+                return new WorldInteractionResult(command, WorldInteractionResultCode.ItemNotFound);
+            if (!IsItemType(item.Type))
+                return new WorldInteractionResult(command, WorldInteractionResultCode.InvalidItem);
+            if (item.Placement.Kind != ObjectPlacementKind.Contained
+                || !command.InventoryDestination.HasValue
+                || command.InventoryDestination.Value.Kind != ObjectPlacementKind.Contained)
+                return new WorldInteractionResult(command, WorldInteractionResultCode.SourceOwnerMismatch);
+            ObjectPlacement destination = command.InventoryDestination.Value;
+            if (item.Placement.ParentIdentity != command.Actor
+                && destination.ParentIdentity != command.Actor)
+                return new WorldInteractionResult(command, WorldInteractionResultCode.SourceOwnerMismatch);
+            return FromInventoryTransfer(command, TransferItem(item.Identity, item.Placement, destination));
+        }
+
+        private bool IsValidActiveWorldDestination(ObjectPlacement destination)
+            => destination.Kind == ObjectPlacementKind.World
+               && destination.Sector == SelectedSector
+               && PlayerState != null && PlayerState.Sector == SelectedSector
+               && destination.TilePosition.x >= 0 && destination.TilePosition.x < SectorCoordinate.Size
+               && destination.TilePosition.y >= 0 && destination.TilePosition.y < SectorCoordinate.Size
+               && Mathf.Approximately(destination.TilePosition.x, Mathf.Round(destination.TilePosition.x))
+               && Mathf.Approximately(destination.TilePosition.y, Mathf.Round(destination.TilePosition.y));
+
+        private static WorldInteractionResult FromInventoryTransfer(WorldInteractionCommand command,
+            InventoryTransferResult transfer)
+        {
+            if (transfer.Succeeded)
+                return new WorldInteractionResult(command, WorldInteractionResultCode.Success,
+                    inventoryStatus: transfer.Code);
+            WorldInteractionResultCode code = transfer.Code switch
+            {
+                InventoryResultCode.ItemNotFound => WorldInteractionResultCode.ItemNotFound,
+                InventoryResultCode.InvalidItemType => WorldInteractionResultCode.InvalidItem,
+                InventoryResultCode.InvalidDestination or InventoryResultCode.ParentNotFound
+                    or InventoryResultCode.InvalidParentType or InventoryResultCode.SelfParent
+                    or InventoryResultCode.CycleDetected => WorldInteractionResultCode.InvalidDestination,
+                InventoryResultCode.AlreadyAtDestination => WorldInteractionResultCode.AlreadyContained,
+                InventoryResultCode.SourceMismatch => WorldInteractionResultCode.SourceOwnerMismatch,
+                _ => WorldInteractionResultCode.TransferFailed,
+            };
+            return new WorldInteractionResult(command, code, inventoryStatus: transfer.Code);
         }
 
         private static ScriptExecutionStatus? ScriptStatus(int scriptNum, ScriptExecutionResult result)

@@ -39,11 +39,14 @@ namespace Arcanum.Runtime.World
             Vector3 screen = Input.mousePosition;
             screen.z = Mathf.Abs(cam.transform.position.z - _loader.transform.position.z);
             Vector3 world = cam.ScreenToWorldPoint(screen);
-            if (WorldObjectTargetSelector.TrySelectPortal(_loader.SpriteOwners, world, out ArcanumObjectId target))
+            if (WorldObjectTargetSelector.TrySelectInteractionTarget(_loader.SpriteOwners, world,
+                    out ArcanumObjectId target, out ObjectType targetType))
             {
                 LastClickedTile = null;
                 LastClickedObject = target;
-                WorldInteractionResult result = _interaction.TryUse(target);
+                WorldInteractionResult result = targetType == ObjectType.Portal
+                    ? _interaction.TryUse(target)
+                    : _interaction.TryPickUp(target);
                 LastInteractionResult = result;
                 LastClickAccepted = result.IsAccepted;
                 return;

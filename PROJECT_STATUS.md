@@ -10,17 +10,18 @@ safe/adapt/avoid reuse boundaries, and defines a dependency-ordered M1–M13 roa
 
 ## Current Objective
 
-M1 traversal, the bounded M2 interaction/SAP_USE kernel, and M3A inventory state are complete.
-`WorldMapSessionCoordinator` now owns typed `World` / `Contained(parent)` placement, atomic raw item transfers, and
-deterministic session-created item identities independently of Unity presentation.
+M1 traversal, the bounded M2 interaction/SAP_USE kernel, and M3A-M3B inventory state/commands are complete.
+`WorldMapSessionCoordinator` owns typed `World` / `Contained(parent)` placement, atomic raw item transfers,
+deterministic session-created item identities, and source-faithful pickup/drop/owner-transfer policy independently of
+Unity presentation.
 
-The next recommended objective is M3B: source-faithful pickup/drop and owner-to-owner inventory command rules built on
-the M3A transaction. Inventory/equipment UI, slots, stacks, weight/capacity, economy, combat item use, scripts, and save
-serialization remain outside that bounded slice.
+The next recommended objective is M3C: authoritative equipment-location state and atomic equip/unequip commands for
+source worn locations 1000-1008. Inventory/equipment UI, stacking/quantities, weight/capacity, economy, combat item
+effects, scripts, and save serialization remain outside that bounded slice.
 
 ## Current Branch
 
-Expected branch: `feature/inventory-state`
+Expected branch: `feature/inventory-commands`
 
 Always verify the actual Git branch before doing work. Git is authoritative if it disagrees with this document.
 
@@ -950,6 +951,35 @@ Completed on 2026-09-11 with Unity 6000.0.71f1 on `feature/inventory-state`.
 - Full source semantics, API/result contract, call graph, validation, and limitations:
   [`documentation_unity/m3a-inventory-state.md`](documentation_unity/m3a-inventory-state.md).
 
+## M3B Pickup, Drop, and Inventory Commands
+
+Completed on 2026-09-12 with Unity 6000.0.71f1 on `feature/inventory-commands`.
+
+- Stable-ID `PickUp`, `Drop`, and owner-to-owner `Transfer` commands are validated by
+  `WorldMapSessionCoordinator` and commit only through M3A's atomic `TransferItem` primitive. Presentation remains an
+  observer of typed persistent placement.
+- Ordinary pickup uses the source `AG_PICKUP_ITEM` range of 0. The existing interaction/navigation controllers approach
+  the exact item tile and revalidate on arrival; replacement movement cancels without a stale transaction.
+- Drop requires exact PC ownership, a valid integer tile in the active sector, and no `OIF_NO_DROP` (`0x20`). Source
+  `SAP_GET`/`SAP_DROP` and other script/equipment/capacity/UI consequences remain explicitly deferred.
+- Real proof item: Food prototype 10078, `G_8781D726_74FE_0846_AD0A_88EE591B6383`, authored at `(10,46)` in
+  `maps/arcanum1-024-fixed/101602821845.sec`. A literal Game-view click selected that exact ObjectID, moved the PC,
+  and committed one pickup.
+- The same item remained contained through rebuild/reload and A-to-B-to-A traversal, transferred PC-to-container and
+  back using real container `G_8F454608_E327_1341_B85B_E7A5402D4758` (prototype 3052), then dropped with its identity,
+  prototype, and ordinary ART presentation intact.
+- The loader now projects eligible session-retained items moved into a foreign sector even when that sector has no
+  authored source record for them. Destination reload restores one presentation, while the original source record
+  remains suppressed and cannot duplicate or resurrect the item.
+- Original/Enhanced rebuilds preserved contained and world state. Dynamic `D_0000000000000001` used the identical
+  command path and survived rebuild/reload; allocation continued at `D_0000000000000002`.
+- Validation: M3B 13/13, M3A 8/8, M2B 8/8, M2A 16/16, PlayerNavigation 21/21, M1A 7/7, M1B 11/11,
+  WorldSessionState 27/27, PortalArtResolver 2/2, and complete EditMode 284/284. Every run had zero failures, skips, or
+  inconclusive tests. The Play Mode harness recorded 0 new warnings and 0 errors, with unique session, controller,
+  root, PC, sprite-owner, item-state, containment, and presentation ownership.
+- Full source boundary, ownership graph, fixture, and validation:
+  [`documentation_unity/m3b-inventory-commands.md`](documentation_unity/m3b-inventory-commands.md).
+
 ## Next Recommended Milestone
 
 The M2C candidate gate was completed on 2026-09-10 against all 22 distinct SAP_USE script numbers attached to placed
@@ -960,8 +990,8 @@ production or test code was changed, and the strict whitelist was not widened. S
 [`documentation_unity/m2c-sap-use-family.md`](documentation_unity/m2c-sap-use-family.md) for the candidate table and
 rejection evidence.
 
-The exact recommended next milestone is M3B: implement source-faithful pickup/drop and owner-to-owner inventory command
-rules on top of M3A's atomic placement transaction. Connect stable M2 actor/target identities to explicit, rule-checked
-item movement and validate a real ground-item/container lifecycle. Continue to defer UI, equipment, stacking,
-weight/capacity, economy, combat item use, script integration, destruction/decay, and save serialization. Additional
-SAP_USE families remain deferred until their owning domains exist.
+The exact recommended next milestone is M3C: add authoritative equipment-location state and atomic equip/unequip
+commands for source worn locations 1000-1008. Validate slot compatibility, replacement/unequip behavior, identity and
+containment invariants, failed transaction rollback, rebuild, and sector reload without introducing inventory UI.
+Continue to defer stacking/quantities, weight/capacity, economy, combat item effects, script integration, destruction,
+decay, and save serialization. Additional SAP_USE families remain deferred until their owning domains exist.
