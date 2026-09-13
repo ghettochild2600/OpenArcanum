@@ -29,7 +29,8 @@ namespace Arcanum.Formats.Dialog
         /// tables via <see cref="IDialogContext.GeneratedText"/>; tokens we can't render (b: barter,
         /// t: train, …) are skipped.
         /// </summary>
-        public List<DialogLine> OptionsFor(int npcLine, int playerIq = 20, IDialogContext ctx = null)
+        public List<DialogLine> OptionsFor(int npcLine, int playerIq = 20, IDialogContext ctx = null,
+            System.Func<string, IDialogContext, bool> testEvaluator = null)
         {
             var options = new List<DialogLine>();
             bool past = false;
@@ -47,7 +48,7 @@ namespace Arcanum.Formats.Dialog
                 // Gender gate: the option's gender field is STAT_GENDER — GENDER_FEMALE = 0, GENDER_MALE = 1
                 // (stat.h; dialog.c sub_414F50 shows the option only when it matches the PC's gender).
                 if (ctx != null && l.OptionGender != -1 && l.OptionGender != (ctx.PcIsMale ? 1 : 0)) continue;
-                if (!DialogScriptEvaluator.TestPasses(l.Test, ctx)) continue; // script condition gate
+                if (!(testEvaluator ?? DialogScriptEvaluator.TestPasses)(l.Test, ctx)) continue;
 
                 if (l.IsToken)
                 {

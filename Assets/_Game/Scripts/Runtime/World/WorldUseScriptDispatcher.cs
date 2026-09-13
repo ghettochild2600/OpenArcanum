@@ -20,10 +20,10 @@ namespace Arcanum.Runtime.World
         private readonly Func<int, ScriptFile> _resolveScript;
         private readonly ProductionUseScriptHost _host;
 
-        public ScriptGlobals Globals { get; }
+        public IScriptGlobals Globals { get; }
 
         public WorldUseScriptDispatcher(WorldMapSessionCoordinator session, Func<int, ScriptFile> resolveScript,
-            ScriptGlobals globals)
+            IScriptGlobals globals)
         {
             _session = session ?? throw new ArgumentNullException(nameof(session));
             _resolveScript = resolveScript ?? throw new ArgumentNullException(nameof(resolveScript));

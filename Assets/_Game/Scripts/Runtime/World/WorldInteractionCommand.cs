@@ -4,7 +4,7 @@ using UnityEngine;
 
 namespace Arcanum.Runtime.World
 {
-    public enum WorldInteractionCommandType { Use, PickUp, Drop, Transfer }
+    public enum WorldInteractionCommandType { Use, PickUp, Drop, Transfer, Talk }
 
     public enum WorldInteractionResultCode
     {
@@ -32,6 +32,10 @@ namespace Arcanum.Runtime.World
         TransferFailed,
         TooHeavy,
         NoRoom,
+        DialogueBusy,
+        DialogueMissing,
+        DialogueUnsupported,
+        DialogueFailed,
     }
 
     /// <summary>One immutable gameplay command identified only by persistent domain identities.</summary>
@@ -107,8 +111,19 @@ namespace Arcanum.Runtime.World
         // anim.c AG_PICKUP_ITEM sets AGDATA_RANGE_DATA to 0 before AG_MOVE_NEAR_OBJ.
         public const int ItemPickupRange = 0;
 
+        // anim.c AG_TALK tests distance < ai_max_dialog_distance; ai.c returns 5 for a PC.
+        public const int TalkStartRange = 4;
+
+        // Out-of-range AG_TALK schedules AG_MOVE_NEAR_OBJ with range 1.
+        public const int TalkApproachRange = 1;
+
         public static int For(WorldInteractionCommandType type)
-            => type == WorldInteractionCommandType.PickUp ? ItemPickupRange : PortalUseRange;
+            => type switch
+            {
+                WorldInteractionCommandType.PickUp => ItemPickupRange,
+                WorldInteractionCommandType.Talk => TalkStartRange,
+                _ => PortalUseRange,
+            };
 
         public static int Distance(Vector2 a, Vector2 b)
             => Mathf.CeilToInt(Mathf.Max(Mathf.Abs(a.x - b.x), Mathf.Abs(a.y - b.y)) - 0.00001f);

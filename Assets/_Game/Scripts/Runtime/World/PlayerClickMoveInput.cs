@@ -44,9 +44,12 @@ namespace Arcanum.Runtime.World
             {
                 LastClickedTile = null;
                 LastClickedObject = target;
-                WorldInteractionResult result = targetType == ObjectType.Portal
-                    ? _interaction.TryUse(target)
-                    : _interaction.TryPickUp(target);
+                WorldInteractionResult result = targetType switch
+                {
+                    ObjectType.Portal => _interaction.TryUse(target),
+                    ObjectType.Npc => _interaction.TryTalk(target),
+                    _ => _interaction.TryPickUp(target),
+                };
                 LastInteractionResult = result;
                 LastClickAccepted = result.IsAccepted;
                 return;

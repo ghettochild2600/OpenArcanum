@@ -28,6 +28,43 @@ namespace Arcanum.Formats.Dialog
             return true;
         }
 
+        /// <summary>Production fail-closed test entry point. Every parsed code must be explicitly admitted.</summary>
+        public static bool TryTestStrict(string test, IDialogContext ctx, ISet<string> admittedCodes,
+            out bool passes, out string failure)
+        {
+            passes = false;
+            failure = null;
+            if (ctx == null)
+            {
+                failure = "dialog context is null";
+                return false;
+            }
+            if (string.IsNullOrWhiteSpace(test))
+            {
+                passes = true;
+                return true;
+            }
+            try
+            {
+                foreach (Token token in Tokenize(test))
+                {
+                    if (admittedCodes == null || !admittedCodes.Contains(token.Code))
+                    {
+                        failure = $"unsupported dialog test '{token.Code}'";
+                        return false;
+                    }
+                    if (!EvalTest(token, ctx)) return true;
+                }
+                passes = true;
+                return true;
+            }
+            catch (System.Exception ex)
+            {
+                failure = ex.Message;
+                return false;
+            }
+        }
+
         /// <summary>Runs the effect. If it contains an <c>fl</c> (goto), returns that line via
         /// <paramref name="gotoOverride"/> (else -1) so the conversation can jump there.</summary>
         public static void RunEffect(string effect, IDialogContext ctx, out int gotoOverride)
@@ -36,6 +73,37 @@ namespace Arcanum.Formats.Dialog
             if (string.IsNullOrEmpty(effect) || ctx == null) return;
             foreach (Token t in Tokenize(effect))
                 RunEffect(t, ctx, ref gotoOverride);
+        }
+
+        /// <summary>Production fail-closed effect entry point. It preflights all codes before changing state.</summary>
+        public static bool TryRunEffectStrict(string effect, IDialogContext ctx, ISet<string> admittedCodes,
+            out int gotoOverride, out string failure)
+        {
+            gotoOverride = -1;
+            failure = null;
+            if (ctx == null)
+            {
+                failure = "dialog context is null";
+                return false;
+            }
+            if (string.IsNullOrWhiteSpace(effect)) return true;
+            try
+            {
+                var tokens = new List<Token>(Tokenize(effect));
+                foreach (Token token in tokens)
+                    if (admittedCodes == null || !admittedCodes.Contains(token.Code))
+                    {
+                        failure = $"unsupported dialog effect '{token.Code}'";
+                        return false;
+                    }
+                foreach (Token token in tokens) RunEffect(token, ctx, ref gotoOverride);
+                return true;
+            }
+            catch (System.Exception ex)
+            {
+                failure = ex.Message;
+                return false;
+            }
         }
 
         private static bool EvalTest(Token t, IDialogContext ctx)

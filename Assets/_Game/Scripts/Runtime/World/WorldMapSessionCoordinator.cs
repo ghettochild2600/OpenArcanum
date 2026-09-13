@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using Arcanum.Formats.Objects;
 using Arcanum.Formats.Script;
 using Arcanum.Runtime.Character;
+using Arcanum.Runtime.Campaign;
+using Arcanum.Runtime.Dialogue;
 using Arcanum.Script;
 using Arcanum.World;
 using UnityEngine;
@@ -27,6 +29,7 @@ namespace Arcanum.Runtime.World
         private CharacterVitalityService _vitality;
         private CharacterProgressionService _progression;
         private CharacterDerivedStatService _derivedStats;
+        private ProductionDialogueSession _dialogue;
         private ulong _nextDynamicIdentity = 1;
 
         public IReadOnlyDictionary<ArcanumObjectId, PersistentObjectState> States => _states;
@@ -45,7 +48,10 @@ namespace Arcanum.Runtime.World
         public InventoryCapacityService InventoryCapacity
             => _inventoryCapacity ??= new InventoryCapacityService(this);
         public PortalTransitionScheduler Portals { get; } = new();
-        public ScriptGlobals ScriptGlobals { get; } = new();
+        public CampaignStateService Campaign { get; } = new();
+        /// <summary>Compatibility name for the shared script/campaign store used by M2B callers.</summary>
+        public CampaignStateService ScriptGlobals => Campaign;
+        public ProductionDialogueSession Dialogue => _dialogue ??= new ProductionDialogueSession(this, Campaign);
         public WorldUseScriptDispatcher UseScripts { get; private set; }
         public event Action<string> SectorUnloading;
         public event Action<string> SectorSelected;
@@ -76,7 +82,11 @@ namespace Arcanum.Runtime.World
             if (!string.IsNullOrWhiteSpace(sector)) SelectSector(sector);
         }
 
-        private void Update() => Portals.Tick(Time.deltaTime);
+        private void Update()
+        {
+            Portals.Tick(Time.deltaTime);
+            _dialogue?.ValidateActiveTarget();
+        }
 
         public void RegisterTerrainOwner(ISectorPresentationOwner owner)
         {
@@ -103,6 +113,10 @@ namespace Arcanum.Runtime.World
 
         public void BindUseScriptSource(Func<int, ScriptFile> resolveScript)
             => UseScripts = new WorldUseScriptDispatcher(this, resolveScript, ScriptGlobals);
+
+        public void BindDialogueSource(Func<int, ScriptFile> resolveScript,
+            Func<int, Arcanum.Formats.Dialog.DialogScript> resolveDialogue)
+            => Dialogue.BindSources(resolveScript, resolveDialogue);
 
         public void BindPrototypeSource(Func<int, ObjectProtoInfo> resolvePrototype)
             => _resolvePrototype = resolvePrototype ?? throw new ArgumentNullException(nameof(resolvePrototype));
@@ -144,6 +158,7 @@ namespace Arcanum.Runtime.World
         public void ClearSelectedSector()
         {
             string sector = SelectedSector ?? _objectOwner?.PresentedSector ?? _terrainOwner?.PresentedSector;
+            _dialogue?.Cancel("Sector unloaded during dialogue.");
             if (sector != null) SectorUnloading?.Invoke(sector);
             _objectOwner?.ClearPresentedSector();
             _terrainOwner?.ClearPresentedSector();
@@ -911,6 +926,7 @@ namespace Arcanum.Runtime.World
                 WorldInteractionCommandType.PickUp => ExecutePickUp(command),
                 WorldInteractionCommandType.Drop => ExecuteDrop(command),
                 WorldInteractionCommandType.Transfer => ExecuteOwnerTransfer(command),
+                WorldInteractionCommandType.Talk => ExecuteTalk(command),
                 _ => new WorldInteractionResult(command, WorldInteractionResultCode.Unsupported),
             };
         }
@@ -969,6 +985,34 @@ namespace Arcanum.Runtime.World
                     ScriptStatus(scriptNum, scriptResult), ScriptDefault(scriptNum, scriptResult))
                 : new WorldInteractionResult(command, WorldInteractionResultCode.Blocked, scriptNum: scriptNum,
                     scriptStatus: ScriptStatus(scriptNum, scriptResult), scriptRunDefault: ScriptDefault(scriptNum, scriptResult));
+        }
+
+        private WorldInteractionResult ExecuteTalk(WorldInteractionCommand command)
+        {
+            if (!_states.TryGetValue(command.Target, out PersistentObjectState targetState) || targetState.Off
+                || targetState.Type != ObjectType.Npc
+                || !TryGetLoadedObject(command.Target, out WorldObject target) || target.Type != ObjectType.Npc)
+                return new WorldInteractionResult(command, WorldInteractionResultCode.TargetNotFound);
+            if (!SectorCoordinate.TryParse(targetState.Placement.Sector, out SectorCoordinate targetSector))
+                return new WorldInteractionResult(command, WorldInteractionResultCode.TargetNotFound);
+            if (!InteractionRangeRules.IsWithin(PlayerState.MapPosition,
+                    targetSector.ToGlobal(targetState.Placement.TilePosition), InteractionRangeRules.TalkStartRange))
+                return new WorldInteractionResult(command, WorldInteractionResultCode.OutOfRange);
+
+            DialogueStartStatus status = Dialogue.Start(command.Actor, command.Target);
+            WorldInteractionResultCode result = status switch
+            {
+                DialogueStartStatus.Started => WorldInteractionResultCode.Success,
+                DialogueStartStatus.Busy => WorldInteractionResultCode.DialogueBusy,
+                DialogueStartStatus.MissingScript or DialogueStartStatus.MissingDialogue
+                    => WorldInteractionResultCode.DialogueMissing,
+                DialogueStartStatus.UnsupportedScript => WorldInteractionResultCode.DialogueUnsupported,
+                DialogueStartStatus.InvalidPc => WorldInteractionResultCode.ActorNotFound,
+                DialogueStartStatus.InvalidNpc or DialogueStartStatus.TargetUnavailable
+                    => WorldInteractionResultCode.TargetNotFound,
+                _ => WorldInteractionResultCode.DialogueFailed,
+            };
+            return new WorldInteractionResult(command, result, scriptNum: targetState.DialogNum);
         }
 
         private WorldInteractionResult ExecutePickUp(WorldInteractionCommand command)

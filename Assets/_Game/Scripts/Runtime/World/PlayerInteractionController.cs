@@ -107,14 +107,32 @@ namespace Arcanum.Runtime.World
             return TryApproachOrExecute(command, itemState, InteractionRangeRules.ItemPickupRange);
         }
 
+        public WorldInteractionResult TryTalk(ArcanumObjectId npc)
+        {
+            WorldInteractionCommand command = BeginCommand(npc, WorldInteractionCommandType.Talk);
+            if (!TryResolveActor(command, out WorldMapSessionCoordinator session))
+                return Complete(command, WorldInteractionResultCode.ActorNotFound);
+            if (!session.TryGetObjectState(npc, out PersistentObjectState npcState)
+                || !session.TryGetLoadedObject(npc, out WorldObject runtime))
+                return Complete(command, WorldInteractionResultCode.TargetNotFound);
+            if (npcState.Type != ObjectType.Npc || runtime.Type != ObjectType.Npc || npcState.DialogNum <= 0)
+                return Complete(command, WorldInteractionResultCode.InvalidTarget);
+            return TryApproachOrExecute(command, npcState, InteractionRangeRules.TalkStartRange,
+                InteractionRangeRules.TalkApproachRange);
+        }
+
         private WorldInteractionResult TryApproachOrExecute(WorldInteractionCommand command,
             PersistentObjectState targetState, int range)
+            => TryApproachOrExecute(command, targetState, range, range);
+
+        private WorldInteractionResult TryApproachOrExecute(WorldInteractionCommand command,
+            PersistentObjectState targetState, int executionRange, int approachRange)
         {
             WorldMapSessionCoordinator session = _loader.Session;
             if (!TryTargetMapPosition(targetState, out Vector2 targetPosition))
                 return Complete(command, WorldInteractionResultCode.TargetNotFound);
             if (InteractionRangeRules.IsWithin(session.PlayerState.MapPosition, targetPosition,
-                    range))
+                    executionRange))
                 return Execute(command.At(Vector2Int.RoundToInt(session.PlayerState.MapPosition)));
             if (!SectorCoordinate.TryParse(session.SelectedSector, out SectorCoordinate sector)
                 || targetState.Placement.Kind != ObjectPlacementKind.World
@@ -127,7 +145,7 @@ namespace Arcanum.Runtime.World
             Vector2Int start = Vector2Int.RoundToInt(_navigation.Player.TilePosition);
             Vector2Int targetTile = Vector2Int.RoundToInt(targetState.Placement.TilePosition);
             if (!_approachPlanner.TryPlan(_loader.NavigationMap, start, targetTile,
-                    range, out Vector2Int localDestination, _approachRoute))
+                    approachRange, out Vector2Int localDestination, _approachRoute))
                 return Complete(command, WorldInteractionResultCode.NoReachableInteractionPosition);
 
             _approachDestination = Vector2Int.RoundToInt(sector.ToGlobal(localDestination));

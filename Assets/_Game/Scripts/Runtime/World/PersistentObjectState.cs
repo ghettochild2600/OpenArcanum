@@ -20,6 +20,7 @@ namespace Arcanum.Runtime.World
         public bool Off { get; internal set; }
         public bool Locked { get; internal set; }
         public int UseScriptNum { get; internal set; }
+        public int DialogNum { get; internal set; }
         public int ItemFlags { get; }
         public uint? InventoryArtId { get; }
         public int WeaponFlags { get; }
@@ -62,6 +63,8 @@ namespace Arcanum.Runtime.World
             ArtId = artId;
             Off = off;
             Locked = locked;
+            UseScriptNum = source.UseScriptNum;
+            DialogNum = source.DialogNum;
             ItemFlags = itemFlags;
             InventoryArtId = inventoryArtId;
             WeaponFlags = weaponFlags;
@@ -125,6 +128,7 @@ namespace Arcanum.Runtime.World
             Off = source.Off;
             Locked = source.Locked;
             UseScriptNum = source.UseScriptNum;
+            DialogNum = source.DialogNum;
             ItemFlags = source.ItemFlags;
             InventoryArtId = source.InventoryArtId;
             WeaponFlags = source.WeaponFlags;
@@ -153,6 +157,7 @@ namespace Arcanum.Runtime.World
             runtime.Off = Off;
             runtime.Locked = Locked;
             runtime.UseScriptNum = UseScriptNum;
+            runtime.DialogNum = DialogNum;
             runtime.ItemFlags = ItemFlags;
             runtime.AmmoQuantity = Type == ObjectType.Ammo ? StackQuantity.GetValueOrDefault() : 0;
             runtime.GoldQuantity = Type == ObjectType.Gold ? StackQuantity.GetValueOrDefault() : 0;

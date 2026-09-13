@@ -23,7 +23,8 @@ namespace Arcanum.Runtime.World
         public static bool TrySelectInteractionTarget(IEnumerable<WorldObjectSpriteOwner> owners, Vector2 worldPoint,
             out ArcanumObjectId identity, out ObjectType type)
             => TrySelect(Collect(owners), worldPoint,
-                candidate => candidate.Type == ObjectType.Portal || IsItemType(candidate.Type), out identity, out type);
+                candidate => candidate.Type is ObjectType.Portal or ObjectType.Npc || IsItemType(candidate.Type),
+                out identity, out type);
 
         public static bool TrySelectItem(IEnumerable<WorldObject> objects, Vector2 worldPoint,
             out ArcanumObjectId identity)

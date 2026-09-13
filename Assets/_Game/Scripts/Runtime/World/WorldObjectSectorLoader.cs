@@ -3,12 +3,14 @@ using System.Collections.Generic;
 using Arcanum.Formats;
 using Arcanum.Formats.Art;
 using Arcanum.Formats.Database;
+using Arcanum.Formats.Dialog;
 using Arcanum.Formats.Objects;
 using Arcanum.Formats.Script;
 using Arcanum.Formats.Text;
 using Arcanum.Formats.Tiles;
 using Arcanum.Formats.World;
 using Arcanum.Runtime.Character;
+using Arcanum.Runtime.Dialogue;
 using Arcanum.World;
 using UnityEngine;
 
@@ -120,6 +122,8 @@ namespace Arcanum.Runtime.World
         private void Awake()
         {
             BindSessionAuthority();
+            if (GetComponent<ProductionDialoguePresenter>() == null)
+                gameObject.AddComponent<ProductionDialoguePresenter>();
         }
 
         /// <summary>Idempotently binds this presentation owner to session authority.</summary>
@@ -739,6 +743,8 @@ namespace Arcanum.Runtime.World
             worldObject.IsOpen = instance.Type == ObjectType.Portal && ((artId >> 14) & 0x1F) != 0;
             state.UseScriptNum = instance.UseScriptNum != 0 ? instance.UseScriptNum : proto?.UseScriptNum ?? 0;
             worldObject.UseScriptNum = state.UseScriptNum;
+            state.DialogNum = instance.DialogNum != 0 ? instance.DialogNum : proto?.DialogNum ?? 0;
+            worldObject.DialogNum = state.DialogNum;
             worldObject.Identity = identity;
             worldObject.ParentIdentity = instance.ParentIdentity;
             Session.Bind(_registeredSector, state, worldObject);
@@ -885,7 +891,9 @@ namespace Arcanum.Runtime.World
             _art = new ObjectArtResolvers(_vfs);
             Session.BindPrototypeSource(_prototypes.Get);
             Session.BindInventoryFootprintSource(ResolveInventoryFootprint);
-            Session.BindUseScriptSource(ScriptDatabase.Load(_vfs));
+            ScriptDatabase scripts = ScriptDatabase.Load(_vfs);
+            Session.BindUseScriptSource(scripts);
+            Session.BindDialogueSource(scripts.Get, dialogNum => DialogLocator.Load(_vfs, dialogNum));
             return true;
         }
 
