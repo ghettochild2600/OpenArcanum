@@ -1363,18 +1363,12 @@ Completed on 2026-09-13 with Unity 6000.0.71f1 on `feature/inventory-commands`.
 
 ## Next Recommended Milestone
 
-The M2C candidate gate was completed on 2026-09-10 against all 22 distinct SAP_USE script numbers attached to placed
-portal records. Script 1162 is the only GREEN family within the bounded constraints and is already M2B-supported. Every
-additional family requires an excluded owning domain: message/dialog presentation, persistent delayed scripts and
-sound, map/sector travel state, quest/lock rules, NPC/combat loops, dynamic object creation, or trap lifecycle. No
-production or test code was changed, and the strict whitelist was not widened. See
-[`documentation_unity/m2c-sap-use-family.md`](documentation_unity/m2c-sap-use-family.md) for the candidate table and
-rejection evidence.
+M6A is complete with a deterministic V1 authoritative-session schema, transactional restore through the owning M1-M5
+services, atomic disk replacement, dynamic-identity allocator continuity, and real Play Mode save/reset/load/rebuild
+proof. See [`documentation_unity/m6a-session-save-load.md`](documentation_unity/m6a-session-save-load.md) for the exact
+contract and validation evidence.
 
-The exact recommended next milestone is **M6A — first bounded versioned authoritative session save/load**. Define the
-version envelope and stable-identity contract, then round-trip the production PC's map/tile/ART plus authoritative
-character attributes, vitality damage, XP/level/points/skills/training, equipped/contained item placement and stacks,
-and the already-proven campaign quest/timestamp values. Restore through the owning M1-M5 services before rebuilding
-Unity presentation, and prove deterministic A -> save -> mutate -> load -> rebuild/reload equivalence. Keep this first
-slice local and explicit; do not add save-slot UI, cloud sync, migrations from unknown versions, combat/AI state,
-barter, or new gameplay domains. Additional SAP_USE families remain deferred until their owning domains exist.
+The exact recommended next milestone is **M6B — version migration/slot orchestration and broader real-session
+coverage**. Define explicit V1-to-future migration boundaries and a domain-level slot catalog without building final UI,
+then add coverage for more maps and source-authored external-parent relationships. Do not include combat, followers,
+barter, final save UI, cloud sync, or original Arcanum save compatibility in M6B.
