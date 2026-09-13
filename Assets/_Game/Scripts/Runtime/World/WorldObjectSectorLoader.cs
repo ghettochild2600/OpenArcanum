@@ -255,6 +255,13 @@ namespace Arcanum.Runtime.World
                 {
                     Session.Characters.GetOrCreateSourceCharacter(identity, instance.Type, instance.PrototypeNumber,
                         instance.StatBase, proto?.StatBase);
+                    CharacterProgressionSource progressionSource = CharacterProgressionSource.Resolve(
+                        instance.StatBase, proto?.StatBase,
+                        instance.BasicSkills, proto?.BasicSkills,
+                        instance.TechSkills, proto?.TechSkills,
+                        instance.CritterFlags ?? proto?.CritterFlags ?? 0);
+                    Session.Progression.GetOrCreateSourceCharacter(identity, instance.Type,
+                        instance.PrototypeNumber, progressionSource);
                     CharacterVitalitySource vitalitySource = CharacterVitalitySource.Resolve(
                         instance.StatBase, proto?.StatBase,
                         instance.HpPoints, proto?.HpPoints,

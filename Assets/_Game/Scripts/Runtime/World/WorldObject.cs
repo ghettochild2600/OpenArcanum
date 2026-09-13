@@ -95,8 +95,6 @@ namespace Arcanum.Runtime.World
         public int WillKosScriptNum;     // NPCs: SAP_WILL_KOS script — kill-on-sight veto hook (0 = none)
         public int[] StatBase;           // NPCs: OBJ_F_CRITTER_STAT_BASE_IDX (proto/instance) — real base stats; null ⇒ defaults
         public int[] SpellTech;          // NPCs: OBJ_F_CRITTER_SPELL_TECH_IDX — college levels 0–16, tech degrees 17–24; null ⇒ none
-        public int[] BasicSkills;        // NPCs: OBJ_F_CRITTER_BASIC_SKILL_IDX — ranks by BASIC_SKILL_* (combat/dialog)
-        public int[] TechSkills;         // NPCs: OBJ_F_CRITTER_TECH_SKILL_IDX — ranks by TECH_SKILL_*
         public int[] Resistances;        // NPCs: OBJ_F_RESISTANCE_IDX — base damage resistances by RESISTANCE_TYPE_*
         public int? ArmorAc;             // items: OBJ_F_ARMOR_AC_ADJ — armour's AC bonus
         public int[] ArmorResist;        // items: OBJ_F_ARMOR_RESISTANCE_ADJ_IDX — armour's resistance bonus by type

@@ -8,14 +8,17 @@ namespace Arcanum.Runtime.Character
     public sealed class CharacterVitalityService
     {
         private readonly CharacterStatService _characters;
+        private readonly ICharacterLevelProvider _levels;
         private readonly Dictionary<ArcanumObjectId, PersistentCharacterVitalityState> _states = new();
 
         public IReadOnlyDictionary<ArcanumObjectId, PersistentCharacterVitalityState> States => _states;
 
-        public CharacterVitalityService(CharacterStatService characters)
+        public CharacterVitalityService(CharacterStatService characters, ICharacterLevelProvider levels = null)
         {
             _characters = characters ?? throw new ArgumentNullException(nameof(characters));
+            _levels = levels;
             _characters.EffectiveAttributesChanged += SynchronizeAfterAttributeChange;
+            if (_levels != null) _levels.LevelChanged += SynchronizeAfterLevelChange;
         }
 
         public PersistentCharacterVitalityState GetOrCreateDevelopmentPlayer(ArcanumObjectId identity)
@@ -103,22 +106,32 @@ namespace Arcanum.Runtime.Character
         {
             int strength = _characters.GetEffectiveAttribute(identity, CharacterAttribute.Strength);
             int willpower = _characters.GetEffectiveAttribute(identity, CharacterAttribute.Willpower);
+            int level = AuthoritativeLevel(identity, source);
             return checked(4 * source.HitPointPoints + source.HitPointAdjustment + willpower
-                + 2 * checked(strength + source.Level) + 4);
+                + 2 * checked(strength + level) + 4);
         }
 
         private int CalculateMaximumFatigue(ArcanumObjectId identity, CharacterVitalitySource source)
         {
             int constitution = _characters.GetEffectiveAttribute(identity, CharacterAttribute.Constitution);
             int willpower = _characters.GetEffectiveAttribute(identity, CharacterAttribute.Willpower);
+            int level = AuthoritativeLevel(identity, source);
             return checked(4 * source.FatiguePoints + source.FatigueAdjustment
-                + 2 * checked(source.Level + constitution) + willpower + 4);
+                + 2 * checked(level + constitution) + willpower + 4);
         }
 
         private void SynchronizeAfterAttributeChange(ArcanumObjectId identity)
         {
             if (_states.TryGetValue(identity, out PersistentCharacterVitalityState state)) Synchronize(state);
         }
+
+        private void SynchronizeAfterLevelChange(ArcanumObjectId identity)
+        {
+            if (_states.TryGetValue(identity, out PersistentCharacterVitalityState state)) Synchronize(state);
+        }
+
+        private int AuthoritativeLevel(ArcanumObjectId identity, CharacterVitalitySource source)
+            => _levels != null && _levels.TryGetLevel(identity, out int level) ? level : source.Level;
 
         private void Synchronize(PersistentCharacterVitalityState state)
         {

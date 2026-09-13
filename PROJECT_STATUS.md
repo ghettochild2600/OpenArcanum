@@ -11,17 +11,20 @@ safe/adapt/avoid reuse boundaries, and defines a dependency-ordered M1–M13 roa
 ## Current Objective
 
 M1 traversal, the bounded M2 interaction/SAP_USE kernel, M3A-M3E inventory/command/equipment/stack/capacity state,
-M4A authoritative PC/NPC primary attributes, and M4B authoritative character vitality are complete.
+M4A authoritative PC/NPC primary attributes, M4B authoritative character vitality, and M4C authoritative skills and
+progression are complete.
 `WorldMapSessionCoordinator` owns typed `World`, `Contained(parent)`, and `Equipped(parent, wornLocation)` placement,
 atomic raw item transfers/equipment replacement/stack merge and split, deterministic session-created item identities,
 source-faithful pickup/drop/owner-transfer policy, and pre-mutation weight/grid-capacity guards independently of Unity
 presentation.
-`CharacterStatService` and the session-owned `CharacterVitalityService` provide stable ObjectID-keyed attributes,
-source inputs, accumulated HP/Fatigue damage, and derived maximum/current vitality with no Unity presentation authority.
+`CharacterStatService`, `CharacterProgressionService`, and `CharacterVitalityService` provide stable ObjectID-keyed
+attributes, skills/training, XP/level/character points, accumulated HP/Fatigue damage, and derived maximum/current
+vitality with no Unity presentation authority.
 
-The next recommended objective is M4C — Skill and Progression State, beginning with source storage, rank, XP/level,
-point-pool, initialization, prerequisite, and ordering semantics. Inventory/equipment UI, encumbrance consequences,
-economy, combat, dialogue, script-host expansion, and save serialization remain deferred.
+The next recommended objective is M4D — Remaining Derived Character Statistics and Alignment/Reaction Inputs,
+beginning with a source audit of the remaining non-vital derived-stat fields and alignment/reaction storage and
+ordering. Inventory/equipment UI, encumbrance consequences, economy, combat, dialogue, script-host expansion, and save
+serialization remain deferred.
 
 ## Current Branch
 
@@ -1052,6 +1055,48 @@ Completed on 2026-09-12 with Unity 6000.0.71f1 on `feature/inventory-commands`.
 - Full source evidence, transaction/identity contract, final ownership graph, fixtures, and validation:
   [`documentation_unity/m3d-stack-state.md`](documentation_unity/m3d-stack-state.md).
 
+## M4C Authoritative Skills and Progression
+
+Completed on 2026-09-12 with Unity 6000.0.71f1 on `feature/inventory-commands`.
+
+- Source analysis established the exact 16-skill numeric mapping: Bow 0, Dodge 1, Melee 2, Throwing 3, Backstab 4,
+  Pick Pocket 5, Prowling 6, Spot Trap 7, Gambling 8, Haggle 9, Heal 10, Persuasion 11, Repair 12, Firearms 13,
+  Pick Locks 14, and Disarm Traps 15. Basic and technical arrays are fields 221/222; bits 0-5 store purchased points
+  and bits 6-7 store None/Apprentice/Expert/Master training. One purchased point equals four rank units.
+- `WorldMapSessionCoordinator.Progression` owns one `CharacterProgressionService`. Stable ObjectID-keyed records own
+  immutable source identity and mutable XP, level, unspent points, purchased skill points, and training independently
+  of Unity presentation. Real NPC initialization uses whole-array instance-over-prototype precedence; collisions or
+  changed source data fail explicitly.
+- Effective skill queries consume M4A governing attributes and the exact cap sequence
+  `3,3,3,3,3,7,7,7,11,11,11,15,15,15,19,19,19,20,20,20`. Skill increases cost one character point and commit only
+  when the next four-unit rank fits that cap. Training is separate, requires ranks 1/9/18, and advances upward one tier
+  at a time. Monstrous melee preserves its audited derived rank/training rules.
+- XP and level use stat slots 18 and 17; unspent character points use slot 21. Retail thresholds 1-50 are embedded
+  exactly from `rules/xp_level.mes`; level 50 is the playable maximum, while XP retains its independent 2,000,000,000
+  field bound. PC-only XP awards can cross multiple levels and award one point per level plus one extra at every fifth
+  level. The point pool is bounded at 56.
+- The production Human Male PC explicitly begins at level 1, XP 0, five points, zero purchased skills, and no training.
+  Real NPC `G_33CE5E06_F4AC_3A4B_B98E_9AB36C467E6F`, prototype 17101, in
+  `maps/arcanum1-024-fixed/101602821844.sec` resolves level 21, XP 162,500, zero points, Bow/Melee/Gambling 8,
+  Throwing/Haggle/Heal/Persuasion/Firearms 4, and no training. A second fixture proves Expert and Apprentice packed
+  training values.
+- M4B vitality now consumes the authoritative progression level through a narrow level-provider interface. A level
+  change recomputes maxima without resetting accumulated HP/Fatigue damage; isolated vitality callers retain their
+  source-level fallback.
+- Computer Use Play Mode validation awarded the PC 2,100 XP, reached level 2, awarded one point, spent one point to
+  raise Bow to rank 4, and rejected a second increase at the Dexterity-8 governing cap atomically. HP/Fatigue maxima
+  became 32/32 while damaged current values were preserved. State/reference identity survived
+  Original/Enhanced/Original rebuild, NPC unload/reload, and PC A-to-B-to-A traversal. The session held 14 unique
+  progression records with unique presentation/session owners and recorded 0 new warnings and 0 errors.
+- Validation: M4C 29/29; required regression matrix 227/227 across M4B, M4A, M3E-M3A, M2B-M2A, PlayerNavigation,
+  M1A-M1B, WorldSessionState, and PortalArtResolver; complete EditMode 398/398. Every run had 0 failures, skips, or
+  inconclusive tests; final compilation was clean.
+- Full source mapping, threshold table, rank/training model, ownership graph, fixture, lifecycle, validation, and
+  deferred boundaries: [`documentation_unity/m4c-skill-progression.md`](documentation_unity/m4c-skill-progression.md).
+- Deferred: attribute purchase, technical-aptitude side effects, temporary/background/equipment/spell modifiers,
+  XP-producing gameplay, auto-level schemes, interactive trainers, character creation/leveling UI, crafting,
+  magic/technology progression, and save serialization.
+
 ## M4B Authoritative Character Vitality
 
 Completed on 2026-09-12 with Unity 6000.0.71f1 on `feature/inventory-commands`.
@@ -1156,9 +1201,9 @@ production or test code was changed, and the strict whitelist was not widened. S
 [`documentation_unity/m2c-sap-use-family.md`](documentation_unity/m2c-sap-use-family.md) for the candidate table and
 rejection evidence.
 
-The exact recommended next milestone is **M4C — Skill and Progression State**. Begin with a source audit of skill
-storage/ranks, XP and Level fields/thresholds, point pools, prerequisites and ordering, and PC/NPC initialization. Then
-implement only the smallest presentation-independent, ObjectID-keyed authoritative state justified by that audit.
-Keep combat, UI, dialogue, scripted progression rewards, background/equipment/spell effects, encumbrance consequences,
-economy, script-host expansion, and save serialization deferred. Additional SAP_USE families remain deferred until
-their owning domains exist.
+The exact recommended next milestone is **M4D — Remaining Derived Character Statistics and Alignment/Reaction
+Inputs**. Begin with a source audit of the remaining non-vital derived-stat fields and alignment/reaction storage,
+prototype/instance precedence, effects, clamps, and ordering. Then implement only the smallest presentation-independent,
+ObjectID-keyed state justified by that audit. Keep combat, UI, dialogue, scripted rewards, background/equipment/spell
+effects, encumbrance consequences, economy, script-host expansion, and save serialization deferred. Additional SAP_USE
+families remain deferred until their owning domains exist.
