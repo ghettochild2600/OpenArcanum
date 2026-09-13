@@ -262,6 +262,15 @@ namespace Arcanum.Runtime.World
                         instance.CritterFlags ?? proto?.CritterFlags ?? 0);
                     Session.Progression.GetOrCreateSourceCharacter(identity, instance.Type,
                         instance.PrototypeNumber, progressionSource);
+                    CharacterDerivedSource derivedSource = CharacterDerivedSource.Resolve(
+                        instance.StatBase, proto?.StatBase,
+                        instance.BaseArmorClass, proto?.BaseArmorClass,
+                        instance.Resistances, proto?.Resistances,
+                        instance.ReactionBase, proto?.ReactionBase,
+                        instance.NpcFlags ?? proto?.NpcFlags ?? 0,
+                        instance.CritterFlags ?? proto?.CritterFlags ?? 0);
+                    Session.DerivedStats.GetOrCreateSourceCharacter(identity, instance.Type,
+                        instance.PrototypeNumber, derivedSource);
                     CharacterVitalitySource vitalitySource = CharacterVitalitySource.Resolve(
                         instance.StatBase, proto?.StatBase,
                         instance.HpPoints, proto?.HpPoints,

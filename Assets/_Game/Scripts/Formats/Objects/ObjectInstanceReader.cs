@@ -88,6 +88,9 @@ namespace Arcanum.Formats.Objects
         /// <summary><c>OBJ_F_HP_DAMAGE</c> — accumulated damage, or null when inherited from the prototype.</summary>
         public int? HpDamage { get; internal set; }
 
+        /// <summary><c>OBJ_F_AC</c> — the object's stored base armour class, or null when inherited.</summary>
+        public int? BaseArmorClass { get; internal set; }
+
         /// <summary>For NPCs, <c>OBJ_F_NPC_REACTION_BASE</c>: the authored starting reaction toward the PC
         /// (engine default 50 = neutral); null if inherited from the prototype.</summary>
         public int? ReactionBase { get; internal set; }
@@ -335,6 +338,7 @@ namespace Arcanum.Formats.Objects
         private const int F_NPC_ORIGIN = 291;               // OBJ_F_NPC_ORIGIN (INT32) → home town/area id
         private const int F_NPC_EXPERIENCE_WORTH = 285;      // OBJ_F_NPC_EXPERIENCE_WORTH (INT32) → kill XP (engine ×20/100)
         private const int F_NAME = 22;                       // OBJ_F_NAME (INT32) → name index (SCT_OBJ_IS_NAMED)
+        private const int F_AC = 26;                         // OBJ_F_AC (INT32) → stored base armour class
         private const int F_MATERIAL = 30;                   // OBJ_F_MATERIAL (INT32) → Material (sound classes)
         private const int F_SOUND_EFFECT = 33;               // OBJ_F_SOUND_EFFECT (INT32) → per-object sound id base
         private const int F_ITEM_MAGIC_TECH_COMPLEXITY = 96; // OBJ_F_ITEM_MAGIC_TECH_COMPLEXITY (INT32) → −tech / +magic
@@ -461,6 +465,7 @@ namespace Arcanum.Formats.Objects
             int dialogOverrideNum = 0;
             int willKosScriptNum = 0;
             int? hpDamage = null;
+            int? baseArmorClass = null;
             int? reactionBase = null;
             int? retailPriceMultiplier = null;
             byte[] substituteInventoryOid = null;
@@ -542,6 +547,10 @@ namespace Arcanum.Formats.Objects
                         break;
                     case F_HP_DAMAGE:
                         hpDamage = I32(b, o);
+                        o += 4;
+                        break;
+                    case F_AC:
+                        baseArmorClass = I32(b, o);
                         o += 4;
                         break;
                     case F_OFFSET_X:
@@ -858,6 +867,7 @@ namespace Arcanum.Formats.Objects
                 FatiguePoints = fatiguePoints,
                 FatigueAdjustment = fatigueAdjustment,
                 FatigueDamage = fatigueDamage,
+                BaseArmorClass = baseArmorClass,
                 ReactionBase = reactionBase,
                 RetailPriceMultiplier = retailPriceMultiplier,
                 SubstituteInventoryOid = substituteInventoryOid,

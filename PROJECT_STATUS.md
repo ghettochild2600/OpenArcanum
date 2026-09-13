@@ -11,19 +11,20 @@ safe/adapt/avoid reuse boundaries, and defines a dependency-ordered M1–M13 roa
 ## Current Objective
 
 M1 traversal, the bounded M2 interaction/SAP_USE kernel, M3A-M3E inventory/command/equipment/stack/capacity state,
-M4A authoritative PC/NPC primary attributes, M4B authoritative character vitality, and M4C authoritative skills and
-progression are complete.
+M4A authoritative PC/NPC primary attributes, M4B authoritative character vitality, M4C authoritative skills and
+progression, and M4D derived statistics/alignment/reaction inputs are complete.
 `WorldMapSessionCoordinator` owns typed `World`, `Contained(parent)`, and `Equipped(parent, wornLocation)` placement,
 atomic raw item transfers/equipment replacement/stack merge and split, deterministic session-created item identities,
 source-faithful pickup/drop/owner-transfer policy, and pre-mutation weight/grid-capacity guards independently of Unity
 presentation.
-`CharacterStatService`, `CharacterProgressionService`, and `CharacterVitalityService` provide stable ObjectID-keyed
-attributes, skills/training, XP/level/character points, accumulated HP/Fatigue damage, and derived maximum/current
-vitality with no Unity presentation authority.
+`CharacterStatService`, `CharacterProgressionService`, `CharacterVitalityService`, and
+`CharacterDerivedStatService` provide stable ObjectID-keyed attributes, skills/training, XP/level/character points,
+accumulated HP/Fatigue damage, derived maximum/current vitality, remaining source derived-stat queries, Alignment,
+aptitude inputs, and bounded reaction inputs with no Unity presentation authority.
 
-The next recommended objective is M4D — Remaining Derived Character Statistics and Alignment/Reaction Inputs,
-beginning with a source audit of the remaining non-vital derived-stat fields and alignment/reaction storage and
-ordering. Inventory/equipment UI, encumbrance consequences, economy, combat, dialogue, script-host expansion, and save
+The next recommended objective is M5A — production script-host state foundation and one minimal real
+focus-object→dialogue→quest-transition vertical slice, beginning with a corpus/source audit and strict unsupported-opcode
+telemetry. Inventory/equipment UI, encumbrance consequences, economy, combat, broad dialogue/quest coverage, and save
 serialization remain deferred.
 
 ## Current Branch
@@ -1055,6 +1056,39 @@ Completed on 2026-09-12 with Unity 6000.0.71f1 on `feature/inventory-commands`.
 - Full source evidence, transaction/identity contract, final ownership graph, fixtures, and validation:
   [`documentation_unity/m3d-stack-state.md`](documentation_unity/m3d-stack-state.md).
 
+## M4D Derived Character Statistics and Alignment/Reaction Inputs
+
+Completed on 2026-09-12 with Unity 6000.0.71f1 on `feature/inventory-commands`.
+
+- A pre-production source audit classified every remaining source stat and recovered exact formulas, bounds, ordering,
+  PC/NPC exceptions, and deferred dependencies. Common base AC field 26 is now parsed alongside the existing
+  resistance array, reaction base, NPC/critter flags, and 28-slot stat array.
+- `WorldMapSessionCoordinator.DerivedStats` owns one typed `CharacterDerivedStatService`; persistent source inputs and
+  mutable Alignment are keyed by stable ObjectID outside Unity presentation. Real source initialization uses whole-field
+  instance-over-prototype precedence and changed-source collisions fail explicitly.
+- Implemented deterministic queries: delegated Carry Weight, Melee Damage Bonus, AC Adjustment/final base Armor Class,
+  Speed statistic, Heal Rate, Poison Recovery, Beauty Reaction Modifier, Maximum Followers, Magick/Tech Aptitude, five
+  innate resistances, and Alignment. Audited race aptitude/resistance effects and the monstrous-NPC resistance clamp
+  exception are preserved. Equipment/environment/status/spell-effect stages remain neutral.
+- Alignment is slot 19, neutral 0, evil negative, good positive, clamped -1000..1000 with controlled atomic mutation.
+  Magick/Tech Points are immutable slot 22/23 inputs clamped 0..210. Pairwise reaction input exposes NPC base + PC
+  Beauty + the exact NPC-race/PC-race matrix only; it deliberately excludes reputation, faction, memory, AI, and social
+  consequences.
+- Production Human Male PC result at controlled Level 2: Carry 4000, Damage -1, AC adjustment/final -2/0, Speed 8,
+  Heal 3, Poison Recovery 8, Beauty Reaction -7, Followers 2, Aptitude 0, Alignment 0, resistances 0/0/0/20/0.
+  Authentic NPC `G_33CE5E06_F4AC_3A4B_B98E_9AB36C467E6F`, prototype 17101, resolves Damage 0, AC -1/0,
+  Speed 9, Heal 5, Poison Recovery 16, Beauty Reaction 0, Followers 2, Aptitude -5, Alignment 100, resistances
+  0/0/0/60/0; its bounded initial reaction toward the PC is 43.
+- Computer Use Play Mode proved immediate Race/Gender invalidation/restoration, correct Level non-dependence, neutral
+  authentic inventory/equipment transitions, Original→Enhanced→Original, NPC reload, PC A→B→A, presentation
+  recreation, 14 matching unique character/progression/vitality/derived records, and no duplicate scene ownership.
+  It recorded 0 new warnings and 0 errors.
+- Validation: M4D 25/25; required regression matrix 227/227 across M4C, M4B, M4A, M3E-M3A, M2B-M2A,
+  PlayerNavigation, M1A-M1B, WorldSessionState, and PortalArtResolver; complete EditMode 423/423. Every final run had
+  0 failures, skips, or inconclusive tests; final compilation was clean.
+- Full audit, formulas, ownership graph, source/fixture contract, lifecycle proof, and deferred boundaries:
+  [`documentation_unity/m4d-derived-character-stats.md`](documentation_unity/m4d-derived-character-stats.md).
+
 ## M4C Authoritative Skills and Progression
 
 Completed on 2026-09-12 with Unity 6000.0.71f1 on `feature/inventory-commands`.
@@ -1201,9 +1235,9 @@ production or test code was changed, and the strict whitelist was not widened. S
 [`documentation_unity/m2c-sap-use-family.md`](documentation_unity/m2c-sap-use-family.md) for the candidate table and
 rejection evidence.
 
-The exact recommended next milestone is **M4D — Remaining Derived Character Statistics and Alignment/Reaction
-Inputs**. Begin with a source audit of the remaining non-vital derived-stat fields and alignment/reaction storage,
-prototype/instance precedence, effects, clamps, and ordering. Then implement only the smallest presentation-independent,
-ObjectID-keyed state justified by that audit. Keep combat, UI, dialogue, scripted rewards, background/equipment/spell
-effects, encumbrance consequences, economy, script-host expansion, and save serialization deferred. Additional SAP_USE
+The exact recommended next milestone is **M5A — production script-host state foundation and one minimal real
+focus-object→dialogue→quest-transition vertical slice**. Begin with a source/corpus audit of the focus-object,
+global/local script state, dialogue, quest, and journal operations required by one bounded original quest. Add strict
+unsupported-opcode telemetry and admit only that path. Keep combat, broad opcode support, equipment/spell effects,
+economy, UI expansion beyond the minimal dialogue/journal surface, and save serialization deferred. Additional SAP_USE
 families remain deferred until their owning domains exist.

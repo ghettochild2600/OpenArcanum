@@ -82,6 +82,9 @@ namespace Arcanum.Formats.Objects
         /// null if unset on the prototype.</summary>
         public int? ReactionBase { get; internal set; }
 
+        /// <summary><c>OBJ_F_AC</c> — the prototype's stored base armour class; null if unset.</summary>
+        public int? BaseArmorClass { get; internal set; }
+
         /// <summary><c>OBJ_F_NPC_RETAIL_PRICE_MULTIPLIER</c> — the merchant markup percentage barter pricing
         /// feeds into <c>item_cost</c>; null if unset on the prototype.</summary>
         public int? RetailPriceMultiplier { get; internal set; }
@@ -257,6 +260,7 @@ namespace Arcanum.Formats.Objects
                     new ObjectProtoInfo(protoNumber, p.Type, p.CurrentArtId ?? 0u, p.Description, p.Flags, p.DialogNum, p.InvAid, p.Weight ?? 0, p.Worth ?? 0, p.Weapon, p.LightAid, p.LightColor,
                         p.SceneryFlags, p.UseScriptNum, p.ExamineScriptNum, p.HeartbeatScriptNum, p.FirstHeartbeatScriptNum)
                     {
+                        BaseArmorClass = p.BaseArmorClass,
                         ReactionBase = p.ReactionBase,
                         RetailPriceMultiplier = p.RetailPriceMultiplier,
                         BuyObjectScriptNum = p.BuyObjectScriptNum,

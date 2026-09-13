@@ -26,6 +26,7 @@ namespace Arcanum.Runtime.World
         private InventoryCapacityService _inventoryCapacity;
         private CharacterVitalityService _vitality;
         private CharacterProgressionService _progression;
+        private CharacterDerivedStatService _derivedStats;
         private ulong _nextDynamicIdentity = 1;
 
         public IReadOnlyDictionary<ArcanumObjectId, PersistentObjectState> States => _states;
@@ -39,6 +40,8 @@ namespace Arcanum.Runtime.World
             => _progression ??= new CharacterProgressionService(Characters);
         public CharacterVitalityService Vitality
             => _vitality ??= new CharacterVitalityService(Characters, Progression);
+        public CharacterDerivedStatService DerivedStats
+            => _derivedStats ??= new CharacterDerivedStatService(Characters, Progression, InventoryCapacity);
         public InventoryCapacityService InventoryCapacity
             => _inventoryCapacity ??= new InventoryCapacityService(this);
         public PortalTransitionScheduler Portals { get; } = new();
@@ -355,6 +358,7 @@ namespace Arcanum.Runtime.World
                 throw new InvalidOperationException("A different production player is already registered.");
             Characters.GetOrCreateDevelopmentPlayer(identity);
             Progression.GetOrCreateDevelopmentPlayer(identity);
+            DerivedStats.GetOrCreateDevelopmentPlayer(identity);
             Vitality.GetOrCreateDevelopmentPlayer(identity);
             if (PlayerState == null)
                 PlayerState = new PersistentPlayerState(identity, normalized, spawnTile, artId);

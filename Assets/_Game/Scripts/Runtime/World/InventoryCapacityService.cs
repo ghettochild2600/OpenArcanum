@@ -34,7 +34,7 @@ namespace Arcanum.Runtime.World
     /// Source-faithful item load and inventory-grid rules over session-owned state. Unity hierarchy and sprites are
     /// deliberately absent from this service.
     /// </summary>
-    public sealed class InventoryCapacityService
+    public sealed class InventoryCapacityService : ICharacterCarryWeightProvider
     {
         public const int GridColumns = 10;
         public const int CritterGridRows = 12;
@@ -76,6 +76,8 @@ namespace Arcanum.Runtime.World
             int strength = _session.Characters.GetEffectiveAttribute(actorIdentity, CharacterAttribute.Strength);
             return Math.Max(MinimumCarryCapacity, Math.Min(MaximumCarryCapacity, 500 * strength));
         }
+
+        int ICharacterCarryWeightProvider.GetCarryWeight(ArcanumObjectId identity) => GetCarryCapacity(identity);
 
         /// <summary>The source engine has no per-container field: every container owns a 10x96 grid.</summary>
         public int GetContainerCapacity(ArcanumObjectId containerIdentity)
