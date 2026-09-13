@@ -12,7 +12,8 @@ safe/adapt/avoid reuse boundaries, and defines a dependency-ordered M1–M13 roa
 
 M1 traversal, the bounded M2 interaction/SAP_USE kernel, M3A-M3E inventory/command/equipment/stack/capacity state,
 M4A-M4D character attributes/vitality/progression/derived statistics, M5A's production campaign/dialogue state, and
-M5B's authentic quest-1005 completion/reward/journal vertical slice are complete.
+M5B's authentic quest-1005 completion/reward/journal vertical slice, and M5C's authentic production trainer-dialogue
+slice are complete.
 `WorldMapSessionCoordinator` owns typed `World`, `Contained(parent)`, and `Equipped(parent, wornLocation)` placement,
 atomic raw item transfers/equipment replacement/stack merge and split, deterministic session-created item identities,
 source-faithful pickup/drop/owner-transfer policy, and pre-mutation weight/grid-capacity guards independently of Unity
@@ -20,14 +21,16 @@ presentation.
 `CharacterStatService`, `CharacterProgressionService`, `CharacterVitalityService`, and
 `CharacterDerivedStatService` provide stable ObjectID-keyed character rules. `CampaignStateService` now owns source-
 bounded global/PC flags and variables, monotonic quest state/timestamps, and per-object/per-SAP state;
-`ProductionDialogueSession` owns stable-ID conversation lifecycle and strict source evaluation independently of Unity
-presentation. `JournalProjectionService` is a read-only source-data projection, and quest completion routes dagger/gold,
-XP, alignment, and reaction through their existing authoritative domains.
+`ProductionDialogueSession` owns stable-ID conversation lifecycle, strict source evaluation, and transient training
+subviews independently of Unity presentation. `DialogueTrainingService` routes the audited `t:` transaction through
+M4C training, derived reaction, and existing Gold-stack authority. `JournalProjectionService` is a read-only
+source-data projection, and quest completion routes dagger/gold, XP, alignment, and reaction through their existing
+authoritative domains.
 
-The next recommended objective is M5C — one bounded production trainer-dialogue slice for the now-visible source `t:`
-follow-up, using the existing M4C training authority and preserving strict fail-closed behavior. Barter and other
-special tokens, broad quest/dialogue coverage, combat, followers, travel, economy UI, and save serialization remain
-deferred.
+The next recommended objective is M6A — define and implement the first bounded versioned session-save contract for
+the authoritative state roots now proven through M1-M5, beginning with stable PC identity/location and explicitly
+including the M4/M5 progression/training state without serializing Unity presentation. Barter and other special
+tokens, broad quest/dialogue coverage, combat, followers, travel, and economy UI remain deferred.
 
 ## Current Branch
 
@@ -1304,6 +1307,42 @@ Completed on 2026-09-13 with Unity 6000.0.71f1 on `feature/inventory-commands`.
 - Full candidate evidence, final ownership graph, source contract, transaction ordering, lifecycle proof, and deferred
   boundaries: [`documentation_unity/m5b-quest-journal-slice.md`](documentation_unity/m5b-quest-journal-slice.md).
 
+## M5C Authentic Production Trainer Dialogue
+
+Completed on 2026-09-13 with Unity 6000.0.71f1 on `feature/inventory-commands`.
+
+- The source audit recovered the exact `t:` grammar and special-handler sequence from `dialog.c`, `reaction.c`, and
+  `skill.c`, then scanned the mounted retail corpus. It found 58 dialogue resources containing `t:`, 56 with placed
+  dialogue-bearing resources, and 236 placed NPC candidates. The selected GREEN fixture is the Black Root mayor,
+  ObjectID `G_787AD4AB_9061_2B4E_A691_F582800B2BB3`, prototype 17088, dialogue/SAP_DIALOG 1009, sector
+  `maps/arcanum1-024-fixed/96636765255.sec`, response 5 `T:11`, returning to line 20.
+- `DialogLine` now preserves the authored token payload after generated display-text replacement and the production
+  parser strictly converts decimal IDs and inclusive ranges to typed `CharacterSkill` values. Malformed, empty,
+  over-limit, or out-of-range payloads fail without exposing a partial list or mutating state.
+- `ProductionDialogueSession` owns transient source-shaped skill-selection, payment, and result views. The M5C
+  compatibility profile admits `t:` only for audited dialogue 1009. Unity's presenter still only observes text/options
+  and submits a response index; it owns no trainer identity, eligibility, cost, payment, or training state.
+- `DialogueTrainingService` carries a typed stable-ID request and routes eligibility to M4C's
+  `CharacterProgressionService`. The source `t:` payload has no tier field and always requests Apprentice. Persuasion
+  must be authored in the offer, untrained, and effective rank >= 1; Expert/Master routes remain deferred.
+- Source base cost 100 is modified by the exact reaction bands. At the M5B mayor reaction of 53 the result is 99 Gold.
+  Payment uses the existing persistent Gold stack/capacity authority and is atomic with training assignment; expanded
+  progression/inventory snapshots prevent partial charge or assignment. Cancel, payment No, insufficient rank,
+  insufficient Gold, and already-trained paths cannot mutate either domain.
+- Source normal/dumb, gender-direction, and social-class generated-dialogue tables plus `mes/skill.mes` provide the
+  transient prompt and option text. Effective NPC social class is retained in session-owned persistent object state;
+  presentation remains separate.
+- Computer Use Play Mode literally clicked the visible real mayor, observed ordinary PC approach/Talk, and physically
+  chose the real training response, Persuasion, Yes at 99 Gold, and the success acknowledgement. The PC became
+  Persuasion/Apprentice, PC Gold changed 100 -> 1, mayor Gold changed 0 -> 99, and dialogue returned to authored line
+  20. A second literal conversation produced the source already-trained rejection with no repeat payment. Original ->
+  Enhanced -> restored rebuilds and mayor-sector unload/reload preserved stable state/references and unique gameplay/
+  presentation owners. The Play Mode run recorded 0 new warnings and 0 errors.
+- Validation: M5C focused **21/21** and complete EditMode **478/478**. Every final run had 0 failures, skips, or
+  inconclusive tests; final compilation was clean.
+- Full source evidence, candidate classification, final ownership/call graph, transaction contract, fixture, validation,
+  and deferred boundaries: [`documentation_unity/m5c-trainer-dialogue.md`](documentation_unity/m5c-trainer-dialogue.md).
+
 ## Next Recommended Milestone
 
 The M2C candidate gate was completed on 2026-09-10 against all 22 distinct SAP_USE script numbers attached to placed
@@ -1314,8 +1353,10 @@ production or test code was changed, and the strict whitelist was not widened. S
 [`documentation_unity/m2c-sap-use-family.md`](documentation_unity/m2c-sap-use-family.md) for the candidate table and
 rejection evidence.
 
-The exact recommended next milestone is **M5C — one bounded production trainer-dialogue slice**. Implement the source
-`t:` special-handler transaction exposed by quest 1005's Completed-only mayor response against the existing M4C
-skill/training authority, including source costs and prerequisites, UI/cancellation, strict preflight and telemetry,
-idempotency, and rebuild/reload proof. Do not broaden to barter or other special tokens. M6 versioned save/load remains
-the subsequent roadmap milestone; additional SAP_USE families remain deferred until their owning domains exist.
+The exact recommended next milestone is **M6A — first bounded versioned authoritative session save/load**. Define the
+version envelope and stable-identity contract, then round-trip the production PC's map/tile/ART plus authoritative
+character attributes, vitality damage, XP/level/points/skills/training, equipped/contained item placement and stacks,
+and the already-proven campaign quest/timestamp values. Restore through the owning M1-M5 services before rebuilding
+Unity presentation, and prove deterministic A -> save -> mutate -> load -> rebuild/reload equivalence. Keep this first
+slice local and explicit; do not add save-slot UI, cloud sync, migrations from unknown versions, combat/AI state,
+barter, or new gameplay domains. Additional SAP_USE families remain deferred until their owning domains exist.
