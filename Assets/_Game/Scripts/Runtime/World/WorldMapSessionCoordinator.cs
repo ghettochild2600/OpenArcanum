@@ -39,6 +39,7 @@ namespace Arcanum.Runtime.World
         private PortalTransitionScheduler _portals;
         private CampaignStateService _campaign;
         private SessionSaveService _saveGames;
+        private SessionSaveSlotService _saveSlots;
         private Func<int, ScriptFile> _resolveUseScript;
         private Func<int, ScriptFile> _resolveDialogueScript;
         private Func<int, Arcanum.Formats.Dialog.DialogScript> _resolveDialogue;
@@ -69,6 +70,7 @@ namespace Arcanum.Runtime.World
         public QuestLog QuestSource => _questSource;
         public JournalProjectionService Journal => _journal ??= CreateJournal();
         public SessionSaveService SaveGames => _saveGames ??= new SessionSaveService(this);
+        public SessionSaveSlotService SaveSlots => _saveSlots ??= new SessionSaveSlotService(this);
         public WorldUseScriptDispatcher UseScripts { get; private set; }
         public event Action<string> SectorUnloading;
         public event Action<string> SectorSelected;

@@ -94,7 +94,7 @@ namespace Arcanum.Runtime.Save
         public const string FormatIdentifier = "OpenArcanum.SessionSave";
         public const int CurrentVersion = 1;
 
-        private static readonly JsonSerializerSettings JsonSettings = new()
+        internal static readonly JsonSerializerSettings JsonSettings = new()
         {
             ContractResolver = new CamelCasePropertyNamesContractResolver(),
             Culture = CultureInfo.InvariantCulture,
@@ -409,21 +409,8 @@ namespace Arcanum.Runtime.Save
         internal SessionLoadResult TryBuildPlan(string json, out SessionRestorePlan plan)
         {
             plan = null;
-            SessionSaveData data;
-            try
-            {
-                data = JsonConvert.DeserializeObject<SessionSaveData>(json, JsonSettings);
-            }
-            catch (JsonException ex)
-            {
-                return Failure(SessionLoadFailure.MalformedJson, ex.Message);
-            }
-            if (data == null) return Failure(SessionLoadFailure.MalformedJson, "The save is empty.");
-            if (!string.Equals(data.Format, FormatIdentifier, StringComparison.Ordinal))
-                return Failure(SessionLoadFailure.UnknownFormat, "Unknown session-save format.");
-            if (data.Version != CurrentVersion)
-                return Failure(SessionLoadFailure.UnsupportedVersion,
-                    $"Schema version {data.Version} is unsupported; expected {CurrentVersion}.");
+            SessionLoadResult migration = SessionSaveMigrator.TryMigrateToCurrent(json, out SessionSaveData data);
+            if (!migration.Succeeded) return migration;
             if (data.World?.Player == null || data.World.Tombstones == null || data.Objects == null
                 || data.Characters == null || data.Campaign == null)
                 return Failure(SessionLoadFailure.MissingRequiredField, "A required V1 domain is missing.");
