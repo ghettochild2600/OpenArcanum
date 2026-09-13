@@ -17,14 +17,15 @@ namespace Arcanum.Formats.Dialog
         public readonly int Target;    // line to go to when chosen (0 = end of conversation)
         public readonly string Effect; // script action run when chosen (empty = none)
         private readonly char _sourceTokenCode;
+        private readonly string _sourceTokenPayload;
 
         public DialogLine(int num, string text, string text2, int iq, string test, int target, string effect)
-            : this(num, text, text2, iq, test, target, effect, '\0')
+            : this(num, text, text2, iq, test, target, effect, TokenCodeFrom(text), TokenPayloadFrom(text))
         {
         }
 
         private DialogLine(int num, string text, string text2, int iq, string test, int target, string effect,
-            char sourceTokenCode)
+            char sourceTokenCode, string sourceTokenPayload)
         {
             Num = num;
             Text = text;
@@ -34,6 +35,7 @@ namespace Arcanum.Formats.Dialog
             Target = target;
             Effect = effect;
             _sourceTokenCode = sourceTokenCode;
+            _sourceTokenPayload = sourceTokenPayload;
         }
 
         /// <summary>An NPC speech line (vs a player option) — engine rule: the IQ field is blank/zero.</summary>
@@ -59,8 +61,18 @@ namespace Arcanum.Formats.Dialog
         public char TokenCode => _sourceTokenCode != '\0' ? _sourceTokenCode
             : IsToken ? char.ToLowerInvariant(Text[0]) : '\0';
 
+        /// <summary>The authored content after an engine token's colon, preserved after display-text resolution.</summary>
+        public string TokenPayload => _sourceTokenPayload;
+
         /// <summary>A copy of this line with substituted display text (a resolved generated-response token).</summary>
         public DialogLine WithText(string text)
-            => new DialogLine(Num, text, Text2, Iq, Test, Target, Effect, TokenCode);
+            => new DialogLine(Num, text, Text2, Iq, Test, Target, Effect, TokenCode, TokenPayload);
+
+        private static char TokenCodeFrom(string text)
+            => !string.IsNullOrEmpty(text) && text.Length >= 2 && char.IsLetter(text[0]) && text[1] == ':'
+                ? char.ToLowerInvariant(text[0]) : '\0';
+
+        private static string TokenPayloadFrom(string text)
+            => TokenCodeFrom(text) == '\0' ? null : text.Substring(2);
     }
 }

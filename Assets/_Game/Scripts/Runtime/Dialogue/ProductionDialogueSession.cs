@@ -54,6 +54,14 @@ namespace Arcanum.Runtime.Dialogue
         ExecutionFailure,
     }
 
+    public enum TrainingDialogueView
+    {
+        None,
+        SkillSelection,
+        Payment,
+        Result,
+    }
+
     public readonly struct DialogueDiagnostic
     {
         public DialogueDiagnosticKind Kind { get; }
@@ -93,15 +101,21 @@ namespace Arcanum.Runtime.Dialogue
 
         private readonly WorldMapSessionCoordinator _world;
         private readonly CampaignStateService _campaign;
+        private readonly DialogueTrainingService _training;
         private readonly List<DialogLine> _responses = new();
+        private readonly List<CharacterSkill> _offeredTrainingSkills = new();
         private readonly HashSet<string> _reportedDiagnostics = new();
         private Func<int, ScriptFile> _resolveScript;
         private Func<int, DialogScript> _resolveDialogue;
         private Func<ArcanumObjectId, char, string> _resolveGeneratedText;
+        private ITrainingDialogueTextSource _trainingText;
         private DialogScript _dialogue;
         private ProductionDialogueContext _context;
         private bool _finalSay;
         private string _startFailure;
+        private int _trainingReturnLine;
+        private int _trainingCost;
+        private DialogueTrainingRequest _pendingTrainingRequest;
 
         public DialogueSessionPhase Phase { get; private set; }
         public ArcanumObjectId NpcIdentity { get; private set; }
@@ -110,7 +124,10 @@ namespace Arcanum.Runtime.Dialogue
         public int CurrentLine { get; private set; }
         public string NpcText { get; private set; }
         public IReadOnlyList<DialogLine> AvailableResponses => _responses;
+        public IReadOnlyList<CharacterSkill> OfferedTrainingSkills => _offeredTrainingSkills;
         public string LastFailure { get; private set; }
+        public TrainingDialogueView TrainingView { get; private set; }
+        public DialogueTrainingResult LastTrainingResult { get; private set; }
         public bool IsBusy => Phase is DialogueSessionPhase.Starting or DialogueSessionPhase.Active
             or DialogueSessionPhase.AwaitingPlayerChoice or DialogueSessionPhase.ExecutingResponse;
 
@@ -128,6 +145,7 @@ namespace Arcanum.Runtime.Dialogue
         {
             _world = world ?? throw new ArgumentNullException(nameof(world));
             _campaign = campaign ?? throw new ArgumentNullException(nameof(campaign));
+            _training = new DialogueTrainingService(world);
         }
 
         public void BindSources(Func<int, ScriptFile> resolveScript, Func<int, DialogScript> resolveDialogue)
@@ -138,6 +156,9 @@ namespace Arcanum.Runtime.Dialogue
 
         public void BindGeneratedText(Func<ArcanumObjectId, char, string> resolveGeneratedText)
             => _resolveGeneratedText = resolveGeneratedText ?? throw new ArgumentNullException(nameof(resolveGeneratedText));
+
+        public void BindTrainingDialogueText(ITrainingDialogueTextSource source)
+            => _trainingText = source ?? throw new ArgumentNullException(nameof(source));
 
         public DialogueStartStatus Start(ArcanumObjectId pc, ArcanumObjectId npc)
         {
@@ -205,6 +226,7 @@ namespace Arcanum.Runtime.Dialogue
             if (Phase != DialogueSessionPhase.AwaitingPlayerChoice)
                 return DialogueChoiceStatus.InvalidPhase;
             if ((uint)index >= (uint)_responses.Count) return DialogueChoiceStatus.InvalidChoice;
+            if (TrainingView != TrainingDialogueView.None) return SelectTrainingResponse(index);
             if (_finalSay)
             {
                 Complete();
@@ -214,6 +236,8 @@ namespace Arcanum.Runtime.Dialogue
             DialogLine response = _responses[index];
             if (response.TokenCode != '\0' && !GeneratedDialogText.IsGenericToken(response.TokenCode))
             {
+                if (response.TokenCode == 't' && DialogueNumber == 1009 && _trainingText != null)
+                    return BeginTraining(response);
                 string tokenFailure = $"dialog token '{response.TokenCode}' requires an unsupported UI handler";
                 LastFailure = tokenFailure;
                 Report(DialogueDiagnosticKind.UnsupportedEffect, response.Num, tokenFailure);
@@ -251,11 +275,257 @@ namespace Arcanum.Runtime.Dialogue
             return DialogueChoiceStatus.Advanced;
         }
 
+        private DialogueChoiceStatus BeginTraining(DialogLine response)
+        {
+            DialogueTransactionSnapshot snapshot = new(_world, _campaign);
+            if (!TryParseTrainingPayload(response.TokenPayload, out List<CharacterSkill> skills, out string failure))
+            {
+                string detail = $"malformed t: payload on dialogue {DialogueNumber} line {response.Num}: {failure}";
+                LastFailure = detail;
+                Report(DialogueDiagnosticKind.UnsupportedEffect, response.Num, detail);
+                Changed?.Invoke();
+                return DialogueChoiceStatus.UnsupportedEffect;
+            }
+
+            Phase = DialogueSessionPhase.ExecutingResponse;
+            if (!DialogScriptEvaluator.TryRunEffectStrict(response.Effect, _context, AdmittedEffects,
+                    out int gotoOverride, out failure))
+            {
+                snapshot.Restore(_world, _campaign);
+                Phase = DialogueSessionPhase.AwaitingPlayerChoice;
+                LastFailure = failure;
+                Report(DialogueDiagnosticKind.UnsupportedEffect, response.Num, failure);
+                Changed?.Invoke();
+                return DialogueChoiceStatus.UnsupportedEffect;
+            }
+            if (gotoOverride >= 0)
+            {
+                if (!EnterNode(gotoOverride, true, out failure))
+                    return RollBackChoice(snapshot, response.Num, failure);
+                Changed?.Invoke();
+                return DialogueChoiceStatus.Advanced;
+            }
+
+            _trainingReturnLine = response.Target;
+            _offeredTrainingSkills.Clear();
+            _offeredTrainingSkills.AddRange(skills);
+            if (!ShowTrainingSkillSelection(out failure))
+                return RollBackChoice(snapshot, response.Num, failure);
+            Changed?.Invoke();
+            return DialogueChoiceStatus.Advanced;
+        }
+
+        private DialogueChoiceStatus SelectTrainingResponse(int index)
+        {
+            switch (TrainingView)
+            {
+                case TrainingDialogueView.SkillSelection:
+                    if (index == _offeredTrainingSkills.Count) return ReturnFromTraining();
+                    CharacterSkill skill = _offeredTrainingSkills[index];
+                    _pendingTrainingRequest = new DialogueTrainingRequest(PcIdentity, NpcIdentity, skill,
+                        SkillTrainingLevel.Apprentice);
+                    DialogueTrainingResult evaluation = _training.Evaluate(_pendingTrainingRequest,
+                        _offeredTrainingSkills);
+                    LastTrainingResult = evaluation;
+                    if (evaluation.Failure == DialogueTrainingFailure.AlreadyTrained)
+                        return ShowTrainingResult(4000, false);
+                    if (evaluation.Failure == DialogueTrainingFailure.InsufficientSkillRank)
+                        return ShowTrainingResult(5000, false);
+                    if (!evaluation.Succeeded)
+                        return FailTrainingSelection(evaluation.Failure,
+                            $"Training eligibility failed: {evaluation.Failure}.");
+                    _trainingCost = evaluation.Cost;
+                    return ShowTrainingPayment();
+
+                case TrainingDialogueView.Payment:
+                    if (index == 1) return ReturnFromTraining();
+                    DialogueTrainingResult result = _training.Train(_pendingTrainingRequest,
+                        _offeredTrainingSkills);
+                    LastTrainingResult = result;
+                    if (result.Failure == DialogueTrainingFailure.InsufficientGold)
+                        return ShowTrainingResult(2000, false);
+                    if (!result.Succeeded)
+                        return FailTrainingSelection(result.Failure,
+                            $"Training transaction failed: {result.Failure}.");
+                    return ShowTrainingResult(6000, true);
+
+                case TrainingDialogueView.Result:
+                    return ReturnFromTraining();
+
+                default:
+                    return DialogueChoiceStatus.InvalidPhase;
+            }
+        }
+
+        private bool ShowTrainingSkillSelection(out string failure)
+        {
+            failure = null;
+            string prompt = _trainingText.NpcClassMessage(NpcIdentity, PcIdentity, 3000);
+            string cancel = _trainingText.PcGenericMessage(NpcIdentity, PcIdentity, 800, 899);
+            if (string.IsNullOrEmpty(prompt) || string.IsNullOrEmpty(cancel))
+            {
+                failure = "Source training selection text is unavailable.";
+                return false;
+            }
+            _responses.Clear();
+            foreach (CharacterSkill skill in _offeredTrainingSkills)
+            {
+                string name = _trainingText.SkillName(skill);
+                if (string.IsNullOrEmpty(name))
+                {
+                    failure = $"Source skill name {(int)skill} is unavailable.";
+                    return false;
+                }
+                _responses.Add(new DialogLine(-100 - (int)skill, name, string.Empty, 1, string.Empty, 0,
+                    string.Empty));
+            }
+            _responses.Add(new DialogLine(-199, cancel, string.Empty, 1, string.Empty, 0, string.Empty));
+            NpcText = ExpandTrainingText(prompt);
+            TrainingView = TrainingDialogueView.SkillSelection;
+            Phase = DialogueSessionPhase.AwaitingPlayerChoice;
+            LastFailure = null;
+            LastTrainingResult = default;
+            return true;
+        }
+
+        private DialogueChoiceStatus ShowTrainingPayment()
+        {
+            string prompt = _trainingText.NpcClassMessage(NpcIdentity, PcIdentity, 1000);
+            string yes = _trainingText.PcGenericMessage(NpcIdentity, PcIdentity, 1, 99);
+            string no = _trainingText.PcGenericMessage(NpcIdentity, PcIdentity, 100, 199);
+            if (string.IsNullOrEmpty(prompt) || string.IsNullOrEmpty(yes) || string.IsNullOrEmpty(no))
+                return FailTrainingSelection(DialogueTrainingFailure.AssignmentFailed,
+                    "Source training payment text is unavailable.");
+            _responses.Clear();
+            _responses.Add(new DialogLine(-201, yes, string.Empty, 1, string.Empty, 0, string.Empty));
+            _responses.Add(new DialogLine(-202, no, string.Empty, 1, string.Empty, 0, string.Empty));
+            NpcText = ExpandTrainingText(prompt.Replace("%d", _trainingCost.ToString()));
+            TrainingView = TrainingDialogueView.Payment;
+            Phase = DialogueSessionPhase.AwaitingPlayerChoice;
+            LastFailure = null;
+            Changed?.Invoke();
+            return DialogueChoiceStatus.Advanced;
+        }
+
+        private DialogueChoiceStatus ShowTrainingResult(int npcSourceKey, bool success)
+        {
+            string prompt = _trainingText.NpcClassMessage(NpcIdentity, PcIdentity, npcSourceKey);
+            string response = success
+                ? _trainingText.PcClassMessage(NpcIdentity, PcIdentity, 1000)
+                : _trainingText.PcGenericMessage(NpcIdentity, PcIdentity, 600, 699);
+            if (string.IsNullOrEmpty(prompt) || string.IsNullOrEmpty(response))
+                return FailTrainingSelection(DialogueTrainingFailure.AssignmentFailed,
+                    "Source training result text is unavailable.");
+            _responses.Clear();
+            _responses.Add(new DialogLine(-203, response, string.Empty, 1, string.Empty, 0, string.Empty));
+            NpcText = ExpandTrainingText(prompt);
+            TrainingView = TrainingDialogueView.Result;
+            Phase = DialogueSessionPhase.AwaitingPlayerChoice;
+            LastFailure = null;
+            Changed?.Invoke();
+            return DialogueChoiceStatus.Advanced;
+        }
+
+        private DialogueChoiceStatus ReturnFromTraining()
+        {
+            int target = _trainingReturnLine;
+            ClearTrainingFlow();
+            if (target <= 0)
+            {
+                Complete();
+                return DialogueChoiceStatus.Completed;
+            }
+            if (!EnterNode(target, false, out string failure))
+            {
+                Phase = DialogueSessionPhase.Cancelled;
+                LastFailure = failure;
+                Report(DialogueDiagnosticKind.ExecutionFailure, target, failure);
+                Changed?.Invoke();
+                return DialogueChoiceStatus.ExecutionFailed;
+            }
+            Changed?.Invoke();
+            return DialogueChoiceStatus.Advanced;
+        }
+
+        private DialogueChoiceStatus FailTrainingSelection(DialogueTrainingFailure failure, string detail)
+        {
+            LastFailure = detail;
+            Report(DialogueDiagnosticKind.ExecutionFailure, CurrentLine, detail);
+            Phase = DialogueSessionPhase.AwaitingPlayerChoice;
+            Changed?.Invoke();
+            return DialogueChoiceStatus.ExecutionFailed;
+        }
+
+        private string ExpandTrainingText(string text) => DialogText.Expand(text, _context);
+
+        internal static bool TryParseTrainingPayload(string payload, out List<CharacterSkill> skills,
+            out string failure)
+        {
+            skills = new List<CharacterSkill>();
+            failure = null;
+            if (string.IsNullOrWhiteSpace(payload))
+            {
+                failure = "the skill list is empty";
+                skills.Clear();
+                return false;
+            }
+            foreach (string raw in payload.Split(','))
+            {
+                string part = raw.Trim();
+                if (part.Length == 0)
+                {
+                    failure = "the skill list contains an empty entry";
+                    skills.Clear();
+                    return false;
+                }
+                int dash = part.IndexOf('-');
+                int first;
+                int last;
+                if (dash >= 0)
+                {
+                    if (dash == 0 || dash == part.Length - 1 || part.IndexOf('-', dash + 1) >= 0
+                        || !int.TryParse(part.Substring(0, dash).Trim(), out first)
+                        || !int.TryParse(part.Substring(dash + 1).Trim(), out last) || first > last)
+                    {
+                        failure = $"'{part}' is not an inclusive source skill range";
+                        skills.Clear();
+                        return false;
+                    }
+                }
+                else if (!int.TryParse(part, out first))
+                {
+                    failure = $"'{part}' is not a decimal source skill ID";
+                    skills.Clear();
+                    return false;
+                }
+                else last = first;
+
+                for (int value = first; value <= last; value++)
+                {
+                    if (value < 0 || value >= CharacterSkillRules.SkillCount)
+                    {
+                        failure = $"skill ID {value} is outside the source 0-15 range";
+                        skills.Clear();
+                        return false;
+                    }
+                    if (skills.Count >= 100)
+                    {
+                        failure = "the expanded skill list exceeds the source limit of 100";
+                        skills.Clear();
+                        return false;
+                    }
+                    skills.Add((CharacterSkill)value);
+                }
+            }
+            return skills.Count > 0;
+        }
+
         public bool Cancel(string reason)
         {
             if (!IsBusy) return false;
             LastFailure = reason;
             Phase = DialogueSessionPhase.Cancelled;
+            ClearTrainingFlow();
             _responses.Clear();
             Changed?.Invoke();
             return true;
@@ -361,6 +631,7 @@ namespace Arcanum.Runtime.Dialogue
         private void Complete()
         {
             Phase = DialogueSessionPhase.Completed;
+            ClearTrainingFlow();
             _responses.Clear();
             LastFailure = null;
             Changed?.Invoke();
@@ -387,7 +658,18 @@ namespace Arcanum.Runtime.Dialogue
             _dialogue = null;
             _context = null;
             _finalSay = false;
+            ClearTrainingFlow();
+            LastTrainingResult = default;
             _responses.Clear();
+        }
+
+        private void ClearTrainingFlow()
+        {
+            TrainingView = TrainingDialogueView.None;
+            _trainingReturnLine = 0;
+            _trainingCost = 0;
+            _pendingTrainingRequest = default;
+            _offeredTrainingSkills.Clear();
         }
 
         private void Report(DialogueDiagnosticKind kind, int line, string detail)

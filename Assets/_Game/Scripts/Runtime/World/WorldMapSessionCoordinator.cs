@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Arcanum.Formats.Objects;
 using Arcanum.Formats.Script;
 using Arcanum.Runtime.Character;
@@ -180,6 +181,9 @@ namespace Arcanum.Runtime.World
 
         public void BindGeneratedDialogueText(Func<ArcanumObjectId, char, string> resolveGeneratedText)
             => Dialogue.BindGeneratedText(resolveGeneratedText);
+
+        public void BindTrainingDialogueText(ITrainingDialogueTextSource source)
+            => Dialogue.BindTrainingDialogueText(source);
 
         public void BindQuestSource(QuestLog source)
         {
@@ -400,7 +404,8 @@ namespace Arcanum.Runtime.World
             int? unitWeight = null,
             InventoryFootprint? inventoryFootprint = null,
             int? inventoryLocation = null,
-            int? nameIndex = null)
+            int? nameIndex = null,
+            int? socialClass = null)
         {
             if (!identity.IsPersistent) return null;
             if (_removedObjectIdentities.Contains(identity)) return null;
@@ -411,7 +416,7 @@ namespace Arcanum.Runtime.World
             }
             var state = new PersistentObjectState(source, identity, sector, artId, off, locked, itemFlags,
                 inventoryArtId, weaponFlags, genericFlags, stackQuantity, unitWeight, inventoryFootprint,
-                inventoryLocation, nameIndex);
+                inventoryLocation, nameIndex, socialClass);
             _states.Add(identity, state);
             return state;
         }
@@ -419,10 +424,10 @@ namespace Arcanum.Runtime.World
         public PersistentObjectState GetOrCreate(ObjectInstance source, string sector, uint artId, bool off, bool locked,
             int itemFlags = 0, uint? inventoryArtId = null, int weaponFlags = 0, int genericFlags = 0,
             int? stackQuantity = null, int? unitWeight = null, InventoryFootprint? inventoryFootprint = null,
-            int? inventoryLocation = null, int? nameIndex = null)
+            int? inventoryLocation = null, int? nameIndex = null, int? socialClass = null)
             => GetOrCreate(source, source.Identity, sector, artId, off, locked, itemFlags, inventoryArtId,
                 weaponFlags, genericFlags, stackQuantity, unitWeight, inventoryFootprint, inventoryLocation,
-                nameIndex);
+                nameIndex, socialClass);
 
         public void Bind(string sector, PersistentObjectState state, WorldObject runtime)
         {
@@ -1023,6 +1028,76 @@ namespace Arcanum.Runtime.World
             int initial = created.State.StackQuantity.Value;
             created.State.StackQuantity = amount;
             ObjectQuantityChanged?.Invoke(created.State, initial, amount);
+        }
+
+        public bool CanTransferGold(ArcanumObjectId sourceOwner, ArcanumObjectId destinationOwner, int amount,
+            out string failure)
+        {
+            failure = null;
+            if (amount <= 0)
+            {
+                failure = "Gold transfer amount must be positive.";
+                return false;
+            }
+            if (sourceOwner == destinationOwner)
+            {
+                failure = "Gold source and destination must differ.";
+                return false;
+            }
+            if (GetGold(sourceOwner) < amount)
+            {
+                failure = "The source inventory does not contain enough Gold.";
+                return false;
+            }
+            return CanAddGold(destinationOwner, amount, out failure);
+        }
+
+        /// <summary>Atomic source item_gold_transfer-shaped movement through authoritative Gold stacks.</summary>
+        public bool TryTransferGold(ArcanumObjectId sourceOwner, ArcanumObjectId destinationOwner, int amount,
+            out string failure)
+        {
+            if (!CanTransferGold(sourceOwner, destinationOwner, amount, out failure)) return false;
+            DialogueInventorySnapshot snapshot = CaptureDialogueInventorySnapshot();
+            try
+            {
+                AddGold(destinationOwner, amount);
+                int remaining = amount;
+                var sourceStacks = _states.Values
+                    .Where(item => item.Type == ObjectType.Gold
+                                   && item.Placement.Kind == ObjectPlacementKind.Contained
+                                   && item.Placement.ParentIdentity == sourceOwner)
+                    .OrderBy(item => item.Identity.Key, StringComparer.Ordinal)
+                    .ToList();
+                foreach (PersistentObjectState stack in sourceStacks)
+                {
+                    int previous = stack.StackQuantity.Value;
+                    int taken = Math.Min(previous, remaining);
+                    int quantity = previous - taken;
+                    remaining -= taken;
+                    if (quantity == 0)
+                    {
+                        ObjectPlacement placement = stack.Placement;
+                        _states.Remove(stack.Identity);
+                        _removedObjectIdentities.Add(stack.Identity);
+                        ObjectStateRemoved?.Invoke(stack, placement);
+                    }
+                    else
+                    {
+                        stack.StackQuantity = quantity;
+                        ObjectQuantityChanged?.Invoke(stack, previous, quantity);
+                    }
+                    if (remaining == 0) break;
+                }
+                if (remaining != 0) throw new InvalidOperationException("Gold source changed after preflight.");
+                failure = null;
+                return true;
+            }
+            catch (Exception ex)
+            {
+                RestoreDialogueInventorySnapshot(snapshot);
+                failure = ex.Message;
+                return false;
+            }
         }
 
         internal DialogueInventorySnapshot CaptureDialogueInventorySnapshot() => new(this);

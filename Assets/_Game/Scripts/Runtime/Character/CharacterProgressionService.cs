@@ -170,6 +170,16 @@ namespace Arcanum.Runtime.Character
         public TrainingAssignmentResult SetTrainingLevel(ArcanumObjectId identity, CharacterSkill skill,
             SkillTrainingLevel training)
         {
+            TrainingAssignmentResult result = PreviewTrainingLevel(identity, skill, training);
+            if (result != TrainingAssignmentResult.Success) return result;
+            PersistentCharacterProgressionState state = Get(identity);
+            state.SetTraining(skill, training);
+            return TrainingAssignmentResult.Success;
+        }
+
+        public TrainingAssignmentResult PreviewTrainingLevel(ArcanumObjectId identity, CharacterSkill skill,
+            SkillTrainingLevel training)
+        {
             CharacterSkillRules.ValidateSkill(skill);
             CharacterSkillRules.ValidateTraining(training);
             PersistentCharacterProgressionState state = Get(identity);
@@ -181,7 +191,6 @@ namespace Arcanum.Runtime.Character
                 return TrainingAssignmentResult.NonSequentialIncrease;
             if (GetEffectiveSkillRank(identity, skill) < CharacterSkillRules.MinimumRankForTraining(training))
                 return TrainingAssignmentResult.InsufficientSkillRank;
-            state.SetTraining(skill, training);
             return TrainingAssignmentResult.Success;
         }
 
@@ -196,14 +205,18 @@ namespace Arcanum.Runtime.Character
             {
                 foreach (var pair in service._states)
                     _values.Add(pair.Key, new ProgressionValues(pair.Value.Experience, pair.Value.Level,
-                        pair.Value.UnspentCharacterPoints));
+                        pair.Value.UnspentCharacterPoints, pair.Value.CopyPurchasedPoints(),
+                        pair.Value.CopyTraining()));
             }
 
             internal void Restore(CharacterProgressionService service)
             {
                 foreach (var pair in _values)
                     if (service._states.TryGetValue(pair.Key, out PersistentCharacterProgressionState state))
+                    {
                         state.SetProgression(pair.Value.Experience, pair.Value.Level, pair.Value.Unspent);
+                        state.RestoreSkills(pair.Value.PurchasedPoints, pair.Value.Training);
+                    }
             }
         }
 
@@ -212,12 +225,17 @@ namespace Arcanum.Runtime.Character
             public readonly int Experience;
             public readonly int Level;
             public readonly int Unspent;
+            public readonly int[] PurchasedPoints;
+            public readonly SkillTrainingLevel[] Training;
 
-            public ProgressionValues(int experience, int level, int unspent)
+            public ProgressionValues(int experience, int level, int unspent, int[] purchasedPoints,
+                SkillTrainingLevel[] training)
             {
                 Experience = experience;
                 Level = level;
                 Unspent = unspent;
+                PurchasedPoints = purchasedPoints;
+                Training = training;
             }
         }
 

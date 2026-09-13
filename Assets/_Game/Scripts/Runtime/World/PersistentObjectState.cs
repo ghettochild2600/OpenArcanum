@@ -17,6 +17,8 @@ namespace Arcanum.Runtime.World
         public int PrototypeNumber { get; }
         /// <summary>Effective source OBJ_F_NAME index used by dialogue/script inventory lookup.</summary>
         public int NameIndex { get; }
+        /// <summary>Effective source NPC social class used by generated class-specific dialogue.</summary>
+        public int SocialClass { get; }
         public long? AuthoredLocation { get; }
         public uint ArtId { get; internal set; }
         public bool Off { get; internal set; }
@@ -55,7 +57,8 @@ namespace Arcanum.Runtime.World
             int? unitWeight = null,
             InventoryFootprint? inventoryFootprint = null,
             int? inventoryLocation = null,
-            int? nameIndex = null)
+            int? nameIndex = null,
+            int? socialClass = null)
         {
             Identity = identity;
             AuthoredParentIdentity = source.ParentIdentity;
@@ -63,6 +66,7 @@ namespace Arcanum.Runtime.World
             Type = source.Type;
             PrototypeNumber = source.PrototypeNumber;
             NameIndex = nameIndex ?? source.NameIndex ?? 0;
+            SocialClass = socialClass ?? source.SocialClass ?? 0;
             AuthoredLocation = source.Location;
             ArtId = artId;
             Off = off;
@@ -102,6 +106,7 @@ namespace Arcanum.Runtime.World
             Type = prototype.Type;
             PrototypeNumber = prototype.ProtoNumber;
             NameIndex = prototype.NameIndex ?? 0;
+            SocialClass = prototype.SocialClass ?? 0;
             ArtId = prototype.CurrentArtId;
             ItemFlags = prototype.ItemFlags ?? 0;
             InventoryArtId = prototype.InvAid;
@@ -130,6 +135,7 @@ namespace Arcanum.Runtime.World
             Type = source.Type;
             PrototypeNumber = source.PrototypeNumber;
             NameIndex = source.NameIndex;
+            SocialClass = source.SocialClass;
             ArtId = source.ArtId;
             Off = source.Off;
             Locked = source.Locked;

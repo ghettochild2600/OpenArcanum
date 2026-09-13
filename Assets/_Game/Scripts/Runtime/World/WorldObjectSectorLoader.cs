@@ -306,7 +306,8 @@ namespace Arcanum.Runtime.World
                     instance.Weight ?? proto?.Weight ?? 0,
                     ResolveInventoryFootprint(instance.InvAid ?? proto?.InvAid),
                     instance.InvLocation,
-                    instance.NameIndex ?? proto?.NameIndex);
+                    instance.NameIndex ?? proto?.NameIndex,
+                    instance.SocialClass ?? proto?.SocialClass);
                 if (state == null && Session.IsObjectRemoved(identity))
                 {
                     suppressed++;
@@ -908,6 +909,8 @@ namespace Arcanum.Runtime.World
                               && character.Gender == CharacterGender.Female;
                 return (female ? _generatedToFemale : _generatedToMale).For(token);
             });
+            Session.BindTrainingDialogueText(new SourceTrainingDialogueText(Session,
+                path => _vfs.Exists(path) ? MesReader.Read(_vfs.ReadAllBytes(path)) : null));
             Session.BindQuestSource(QuestLog.FromMes(
                 MesReader.Read(_vfs.ReadAllBytes("mes/gamequestlog.mes")),
                 MesReader.Read(_vfs.ReadAllBytes("rules/xp_quest.mes")),

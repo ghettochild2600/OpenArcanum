@@ -69,5 +69,14 @@ namespace Arcanum.Runtime.Character
 
         internal void SetTraining(CharacterSkill skill, SkillTrainingLevel training)
             => _training[(int)skill] = training;
+
+        internal int[] CopyPurchasedPoints() => (int[])_purchasedPoints.Clone();
+        internal SkillTrainingLevel[] CopyTraining() => (SkillTrainingLevel[])_training.Clone();
+
+        internal void RestoreSkills(int[] purchasedPoints, SkillTrainingLevel[] training)
+        {
+            Array.Copy(purchasedPoints, _purchasedPoints, _purchasedPoints.Length);
+            Array.Copy(training, _training, _training.Length);
+        }
     }
 }
