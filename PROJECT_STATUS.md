@@ -11,9 +11,8 @@ safe/adapt/avoid reuse boundaries, and defines a dependency-ordered M1–M13 roa
 ## Current Objective
 
 M1 traversal, the bounded M2 interaction/SAP_USE kernel, M3A-M3E inventory/command/equipment/stack/capacity state,
-M4A-M4D character attributes/vitality/progression/derived statistics, M5A's production campaign/dialogue state, and
-M5B's authentic quest-1005 completion/reward/journal vertical slice, and M5C's authentic production trainer-dialogue
-slice are complete.
+M4A-M4D character attributes/vitality/progression/derived statistics, M5A-M5C campaign/dialogue/quest/journal/trainer
+vertical slices, and M6A's first versioned authoritative session save/load slice are complete.
 `WorldMapSessionCoordinator` owns typed `World`, `Contained(parent)`, and `Equipped(parent, wornLocation)` placement,
 atomic raw item transfers/equipment replacement/stack merge and split, deterministic session-created item identities,
 source-faithful pickup/drop/owner-transfer policy, and pre-mutation weight/grid-capacity guards independently of Unity
@@ -25,18 +24,37 @@ bounded global/PC flags and variables, monotonic quest state/timestamps, and per
 subviews independently of Unity presentation. `DialogueTrainingService` routes the audited `t:` transaction through
 M4C training, derived reaction, and existing Gold-stack authority. `JournalProjectionService` is a read-only
 source-data projection, and quest completion routes dagger/gold, XP, alignment, and reaction through their existing
-authoritative domains.
+authoritative domains. `SessionSaveService` now exports those M1-M5 owners into deterministic, human-readable
+`OpenArcanum.SessionSave` V1 JSON, atomically writes a validated temporary file, transactionally restores new service
+roots, and rebuilds disposable Unity presentation. Canonical A/G/P/D ObjectIDs, dynamic allocator/tombstones,
+inventory/equipment/stacks, character inputs and mutations, campaign/quest/SAP/reaction state, and production PC
+map-global state round-trip; dialogue/path/presentation state intentionally normalizes rather than serializes.
 
-The next recommended objective is M6A — define and implement the first bounded versioned session-save contract for
-the authoritative state roots now proven through M1-M5, beginning with stable PC identity/location and explicitly
-including the M4/M5 progression/training state without serializing Unity presentation. Barter and other special
-tokens, broad quest/dialogue coverage, combat, followers, travel, and economy UI remain deferred.
+The next recommended objective is M6B — add explicit future-version migration boundaries, domain-level slot
+orchestration, and broader real-map/source-parent coverage without building final save UI or original Arcanum save
+compatibility. Barter and other special tokens, broad quest/dialogue coverage, combat, followers, travel, and economy
+UI remain deferred.
 
 ## Current Branch
 
-Expected branch: `feature/inventory-commands`
+Expected branch: `feature/session-save-load`
 
 Always verify the actual Git branch before doing work. Git is authoritative if it disagrees with this document.
+
+## M6A Validation Baseline (2026-09-13)
+
+- Unity 6000.0.71f1 compilation: clean
+- focused M6A EditMode: 25/25
+- required M1-M6A regression matrix: 332/332
+- complete EditMode suite: 503/503
+- real golden session save -> authoritative reset -> load -> presentation rebuild -> continued gameplay: passed
+- post-load dialogue, inventory pickup/drop, navigation, dynamic allocation, portal open/close: passed
+- Original -> Enhanced -> Original rebuild: passed
+- PlayMode warnings/errors: 0/0
+
+See [`documentation_unity/m6a-session-save-load.md`](documentation_unity/m6a-session-save-load.md) for the state
+inventory, V1 schema/version policy, transient normalization, atomic/transactional behavior, referential rules,
+golden fixtures, and exact omissions.
 
 ## Verified Baseline
 
