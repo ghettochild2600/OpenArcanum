@@ -13,14 +13,16 @@ namespace Arcanum.Formats.Dialog
     /// </summary>
     public sealed class GeneratedDialogText
     {
-        // Token letter → its key range in the gd tables (dialog.c sub_416C10). Only the generic,
-        // no-special-handler tokens live here; b:/t:/h:/l:/… need real UI handlers and are not listed.
+        // Token letter → its display-text range in the gd tables (dialog.c sub_416C10). Some entries,
+        // such as t:, still require a separate UI handler when selected; resolving their source label does
+        // not imply that the handler is implemented.
         private static readonly Dictionary<char, (int lo, int hi)> Ranges = new Dictionary<char, (int, int)>
         {
             { 'y', (1, 99) },      // "yes" flavour
             { 'n', (100, 199) },   // "no" flavour
             { 's', (200, 299) },   // "sounds good"
             { 'e', (400, 499) },   // goodbye / back out
+            { 't', (500, 599) },   // training label; selection requires the training UI
             { 'f', (800, 899) },   // generic
             { 'k', (1500, 1599) }, // generic
             { 'w', (1800, 1899) }, // generic
@@ -35,8 +37,8 @@ namespace Arcanum.Formats.Dialog
             _rng = rng ?? new Random();
         }
 
-        /// <summary>Whether a token has a generic text range (i.e. no special UI handler is required).</summary>
-        public static bool IsGenericToken(char token) => Ranges.ContainsKey(token);
+        /// <summary>Whether selecting a token needs no special UI handler.</summary>
+        public static bool IsGenericToken(char token) => token is 'y' or 'n' or 's' or 'e' or 'f' or 'k' or 'w';
 
         /// <summary>A random line from the token's range, or null (unknown token / no entries loaded).</summary>
         public string For(char token)

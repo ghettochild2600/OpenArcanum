@@ -96,6 +96,10 @@ namespace Arcanum.Formats.Dialog
                         failure = $"unsupported dialog effect '{token.Code}'";
                         return false;
                     }
+                if (ctx is IDialogEffectPreflight preflight)
+                    foreach (Token token in tokens)
+                        if (!preflight.TryPreflightEffect(token.Code, token.A, token.B, token.Op, out failure))
+                            return false;
                 foreach (Token token in tokens) RunEffect(token, ctx, ref gotoOverride);
                 return true;
             }

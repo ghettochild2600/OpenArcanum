@@ -15,6 +15,8 @@ namespace Arcanum.Runtime.World
         public string SourceSector { get; }
         public ObjectType Type { get; }
         public int PrototypeNumber { get; }
+        /// <summary>Effective source OBJ_F_NAME index used by dialogue/script inventory lookup.</summary>
+        public int NameIndex { get; }
         public long? AuthoredLocation { get; }
         public uint ArtId { get; internal set; }
         public bool Off { get; internal set; }
@@ -52,13 +54,15 @@ namespace Arcanum.Runtime.World
             int? stackQuantity = null,
             int? unitWeight = null,
             InventoryFootprint? inventoryFootprint = null,
-            int? inventoryLocation = null)
+            int? inventoryLocation = null,
+            int? nameIndex = null)
         {
             Identity = identity;
             AuthoredParentIdentity = source.ParentIdentity;
             SourceSector = sector;
             Type = source.Type;
             PrototypeNumber = source.PrototypeNumber;
+            NameIndex = nameIndex ?? source.NameIndex ?? 0;
             AuthoredLocation = source.Location;
             ArtId = artId;
             Off = off;
@@ -97,6 +101,7 @@ namespace Arcanum.Runtime.World
             SourceSector = creationSector;
             Type = prototype.Type;
             PrototypeNumber = prototype.ProtoNumber;
+            NameIndex = prototype.NameIndex ?? 0;
             ArtId = prototype.CurrentArtId;
             ItemFlags = prototype.ItemFlags ?? 0;
             InventoryArtId = prototype.InvAid;
@@ -124,6 +129,7 @@ namespace Arcanum.Runtime.World
             SourceSector = source.SourceSector;
             Type = source.Type;
             PrototypeNumber = source.PrototypeNumber;
+            NameIndex = source.NameIndex;
             ArtId = source.ArtId;
             Off = source.Off;
             Locked = source.Locked;

@@ -11,21 +11,23 @@ safe/adapt/avoid reuse boundaries, and defines a dependency-ordered M1–M13 roa
 ## Current Objective
 
 M1 traversal, the bounded M2 interaction/SAP_USE kernel, M3A-M3E inventory/command/equipment/stack/capacity state,
-M4A-M4D character attributes/vitality/progression/derived statistics, and M5A's production campaign/dialogue state plus
-one authentic NPC-to-quest-state vertical slice are complete.
+M4A-M4D character attributes/vitality/progression/derived statistics, M5A's production campaign/dialogue state, and
+M5B's authentic quest-1005 completion/reward/journal vertical slice are complete.
 `WorldMapSessionCoordinator` owns typed `World`, `Contained(parent)`, and `Equipped(parent, wornLocation)` placement,
 atomic raw item transfers/equipment replacement/stack merge and split, deterministic session-created item identities,
 source-faithful pickup/drop/owner-transfer policy, and pre-mutation weight/grid-capacity guards independently of Unity
 presentation.
 `CharacterStatService`, `CharacterProgressionService`, `CharacterVitalityService`, and
 `CharacterDerivedStatService` provide stable ObjectID-keyed character rules. `CampaignStateService` now owns source-
-bounded global/PC flags and variables, quest state, and per-object/per-SAP state; `ProductionDialogueSession` owns
-stable-ID conversation lifecycle and strict source evaluation independently of Unity presentation.
+bounded global/PC flags and variables, monotonic quest state/timestamps, and per-object/per-SAP state;
+`ProductionDialogueSession` owns stable-ID conversation lifecycle and strict source evaluation independently of Unity
+presentation. `JournalProjectionService` is a read-only source-data projection, and quest completion routes dagger/gold,
+XP, alignment, and reaction through their existing authoritative domains.
 
-The next recommended objective is M5B — one authentic quest-completion and journal-projection slice, admitting only
-the audited script/dialogue vocabulary required to carry one real Accepted quest to its completion/botch boundary.
-Inventory/equipment UI, encumbrance consequences, economy, combat, followers, travel, broad dialogue/quest coverage,
-and save serialization remain deferred.
+The next recommended objective is M5C — one bounded production trainer-dialogue slice for the now-visible source `t:`
+follow-up, using the existing M4C training authority and preserving strict fail-closed behavior. Barter and other
+special tokens, broad quest/dialogue coverage, combat, followers, travel, economy UI, and save serialization remain
+deferred.
 
 ## Current Branch
 
@@ -1261,6 +1263,47 @@ Completed on 2026-09-12 with Unity 6000.0.71f1 on `feature/inventory-commands`.
 - Deferred: broad opcode/dialogue/quest support, quest completion/botch and journal projection, combat, followers,
   travel, economy, inventory/equipment UI, character progression integration, and save serialization.
 
+## M5B Authentic Quest Completion and Journal Projection
+
+Completed on 2026-09-13 with Unity 6000.0.71f1 on `feature/inventory-commands`.
+
+- Quest 1130 was rejected for this slice because its completion conversation is not terminal-state-specific and its
+  botch route requires combat/death. The selected GREEN path is quest 1005 with the Black Root mayor,
+  ObjectID `G_787AD4AB_9061_2B4E_A691_F582800B2BB3`, prototype 17088, dialogue/SAP_DIALOG 1009, sector
+  `maps/arcanum1-024-fixed/96636765255.sec`.
+- The authentic dagger is stable ObjectID `G_52E2AC87_1A3B_6842_8C2E_5247C9571D11`, weapon prototype 6071, with
+  instance `OBJ_F_NAME` 2002. Source dialog `in 2002` is name-ID lookup, not prototype lookup; no NPC is selected,
+  cloned, reclassified, or substituted.
+- `CampaignStateService` now owns source-shaped monotonic quest state and deterministic session timestamps.
+  `ProductionDialogueSession` preflights and snapshots every authoritative domain touched by an admitted response.
+  Quest 1005 follows Mentioned -> response 3 -> Accepted; response 4 -> node 100; response 102 executes source
+  `qu 1005 4, in 2002`, awarding XP before terminal commit, applying alignment/reaction, and transferring the exact
+  dagger to the mayor. Failed preflight rolls back without partial quest, inventory, XP, alignment, reaction, timestamp,
+  tombstone, stack, or dynamic-ID mutation.
+- Source quest reward is 800 XP and +50 alignment; completion adds +10 mayor reaction. Node 440's `$$100` is an
+  authored follow-on response transaction and awards 100 Gold through existing M3 prototype-9056 stack/capacity
+  semantics. The source-built-in Gold prototype is available even without a loose 009056 `.pro`.
+- `JournalProjectionService` reads campaign state plus the four source quest resources and cannot mutate them. It
+  projects source state label, normal/dumb description, and `{days,milliseconds}` ordering metadata. The original
+  data has one quest description rather than separate Accepted/Completed prose; the state label supplies the terminal
+  distinction. `ProductionJournalPresenter` is a minimal read-only view only.
+- Re-engagement after Completed exposes source response 5 and excludes response 4. Response 5 is `t:`; its visible
+  label resolves from the original generated-dialog 500-599 range. Training remains outside M5B, so selecting it emits
+  exact dialogue/line/token telemetry and fails closed with every authoritative value unchanged.
+- Computer Use Play Mode used the real dagger and real mayor. A literal mayor click drove normal Talk approach;
+  physical choices 4 -> 102 -> 431 -> 443 completed the quest, transferred the dagger, awarded 100 Gold/800 XP,
+  applied alignment +50 and source reaction 43 -> 53, and changed the journal to Completed. A second literal click
+  showed response 5 and no response 4. Original -> Enhanced -> Original, dagger-sector -> mayor-sector traversal in
+  both directions, foreign-source suppression, unload/reload, stable references, and unique coordinator/loader/
+  navigation/interaction/dialogue/journal/root/PC/NPC/sprite ownership all passed. Final Play Mode recorded 0 warnings
+  and 0 errors.
+- Validation: M5B 18/18; M5A 16/16; M4D 25/25; M4C 29/29; M4B 20/20; M4A 13/13; M3E 21/21;
+  M3D 18/18; M3C 13/13; M3B 13/13; M3A 8/8; M2B 8/8; M2A 16/16; PlayerNavigation 21/21;
+  M1A 7/7; M1B 11/11; WorldSessionState 27/27; PortalArtResolver 2/2; complete EditMode 457/457. Every final
+  run had zero failures, skips, or inconclusive tests; final compilation was clean.
+- Full candidate evidence, final ownership graph, source contract, transaction ordering, lifecycle proof, and deferred
+  boundaries: [`documentation_unity/m5b-quest-journal-slice.md`](documentation_unity/m5b-quest-journal-slice.md).
+
 ## Next Recommended Milestone
 
 The M2C candidate gate was completed on 2026-09-10 against all 22 distinct SAP_USE script numbers attached to placed
@@ -1271,9 +1314,8 @@ production or test code was changed, and the strict whitelist was not widened. S
 [`documentation_unity/m2c-sap-use-family.md`](documentation_unity/m2c-sap-use-family.md) for the candidate table and
 rejection evidence.
 
-The exact recommended next milestone is **M5B — one authentic quest-completion and journal-projection slice**. Continue
-one audited real quest from `Accepted` through its source completion or botch boundary, add only the journal metadata
-and strict script/effect vocabulary that path requires, and preserve M5A's campaign/dialogue ownership. Keep combat,
-followers, travel, economy, broad opcode/dialogue/quest support, inventory/equipment UI, character progression
-integration, and save serialization deferred. Additional SAP_USE families remain deferred until their owning domains
-exist.
+The exact recommended next milestone is **M5C — one bounded production trainer-dialogue slice**. Implement the source
+`t:` special-handler transaction exposed by quest 1005's Completed-only mayor response against the existing M4C
+skill/training authority, including source costs and prerequisites, UI/cancellation, strict preflight and telemetry,
+idempotency, and rebuild/reload proof. Do not broaden to barter or other special tokens. M6 versioned save/load remains
+the subsequent roadmap milestone; additional SAP_USE families remain deferred until their owning domains exist.

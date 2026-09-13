@@ -34,6 +34,32 @@ namespace Arcanum.Runtime.Campaign
         }
     }
 
+    /// <summary>Source-shaped quest game time. The runtime clock is currently a deterministic session clock.</summary>
+    public readonly struct QuestTimestamp : IEquatable<QuestTimestamp>, IComparable<QuestTimestamp>
+    {
+        public uint Days { get; }
+        public uint Milliseconds { get; }
+        public ulong Value => ((ulong)Milliseconds << 32) | Days;
+
+        public QuestTimestamp(uint days, uint milliseconds)
+        {
+            Days = days;
+            Milliseconds = milliseconds;
+        }
+
+        public int CompareTo(QuestTimestamp other)
+        {
+            int days = Days.CompareTo(other.Days);
+            return days != 0 ? days : Milliseconds.CompareTo(other.Milliseconds);
+        }
+
+        public bool Equals(QuestTimestamp other) => Days == other.Days && Milliseconds == other.Milliseconds;
+        public override bool Equals(object obj) => obj is QuestTimestamp other && Equals(other);
+        public override int GetHashCode() => HashCode.Combine(Days, Milliseconds);
+        public static bool operator ==(QuestTimestamp left, QuestTimestamp right) => left.Equals(right);
+        public static bool operator !=(QuestTimestamp left, QuestTimestamp right) => !left.Equals(right);
+    }
+
     /// <summary>
     /// Session-owned, presentation-independent campaign state. Array sizes and quest behavior mirror
     /// script.c/quest.c; save-file serialization is intentionally outside M5A.
@@ -53,8 +79,10 @@ namespace Arcanum.Runtime.Campaign
         private readonly uint[] _pcFlags = new uint[PcFlagCount / 32];
         private readonly int[] _pcQuestStates = new int[QuestCount];
         private readonly QuestState[] _globalQuestStates = new QuestState[QuestCount];
+        private readonly QuestTimestamp[] _pcQuestTimestamps = new QuestTimestamp[QuestCount];
         private readonly Dictionary<ScriptAttachmentKey, ScriptAttachmentState> _attachments = new();
         private int _storyState;
+        private ulong _questClock;
 
         public event Action<int, QuestState, QuestState> PcQuestStateChanged;
 
@@ -120,6 +148,8 @@ namespace Arcanum.Runtime.Campaign
 
         public int GetRawPcQuestState(int quest) => _pcQuestStates[QuestIndex(quest)];
 
+        public QuestTimestamp GetPcQuestTimestamp(int quest) => _pcQuestTimestamps[QuestIndex(quest)];
+
         public void SetPcQuestState(int quest, int state)
         {
             if (!TryAdvancePcQuest(quest, state, out _, out CampaignStateFailure failure))
@@ -128,6 +158,33 @@ namespace Arcanum.Runtime.Campaign
 
         public bool TryAdvancePcQuest(int quest, int requestedState, out QuestState effective,
             out CampaignStateFailure failure)
+        {
+            if (!TryPreviewPcQuestTransition(quest, requestedState, out effective, out failure, out bool changes))
+                return false;
+            if (!changes) return true;
+
+            int index = QuestIndex(quest);
+            QuestState old = (QuestState)GetPcQuestState(quest);
+            if (_globalQuestStates[index] == QuestState.Accepted)
+            {
+                if (effective is QuestState.Completed or QuestState.OtherCompleted)
+                    _globalQuestStates[index] = QuestState.Completed;
+                else if (effective == QuestState.Botched)
+                    _globalQuestStates[index] = QuestState.Botched;
+            }
+
+            int previousRaw = _pcQuestStates[index];
+            _pcQuestStates[index] = effective == QuestState.Botched
+                ? QuestLog.WithBotched(previousRaw)
+                : (int)effective;
+            _pcQuestTimestamps[index] = NextQuestTimestamp();
+            PcQuestStateChanged?.Invoke(quest, old, effective);
+            failure = CampaignStateFailure.None;
+            return true;
+        }
+
+        public bool TryPreviewPcQuestTransition(int quest, int requestedState, out QuestState effective,
+            out CampaignStateFailure failure, out bool changes)
         {
             int index;
             QuestState requested;
@@ -140,11 +197,13 @@ namespace Arcanum.Runtime.Campaign
             {
                 effective = QuestState.Unknown;
                 failure = ex.Failure;
+                changes = false;
                 return false;
             }
 
             QuestState old = (QuestState)GetPcQuestState(quest);
             effective = old;
+            changes = false;
             if (old is QuestState.Completed or QuestState.OtherCompleted or QuestState.Botched)
             {
                 if (requested == old) { failure = CampaignStateFailure.None; return true; }
@@ -163,24 +222,9 @@ namespace Arcanum.Runtime.Campaign
             }
 
             QuestState global = _globalQuestStates[index];
-            effective = requested;
-            if (global == QuestState.Accepted)
-            {
-                if (requested is QuestState.Completed or QuestState.OtherCompleted)
-                    _globalQuestStates[index] = QuestState.Completed;
-                else if (requested == QuestState.Botched)
-                    _globalQuestStates[index] = QuestState.Botched;
-            }
-            else
-            {
-                effective = global == QuestState.Completed ? QuestState.OtherCompleted : QuestState.Botched;
-            }
-
-            int previousRaw = _pcQuestStates[index];
-            _pcQuestStates[index] = effective == QuestState.Botched
-                ? QuestLog.WithBotched(previousRaw)
-                : (int)effective;
-            PcQuestStateChanged?.Invoke(quest, old, effective);
+            effective = global == QuestState.Accepted ? requested
+                : global == QuestState.Completed ? QuestState.OtherCompleted : QuestState.Botched;
+            changes = true;
             failure = CampaignStateFailure.None;
             return true;
         }
@@ -241,8 +285,10 @@ namespace Arcanum.Runtime.Campaign
             private readonly uint[] _pcFlags;
             private readonly int[] _pcQuestStates;
             private readonly QuestState[] _globalQuestStates;
+            private readonly QuestTimestamp[] _pcQuestTimestamps;
             private readonly Dictionary<ScriptAttachmentKey, ScriptAttachmentState> _attachments;
             private readonly int _storyState;
+            private readonly ulong _questClock;
 
             internal Snapshot(CampaignStateService state)
             {
@@ -252,8 +298,10 @@ namespace Arcanum.Runtime.Campaign
                 _pcFlags = (uint[])state._pcFlags.Clone();
                 _pcQuestStates = (int[])state._pcQuestStates.Clone();
                 _globalQuestStates = (QuestState[])state._globalQuestStates.Clone();
+                _pcQuestTimestamps = (QuestTimestamp[])state._pcQuestTimestamps.Clone();
                 _attachments = new Dictionary<ScriptAttachmentKey, ScriptAttachmentState>(state._attachments);
                 _storyState = state._storyState;
+                _questClock = state._questClock;
             }
 
             internal void Restore(CampaignStateService state)
@@ -264,10 +312,18 @@ namespace Arcanum.Runtime.Campaign
                 Array.Copy(_pcFlags, state._pcFlags, _pcFlags.Length);
                 Array.Copy(_pcQuestStates, state._pcQuestStates, _pcQuestStates.Length);
                 Array.Copy(_globalQuestStates, state._globalQuestStates, _globalQuestStates.Length);
+                Array.Copy(_pcQuestTimestamps, state._pcQuestTimestamps, _pcQuestTimestamps.Length);
                 state._attachments.Clear();
                 foreach (var pair in _attachments) state._attachments.Add(pair.Key, pair.Value);
                 state._storyState = _storyState;
+                state._questClock = _questClock;
             }
+        }
+
+        private QuestTimestamp NextQuestTimestamp()
+        {
+            _questClock++;
+            return new QuestTimestamp((uint)(_questClock / 86400000UL), (uint)(_questClock % 86400000UL));
         }
 
         private readonly struct ScriptAttachmentKey : IEquatable<ScriptAttachmentKey>

@@ -82,10 +82,14 @@ namespace Arcanum.Runtime.Dialogue
     /// </summary>
     public sealed class ProductionDialogueSession
     {
-        private static readonly HashSet<string> AdmittedTests = new(StringComparer.OrdinalIgnoreCase)
+        private static readonly HashSet<string> M5AAdmittedTests = new(StringComparer.OrdinalIgnoreCase)
             { "gf", "qu", "ra" };
-        private static readonly HashSet<string> AdmittedEffects = new(StringComparer.OrdinalIgnoreCase)
+        private static readonly HashSet<string> M5AAdmittedEffects = new(StringComparer.OrdinalIgnoreCase)
             { "lf", "qu", "fl" };
+        private static readonly HashSet<string> M5BAdmittedTests = new(StringComparer.OrdinalIgnoreCase)
+            { "gf", "gv", "lf", "qu", "qb", "ra", "in", "ni", "re", "ch", "ha" };
+        private static readonly HashSet<string> M5BAdmittedEffects = new(StringComparer.OrdinalIgnoreCase)
+            { "lf", "qu", "fl", "in", "re", "$$" };
 
         private readonly WorldMapSessionCoordinator _world;
         private readonly CampaignStateService _campaign;
@@ -93,6 +97,7 @@ namespace Arcanum.Runtime.Dialogue
         private readonly HashSet<string> _reportedDiagnostics = new();
         private Func<int, ScriptFile> _resolveScript;
         private Func<int, DialogScript> _resolveDialogue;
+        private Func<ArcanumObjectId, char, string> _resolveGeneratedText;
         private DialogScript _dialogue;
         private ProductionDialogueContext _context;
         private bool _finalSay;
@@ -109,6 +114,13 @@ namespace Arcanum.Runtime.Dialogue
         public bool IsBusy => Phase is DialogueSessionPhase.Starting or DialogueSessionPhase.Active
             or DialogueSessionPhase.AwaitingPlayerChoice or DialogueSessionPhase.ExecutingResponse;
 
+        private ISet<string> AdmittedTests => DialogueNumber == 1009
+            ? M5BAdmittedTests
+            : M5AAdmittedTests;
+        private ISet<string> AdmittedEffects => DialogueNumber == 1009
+            ? M5BAdmittedEffects
+            : M5AAdmittedEffects;
+
         public event Action Changed;
         public event Action<DialogueDiagnostic> Diagnostic;
 
@@ -123,6 +135,9 @@ namespace Arcanum.Runtime.Dialogue
             _resolveScript = resolveScript ?? throw new ArgumentNullException(nameof(resolveScript));
             _resolveDialogue = resolveDialogue ?? throw new ArgumentNullException(nameof(resolveDialogue));
         }
+
+        public void BindGeneratedText(Func<ArcanumObjectId, char, string> resolveGeneratedText)
+            => _resolveGeneratedText = resolveGeneratedText ?? throw new ArgumentNullException(nameof(resolveGeneratedText));
 
         public DialogueStartStatus Start(ArcanumObjectId pc, ArcanumObjectId npc)
         {
@@ -156,8 +171,8 @@ namespace Arcanum.Runtime.Dialogue
             if (_dialogue == null)
                 return FailStart(DialogueStartStatus.MissingDialogue, $"Dialogue {DialogueNumber} is missing.");
 
-            _context = new ProductionDialogueContext(_world, _campaign, pc, npc);
-            CampaignStateService.Snapshot snapshot = _campaign.CaptureSnapshot();
+            _context = new ProductionDialogueContext(_world, _campaign, pc, npc, _resolveGeneratedText);
+            DialogueTransactionSnapshot snapshot = new(_world, _campaign);
             ScriptAttachmentState attachment = _campaign.GetScriptAttachment(npc, (int)Sap.Dialog);
             var scriptContext = new ScriptContext
             {
@@ -173,7 +188,7 @@ namespace Arcanum.Runtime.Dialogue
                 .ExecuteStrict(script, scriptContext);
             if (!result.Succeeded || _startFailure != null || Phase != DialogueSessionPhase.AwaitingPlayerChoice)
             {
-                _campaign.RestoreSnapshot(snapshot);
+                snapshot.Restore(_world, _campaign);
                 string detail = _startFailure ?? result.Detail ?? $"SAP_DIALOG ended with {result.Status}.";
                 Report(DialogueDiagnosticKind.ExecutionFailure, CurrentLine, detail);
                 return FailStart(DialogueStartStatus.ExecutionFailed, detail);
@@ -197,12 +212,20 @@ namespace Arcanum.Runtime.Dialogue
             }
 
             DialogLine response = _responses[index];
-            CampaignStateService.Snapshot snapshot = _campaign.CaptureSnapshot();
+            if (response.TokenCode != '\0' && !GeneratedDialogText.IsGenericToken(response.TokenCode))
+            {
+                string tokenFailure = $"dialog token '{response.TokenCode}' requires an unsupported UI handler";
+                LastFailure = tokenFailure;
+                Report(DialogueDiagnosticKind.UnsupportedEffect, response.Num, tokenFailure);
+                Changed?.Invoke();
+                return DialogueChoiceStatus.UnsupportedEffect;
+            }
+            DialogueTransactionSnapshot snapshot = new(_world, _campaign);
             Phase = DialogueSessionPhase.ExecutingResponse;
             if (!DialogScriptEvaluator.TryRunEffectStrict(response.Effect, _context, AdmittedEffects,
                     out int gotoOverride, out string failure))
             {
-                _campaign.RestoreSnapshot(snapshot);
+                snapshot.Restore(_world, _campaign);
                 Phase = DialogueSessionPhase.AwaitingPlayerChoice;
                 LastFailure = failure;
                 Report(DialogueDiagnosticKind.UnsupportedEffect, response.Num, failure);
@@ -301,14 +324,38 @@ namespace Arcanum.Runtime.Dialogue
             return false;
         }
 
-        private DialogueChoiceStatus RollBackChoice(CampaignStateService.Snapshot snapshot, int line, string failure)
+        private DialogueChoiceStatus RollBackChoice(DialogueTransactionSnapshot snapshot, int line, string failure)
         {
-            _campaign.RestoreSnapshot(snapshot);
+            snapshot.Restore(_world, _campaign);
             Phase = DialogueSessionPhase.AwaitingPlayerChoice;
             LastFailure = failure;
             Report(DialogueDiagnosticKind.ExecutionFailure, line, failure);
             Changed?.Invoke();
             return DialogueChoiceStatus.ExecutionFailed;
+        }
+
+        private sealed class DialogueTransactionSnapshot
+        {
+            private readonly CampaignStateService.Snapshot _campaign;
+            private readonly CharacterProgressionService.Snapshot _progression;
+            private readonly CharacterDerivedStatService.Snapshot _derived;
+            private readonly WorldMapSessionCoordinator.DialogueInventorySnapshot _inventory;
+
+            public DialogueTransactionSnapshot(WorldMapSessionCoordinator world, CampaignStateService campaign)
+            {
+                _campaign = campaign.CaptureSnapshot();
+                _progression = world.Progression.CaptureSnapshot();
+                _derived = world.DerivedStats.CaptureSnapshot();
+                _inventory = world.CaptureDialogueInventorySnapshot();
+            }
+
+            public void Restore(WorldMapSessionCoordinator world, CampaignStateService campaign)
+            {
+                campaign.RestoreSnapshot(_campaign);
+                world.Progression.RestoreSnapshot(_progression);
+                world.DerivedStats.RestoreSnapshot(_derived);
+                world.RestoreDialogueInventorySnapshot(_inventory);
+            }
         }
 
         private void Complete()
@@ -421,27 +468,38 @@ namespace Arcanum.Runtime.Dialogue
         }
     }
 
-    internal sealed class ProductionDialogueContext : IDialogContext
+    internal sealed class ProductionDialogueContext : IDialogContext, IDialogEffectPreflight
     {
         private readonly WorldMapSessionCoordinator _world;
         private readonly CampaignStateService _campaign;
         private readonly ArcanumObjectId _pc;
         private readonly ArcanumObjectId _npc;
+        private readonly Func<ArcanumObjectId, char, string> _resolveGeneratedText;
 
         public ProductionDialogueContext(WorldMapSessionCoordinator world, CampaignStateService campaign,
-            ArcanumObjectId pc, ArcanumObjectId npc)
+            ArcanumObjectId pc, ArcanumObjectId npc, Func<ArcanumObjectId, char, string> resolveGeneratedText)
         {
             _world = world;
             _campaign = campaign;
             _pc = pc;
             _npc = npc;
+            _resolveGeneratedText = resolveGeneratedText;
         }
 
         public int Intelligence => Attribute(CharacterAttribute.Intelligence);
         public int Charisma => Attribute(CharacterAttribute.Charisma);
         public int Perception => Attribute(CharacterAttribute.Perception);
         public int Level => _world.Progression.GetLevel(_pc);
-        public int Gold { get => throw Outside(nameof(Gold)); set => throw Outside(nameof(Gold)); }
+        public int Gold
+        {
+            get => _world.GetGold(_pc);
+            set
+            {
+                int current = _world.GetGold(_pc);
+                if (value < current) throw Outside("negative gold transfer");
+                if (value > current) _world.AddGold(_pc, checked(value - current));
+            }
+        }
         public int PersuasionSkill => Skill(CharacterSkill.Persuasion);
         public int HaggleSkill => Skill(CharacterSkill.Haggle);
         public int BasicSkillLevel(int skill) => Skill((CharacterSkill)skill);
@@ -455,14 +513,41 @@ namespace Arcanum.Runtime.Dialogue
         public int PcVar(int index) => _campaign.GetPcVar(index);
         public void SetPcVar(int index, int value) => _campaign.SetPcVar(index, value);
         public int Quest(int num) => _campaign.GetPcQuestState(num);
-        public void SetQuest(int num, int state) => _campaign.SetPcQuestState(num, state);
+        public void SetQuest(int num, int state)
+        {
+            QuestState old = (QuestState)_campaign.GetPcQuestState(num);
+            if (!_campaign.TryPreviewPcQuestTransition(num, state, out QuestState preview,
+                    out CampaignStateFailure failure, out bool changes))
+                throw new CampaignStateService.CampaignStateException(failure, num);
+            if (!changes) return;
+            QuestLog quests = _world.QuestSource;
+            if (preview == QuestState.Completed)
+            {
+                if (quests?.Meta(num) == null)
+                    throw new InvalidOperationException($"Quest {num} has no bound source metadata.");
+                // quest_state_set awards XP before quest_state_set_internal commits the terminal state.
+                _world.Progression.AwardExperience(_pc, quests.QuestXp(num));
+            }
+            _campaign.SetPcQuestState(num, state);
+            QuestState effective = (QuestState)_campaign.GetPcQuestState(num);
+            if (effective == old) return;
+            if (effective == QuestState.Accepted)
+            {
+                int reaction = _world.DerivedStats.GetReaction(_npc, _pc);
+                if (reaction < 41) _world.DerivedStats.SetReaction(_npc, _pc, 41);
+                return;
+            }
+            if (effective != QuestState.Completed) return;
+            _world.DerivedStats.AdjustAlignment(_pc, quests.AlignmentAdjustment(num));
+            _world.DerivedStats.AdjustReaction(_npc, _pc, 10);
+        }
         public int GlobalFlag(int index) => _campaign.GetFlag(index);
         public void SetGlobalFlag(int index, int value) => _campaign.SetFlag(index, value);
         public int GlobalVar(int index) => _campaign.GetVar(index);
         public void SetGlobalVar(int index, int value) => _campaign.SetVar(index, value);
         public int Alignment => _world.DerivedStats.GetAlignment(_pc);
-        public void AdjustAlignment(int delta) => throw Outside(nameof(AdjustAlignment));
-        public void SetAlignment(int value) => throw Outside(nameof(SetAlignment));
+        public void AdjustAlignment(int delta) => _world.DerivedStats.AdjustAlignment(_pc, delta);
+        public void SetAlignment(int value) => _world.DerivedStats.SetAlignment(_pc, value);
         public int StoryState => _campaign.StoryState;
         public void SetStoryState(int value) => throw Outside(nameof(SetStoryState));
         public bool RumorKnown(int id) => throw Outside(nameof(RumorKnown));
@@ -473,15 +558,25 @@ namespace Arcanum.Runtime.Dialogue
         public void MarkAreaKnown(int id) => throw Outside(nameof(MarkAreaKnown));
         public bool HasMetNpc => throw Outside(nameof(HasMetNpc));
         public void KillNpc() => throw Outside(nameof(KillNpc));
-        public int NpcReaction => _world.DerivedStats.GetReactionInputs(_npc, _pc).Subtotal;
-        public void AdjustReaction(int delta) => throw Outside(nameof(AdjustReaction));
-        public void SetReaction(int value) => throw Outside(nameof(SetReaction));
+        public int NpcReaction => _world.DerivedStats.GetReaction(_npc, _pc);
+        public void AdjustReaction(int delta) => _world.DerivedStats.AdjustReaction(_npc, _pc, delta);
+        public void SetReaction(int value) => _world.DerivedStats.SetReaction(_npc, _pc, value);
         public int LocalFlag(int index) => _campaign.GetLocalFlag(_npc, (int)Sap.Dialog, index);
         public void SetLocalFlag(int index, int value) => _campaign.SetLocalFlag(_npc, (int)Sap.Dialog, index, value);
         public int LocalCounter(int index) => _campaign.GetLocalCounter(_npc, (int)Sap.Dialog, index);
         public void SetLocalCounter(int index, int value) => _campaign.SetLocalCounter(_npc, (int)Sap.Dialog, index, value);
-        public bool HasItem(int protoNumber, bool pcSide) => throw Outside(nameof(HasItem));
-        public void TransferItem(int protoNumber, bool pcToNpc) => throw Outside(nameof(TransferItem));
+        public bool HasItem(int protoNumber, bool pcSide)
+            => _world.TryFindContainedItemByName(pcSide ? _pc : _npc, protoNumber, out _);
+        public void TransferItem(int protoNumber, bool pcToNpc)
+        {
+            ArcanumObjectId source = pcToNpc ? _pc : _npc;
+            ArcanumObjectId destination = pcToNpc ? _npc : _pc;
+            if (!_world.TryFindContainedItemByName(source, protoNumber, out PersistentObjectState item))
+                throw new InvalidOperationException($"Inventory owner {source} has no OBJ_F_NAME {protoNumber}.");
+            InventoryTransferResult result = _world.TransferItem(item.Identity, item.Placement,
+                ObjectPlacement.ContainedBy(destination));
+            if (!result.Succeeded) throw new InvalidOperationException($"Item transfer failed: {result.Code}.");
+        }
         public void GiveXp(int questId) => throw Outside(nameof(GiveXp));
         public void GiveFatePoint() => throw Outside(nameof(GiveFatePoint));
         public void StartCombat() => throw Outside(nameof(StartCombat));
@@ -489,7 +584,74 @@ namespace Arcanum.Runtime.Dialogue
         public bool IsNpcFollowingPc => throw Outside(nameof(IsNpcFollowingPc));
         public bool AreaKnown(int id) => throw Outside(nameof(AreaKnown));
         public void DisbandNpc() => throw Outside(nameof(DisbandNpc));
-        public string GeneratedText(char token) => token == 'e' ? "Goodbye." : null;
+        public string GeneratedText(char token)
+            => _resolveGeneratedText?.Invoke(_npc, token) ?? (token == 'e' ? "Goodbye." : null);
+
+        public bool TryPreflightEffect(string code, int first, int second, char operation, out string failure)
+        {
+            failure = null;
+            try
+            {
+                switch (code.ToLowerInvariant())
+                {
+                    case "lf":
+                        _campaign.GetLocalFlag(_npc, (int)Sap.Dialog, first);
+                        return true;
+                    case "fl":
+                    case "re":
+                        return true;
+                    case "qu":
+                        if (!_campaign.TryPreviewPcQuestTransition(first, second, out QuestState effective,
+                                out CampaignStateFailure questFailure, out bool changes))
+                        {
+                            failure = $"quest {first} rejected {questFailure}";
+                            return false;
+                        }
+                        if (changes && effective == QuestState.Completed)
+                        {
+                            if (_world.QuestSource?.Meta(first) == null)
+                            {
+                                failure = $"quest {first} has no bound source metadata";
+                                return false;
+                            }
+                            _world.Progression.Get(_pc);
+                            _world.DerivedStats.Get(_pc);
+                            _world.DerivedStats.Get(_npc);
+                        }
+                        return true;
+                    case "in":
+                    {
+                        bool pcToNpc = first >= 0;
+                        int nameIndex = Math.Abs(first);
+                        ArcanumObjectId source = pcToNpc ? _pc : _npc;
+                        ArcanumObjectId destination = pcToNpc ? _npc : _pc;
+                        if (!_world.TryFindContainedItemByName(source, nameIndex, out PersistentObjectState item))
+                        {
+                            failure = $"inventory owner {source} has no OBJ_F_NAME {nameIndex}";
+                            return false;
+                        }
+                        InventoryTransferResult preview = _world.PreviewTransferItem(item.Identity, item.Placement,
+                            ObjectPlacement.ContainedBy(destination));
+                        if (!preview.Succeeded)
+                        {
+                            failure = $"item transfer preflight failed: {preview.Code}";
+                            return false;
+                        }
+                        return true;
+                    }
+                    case "$$":
+                        return _world.CanAddGold(_pc, first, out failure);
+                    default:
+                        failure = $"dialog effect '{code}' has no production preflight";
+                        return false;
+                }
+            }
+            catch (Exception ex)
+            {
+                failure = ex.Message;
+                return false;
+            }
+        }
 
         private int Attribute(CharacterAttribute attribute)
             => _world.Characters.GetEffectiveAttribute(_pc, attribute);

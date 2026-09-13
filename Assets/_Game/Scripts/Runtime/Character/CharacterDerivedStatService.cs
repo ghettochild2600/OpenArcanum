@@ -29,6 +29,7 @@ namespace Arcanum.Runtime.Character
         private readonly CharacterProgressionService _progression;
         private readonly ICharacterCarryWeightProvider _carryWeight;
         private readonly Dictionary<ArcanumObjectId, PersistentCharacterDerivedState> _states = new();
+        private readonly Dictionary<ReactionKey, int> _reactionAdjustments = new();
 
         public IReadOnlyDictionary<ArcanumObjectId, PersistentCharacterDerivedState> States => _states;
         public event Action<ArcanumObjectId, int, int> AlignmentChanged;
@@ -141,6 +142,65 @@ namespace Arcanum.Runtime.Character
             return new CharacterReactionInputs(npc.Source.ReactionBase,
                 GetDerivedStat(pcIdentity, CharacterDerivedStat.BeautyReactionModifier),
                 RaceReactionModifiers[(int)npcRace, (int)pcRace], true);
+        }
+
+        public int GetReaction(ArcanumObjectId npcIdentity, ArcanumObjectId pcIdentity)
+        {
+            int initial = GetReactionInputs(npcIdentity, pcIdentity).Subtotal;
+            return checked(initial + _reactionAdjustments.GetValueOrDefault(new ReactionKey(npcIdentity, pcIdentity)));
+        }
+
+        public int AdjustReaction(ArcanumObjectId npcIdentity, ArcanumObjectId pcIdentity, int delta)
+            => SetReaction(npcIdentity, pcIdentity, checked(GetReaction(npcIdentity, pcIdentity) + delta));
+
+        public int SetReaction(ArcanumObjectId npcIdentity, ArcanumObjectId pcIdentity, int value)
+        {
+            int initial = GetReactionInputs(npcIdentity, pcIdentity).Subtotal;
+            var key = new ReactionKey(npcIdentity, pcIdentity);
+            int adjustment = checked(value - initial);
+            if (adjustment == 0) _reactionAdjustments.Remove(key);
+            else _reactionAdjustments[key] = adjustment;
+            return value;
+        }
+
+        internal Snapshot CaptureSnapshot() => new(this);
+        internal void RestoreSnapshot(Snapshot snapshot) => snapshot.Restore(this);
+
+        internal sealed class Snapshot
+        {
+            private readonly Dictionary<ArcanumObjectId, int> _alignments = new();
+            private readonly Dictionary<ReactionKey, int> _reactionAdjustments;
+
+            internal Snapshot(CharacterDerivedStatService service)
+            {
+                foreach (var pair in service._states) _alignments.Add(pair.Key, pair.Value.Alignment);
+                _reactionAdjustments = new Dictionary<ReactionKey, int>(service._reactionAdjustments);
+            }
+
+            internal void Restore(CharacterDerivedStatService service)
+            {
+                foreach (var pair in _alignments)
+                    if (service._states.TryGetValue(pair.Key, out PersistentCharacterDerivedState state))
+                        state.SetAlignment(pair.Value);
+                service._reactionAdjustments.Clear();
+                foreach (var pair in _reactionAdjustments) service._reactionAdjustments.Add(pair.Key, pair.Value);
+            }
+        }
+
+        private readonly struct ReactionKey : IEquatable<ReactionKey>
+        {
+            private readonly ArcanumObjectId _npc;
+            private readonly ArcanumObjectId _pc;
+
+            public ReactionKey(ArcanumObjectId npc, ArcanumObjectId pc)
+            {
+                _npc = npc;
+                _pc = pc;
+            }
+
+            public bool Equals(ReactionKey other) => _npc == other._npc && _pc == other._pc;
+            public override bool Equals(object obj) => obj is ReactionKey other && Equals(other);
+            public override int GetHashCode() => HashCode.Combine(_npc, _pc);
         }
 
         private PersistentCharacterDerivedState GetOrCreate(ArcanumObjectId identity, ObjectType objectType,

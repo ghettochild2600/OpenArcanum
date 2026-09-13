@@ -16,8 +16,15 @@ namespace Arcanum.Formats.Dialog
         public readonly string Test;   // script condition (empty = always available)
         public readonly int Target;    // line to go to when chosen (0 = end of conversation)
         public readonly string Effect; // script action run when chosen (empty = none)
+        private readonly char _sourceTokenCode;
 
         public DialogLine(int num, string text, string text2, int iq, string test, int target, string effect)
+            : this(num, text, text2, iq, test, target, effect, '\0')
+        {
+        }
+
+        private DialogLine(int num, string text, string text2, int iq, string test, int target, string effect,
+            char sourceTokenCode)
         {
             Num = num;
             Text = text;
@@ -26,6 +33,7 @@ namespace Arcanum.Formats.Dialog
             Test = test;
             Target = target;
             Effect = effect;
+            _sourceTokenCode = sourceTokenCode;
         }
 
         /// <summary>An NPC speech line (vs a player option) — engine rule: the IQ field is blank/zero.</summary>
@@ -44,12 +52,15 @@ namespace Arcanum.Formats.Dialog
 
         /// <summary>Whether the option text is an engine token (<c>b:</c> barter, <c>e:</c> goodbye, …) rather
         /// than spoken text — a single letter + ':' prefix (dialog.c <c>sub_416C10</c>).</summary>
-        public bool IsToken => !string.IsNullOrEmpty(Text) && Text.Length >= 2 && char.IsLetter(Text[0]) && Text[1] == ':';
+        public bool IsToken => _sourceTokenCode != '\0'
+            || (!string.IsNullOrEmpty(Text) && Text.Length >= 2 && char.IsLetter(Text[0]) && Text[1] == ':');
 
         /// <summary>The token letter (lower-cased), or '\0' for a plain line.</summary>
-        public char TokenCode => IsToken ? char.ToLowerInvariant(Text[0]) : '\0';
+        public char TokenCode => _sourceTokenCode != '\0' ? _sourceTokenCode
+            : IsToken ? char.ToLowerInvariant(Text[0]) : '\0';
 
         /// <summary>A copy of this line with substituted display text (a resolved generated-response token).</summary>
-        public DialogLine WithText(string text) => new DialogLine(Num, text, Text2, Iq, Test, Target, Effect);
+        public DialogLine WithText(string text)
+            => new DialogLine(Num, text, Text2, Iq, Test, Target, Effect, TokenCode);
     }
 }

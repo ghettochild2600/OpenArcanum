@@ -1,5 +1,11 @@
 namespace Arcanum.Formats.Dialog
 {
+    /// <summary>Optional strict-runtime hook that validates every effect token before any mutation begins.</summary>
+    public interface IDialogEffectPreflight
+    {
+        bool TryPreflightEffect(string code, int first, int second, char operation, out string failure);
+    }
+
     /// <summary>
     /// The game-state surface a dialog test/effect needs — implemented by the runtime (over the local player,
     /// the NPC, and shared world flags) and consumed by <see cref="DialogScriptEvaluator"/>. Keeps the pure

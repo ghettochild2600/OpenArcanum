@@ -185,6 +185,42 @@ namespace Arcanum.Runtime.Character
             return TrainingAssignmentResult.Success;
         }
 
+        internal Snapshot CaptureSnapshot() => new(this);
+        internal void RestoreSnapshot(Snapshot snapshot) => snapshot.Restore(this);
+
+        internal sealed class Snapshot
+        {
+            private readonly Dictionary<ArcanumObjectId, ProgressionValues> _values = new();
+
+            internal Snapshot(CharacterProgressionService service)
+            {
+                foreach (var pair in service._states)
+                    _values.Add(pair.Key, new ProgressionValues(pair.Value.Experience, pair.Value.Level,
+                        pair.Value.UnspentCharacterPoints));
+            }
+
+            internal void Restore(CharacterProgressionService service)
+            {
+                foreach (var pair in _values)
+                    if (service._states.TryGetValue(pair.Key, out PersistentCharacterProgressionState state))
+                        state.SetProgression(pair.Value.Experience, pair.Value.Level, pair.Value.Unspent);
+            }
+        }
+
+        private readonly struct ProgressionValues
+        {
+            public readonly int Experience;
+            public readonly int Level;
+            public readonly int Unspent;
+
+            public ProgressionValues(int experience, int level, int unspent)
+            {
+                Experience = experience;
+                Level = level;
+                Unspent = unspent;
+            }
+        }
+
         private PersistentCharacterProgressionState GetOrCreate(ArcanumObjectId identity, ObjectType objectType,
             int? prototypeNumber, CharacterProgressionSource source)
         {

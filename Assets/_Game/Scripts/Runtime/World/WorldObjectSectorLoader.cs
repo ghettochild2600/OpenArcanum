@@ -5,6 +5,7 @@ using Arcanum.Formats.Art;
 using Arcanum.Formats.Database;
 using Arcanum.Formats.Dialog;
 using Arcanum.Formats.Objects;
+using Arcanum.Formats.Quest;
 using Arcanum.Formats.Script;
 using Arcanum.Formats.Text;
 using Arcanum.Formats.Tiles;
@@ -97,6 +98,8 @@ namespace Arcanum.Runtime.World
         private DatVirtualFileSystem _vfs;
         private ProtoLibrary _prototypes;
         private ObjectArtResolvers _art;
+        private GeneratedDialogText _generatedToMale;
+        private GeneratedDialogText _generatedToFemale;
         private Transform _objectRoot;
         [SerializeField] private WorldMapSessionCoordinator session;
         private string _registeredSector;
@@ -124,6 +127,8 @@ namespace Arcanum.Runtime.World
             BindSessionAuthority();
             if (GetComponent<ProductionDialoguePresenter>() == null)
                 gameObject.AddComponent<ProductionDialoguePresenter>();
+            if (GetComponent<ProductionJournalPresenter>() == null)
+                gameObject.AddComponent<ProductionJournalPresenter>();
         }
 
         /// <summary>Idempotently binds this presentation owner to session authority.</summary>
@@ -300,7 +305,8 @@ namespace Arcanum.Runtime.World
                     },
                     instance.Weight ?? proto?.Weight ?? 0,
                     ResolveInventoryFootprint(instance.InvAid ?? proto?.InvAid),
-                    instance.InvLocation);
+                    instance.InvLocation,
+                    instance.NameIndex ?? proto?.NameIndex);
                 if (state == null && Session.IsObjectRemoved(identity))
                 {
                     suppressed++;
@@ -894,6 +900,19 @@ namespace Arcanum.Runtime.World
             ScriptDatabase scripts = ScriptDatabase.Load(_vfs);
             Session.BindUseScriptSource(scripts);
             Session.BindDialogueSource(scripts.Get, dialogNum => DialogLocator.Load(_vfs, dialogNum));
+            _generatedToMale = new GeneratedDialogText(MesReader.Read(_vfs.ReadAllBytes("mes/gd_pc2m.mes")));
+            _generatedToFemale = new GeneratedDialogText(MesReader.Read(_vfs.ReadAllBytes("mes/gd_pc2f.mes")));
+            Session.BindGeneratedDialogueText((npc, token) =>
+            {
+                bool female = Session.Characters.TryGet(npc, out PersistentCharacterState character)
+                              && character.Gender == CharacterGender.Female;
+                return (female ? _generatedToFemale : _generatedToMale).For(token);
+            });
+            Session.BindQuestSource(QuestLog.FromMes(
+                MesReader.Read(_vfs.ReadAllBytes("mes/gamequestlog.mes")),
+                MesReader.Read(_vfs.ReadAllBytes("rules/xp_quest.mes")),
+                MesReader.Read(_vfs.ReadAllBytes("rules/gamequest.mes")),
+                MesReader.Read(_vfs.ReadAllBytes("mes/gamequestlogdumb.mes"))));
             return true;
         }
 

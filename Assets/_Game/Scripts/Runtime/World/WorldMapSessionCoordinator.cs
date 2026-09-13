@@ -5,6 +5,7 @@ using Arcanum.Formats.Script;
 using Arcanum.Runtime.Character;
 using Arcanum.Runtime.Campaign;
 using Arcanum.Runtime.Dialogue;
+using Arcanum.Formats.Quest;
 using Arcanum.Script;
 using Arcanum.World;
 using UnityEngine;
@@ -30,6 +31,8 @@ namespace Arcanum.Runtime.World
         private CharacterProgressionService _progression;
         private CharacterDerivedStatService _derivedStats;
         private ProductionDialogueSession _dialogue;
+        private JournalProjectionService _journal;
+        private QuestLog _questSource;
         private ulong _nextDynamicIdentity = 1;
 
         public IReadOnlyDictionary<ArcanumObjectId, PersistentObjectState> States => _states;
@@ -52,6 +55,8 @@ namespace Arcanum.Runtime.World
         /// <summary>Compatibility name for the shared script/campaign store used by M2B callers.</summary>
         public CampaignStateService ScriptGlobals => Campaign;
         public ProductionDialogueSession Dialogue => _dialogue ??= new ProductionDialogueSession(this, Campaign);
+        public QuestLog QuestSource => _questSource;
+        public JournalProjectionService Journal => _journal ??= new JournalProjectionService(Campaign);
         public WorldUseScriptDispatcher UseScripts { get; private set; }
         public event Action<string> SectorUnloading;
         public event Action<string> SectorSelected;
@@ -66,6 +71,61 @@ namespace Arcanum.Runtime.World
             public WorldObject Runtime;
             public PersistentObjectState ObjectState;
             public PersistentPlayerState PlayerState;
+        }
+
+        internal sealed class DialogueInventorySnapshot
+        {
+            private readonly Dictionary<ArcanumObjectId, ItemValues> _items = new();
+            private readonly HashSet<ArcanumObjectId> _removed;
+            private readonly ulong _nextDynamicIdentity;
+
+            internal DialogueInventorySnapshot(WorldMapSessionCoordinator session)
+            {
+                foreach (var pair in session._states)
+                    _items.Add(pair.Key, new ItemValues(pair.Value));
+                _removed = new HashSet<ArcanumObjectId>(session._removedObjectIdentities);
+                _nextDynamicIdentity = session._nextDynamicIdentity;
+            }
+
+            internal void Restore(WorldMapSessionCoordinator session)
+            {
+                var extra = new List<ArcanumObjectId>();
+                foreach (ArcanumObjectId identity in session._states.Keys)
+                    if (!_items.ContainsKey(identity)) extra.Add(identity);
+                foreach (ArcanumObjectId identity in extra) session._states.Remove(identity);
+                foreach (var pair in _items)
+                {
+                    session._states[pair.Key] = pair.Value.State;
+                    pair.Value.Restore();
+                }
+                session._removedObjectIdentities.Clear();
+                foreach (ArcanumObjectId identity in _removed) session._removedObjectIdentities.Add(identity);
+                session._nextDynamicIdentity = _nextDynamicIdentity;
+            }
+
+            private readonly struct ItemValues
+            {
+                public readonly PersistentObjectState State;
+                private readonly ObjectPlacement _placement;
+                private readonly int _inventoryLocation;
+                private readonly int? _quantity;
+
+                public ItemValues(PersistentObjectState state)
+                {
+                    State = state;
+                    _placement = state.Placement;
+                    _inventoryLocation = state.InventoryLocation;
+                    _quantity = state.StackQuantity;
+                }
+
+                public void Restore()
+                {
+                    State.Placement = _placement;
+                    State.InventoryLocation = _inventoryLocation;
+                    State.StackQuantity = _quantity;
+                    if (_placement.Kind == ObjectPlacementKind.World) State.TilePosition = _placement.TilePosition;
+                }
+            }
         }
 
         private void Awake()
@@ -117,6 +177,15 @@ namespace Arcanum.Runtime.World
         public void BindDialogueSource(Func<int, ScriptFile> resolveScript,
             Func<int, Arcanum.Formats.Dialog.DialogScript> resolveDialogue)
             => Dialogue.BindSources(resolveScript, resolveDialogue);
+
+        public void BindGeneratedDialogueText(Func<ArcanumObjectId, char, string> resolveGeneratedText)
+            => Dialogue.BindGeneratedText(resolveGeneratedText);
+
+        public void BindQuestSource(QuestLog source)
+        {
+            _questSource = source ?? throw new ArgumentNullException(nameof(source));
+            Journal.BindSource(source);
+        }
 
         public void BindPrototypeSource(Func<int, ObjectProtoInfo> resolvePrototype)
             => _resolvePrototype = resolvePrototype ?? throw new ArgumentNullException(nameof(resolvePrototype));
@@ -330,7 +399,8 @@ namespace Arcanum.Runtime.World
             int? stackQuantity = null,
             int? unitWeight = null,
             InventoryFootprint? inventoryFootprint = null,
-            int? inventoryLocation = null)
+            int? inventoryLocation = null,
+            int? nameIndex = null)
         {
             if (!identity.IsPersistent) return null;
             if (_removedObjectIdentities.Contains(identity)) return null;
@@ -341,7 +411,7 @@ namespace Arcanum.Runtime.World
             }
             var state = new PersistentObjectState(source, identity, sector, artId, off, locked, itemFlags,
                 inventoryArtId, weaponFlags, genericFlags, stackQuantity, unitWeight, inventoryFootprint,
-                inventoryLocation);
+                inventoryLocation, nameIndex);
             _states.Add(identity, state);
             return state;
         }
@@ -349,9 +419,10 @@ namespace Arcanum.Runtime.World
         public PersistentObjectState GetOrCreate(ObjectInstance source, string sector, uint artId, bool off, bool locked,
             int itemFlags = 0, uint? inventoryArtId = null, int weaponFlags = 0, int genericFlags = 0,
             int? stackQuantity = null, int? unitWeight = null, InventoryFootprint? inventoryFootprint = null,
-            int? inventoryLocation = null)
+            int? inventoryLocation = null, int? nameIndex = null)
             => GetOrCreate(source, source.Identity, sector, artId, off, locked, itemFlags, inventoryArtId,
-                weaponFlags, genericFlags, stackQuantity, unitWeight, inventoryFootprint, inventoryLocation);
+                weaponFlags, genericFlags, stackQuantity, unitWeight, inventoryFootprint, inventoryLocation,
+                nameIndex);
 
         public void Bind(string sector, PersistentObjectState state, WorldObject runtime)
         {
@@ -760,6 +831,42 @@ namespace Arcanum.Runtime.World
                && string.Equals(state.Placement.Sector, NormalizeSector(sector), StringComparison.Ordinal);
 
         /// <summary>Validates and commits one raw containment transfer. Gameplay/equipment rules are separate.</summary>
+        public InventoryTransferResult PreviewTransferItem(ArcanumObjectId itemIdentity, ObjectPlacement source,
+            ObjectPlacement destination)
+        {
+            if (!_states.TryGetValue(itemIdentity, out PersistentObjectState item))
+                return new InventoryTransferResult(InventoryResultCode.ItemNotFound, itemIdentity, default, destination);
+            ObjectPlacement previous = item.Placement;
+            if (!IsItemType(item.Type))
+                return new InventoryTransferResult(InventoryResultCode.InvalidItemType, itemIdentity, previous, destination);
+            if (previous != source)
+                return new InventoryTransferResult(InventoryResultCode.SourceMismatch, itemIdentity, previous, destination);
+            if (previous.Kind == ObjectPlacementKind.Equipped)
+                return new InventoryTransferResult(InventoryResultCode.EquipmentCommandRequired, itemIdentity, previous,
+                    destination);
+            InventoryResultCode validation = ValidateDestination(itemIdentity, destination);
+            if (validation != InventoryResultCode.Success)
+                return new InventoryTransferResult(validation, itemIdentity, previous, destination);
+            if (previous == destination)
+                return new InventoryTransferResult(InventoryResultCode.AlreadyAtDestination, itemIdentity, previous,
+                    destination);
+
+            PersistentObjectState existing = null;
+            if (destination.Kind == ObjectPlacementKind.Contained && item.StackQuantity.HasValue)
+            {
+                existing = FindCompatibleContainedStack(item, destination.ParentIdentity);
+                if (existing != null
+                    && (long)existing.StackQuantity.Value + item.StackQuantity.Value > MaxStackQuantity)
+                    return new InventoryTransferResult(InventoryResultCode.QuantityOverflow, itemIdentity, previous,
+                        destination, existing.Identity);
+            }
+            InventoryAcceptance acceptance = destination.Kind == ObjectPlacementKind.Contained
+                ? InventoryCapacity.Evaluate(item, destination.ParentIdentity, existing)
+                : InventoryAcceptance.Accept(-1);
+            return new InventoryTransferResult(acceptance.Code, itemIdentity, previous, destination,
+                existing?.Identity ?? default, existing != null);
+        }
+
         public InventoryTransferResult TransferItem(ArcanumObjectId itemIdentity, ObjectPlacement source,
             ObjectPlacement destination)
         {
@@ -810,6 +917,116 @@ namespace Arcanum.Runtime.World
             ObjectPlacementChanged?.Invoke(item, previous, destination);
             return new InventoryTransferResult(InventoryResultCode.Success, itemIdentity, previous, destination);
         }
+
+        public bool TryFindContainedItem(ArcanumObjectId ownerIdentity, int prototypeNumber,
+            out PersistentObjectState item)
+        {
+            item = null;
+            foreach (PersistentObjectState candidate in _states.Values)
+            {
+                if (candidate.PrototypeNumber != prototypeNumber
+                    || candidate.Placement.Kind != ObjectPlacementKind.Contained
+                    || candidate.Placement.ParentIdentity != ownerIdentity) continue;
+                if (item == null || string.CompareOrdinal(candidate.Identity.Key, item.Identity.Key) < 0)
+                    item = candidate;
+            }
+            return item != null;
+        }
+
+        /// <summary>Source item_find_by_name: resolves contained items by effective OBJ_F_NAME, not prototype.</summary>
+        public bool TryFindContainedItemByName(ArcanumObjectId ownerIdentity, int nameIndex,
+            out PersistentObjectState item)
+        {
+            item = null;
+            foreach (PersistentObjectState candidate in _states.Values)
+            {
+                if (candidate.NameIndex != nameIndex
+                    || candidate.Placement.Kind != ObjectPlacementKind.Contained
+                    || candidate.Placement.ParentIdentity != ownerIdentity) continue;
+                if (item == null || string.CompareOrdinal(candidate.Identity.Key, item.Identity.Key) < 0)
+                    item = candidate;
+            }
+            return item != null;
+        }
+
+        public int GetGold(ArcanumObjectId ownerIdentity)
+        {
+            long total = 0;
+            foreach (PersistentObjectState item in _states.Values)
+                if (item.Type == ObjectType.Gold && item.Placement.Kind == ObjectPlacementKind.Contained
+                    && item.Placement.ParentIdentity == ownerIdentity)
+                    total += item.StackQuantity.GetValueOrDefault();
+            return total > int.MaxValue ? int.MaxValue : (int)total;
+        }
+
+        public bool CanAddGold(ArcanumObjectId ownerIdentity, int amount, out string failure)
+        {
+            failure = null;
+            if (amount <= 0)
+            {
+                failure = "M5B admits only positive source gold awards.";
+                return false;
+            }
+            if (!TryResolveKnownType(ownerIdentity, new Dictionary<ArcanumObjectId, ObjectType>(), out ObjectType type)
+                || type is not ObjectType.Pc and not ObjectType.Npc and not ObjectType.Container)
+            {
+                failure = "Gold owner is not a known source inventory owner.";
+                return false;
+            }
+            foreach (PersistentObjectState item in _states.Values)
+                if (item.Type == ObjectType.Gold && item.Placement.Kind == ObjectPlacementKind.Contained
+                    && item.Placement.ParentIdentity == ownerIdentity)
+                {
+                    if ((long)item.StackQuantity.GetValueOrDefault() + amount > MaxStackQuantity)
+                    {
+                        failure = "Gold quantity would overflow the source Int32 field.";
+                        return false;
+                    }
+                    return true;
+                }
+            ObjectProtoInfo prototype = _resolvePrototype?.Invoke(9056);
+            if (prototype?.Type != ObjectType.Gold)
+            {
+                failure = "Source gold prototype 9056 is unavailable.";
+                return false;
+            }
+            InventoryFootprint footprint = _resolveInventoryFootprint?.Invoke(prototype.InvAid)
+                                           ?? InventoryFootprint.OneCell;
+            InventoryAcceptance acceptance = InventoryCapacity.EvaluatePrototype(prototype, footprint, ownerIdentity);
+            if (!acceptance.Succeeded)
+            {
+                failure = $"Source gold award cannot enter the PC inventory: {acceptance.Code}.";
+                return false;
+            }
+            return true;
+        }
+
+        public void AddGold(ArcanumObjectId ownerIdentity, int amount)
+        {
+            if (!CanAddGold(ownerIdentity, amount, out string failure))
+                throw new InvalidOperationException(failure);
+            PersistentObjectState existing = null;
+            foreach (PersistentObjectState item in _states.Values)
+                if (item.Type == ObjectType.Gold && item.Placement.Kind == ObjectPlacementKind.Contained
+                    && item.Placement.ParentIdentity == ownerIdentity
+                    && (existing == null || string.CompareOrdinal(item.Identity.Key, existing.Identity.Key) < 0))
+                    existing = item;
+            if (existing != null)
+            {
+                int previous = existing.StackQuantity.Value;
+                existing.StackQuantity = checked(previous + amount);
+                ObjectQuantityChanged?.Invoke(existing, previous, existing.StackQuantity.Value);
+                return;
+            }
+            ItemCreationResult created = CreateItem(9056, ObjectPlacement.ContainedBy(ownerIdentity));
+            if (!created.Succeeded) throw new InvalidOperationException($"Gold creation failed: {created.Code}.");
+            int initial = created.State.StackQuantity.Value;
+            created.State.StackQuantity = amount;
+            ObjectQuantityChanged?.Invoke(created.State, initial, amount);
+        }
+
+        internal DialogueInventorySnapshot CaptureDialogueInventorySnapshot() => new(this);
+        internal void RestoreDialogueInventorySnapshot(DialogueInventorySnapshot snapshot) => snapshot.Restore(this);
 
         public ItemCreationResult CreateItem(int prototypeNumber, ObjectPlacement destination)
         {

@@ -355,6 +355,14 @@ namespace Arcanum.Formats.Objects
             ObjectProtoInfo info = null;
             if (_pathByNumber.TryGetValue(protoNumber, out string path))
                 ObjectProtoReader.TryReadInfo(File.ReadAllBytes(path), out info);
+            // The original engine constructs its base prototypes in proto.c; they need not have loose .pro
+            // overrides. BP_GOLD is the one such source prototype needed by the bounded dialogue reward path.
+            if (info == null && protoNumber == 9056)
+                info = new ObjectProtoInfo(9056, ObjectType.Gold, 0x60000003u,
+                    description: 9056, invAid: 0x60001003u, worth: 1)
+                {
+                    GoldQuantity = 1,
+                };
             _cache[protoNumber] = info;
             return info;
         }
