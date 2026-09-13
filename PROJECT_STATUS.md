@@ -11,21 +11,21 @@ safe/adapt/avoid reuse boundaries, and defines a dependency-ordered M1–M13 roa
 ## Current Objective
 
 M1 traversal, the bounded M2 interaction/SAP_USE kernel, M3A-M3E inventory/command/equipment/stack/capacity state,
-M4A authoritative PC/NPC primary attributes, M4B authoritative character vitality, M4C authoritative skills and
-progression, and M4D derived statistics/alignment/reaction inputs are complete.
+M4A-M4D character attributes/vitality/progression/derived statistics, and M5A's production campaign/dialogue state plus
+one authentic NPC-to-quest-state vertical slice are complete.
 `WorldMapSessionCoordinator` owns typed `World`, `Contained(parent)`, and `Equipped(parent, wornLocation)` placement,
 atomic raw item transfers/equipment replacement/stack merge and split, deterministic session-created item identities,
 source-faithful pickup/drop/owner-transfer policy, and pre-mutation weight/grid-capacity guards independently of Unity
 presentation.
 `CharacterStatService`, `CharacterProgressionService`, `CharacterVitalityService`, and
-`CharacterDerivedStatService` provide stable ObjectID-keyed attributes, skills/training, XP/level/character points,
-accumulated HP/Fatigue damage, derived maximum/current vitality, remaining source derived-stat queries, Alignment,
-aptitude inputs, and bounded reaction inputs with no Unity presentation authority.
+`CharacterDerivedStatService` provide stable ObjectID-keyed character rules. `CampaignStateService` now owns source-
+bounded global/PC flags and variables, quest state, and per-object/per-SAP state; `ProductionDialogueSession` owns
+stable-ID conversation lifecycle and strict source evaluation independently of Unity presentation.
 
-The next recommended objective is M5A — production script-host state foundation and one minimal real
-focus-object→dialogue→quest-transition vertical slice, beginning with a corpus/source audit and strict unsupported-opcode
-telemetry. Inventory/equipment UI, encumbrance consequences, economy, combat, broad dialogue/quest coverage, and save
-serialization remain deferred.
+The next recommended objective is M5B — one authentic quest-completion and journal-projection slice, admitting only
+the audited script/dialogue vocabulary required to carry one real Accepted quest to its completion/botch boundary.
+Inventory/equipment UI, encumbrance consequences, economy, combat, followers, travel, broad dialogue/quest coverage,
+and save serialization remain deferred.
 
 ## Current Branch
 
@@ -1225,6 +1225,42 @@ Completed on 2026-09-12 with Unity 6000.0.71f1 on `feature/inventory-commands`.
 - Full source audit, runtime contract, ownership graph, boundary behavior, fixtures, validation, and deferred effects:
   [`documentation_unity/m3e-capacity-state.md`](documentation_unity/m3e-capacity-state.md).
 
+## M5A Production Dialogue and Quest-State Slice
+
+Completed on 2026-09-12 with Unity 6000.0.71f1 on `feature/inventory-commands`.
+
+- The corpus audit parsed 2,399 source scripts and 12,723 mobile records without failures, finding 3,792 NPCs, 789
+  dialogue-bearing NPCs, and 533 bounded closed dialogue/state loops. The selected authentic fixture is Thomgrak,
+  ObjectID `G_DF753C8F_B655_D411_8F1D_00A0CC6511C6`, prototype 17232, script/dialogue 1760, in
+  `maps/arcanum1-024-fixed/68786586569.sec` with `dlg/01760thomgrak.dlg`.
+- `WorldMapSessionCoordinator` owns one `CampaignStateService` and one `ProductionDialogueSession`.
+  `CampaignStateService` provides stable source-bounded global/PC flags and variables, quest state, and per-object/per-
+  SAP state. Dialogue targets and campaign mutations are keyed by stable `ArcanumObjectId`; Unity objects, sprites,
+  presenters, and views do not own authoritative gameplay state.
+- Production Talk targets NPCs only, uses the source distance rule (`distance < 5`, represented by a range of 4), and
+  approaches to range 1 before execution. Missing, unloaded, invalid, or replaced targets and competing commands fail
+  or cancel explicitly; there is no NPC substitution or presentation-owned target identity.
+- Dialogue evaluation is strict and fail-closed. The admitted slice uses only the audited `LocalFlag`, `Quest`, `True`,
+  `Dialog`, `Goto`, and `DoNothing` condition/effect/action vocabulary plus ordinary dialogue returns. Unsupported or
+  malformed tokens cannot partially mutate state and produce explicit diagnostic telemetry.
+- Thomgrak's initial Human Male PC conversation opens source line 1 with exact response lines `{2,11,12,19}`. Choosing
+  line 11 sets object-local flag 1 and advances to line 60; choosing line 61 sets quest 1130 to `Accepted` and local
+  flag 70; line 70 closes. The next conversation opens line 140, exposes accepted-quest response line 143, and omits
+  unavailable line 145.
+- Computer Use physical Play Mode validation literally clicked the visible authentic NPC, observed normal PC approach,
+  selected the real dialogue responses, and proved the quest/local-state mutation. It also passed duplicate-command
+  rejection, pending-approach cancellation, target loss, sector reload cancellation, changed-state reopening,
+  Original/Enhanced/Original rebuild, NPC unload/reload, stable identity/state, and unique coordinator/loader/
+  navigation/interaction/presenter/root/PC/NPC/sprite ownership with 0 new warnings and 0 errors.
+- Validation: M5A 16/16; required regression matrix M4D 25/25, M4C 29/29, M4B 20/20, M4A 13/13, M3E 21/21,
+  M3D 18/18, M3C 13/13, M3B 13/13, M3A 8/8, M2B 8/8, M2A 16/16, PlayerNavigation 21/21, M1A 7/7,
+  M1B 11/11, WorldSessionState 27/27, and PortalArtResolver 2/2; complete EditMode 439/439. Every run had zero
+  failures, skips, or inconclusive tests; final compilation was clean.
+- Full corpus evidence, ownership/call graph, campaign and dialogue contracts, authentic closed loop, validation, and
+  deferred boundaries: [`documentation_unity/m5a-dialogue-quest-slice.md`](documentation_unity/m5a-dialogue-quest-slice.md).
+- Deferred: broad opcode/dialogue/quest support, quest completion/botch and journal projection, combat, followers,
+  travel, economy, inventory/equipment UI, character progression integration, and save serialization.
+
 ## Next Recommended Milestone
 
 The M2C candidate gate was completed on 2026-09-10 against all 22 distinct SAP_USE script numbers attached to placed
@@ -1235,9 +1271,9 @@ production or test code was changed, and the strict whitelist was not widened. S
 [`documentation_unity/m2c-sap-use-family.md`](documentation_unity/m2c-sap-use-family.md) for the candidate table and
 rejection evidence.
 
-The exact recommended next milestone is **M5A — production script-host state foundation and one minimal real
-focus-object→dialogue→quest-transition vertical slice**. Begin with a source/corpus audit of the focus-object,
-global/local script state, dialogue, quest, and journal operations required by one bounded original quest. Add strict
-unsupported-opcode telemetry and admit only that path. Keep combat, broad opcode support, equipment/spell effects,
-economy, UI expansion beyond the minimal dialogue/journal surface, and save serialization deferred. Additional SAP_USE
-families remain deferred until their owning domains exist.
+The exact recommended next milestone is **M5B — one authentic quest-completion and journal-projection slice**. Continue
+one audited real quest from `Accepted` through its source completion or botch boundary, add only the journal metadata
+and strict script/effect vocabulary that path requires, and preserve M5A's campaign/dialogue ownership. Keep combat,
+followers, travel, economy, broad opcode/dialogue/quest support, inventory/equipment UI, character progression
+integration, and save serialization deferred. Additional SAP_USE families remain deferred until their owning domains
+exist.
