@@ -53,6 +53,12 @@ namespace Arcanum.Runtime.Character
         public bool TryGet(ArcanumObjectId identity, out PersistentCharacterState state)
             => _states.TryGetValue(identity, out state);
 
+        internal void AddRestored(PersistentCharacterState state)
+        {
+            if (state == null) throw new ArgumentNullException(nameof(state));
+            _states.Add(state.Identity, state);
+        }
+
         public int GetBaseAttribute(ArcanumObjectId identity, CharacterAttribute attribute)
             => Get(identity).GetBase(attribute);
 

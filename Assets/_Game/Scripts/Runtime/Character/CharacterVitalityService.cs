@@ -43,6 +43,10 @@ namespace Arcanum.Runtime.Character
             return true;
         }
 
+        internal PersistentCharacterVitalityState GetOrCreateRestored(ArcanumObjectId identity,
+            ObjectType objectType, int? prototypeNumber, CharacterVitalitySource source)
+            => GetOrCreate(identity, objectType, prototypeNumber, source);
+
         public int GetMaximumHitPoints(ArcanumObjectId identity) => Get(identity).MaximumHitPoints;
         public int GetCurrentHitPoints(ArcanumObjectId identity) => Get(identity).CurrentHitPoints;
         public int GetMaximumFatigue(ArcanumObjectId identity) => Get(identity).MaximumFatigue;

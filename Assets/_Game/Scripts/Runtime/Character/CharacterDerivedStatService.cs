@@ -4,6 +4,20 @@ using Arcanum.Formats.Objects;
 
 namespace Arcanum.Runtime.Character
 {
+    public readonly struct CharacterReactionAdjustment
+    {
+        public ArcanumObjectId NpcIdentity { get; }
+        public ArcanumObjectId PcIdentity { get; }
+        public int Adjustment { get; }
+
+        internal CharacterReactionAdjustment(ArcanumObjectId npcIdentity, ArcanumObjectId pcIdentity, int adjustment)
+        {
+            NpcIdentity = npcIdentity;
+            PcIdentity = pcIdentity;
+            Adjustment = adjustment;
+        }
+    }
+
     /// <summary>Authoritative deterministic M4D queries keyed by persistent character identity.</summary>
     public sealed class CharacterDerivedStatService
     {
@@ -55,6 +69,28 @@ namespace Arcanum.Runtime.Character
 
         public bool TryGet(ArcanumObjectId identity, out PersistentCharacterDerivedState state)
             => _states.TryGetValue(identity, out state);
+
+        internal PersistentCharacterDerivedState GetOrCreateRestored(ArcanumObjectId identity,
+            ObjectType objectType, int? prototypeNumber, CharacterDerivedSource source)
+            => GetOrCreate(identity, objectType, prototypeNumber, source);
+
+        internal IReadOnlyList<CharacterReactionAdjustment> ExportReactionAdjustments()
+        {
+            var result = new List<CharacterReactionAdjustment>(_reactionAdjustments.Count);
+            foreach (var pair in _reactionAdjustments)
+                result.Add(new CharacterReactionAdjustment(pair.Key.Npc, pair.Key.Pc, pair.Value));
+            result.Sort((left, right) =>
+            {
+                int npc = string.CompareOrdinal(left.NpcIdentity.Key, right.NpcIdentity.Key);
+                return npc != 0 ? npc : string.CompareOrdinal(left.PcIdentity.Key, right.PcIdentity.Key);
+            });
+            return result;
+        }
+
+        internal void AddRestoredReactionAdjustment(ArcanumObjectId npc, ArcanumObjectId pc, int adjustment)
+        {
+            if (adjustment != 0) _reactionAdjustments.Add(new ReactionKey(npc, pc), adjustment);
+        }
 
         public int GetDerivedStat(ArcanumObjectId identity, CharacterDerivedStat stat)
         {
@@ -197,6 +233,9 @@ namespace Arcanum.Runtime.Character
                 _npc = npc;
                 _pc = pc;
             }
+
+            public ArcanumObjectId Npc => _npc;
+            public ArcanumObjectId Pc => _pc;
 
             public bool Equals(ReactionKey other) => _npc == other._npc && _pc == other._pc;
             public override bool Equals(object obj) => obj is ReactionKey other && Equals(other);

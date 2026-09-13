@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 
 namespace Arcanum.Formats.Objects
 {
@@ -110,6 +111,14 @@ namespace Arcanum.Formats.Objects
             return FromBytes(serialized);
         }
 
+        public static ArcanumObjectId CreateAuthored(uint value)
+        {
+            var serialized = new byte[SerializedSize];
+            serialized[0] = (byte)ArcanumObjectIdType.Authored;
+            WriteUInt32(serialized, 8, value);
+            return FromBytes(serialized);
+        }
+
         /// <summary>Creates a deterministic, session-local identity disjoint from authored A/G/P values.</summary>
         public static ArcanumObjectId CreateSessionDynamic(ulong sequence)
         {
@@ -117,6 +126,57 @@ namespace Arcanum.Formats.Objects
             serialized[0] = (byte)ArcanumObjectIdType.SessionDynamic;
             for (int index = 0; index < 8; index++) serialized[8 + index] = (byte)(sequence >> (index * 8));
             return FromBytes(serialized);
+        }
+
+        /// <summary>Parses only the canonical persistent keys emitted by this type.</summary>
+        public static bool TryParsePersistent(string key, out ArcanumObjectId identity)
+        {
+            identity = default;
+            if (string.IsNullOrEmpty(key)) return false;
+
+            if (key.StartsWith("A_", StringComparison.Ordinal) && key.Length == 10
+                && TryHexUInt32(key.AsSpan(2), out uint authored))
+                identity = CreateAuthored(authored);
+            else if (key.StartsWith("D_", StringComparison.Ordinal) && key.Length == 18
+                     && ulong.TryParse(key.AsSpan(2), NumberStyles.AllowHexSpecifier,
+                         CultureInfo.InvariantCulture, out ulong sequence))
+                identity = CreateSessionDynamic(sequence);
+            else if (key.StartsWith("P_", StringComparison.Ordinal) && key.Length == 37)
+            {
+                string[] parts = key.Split('_');
+                if (parts.Length != 5 || !TryHexUInt32(parts[1], out uint x)
+                    || !TryHexUInt32(parts[2], out uint y) || !TryHexUInt32(parts[3], out uint temporary)
+                    || !TryHexUInt32(parts[4], out uint map)) return false;
+                long location = unchecked((long)((ulong)y << 32 | x));
+                identity = CreatePositional(location, unchecked((int)temporary), unchecked((int)map));
+            }
+            else if (key.StartsWith("G_", StringComparison.Ordinal) && key.Length == 38)
+            {
+                string compact = key.Substring(2).Replace("_", string.Empty);
+                if (compact.Length != 32) return false;
+                var serialized = new byte[SerializedSize];
+                serialized[0] = (byte)ArcanumObjectIdType.Guid;
+                for (int index = 0; index < 16; index++)
+                {
+                    if (!byte.TryParse(compact.AsSpan(index * 2, 2), NumberStyles.AllowHexSpecifier,
+                            CultureInfo.InvariantCulture, out serialized[8 + index])) return false;
+                }
+                identity = FromBytes(serialized);
+            }
+            else return false;
+
+            return identity.IsPersistent && string.Equals(identity.Key, key, StringComparison.Ordinal);
+        }
+
+        public bool TryGetSessionDynamicSequence(out ulong sequence)
+        {
+            if (Type != ArcanumObjectIdType.SessionDynamic || Key == null)
+            {
+                sequence = 0;
+                return false;
+            }
+            return ulong.TryParse(Key.AsSpan(2), NumberStyles.AllowHexSpecifier,
+                CultureInfo.InvariantCulture, out sequence);
         }
 
         public bool Equals(ArcanumObjectId other)
@@ -150,5 +210,16 @@ namespace Arcanum.Formats.Objects
 
         private static ulong ReadUInt64(byte[] bytes, int offset)
             => ReadUInt32(bytes, offset) | ((ulong)ReadUInt32(bytes, offset + 4) << 32);
+
+        private static bool TryHexUInt32(ReadOnlySpan<char> text, out uint value)
+            => uint.TryParse(text, NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out value);
+
+        private static void WriteUInt32(byte[] bytes, int offset, uint value)
+        {
+            bytes[offset] = (byte)value;
+            bytes[offset + 1] = (byte)(value >> 8);
+            bytes[offset + 2] = (byte)(value >> 16);
+            bytes[offset + 3] = (byte)(value >> 24);
+        }
     }
 }

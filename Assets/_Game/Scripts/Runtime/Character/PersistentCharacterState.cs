@@ -14,6 +14,8 @@ namespace Arcanum.Runtime.Character
         public int? PrototypeNumber { get; }
         public bool HasInstanceStatOverride { get; }
         public CharacterAttributeSet BaseAttributes { get; }
+        public CharacterRace SourceRace => _sourceRace;
+        public CharacterGender SourceGender => _sourceGender;
         public CharacterRace Race { get; private set; }
         public CharacterGender Gender { get; private set; }
 

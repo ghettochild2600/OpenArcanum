@@ -155,6 +155,40 @@ namespace Arcanum.Runtime.World
             IsRuntimeCreated = true;
         }
 
+        internal PersistentObjectState(ArcanumObjectId identity, ArcanumObjectId authoredParentIdentity,
+            string sourceSector, ObjectType type, int prototypeNumber, int nameIndex, int socialClass,
+            long? authoredLocation, uint artId, bool off, bool locked, int useScriptNum, int dialogNum,
+            int itemFlags, uint? inventoryArtId, int weaponFlags, int genericFlags, int unitWeight,
+            InventoryFootprint inventoryFootprint, int inventoryLocation, int? stackQuantity, bool portalOpen,
+            Vector2 tilePosition, ObjectPlacement placement, bool isRuntimeCreated)
+        {
+            Identity = identity;
+            AuthoredParentIdentity = authoredParentIdentity;
+            SourceSector = sourceSector;
+            Type = type;
+            PrototypeNumber = prototypeNumber;
+            NameIndex = nameIndex;
+            SocialClass = socialClass;
+            AuthoredLocation = authoredLocation;
+            ArtId = artId;
+            Off = off;
+            Locked = locked;
+            UseScriptNum = useScriptNum;
+            DialogNum = dialogNum;
+            ItemFlags = itemFlags;
+            InventoryArtId = inventoryArtId;
+            WeaponFlags = weaponFlags;
+            GenericFlags = genericFlags;
+            UnitWeight = unitWeight;
+            InventoryFootprint = inventoryFootprint;
+            InventoryLocation = inventoryLocation;
+            StackQuantity = ValidateStackQuantity(type, stackQuantity);
+            PortalOpen = portalOpen;
+            TilePosition = tilePosition;
+            Placement = placement;
+            IsRuntimeCreated = isRuntimeCreated;
+        }
+
         internal bool Matches(ObjectInstance source, string sector)
             => SourceSector == sector && Type == source.Type && PrototypeNumber == source.PrototypeNumber
                && AuthoredLocation == source.Location && AuthoredParentIdentity == source.ParentIdentity;

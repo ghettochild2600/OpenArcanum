@@ -70,6 +70,12 @@ namespace Arcanum.Runtime.Character
         public bool TryGet(ArcanumObjectId identity, out PersistentCharacterProgressionState state)
             => _states.TryGetValue(identity, out state);
 
+        internal void AddRestored(PersistentCharacterProgressionState state)
+        {
+            if (state == null) throw new ArgumentNullException(nameof(state));
+            _states.Add(state.Identity, state);
+        }
+
         public bool TryGetLevel(ArcanumObjectId identity, out int level)
         {
             if (_states.TryGetValue(identity, out PersistentCharacterProgressionState state))

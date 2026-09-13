@@ -9,6 +9,7 @@ using Arcanum.Runtime.Dialogue;
 using Arcanum.Formats.Quest;
 using Arcanum.Script;
 using Arcanum.World;
+using Arcanum.Runtime.Save;
 using UnityEngine;
 
 namespace Arcanum.Runtime.World
@@ -27,6 +28,7 @@ namespace Arcanum.Runtime.World
         private ISectorPresentationOwner _objectOwner;
         private Func<int, ObjectProtoInfo> _resolvePrototype;
         private Func<uint?, InventoryFootprint> _resolveInventoryFootprint;
+        private CharacterStatService _characters;
         private InventoryCapacityService _inventoryCapacity;
         private CharacterVitalityService _vitality;
         private CharacterProgressionService _progression;
@@ -34,6 +36,14 @@ namespace Arcanum.Runtime.World
         private ProductionDialogueSession _dialogue;
         private JournalProjectionService _journal;
         private QuestLog _questSource;
+        private PortalTransitionScheduler _portals;
+        private CampaignStateService _campaign;
+        private SessionSaveService _saveGames;
+        private Func<int, ScriptFile> _resolveUseScript;
+        private Func<int, ScriptFile> _resolveDialogueScript;
+        private Func<int, Arcanum.Formats.Dialog.DialogScript> _resolveDialogue;
+        private Func<ArcanumObjectId, char, string> _resolveGeneratedDialogueText;
+        private ITrainingDialogueTextSource _trainingDialogueText;
         private ulong _nextDynamicIdentity = 1;
 
         public IReadOnlyDictionary<ArcanumObjectId, PersistentObjectState> States => _states;
@@ -42,7 +52,7 @@ namespace Arcanum.Runtime.World
         public string SelectedSector { get; private set; }
         public bool HasSelectedSector => !string.IsNullOrEmpty(SelectedSector);
         public PersistentPlayerState PlayerState { get; private set; }
-        public CharacterStatService Characters { get; } = new();
+        public CharacterStatService Characters => _characters ??= new CharacterStatService();
         public CharacterProgressionService Progression
             => _progression ??= new CharacterProgressionService(Characters);
         public CharacterVitalityService Vitality
@@ -51,13 +61,14 @@ namespace Arcanum.Runtime.World
             => _derivedStats ??= new CharacterDerivedStatService(Characters, Progression, InventoryCapacity);
         public InventoryCapacityService InventoryCapacity
             => _inventoryCapacity ??= new InventoryCapacityService(this);
-        public PortalTransitionScheduler Portals { get; } = new();
-        public CampaignStateService Campaign { get; } = new();
+        public PortalTransitionScheduler Portals => _portals ??= new PortalTransitionScheduler();
+        public CampaignStateService Campaign => _campaign ??= new CampaignStateService();
         /// <summary>Compatibility name for the shared script/campaign store used by M2B callers.</summary>
         public CampaignStateService ScriptGlobals => Campaign;
-        public ProductionDialogueSession Dialogue => _dialogue ??= new ProductionDialogueSession(this, Campaign);
+        public ProductionDialogueSession Dialogue => _dialogue ??= CreateDialogue();
         public QuestLog QuestSource => _questSource;
-        public JournalProjectionService Journal => _journal ??= new JournalProjectionService(Campaign);
+        public JournalProjectionService Journal => _journal ??= CreateJournal();
+        public SessionSaveService SaveGames => _saveGames ??= new SessionSaveService(this);
         public WorldUseScriptDispatcher UseScripts { get; private set; }
         public event Action<string> SectorUnloading;
         public event Action<string> SectorSelected;
@@ -169,26 +180,57 @@ namespace Arcanum.Runtime.World
         public void BindUseScriptSource(ScriptDatabase scripts)
         {
             if (scripts == null) throw new ArgumentNullException(nameof(scripts));
-            UseScripts = new WorldUseScriptDispatcher(this, scripts.Get, ScriptGlobals);
+            BindUseScriptSource(scripts.Get);
         }
 
         public void BindUseScriptSource(Func<int, ScriptFile> resolveScript)
-            => UseScripts = new WorldUseScriptDispatcher(this, resolveScript, ScriptGlobals);
+        {
+            _resolveUseScript = resolveScript ?? throw new ArgumentNullException(nameof(resolveScript));
+            UseScripts = new WorldUseScriptDispatcher(this, resolveScript, ScriptGlobals);
+        }
 
         public void BindDialogueSource(Func<int, ScriptFile> resolveScript,
             Func<int, Arcanum.Formats.Dialog.DialogScript> resolveDialogue)
-            => Dialogue.BindSources(resolveScript, resolveDialogue);
+        {
+            _resolveDialogueScript = resolveScript ?? throw new ArgumentNullException(nameof(resolveScript));
+            _resolveDialogue = resolveDialogue ?? throw new ArgumentNullException(nameof(resolveDialogue));
+            Dialogue.BindSources(resolveScript, resolveDialogue);
+        }
 
         public void BindGeneratedDialogueText(Func<ArcanumObjectId, char, string> resolveGeneratedText)
-            => Dialogue.BindGeneratedText(resolveGeneratedText);
+        {
+            _resolveGeneratedDialogueText = resolveGeneratedText
+                ?? throw new ArgumentNullException(nameof(resolveGeneratedText));
+            Dialogue.BindGeneratedText(resolveGeneratedText);
+        }
 
         public void BindTrainingDialogueText(ITrainingDialogueTextSource source)
-            => Dialogue.BindTrainingDialogueText(source);
+        {
+            _trainingDialogueText = source ?? throw new ArgumentNullException(nameof(source));
+            Dialogue.BindTrainingDialogueText(source);
+        }
 
         public void BindQuestSource(QuestLog source)
         {
             _questSource = source ?? throw new ArgumentNullException(nameof(source));
             Journal.BindSource(source);
+        }
+
+        private ProductionDialogueSession CreateDialogue()
+        {
+            var dialogue = new ProductionDialogueSession(this, Campaign);
+            if (_resolveDialogueScript != null && _resolveDialogue != null)
+                dialogue.BindSources(_resolveDialogueScript, _resolveDialogue);
+            if (_resolveGeneratedDialogueText != null) dialogue.BindGeneratedText(_resolveGeneratedDialogueText);
+            if (_trainingDialogueText != null) dialogue.BindTrainingDialogueText(_trainingDialogueText);
+            return dialogue;
+        }
+
+        private JournalProjectionService CreateJournal()
+        {
+            var journal = new JournalProjectionService(Campaign);
+            if (_questSource != null) journal.BindSource(_questSource);
+            return journal;
         }
 
         public void BindPrototypeSource(Func<int, ObjectProtoInfo> resolvePrototype)
@@ -1473,6 +1515,79 @@ namespace Arcanum.Runtime.World
             }
             _loaded.Remove(sector);
             if (_loaded.Count == 0) CurrentMap = null;
+        }
+
+        internal ulong NextDynamicIdentity => _nextDynamicIdentity;
+        internal IReadOnlyCollection<ArcanumObjectId> RemovedObjectIdentities => _removedObjectIdentities;
+
+        internal void CaptureLoadedStateForSave()
+        {
+            foreach (Dictionary<ArcanumObjectId, LoadedBinding> sector in _loaded.Values)
+                foreach (LoadedBinding binding in sector.Values)
+                    if (binding.Runtime != null)
+                    {
+                        binding.ObjectState?.Capture(binding.Runtime);
+                        binding.PlayerState?.Capture(binding.Runtime);
+                    }
+        }
+
+        /// <summary>
+        /// Unloads presentation and replaces every authoritative runtime root with an empty session.
+        /// Data/configuration sources and registered presentation owners remain bound so a validated save can load.
+        /// </summary>
+        public void ResetAuthoritativeSession()
+        {
+            ClearSelectedSector();
+            foreach (string sector in new List<string>(_loaded.Keys)) UnloadSector(sector);
+
+            _states.Clear();
+            _removedObjectIdentities.Clear();
+            _nextDynamicIdentity = 1;
+            PlayerState = null;
+            _characters = null;
+            _progression = null;
+            _vitality = null;
+            _inventoryCapacity = null;
+            _derivedStats = null;
+            _campaign = null;
+            _portals = null;
+            _dialogue = null;
+            _journal = null;
+            UseScripts = _resolveUseScript == null
+                ? null
+                : new WorldUseScriptDispatcher(this, _resolveUseScript, Campaign);
+            CurrentMap = null;
+            SelectedSector = null;
+        }
+
+        internal bool ApplyRestorePlan(SessionRestorePlan plan)
+        {
+            if (plan == null) throw new ArgumentNullException(nameof(plan));
+            ClearSelectedSector();
+            foreach (string sector in new List<string>(_loaded.Keys)) UnloadSector(sector);
+
+            _states.Clear();
+            foreach (var pair in plan.Objects) _states.Add(pair.Key, pair.Value);
+            _removedObjectIdentities.Clear();
+            foreach (ArcanumObjectId identity in plan.Tombstones) _removedObjectIdentities.Add(identity);
+            _nextDynamicIdentity = plan.NextDynamicIdentity;
+            PlayerState = plan.Player;
+
+            _characters = plan.Characters;
+            _progression = plan.Progression;
+            _vitality = plan.Vitality;
+            _inventoryCapacity = plan.InventoryCapacity;
+            _derivedStats = plan.DerivedStats;
+            _campaign = plan.Campaign;
+            _portals = new PortalTransitionScheduler();
+            _dialogue = null;
+            _journal = null;
+            UseScripts = _resolveUseScript == null
+                ? null
+                : new WorldUseScriptDispatcher(this, _resolveUseScript, Campaign);
+            CurrentMap = null;
+            SelectedSector = null;
+            return SelectSector(plan.SelectedSector);
         }
 
         private void OnDestroy()

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using Arcanum.Formats.Objects;
 using Arcanum.Formats.Quest;
 using Arcanum.Script;
+using Arcanum.Runtime.Save;
 
 namespace Arcanum.Runtime.Campaign
 {
@@ -274,6 +275,82 @@ namespace Arcanum.Runtime.Campaign
             SetScriptAttachment(identity, attachmentPoint, state.Flags, counters);
         }
 
+        internal CampaignSaveData ExportSaveData()
+        {
+            var data = new CampaignSaveData
+            {
+                StoryState = _storyState,
+                QuestClock = _questClock,
+                GlobalVariables = new List<IndexedIntSaveData>(),
+                GlobalFlags = new List<int>(),
+                PcVariables = new List<IndexedIntSaveData>(),
+                PcFlags = new List<int>(),
+                Quests = new List<QuestSaveData>(),
+                Attachments = new List<ScriptAttachmentSaveData>(),
+            };
+            for (int index = 0; index < GlobalVariableCount; index++)
+                if (_globalVariables[index] != 0)
+                    data.GlobalVariables.Add(new IndexedIntSaveData { Index = index, Value = _globalVariables[index] });
+            for (int index = 0; index < GlobalFlagCount; index++)
+                if (GetBit(_globalFlags, index) != 0) data.GlobalFlags.Add(index);
+            for (int index = 0; index < PcVariableCount; index++)
+                if (_pcVariables[index] != 0)
+                    data.PcVariables.Add(new IndexedIntSaveData { Index = index, Value = _pcVariables[index] });
+            for (int index = 0; index < PcFlagCount; index++)
+                if (GetBit(_pcFlags, index) != 0) data.PcFlags.Add(index);
+            for (int index = 0; index < QuestCount; index++)
+            {
+                QuestTimestamp timestamp = _pcQuestTimestamps[index];
+                if (_pcQuestStates[index] == 0 && _globalQuestStates[index] == QuestState.Accepted
+                    && timestamp == default) continue;
+                data.Quests.Add(new QuestSaveData
+                {
+                    Number = FirstQuestNumber + index,
+                    PcState = _pcQuestStates[index],
+                    GlobalState = (int)_globalQuestStates[index],
+                    TimestampDays = timestamp.Days,
+                    TimestampMilliseconds = timestamp.Milliseconds,
+                });
+            }
+            foreach (var pair in _attachments)
+                data.Attachments.Add(new ScriptAttachmentSaveData
+                {
+                    Identity = pair.Key.Identity.Key,
+                    AttachmentPoint = pair.Key.AttachmentPoint,
+                    Flags = pair.Value.Flags,
+                    Counters = pair.Value.Counters,
+                });
+            data.Attachments.Sort((left, right) =>
+            {
+                int identity = string.CompareOrdinal(left.Identity, right.Identity);
+                return identity != 0 ? identity : left.AttachmentPoint.CompareTo(right.AttachmentPoint);
+            });
+            return data;
+        }
+
+        internal void RestoreSaveData(CampaignSaveData data)
+        {
+            _storyState = data.StoryState;
+            _questClock = data.QuestClock;
+            foreach (IndexedIntSaveData entry in data.GlobalVariables) _globalVariables[entry.Index] = entry.Value;
+            foreach (int index in data.GlobalFlags) SetBit(_globalFlags, index, 1);
+            foreach (IndexedIntSaveData entry in data.PcVariables) _pcVariables[entry.Index] = entry.Value;
+            foreach (int index in data.PcFlags) SetBit(_pcFlags, index, 1);
+            foreach (QuestSaveData quest in data.Quests)
+            {
+                int index = quest.Number - FirstQuestNumber;
+                _pcQuestStates[index] = quest.PcState;
+                _globalQuestStates[index] = (QuestState)quest.GlobalState;
+                _pcQuestTimestamps[index] = new QuestTimestamp(quest.TimestampDays, quest.TimestampMilliseconds);
+            }
+            foreach (ScriptAttachmentSaveData attachment in data.Attachments)
+            {
+                ArcanumObjectId.TryParsePersistent(attachment.Identity, out ArcanumObjectId identity);
+                _attachments.Add(new ScriptAttachmentKey(identity, attachment.AttachmentPoint),
+                    new ScriptAttachmentState(attachment.Flags, attachment.Counters));
+            }
+        }
+
         internal Snapshot CaptureSnapshot() => new(this);
         internal void RestoreSnapshot(Snapshot snapshot) => snapshot.Restore(this);
 
@@ -336,6 +413,9 @@ namespace Arcanum.Runtime.Campaign
                 _identity = identity;
                 _attachmentPoint = attachmentPoint;
             }
+
+            public ArcanumObjectId Identity => _identity;
+            public int AttachmentPoint => _attachmentPoint;
 
             public bool Equals(ScriptAttachmentKey other)
                 => _identity == other._identity && _attachmentPoint == other._attachmentPoint;
