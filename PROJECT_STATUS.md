@@ -12,7 +12,8 @@ safe/adapt/avoid reuse boundaries, and defines a dependency-ordered M1–M13 roa
 
 M1 traversal, the bounded M2 interaction/SAP_USE kernel, M3A-M3E inventory/command/equipment/stack/capacity state,
 M4A-M4D character attributes/vitality/progression/derived statistics, M5A-M5C campaign/dialogue/quest/journal/trainer
-vertical slices, M6A authoritative session save/load, and M6B migration boundaries/domain save slots are complete.
+vertical slices, M6A authoritative session save/load, M6B migration boundaries/domain save slots, and M6C bounded
+player-facing manual save/load presentation are complete.
 `WorldMapSessionCoordinator` owns typed `World`, `Contained(parent)`, and `Equipped(parent, wornLocation)` placement,
 atomic raw item transfers/equipment replacement/stack merge and split, deterministic session-created item identities,
 source-faithful pickup/drop/owner-transfer policy, and pre-mutation weight/grid-capacity guards independently of Unity
@@ -29,13 +30,15 @@ authoritative domains. `SessionSaveService` now exports those M1-M5 owners into 
 roots, and rebuilds disposable Unity presentation. `SessionSaveMigrator` now owns format/version dispatch into the one
 current validated snapshot shape. `SessionSaveSlotService` owns safe IDs, metadata derived from authoritative state,
 sorted enumeration, create/overwrite/load/delete, durable single-file atomic replacement, stale-temporary cleanup, and
-typed failures under `Application.persistentDataPath/Saves`. Canonical A/G/P/D ObjectIDs, dynamic allocator/tombstones,
+typed failures under `Application.persistentDataPath/Saves`. M6C adds a transient controller and minimal IMGUI
+presenter over that boundary plus a shared input gate; the slot/session services remain authoritative. Canonical
+A/G/P/D ObjectIDs, dynamic allocator/tombstones,
 inventory/equipment/stacks, character inputs and mutations, campaign/quest/SAP/reaction state, and production PC
 map-global state round-trip; dialogue/path/presentation state intentionally normalizes rather than serializes.
 
-The next recommended objective is M6C — bounded player-facing manual save/load presentation and corrupt-slot recovery
-UX over the existing slot service. Autosave, quicksave, cloud sync, original Arcanum save compatibility, combat,
-followers, world travel, barter, and broader gameplay remain deferred.
+The next recommended objective is M7A - audit and implement the first authoritative local map-transition slice for one
+real teleport/jump-point path. Town/world-map travel, encounters, broader clock/day-night behavior, autosave, quicksave,
+cloud sync, original Arcanum save compatibility, combat, followers, and barter remain deferred.
 
 ## Current Branch
 
@@ -73,6 +76,22 @@ golden fixtures, and exact omissions.
 See [`documentation_unity/m6b-save-migration-slots.md`](documentation_unity/m6b-save-migration-slots.md) for the
 pre-implementation schema/risk audit, migration and slot call graph, metadata/path/atomicity contract, exact real-data
 fixtures, validation results, deliberate omissions, and M6C recommendation.
+
+## M6C Validation Baseline (2026-09-13)
+
+- Unity 6000.0.71f1 compilation: clean
+- focused M6C EditMode: 26/26
+- required M1-M6C regression matrix: 390/390
+- complete EditMode suite: 561/561
+- physical UI create/overwrite/load/corrupt/delete/cancel flow: passed
+- exact A -> B -> A -> B player-position restoration: passed
+- post-panel click navigation and real-food pickup through production input: passed
+- unique coordinator/navigation/interaction/presenter/gate/object views after load: passed
+- PlayMode warnings/errors: 0/0
+
+See [`documentation_unity/m6c-manual-save-load-ui.md`](documentation_unity/m6c-manual-save-load-ui.md) for the final
+ownership graph, presentation/lifecycle contract, typed diagnostics, physical validation evidence, deliberate limits,
+and exact M7A recommendation.
 
 ## Verified Baseline
 
@@ -1381,14 +1400,13 @@ Completed on 2026-09-13 with Unity 6000.0.71f1 on `feature/inventory-commands`.
 
 ## Next Recommended Milestone
 
-M6B is complete with explicit session-format migration dispatch, a versioned domain slot wrapper, authoritative-derived
-metadata, safe contained slot paths, atomic create/overwrite/delete lifecycle, corrupt-slot rollback, and real
-alpha -> beta -> alpha Play Mode coverage across inventory, equipment, portals, quests, training, Gold, NPC state,
-navigation, and graphics rebuild. See
-[`documentation_unity/m6b-save-migration-slots.md`](documentation_unity/m6b-save-migration-slots.md) for the exact
+M6C is complete with a bounded player-facing create/overwrite/list/load/delete surface, explicit confirmation and
+cancellation, corrupt-slot visibility, typed failure messaging, and shared transient input gating over the unchanged
+M6B slot and M6A session authorities. See
+[`documentation_unity/m6c-manual-save-load-ui.md`](documentation_unity/m6c-manual-save-load-ui.md) for the exact
 contract and validation evidence.
 
-The exact recommended next milestone is **M6C — bounded player-facing manual save/load presentation and corrupt-slot
-recovery UX over `SessionSaveSlotService`**. Expose create/overwrite/list/load/delete and typed failure messaging while
-keeping the coordinator and domain services authoritative. Do not include autosave, quicksave, cloud sync, original
-Arcanum save compatibility, combat, followers, barter, or world travel in M6C.
+The exact recommended next task is **M7A - audit and implement the first authoritative local map-transition slice**.
+Trace original teleport/jump-point and map-index/coordinate semantics, add one typed session-owned transition request,
+and prove one real scripted/physical transition with stable PC identity/state and the expected return position. Do not
+include town/world-map travel, encounters, broader clock/day-night behavior, combat, followers, or barter in M7A.
