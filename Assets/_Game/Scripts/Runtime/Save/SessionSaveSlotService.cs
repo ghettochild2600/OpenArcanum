@@ -10,7 +10,7 @@ using Newtonsoft.Json;
 namespace Arcanum.Runtime.Save
 {
     /// <summary>Owns safe domain slot naming, metadata, enumeration, and single-file atomic lifecycle.</summary>
-    public sealed class SessionSaveSlotService
+    public sealed class SessionSaveSlotService : ISessionSaveSlotOperations
     {
         public const string SlotFormatIdentifier = "OpenArcanum.SaveSlot";
         public const int CurrentSlotVersion = 1;

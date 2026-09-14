@@ -12,6 +12,7 @@ using Arcanum.Formats.Tiles;
 using Arcanum.Formats.World;
 using Arcanum.Runtime.Character;
 using Arcanum.Runtime.Dialogue;
+using Arcanum.Runtime.Save;
 using Arcanum.World;
 using UnityEngine;
 
@@ -125,10 +126,19 @@ namespace Arcanum.Runtime.World
         private void Awake()
         {
             BindSessionAuthority();
+            EnsureProductionPresentationComponents();
+        }
+
+        internal void EnsureProductionPresentationComponents()
+        {
+            if (GetComponent<PlayerInputGate>() == null)
+                gameObject.AddComponent<PlayerInputGate>();
             if (GetComponent<ProductionDialoguePresenter>() == null)
                 gameObject.AddComponent<ProductionDialoguePresenter>();
             if (GetComponent<ProductionJournalPresenter>() == null)
                 gameObject.AddComponent<ProductionJournalPresenter>();
+            if (GetComponent<ProductionSaveLoadPresenter>() == null)
+                gameObject.AddComponent<ProductionSaveLoadPresenter>();
         }
 
         /// <summary>Idempotently binds this presentation owner to session authority.</summary>

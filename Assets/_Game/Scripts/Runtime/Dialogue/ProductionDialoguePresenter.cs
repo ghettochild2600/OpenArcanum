@@ -8,11 +8,17 @@ namespace Arcanum.Runtime.Dialogue
     public sealed class ProductionDialoguePresenter : MonoBehaviour
     {
         private WorldMapSessionCoordinator _session;
+        private PlayerInputGate _inputGate;
 
-        private void Awake() => _session = GetComponent<WorldMapSessionCoordinator>();
+        private void Awake()
+        {
+            _session = GetComponent<WorldMapSessionCoordinator>();
+            _inputGate = GetComponent<PlayerInputGate>();
+        }
 
         private void Update()
         {
+            if (_inputGate != null && _inputGate.IsBlocked) return;
             ProductionDialogueSession dialogue = _session?.Dialogue;
             if (dialogue == null || dialogue.Phase != DialogueSessionPhase.AwaitingPlayerChoice) return;
             if (Input.GetKeyDown(KeyCode.Escape)) dialogue.Cancel("Cancelled by player.");
@@ -22,6 +28,7 @@ namespace Arcanum.Runtime.Dialogue
 
         private void OnGUI()
         {
+            if (_inputGate != null && _inputGate.IsBlocked) return;
             ProductionDialogueSession dialogue = _session?.Dialogue;
             if (dialogue == null || dialogue.Phase != DialogueSessionPhase.AwaitingPlayerChoice) return;
             float width = Mathf.Min(760f, Screen.width - 40f);

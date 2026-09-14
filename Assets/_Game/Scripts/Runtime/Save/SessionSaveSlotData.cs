@@ -2,6 +2,15 @@ using System.Collections.Generic;
 
 namespace Arcanum.Runtime.Save
 {
+    /// <summary>Bounded domain operations exposed to player-facing save/load presentation.</summary>
+    public interface ISessionSaveSlotOperations
+    {
+        SessionSaveSlotResult SaveSlot(string slotId);
+        SessionSaveSlotResult LoadSlot(string slotId);
+        SessionSaveSlotListResult ListSlots();
+        SessionSaveSlotResult DeleteSlot(string slotId);
+    }
+
     public sealed class SessionSaveSlotData
     {
         public string SlotFormat { get; set; }

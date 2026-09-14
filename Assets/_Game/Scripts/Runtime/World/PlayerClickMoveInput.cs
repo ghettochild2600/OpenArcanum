@@ -13,6 +13,7 @@ namespace Arcanum.Runtime.World
         private PlayerNavigationController _navigation;
         private PlayerInteractionController _interaction;
         private WorldObjectSectorLoader _loader;
+        private PlayerInputGate _inputGate;
         private Vector3 _pressPosition;
 
         public Vector2Int? LastClickedTile { get; private set; }
@@ -26,10 +27,13 @@ namespace Arcanum.Runtime.World
             _loader = GetComponent<WorldObjectSectorLoader>();
             _interaction = GetComponent<PlayerInteractionController>()
                 ?? gameObject.AddComponent<PlayerInteractionController>();
+            _inputGate = GetComponent<PlayerInputGate>();
         }
 
         private void Update()
         {
+            _inputGate ??= GetComponent<PlayerInputGate>();
+            if (_inputGate != null && _inputGate.IsBlocked) return;
             if (Input.GetMouseButtonDown(0)) _pressPosition = Input.mousePosition;
             if (!Input.GetMouseButtonUp(0)) return;
             if ((Input.mousePosition - _pressPosition).sqrMagnitude > dragThresholdPixels * dragThresholdPixels) return;
