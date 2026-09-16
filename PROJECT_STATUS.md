@@ -13,7 +13,7 @@ safe/adapt/avoid reuse boundaries, and defines a dependency-ordered M1–M13 roa
 M1 traversal, the bounded M2 interaction/SAP_USE kernel, M3A-M3E inventory/command/equipment/stack/capacity state,
 M4A-M4D character attributes/vitality/progression/derived statistics, M5A-M5C campaign/dialogue/quest/journal/trainer
 vertical slices, M6A authoritative session save/load, M6B migration boundaries/domain save slots, and M6C bounded
-player-facing manual save/load presentation are complete.
+player-facing manual save/load presentation, and M7A bounded passive local map transitions are complete.
 `WorldMapSessionCoordinator` owns typed `World`, `Contained(parent)`, and `Equipped(parent, wornLocation)` placement,
 atomic raw item transfers/equipment replacement/stack merge and split, deterministic session-created item identities,
 source-faithful pickup/drop/owner-transfer policy, and pre-mutation weight/grid-capacity guards independently of Unity
@@ -36,8 +36,14 @@ A/G/P/D ObjectIDs, dynamic allocator/tombstones,
 inventory/equipment/stacks, character inputs and mutations, campaign/quest/SAP/reaction state, and production PC
 map-global state round-trip; dialogue/path/presentation state intentionally normalizes rather than serializes.
 
-The next recommended objective is M7A - audit and implement the first authoritative local map-transition slice for one
-real teleport/jump-point path. Town/world-map travel, encounters, broader clock/day-night behavior, autosave, quicksave,
+M7A adds strict MapList/map.jmp destination preflight and coordinator-owned cross-map teardown/relocation/rebind of the
+same production PC. Every entered navigation waypoint can activate a passive source jump; residual old-route movement
+is discarded. The real Bates Mansion Lev 1 (id 12) exit reaches overland (id 1) at global `(61976,65664)` without replacing
+M3-M6 domain state or changing V1 saves. Non-positive sentinels and remote same-map jumps remain explicit Unsupported.
+
+The next recommended objective is M7B - source-audit and implement one bounded authentic overland/area entrance and
+return path, starting with the Bates relationship. Broader town/world-map travel, encounters, clock/day-night behavior,
+autosave, quicksave,
 cloud sync, original Arcanum save compatibility, combat, followers, and barter remain deferred.
 
 ## Current Branch
@@ -92,6 +98,26 @@ fixtures, validation results, deliberate omissions, and M6C recommendation.
 See [`documentation_unity/m6c-manual-save-load-ui.md`](documentation_unity/m6c-manual-save-load-ui.md) for the final
 ownership graph, presentation/lifecycle contract, typed diagnostics, physical validation evidence, deliberate limits,
 and exact M7A recommendation.
+
+## M7A Validation Baseline (2026-09-15)
+
+- Unity 6000.0.71f1 compilation: clean
+- resumed focused M7A baseline: 14 passed / 0 failed / 0 skipped / 0 inconclusive
+- final expanded focused M7A: 24 passed / 0 failed / 0 skipped / 0 inconclusive
+- required M1-M6C regressions: 390 passed / 0 failed / 0 skipped / 0 inconclusive
+- complete EditMode: 585 passed / 0 failed / 0 skipped / 0 inconclusive
+- physical Bates floor click -> authentic passive overland arrival -> physical destination navigation click: passed
+- same PC/character and all 1807 pre-registered object-state references; exact non-movement M3-M6 snapshot: passed
+- first crossed jump cancels pending pickup; stale foreign-map target rejected; one activation per crossing: passed
+- unique presentation/controllers across repeated activations, V1 loads, graphics rebuild, and sector reload: passed
+- V1 exact-authored-arrival slot restore, post-load navigation and dynamic-item drop/pickup: passed
+- Original -> Enhanced -> Original: passed; user-owned graphicsMode: 1 asset preserved/excluded
+- final real Play Mode warnings/errors: 0/0 (EditMode compatibility fixtures emit expected unsupported-effect warnings)
+- no authentic reciprocal overland map.jmp: documented; source snapshot restore is test setup, not invented return
+
+See [`documentation_unity/m7a-local-map-transition-audit.md`](documentation_unity/m7a-local-map-transition-audit.md)
+for the retained source audit, final ownership graph, lifecycle/failure contracts, exact physical evidence, test matrix,
+save/graphics results, omissions, and M7B recommendation.
 
 ## Verified Baseline
 
@@ -1400,13 +1426,13 @@ Completed on 2026-09-13 with Unity 6000.0.71f1 on `feature/inventory-commands`.
 
 ## Next Recommended Milestone
 
-M6C is complete with a bounded player-facing create/overwrite/list/load/delete surface, explicit confirmation and
-cancellation, corrupt-slot visibility, typed failure messaging, and shared transient input gating over the unchanged
-M6B slot and M6A session authorities. See
-[`documentation_unity/m6c-manual-save-load-ui.md`](documentation_unity/m6c-manual-save-load-ui.md) for the exact
-contract and validation evidence.
+M7A is complete: the authentic Bates passive exit uses coordinator-owned strict preflight, teardown, same-PC relocation,
+and destination projection. V1 exact-arrival restore and all prior domains remain functional. The overland source has
+no reciprocal map.jmp, so no direct return was invented. See
+[`documentation_unity/m7a-local-map-transition-audit.md`](documentation_unity/m7a-local-map-transition-audit.md).
 
-The exact recommended next task is **M7A - audit and implement the first authoritative local map-transition slice**.
-Trace original teleport/jump-point and map-index/coordinate semantics, add one typed session-owned transition request,
-and prove one real scripted/physical transition with stable PC identity/state and the expected return position. Do not
-include town/world-map travel, encounters, broader clock/day-night behavior, combat, followers, or barter in M7A.
+The exact recommended next task is **M7B — source-audit and implement one bounded authentic overland/area entrance
+and return path**, beginning with the Bates entrance relationship. Trace actual entrance/discovery and destination
+coordinates before selecting a fixture; reuse the coordinator and V1 rather than fabricate a reverse passive jump.
+Keep non-positive/same-map teleport branches, encounters, broad travel/time, combat, followers, and barter outside that
+bounded slice unless separately authorized. M7B has not been started.
