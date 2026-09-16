@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -40,7 +41,7 @@ namespace Arcanum.Runtime.World
         }
 
         /// <summary>Advances by source-grid steps; all eight directions consume one step per tile.</summary>
-        public bool Advance(float tileSteps)
+        public bool Advance(float tileSteps, Func<Vector2Int, int, bool> onTileEntered = null)
         {
             tileSteps = Mathf.Max(0f, tileSteps);
             while (IsMoving && tileSteps > 0f)
@@ -61,7 +62,12 @@ namespace Arcanum.Runtime.World
                 if (used >= remaining - 0.00001f)
                 {
                     Position = target;
+                    Vector2Int entered = _route[_next];
                     _next++;
+                    int facing = IsoProjection.DirFromDelta(Math.Sign(delta.x), Math.Sign(delta.y));
+                    // Observe every crossed source tile, even when one frame consumes several waypoints.
+                    // A successful lifecycle change stops this old route before any residual movement is spent.
+                    if (onTileEntered?.Invoke(entered, facing) == true) return IsMoving;
                 }
             }
             return IsMoving;

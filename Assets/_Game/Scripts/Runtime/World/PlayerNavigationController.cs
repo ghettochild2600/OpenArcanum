@@ -28,6 +28,7 @@ namespace Arcanum.Runtime.World
         private WorldObjectSectorLoader _loader;
         private int _facing = 4;
         private CrossSectorBoundaryPlanner.Plan? _pendingBoundary;
+        private bool _passiveTransitionTriggered;
 
         public WorldObject Player { get; private set; }
         public bool IsMoving => _follower.IsMoving;
@@ -58,7 +59,9 @@ namespace Arcanum.Runtime.World
                 ApplyState(_follower.Position, WalkAnimation, true);
             }
 
-            bool moving = _follower.Advance(tileSteps);
+            _passiveTransitionTriggered = false;
+            bool moving = _follower.Advance(tileSteps, OnRouteTileEntered);
+            if (_passiveTransitionTriggered) return;
             int facingAfter = _follower.Facing;
             if (facingAfter >= 0) _facing = facingAfter;
             if (moving)
@@ -75,6 +78,26 @@ namespace Arcanum.Runtime.World
             ApplyState(_follower.Position, StandAnimation, false);
             Destination = null;
             _loader.Session.ClearPlayerDestination();
+        }
+
+        private bool OnRouteTileEntered(Vector2Int tile, int facing)
+        {
+            if (facing >= 0) _facing = facing;
+            ApplyState(tile, WalkAnimation, true);
+            _passiveTransitionTriggered = TryActivatePassiveJump();
+            return _passiveTransitionTriggered;
+        }
+
+        private bool TryActivatePassiveJump()
+        {
+            if (Player == null || _loader?.Session == null) return false;
+            MapTransitionResult result = _loader.Session.RequestCurrentJumpPoint(Player.Identity);
+            if (result.Succeeded)
+            {
+                _entryFrameHold.Arm();
+                return true;
+            }
+            return false;
         }
 
         public bool TryBindConfiguredPlayer()

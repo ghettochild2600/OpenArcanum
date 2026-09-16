@@ -18,7 +18,10 @@ namespace Arcanum.Formats.World
         public readonly uint Flags;
         /// <summary>Trigger tile (packed engine location: x = low 32 bits, y = high 32 bits).</summary>
         public readonly long SrcLoc;
-        /// <summary>Destination map — 1-based index into the MapList; 0 means "same map".</summary>
+        /// <summary>
+        /// Destination map — a positive value is a 1-based MapList index. Retail data also contains non-positive
+        /// sentinels; callers must apply an explicitly audited policy rather than guessing their meaning.
+        /// </summary>
         public readonly int DstMap;
         /// <summary>Destination tile (packed engine location).</summary>
         public readonly long DstLoc;

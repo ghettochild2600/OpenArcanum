@@ -908,6 +908,10 @@ namespace Arcanum.Runtime.World
             _art = new ObjectArtResolvers(_vfs);
             Session.BindPrototypeSource(_prototypes.Get);
             Session.BindInventoryFootprintSource(ResolveInventoryFootprint);
+            Session.BindMapTransitionSource(new MapTransitionResolver(
+                MapList.Read(_vfs.ReadAllBytes("rules/maplist.mes")),
+                _vfs.Exists,
+                _vfs.ReadAllBytes));
             ScriptDatabase scripts = ScriptDatabase.Load(_vfs);
             Session.BindUseScriptSource(scripts);
             Session.BindDialogueSource(scripts.Get, dialogNum => DialogLocator.Load(_vfs, dialogNum));

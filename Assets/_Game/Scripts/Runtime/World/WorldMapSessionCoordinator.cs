@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Arcanum.Formats.Art;
 using Arcanum.Formats.Objects;
 using Arcanum.Formats.Script;
 using Arcanum.Runtime.Character;
@@ -45,6 +46,8 @@ namespace Arcanum.Runtime.World
         private Func<int, Arcanum.Formats.Dialog.DialogScript> _resolveDialogue;
         private Func<ArcanumObjectId, char, string> _resolveGeneratedDialogueText;
         private ITrainingDialogueTextSource _trainingDialogueText;
+        private MapTransitionResolver _mapTransitions;
+        private bool _mapTransitionActive;
         private ulong _nextDynamicIdentity = 1;
 
         public IReadOnlyDictionary<ArcanumObjectId, PersistentObjectState> States => _states;
@@ -71,6 +74,8 @@ namespace Arcanum.Runtime.World
         public JournalProjectionService Journal => _journal ??= CreateJournal();
         public SessionSaveService SaveGames => _saveGames ??= new SessionSaveService(this);
         public SessionSaveSlotService SaveSlots => _saveSlots ??= new SessionSaveSlotService(this);
+        public bool IsMapTransitionActive => _mapTransitionActive;
+        public MapTransitionResult LastMapTransitionResult { get; private set; }
         public WorldUseScriptDispatcher UseScripts { get; private set; }
         public event Action<string> SectorUnloading;
         public event Action<string> SectorSelected;
@@ -241,6 +246,9 @@ namespace Arcanum.Runtime.World
         public void BindInventoryFootprintSource(Func<uint?, InventoryFootprint> resolveInventoryFootprint)
             => _resolveInventoryFootprint = resolveInventoryFootprint
                 ?? throw new ArgumentNullException(nameof(resolveInventoryFootprint));
+
+        public void BindMapTransitionSource(MapTransitionResolver resolver)
+            => _mapTransitions = resolver ?? throw new ArgumentNullException(nameof(resolver));
 
         public bool SelectSector(string sectorPath)
         {
@@ -1478,6 +1486,97 @@ namespace Arcanum.Runtime.World
         }
 
         public void ClearPlayerDestination() => PlayerState?.ClearDestination();
+
+        /// <summary>Resolves the production PC's exact current tile as one stable passive jump source.</summary>
+        public MapTransitionResult RequestCurrentJumpPoint(ArcanumObjectId actor)
+        {
+            if (_mapTransitions == null)
+                return Remember(new MapTransitionResult(MapTransitionFailure.NoSourceData,
+                    detail: "Map-transition source data has not been bound."));
+            if (PlayerState == null)
+                return Remember(new MapTransitionResult(MapTransitionFailure.NoProductionPlayer,
+                    detail: "No production PC is registered."));
+            if (!SectorCoordinate.TryParse(SelectedSector, out SectorCoordinate selected)
+                || !_mapTransitions.TryGetMapId(selected.MapPath, out int mapId))
+                return Remember(new MapTransitionResult(MapTransitionFailure.SourceMapMissing,
+                    detail: $"Selected map '{selected.MapPath}' is absent from MapList."));
+            Vector2 position = PlayerState.MapPosition;
+            Vector2Int tile = Vector2Int.RoundToInt(position);
+            if (Vector2.SqrMagnitude(position - tile) > 0.0001f)
+                return Remember(new MapTransitionResult(MapTransitionFailure.SourceTileMismatch,
+                    detail: "The PC has not landed exactly on a source tile."));
+            return RequestMapTransition(actor, new MapTransitionSourceId(mapId, tile));
+        }
+
+        /// <summary>
+        /// Validates one source-authored map transition before teardown, then relocates and re-projects the same PC.
+        /// </summary>
+        public MapTransitionResult RequestMapTransition(ArcanumObjectId actor, MapTransitionSourceId source)
+        {
+            if (_mapTransitionActive)
+                return Remember(new MapTransitionResult(MapTransitionFailure.Busy,
+                    detail: "A map transition is already active."));
+            if (PlayerState == null || !HasSelectedSector)
+                return Remember(new MapTransitionResult(MapTransitionFailure.NoProductionPlayer,
+                    detail: "No selected map has a production PC."));
+            if (!actor.IsPersistent || PlayerState.Identity != actor)
+                return Remember(new MapTransitionResult(MapTransitionFailure.InvalidActor,
+                    detail: "Only the production PC can activate this transition."));
+            if (_mapTransitions == null)
+                return Remember(new MapTransitionResult(MapTransitionFailure.NoSourceData,
+                    detail: "Map-transition source data has not been bound."));
+            if (!SectorCoordinate.TryParse(SelectedSector, out SectorCoordinate selected)
+                || !_mapTransitions.TryGetMapId(selected.MapPath, out int selectedMapId))
+                return Remember(new MapTransitionResult(MapTransitionFailure.SourceMapMissing,
+                    detail: $"Selected map '{selected.MapPath}' is absent from MapList."));
+            if (source.MapId != selectedMapId)
+                return Remember(new MapTransitionResult(MapTransitionFailure.SourceMapMismatch,
+                    detail: $"{source} does not belong to selected map id {selectedMapId}."));
+            if (Vector2.SqrMagnitude(PlayerState.MapPosition - source.GlobalTile) > 0.0001f)
+                return Remember(new MapTransitionResult(MapTransitionFailure.SourceTileMismatch,
+                    detail: $"The production PC is not standing on {source}."));
+
+            MapTransitionResult resolved = _mapTransitions.Resolve(source);
+            if (!resolved.Succeeded) return Remember(resolved);
+            MapTransitionDestination destination = resolved.Destination;
+            if (destination.MapId == selectedMapId)
+                return Remember(new MapTransitionResult(MapTransitionFailure.UnsupportedDestinationMap, destination,
+                    "M7A admits one cross-map jump; remote same-map jumps remain deferred."));
+
+            string previousSector = SelectedSector;
+            string previousMap = selected.MapPath;
+            Vector2 previousPosition = PlayerState.MapPosition;
+            uint previousArt = PlayerState.ArtId;
+            int facing = destination.Facing ?? CritterArtResolver.RotationOf(previousArt);
+            uint arrivalArt = CritterArtResolver.WithAnimRotation(previousArt, 0, facing) & ~(0x1Fu << 14);
+
+            _mapTransitionActive = true;
+            try
+            {
+                ClearPlayerDestination();
+                ClearSelectedSector();
+                PlayerState.RestoreMapPosition(destination.MapPath, destination.GlobalTile, arrivalArt);
+                if (SelectSector(destination.Sector.Path))
+                    return Remember(new MapTransitionResult(MapTransitionFailure.None, destination));
+
+                PlayerState.RestoreMapPosition(previousMap, previousPosition, previousArt);
+                if (SelectSector(previousSector))
+                    return Remember(new MapTransitionResult(MapTransitionFailure.PresentationFailed, destination,
+                        $"Destination '{destination.Sector.Path}' could not be presented; the source map was restored."));
+                return Remember(new MapTransitionResult(MapTransitionFailure.RollbackFailed, destination,
+                    $"Destination '{destination.Sector.Path}' and source rollback '{previousSector}' both failed."));
+            }
+            finally
+            {
+                _mapTransitionActive = false;
+            }
+        }
+
+        private MapTransitionResult Remember(MapTransitionResult result)
+        {
+            LastMapTransitionResult = result;
+            return result;
+        }
 
         /// <summary>Captures/unloads the old projection, relocates the same player state, then selects both new owners.</summary>
         public bool TryTransitionPlayer(string targetSector, Vector2 entryTile, uint artId)

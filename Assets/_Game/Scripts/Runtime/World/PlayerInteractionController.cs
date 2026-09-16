@@ -28,11 +28,14 @@ namespace Arcanum.Runtime.World
             _loader = GetComponent<WorldObjectSectorLoader>();
             _navigation = GetComponent<PlayerNavigationController>();
             _navigation.DestinationRequested += OnNavigationDestinationRequested;
+            _loader.Session.SectorUnloading += OnSectorUnloading;
         }
 
         private void OnDestroy()
         {
             if (_navigation != null) _navigation.DestinationRequested -= OnNavigationDestinationRequested;
+            if (_loader != null && _loader.Session != null)
+                _loader.Session.SectorUnloading -= OnSectorUnloading;
         }
 
         private void Update() => AdvanceInteraction();
@@ -233,6 +236,17 @@ namespace Arcanum.Runtime.World
                 Resolve(PendingCommand.Value, WorldInteractionResultCode.Cancelled, false);
             else if (Phase != PlayerInteractionPhase.Executing)
                 Phase = PlayerInteractionPhase.Idle;
+        }
+
+        private void OnSectorUnloading(string _)
+        {
+            if (Phase == PlayerInteractionPhase.ApproachingTarget && PendingCommand.HasValue)
+                Resolve(PendingCommand.Value, WorldInteractionResultCode.Cancelled, false);
+            else if (Phase != PlayerInteractionPhase.Executing)
+            {
+                PendingCommand = null;
+                Phase = PlayerInteractionPhase.Idle;
+            }
         }
 
         private static bool TryTargetMapPosition(PersistentObjectState state, out Vector2 position)
