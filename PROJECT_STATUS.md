@@ -14,8 +14,8 @@ M1 traversal, the bounded M2 interaction/SAP_USE kernel, M3A-M3E inventory/comma
 M4A-M4D character attributes/vitality/progression/derived statistics, M5A-M5C campaign/dialogue/quest/journal/trainer
 vertical slices, M6A authoritative session save/load, M6B migration boundaries/domain save slots, and M6C bounded
 player-facing manual save/load presentation, M7A bounded passive local map transitions, and M7B bounded authentic
-overland/Bates area entrance and return, M7C bounded authoritative known-area discovery, and M7D read-only world-map
-destination projection/selection are complete.
+  overland/Bates area entrance and return, M7C bounded authoritative known-area discovery, M7D read-only world-map
+  destination projection/selection, and M7E bounded authoritative route/travel execution are complete.
 `WorldMapSessionCoordinator` owns typed `World`, `Contained(parent)`, and `Equipped(parent, wornLocation)` placement,
 atomic raw item transfers/equipment replacement/stack merge and split, deterministic session-created item identities,
 source-faithful pickup/drop/owner-transfer policy, and pre-mutation weight/grid-capacity guards independently of Unity
@@ -63,11 +63,17 @@ produces one typed `WorldMapTravelRequest` for area 58 at `(91902,39305)` withou
 advancing time, rolling encounters, or mutating campaign state. Projection state recomputes across authoritative reset
 and V1 restore; the minimal Unity presenter owns only display/input.
 
-The next recommended objective is M7E - source-audit and implement the bounded world-map route/travel execution
-lifecycle that consumes `WorldMapTravelRequest`, beginning with authoritative route and arrival-source semantics.
-Broader travel time, encounters, follower relocation, polished world-map animation, clock/day-night behavior,
-autosave, quicksave,
-cloud sync, original Arcanum save compatibility, combat, followers, and barter remain deferred.
+M7E consumes that typed intent through coordinator-owned `WorldMapTravelService`. It resolves the retail START_MAP
+terrain topology, applies the source straight-sector path plus bounded 16x16 detour algorithm, preflights arrival, and
+reuses the existing transactional M7 transition pipeline. The authentic Bates return `(61976,65664)` to Tarant area 21
+route is four eastward sector rotations `5,5,5,5`, arriving on START_MAP id 1 at `(62243,65664)` in
+`maps/arcanum1-024-fixed/68853695436.sec`. K'na Tha remains unavailable to this source algorithm rather than being
+substituted with an invented route. The synchronous lifecycle is Planning -> Travelling -> Arriving -> Completed ->
+Idle; stable post-arrival state remains V1.
+
+M7E is complete and M8 has not begun. Travel time, encounters, follower relocation, mid-route cancellation, route
+animation, clock/day-night behavior, autosave, quicksave, cloud sync, original Arcanum save compatibility, combat,
+followers, and barter remain deferred.
 
 ## Current Branch
 
@@ -211,6 +217,26 @@ and M7D recommendation.
 See [`documentation_unity/m7d-world-map-destination-selection.md`](documentation_unity/m7d-world-map-destination-selection.md)
 for source fields and hide semantics, the final ownership graph, typed failures/request contract, authentic fixture,
 persistence/graphics evidence, deliberate omissions, and the exact M7E recommendation.
+
+## M7E Validation Baseline (2026-09-20)
+
+- Unity 6000.0.71f1 production/test/editor compilation: clean
+- focused M7E EditMode: 15 passed / 0 failed / 0 skipped / 0 inconclusive
+- required M7D/M7C/M7B/M7A/M6C/M6B/M6A/player-navigation/world-session regressions: 212 passed /
+  0 failed / 0 skipped / 0 inconclusive
+- complete EditMode: 657 passed / 0 failed / 0 skipped / 0 inconclusive
+- physical Bates return `(61976,65664)` -> literal Tarant area 21 click -> exact START_MAP arrival
+  `(62243,65664)` in `maps/arcanum1-024-fixed/68853695436.sec`: passed
+- authentic route geometry was exactly four rotations `5,5,5,5`; K'na Tha failed explicitly without substitute routing
+- invalid request and unroutable destination rollback preserved the complete source session and presentation
+- the same production PC plus M3-M7 inventory, character, campaign, discovery, and navigation state survived arrival
+- post-arrival V1 save -> authoritative reset -> load restored exact identity, sector, tile, and discovery; schema stayed V1
+- Original -> Enhanced -> Original rebuild retained unique gameplay/presentation owners and one presentation per identity
+- final physical Play Mode warnings/errors: 0/0; user-owned graphicsMode: 1 asset preserved/excluded
+
+See [`documentation_unity/m7e-world-map-route-audit.md`](documentation_unity/m7e-world-map-route-audit.md) for the
+source route/arrival audit, final ownership and lifecycle contract, authentic fixture, rollback and persistence evidence,
+validation matrix, and deliberate omissions.
 
 ## Verified Baseline
 
@@ -1519,11 +1545,9 @@ Completed on 2026-09-13 with Unity 6000.0.71f1 on `feature/inventory-commands`.
 
 ## Next Recommended Milestone
 
-M7C is complete: campaign-owned typed discovery now validates against the retail area table, Clarissa's authentic
-`mm58` reveals K'na Tha, and the state survives sector/map transitions, graphics rebuilds, reset/load, and existing V1
-save compatibility. See [`documentation_unity/m7c-area-discovery.md`](documentation_unity/m7c-area-discovery.md).
+M7E is complete: coordinator-owned travel now consumes the M7D request, reproduces bounded retail sector routing,
+and reaches the authentic START_MAP arrival through the existing transactional M7 pipeline. See
+[`documentation_unity/m7e-world-map-route-audit.md`](documentation_unity/m7e-world-map-route-audit.md).
 
-The exact recommended next task is **M7D — source-audit and implement a read-only world-map destination
-projection/selection boundary gated by `CampaignStateService.CanSelectWorldArea`**. Keep route simulation, travel
-time, encounters, proximity discovery, party/follower relocation, broad teleport semantics, and M8 combat outside
-that bounded slice unless separately authorized.
+M8 has not begun. Any M8 work, or expansion into travel time, encounters, followers, route animation, or mid-travel
+cancellation, requires a separately authorized milestone.
