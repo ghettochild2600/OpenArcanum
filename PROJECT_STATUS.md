@@ -13,7 +13,8 @@ safe/adapt/avoid reuse boundaries, and defines a dependency-ordered M1–M13 roa
 M1 traversal, the bounded M2 interaction/SAP_USE kernel, M3A-M3E inventory/command/equipment/stack/capacity state,
 M4A-M4D character attributes/vitality/progression/derived statistics, M5A-M5C campaign/dialogue/quest/journal/trainer
 vertical slices, M6A authoritative session save/load, M6B migration boundaries/domain save slots, and M6C bounded
-player-facing manual save/load presentation, and M7A bounded passive local map transitions are complete.
+player-facing manual save/load presentation, M7A bounded passive local map transitions, and M7B bounded authentic
+overland/Bates area entrance and return are complete.
 `WorldMapSessionCoordinator` owns typed `World`, `Contained(parent)`, and `Equipped(parent, wornLocation)` placement,
 atomic raw item transfers/equipment replacement/stack merge and split, deterministic session-created item identities,
 source-faithful pickup/drop/owner-transfer policy, and pre-mutation weight/grid-capacity guards independently of Unity
@@ -41,9 +42,15 @@ same production PC. Every entered navigation waypoint can activate a passive sou
 is discarded. The real Bates Mansion Lev 1 (id 12) exit reaches overland (id 1) at global `(61976,65664)` without replacing
 M3-M6 domain state or changing V1 saves. Non-positive sentinels and remote same-map jumps remain explicit Unsupported.
 
-The next recommended objective is M7B - source-audit and implement one bounded authentic overland/area entrance and
-return path, starting with the Bates relationship. Broader town/world-map travel, encounters, clock/day-night behavior,
-autosave, quicksave,
+M7B adds one strict source-decoded physical entrance: overland prototype-4036 Scenery
+`P_0000F216_00010080_00000000_00000001` at `(61974,65664)` invokes SAP_USE 1267 and reaches Bates map 12 at
+`(104,92)`. It reuses the M7A coordinator lifecycle and authored passive return to `(61976,65664)`, preserving the same
+PC and all authoritative M3-M6 state. Tarant's world-map origin remains a distinct coordinate and no discovery gate is
+invented for this ungated placed object. V1 remains unchanged.
+
+The next recommended objective is M7C - source-audit and implement bounded authoritative known-area/discovery state
+with one authentic discovery path and versioned save persistence. Broader town/world-map travel, encounters,
+clock/day-night behavior, autosave, quicksave,
 cloud sync, original Arcanum save compatibility, combat, followers, and barter remain deferred.
 
 ## Current Branch
@@ -118,6 +125,33 @@ and exact M7A recommendation.
 See [`documentation_unity/m7a-local-map-transition-audit.md`](documentation_unity/m7a-local-map-transition-audit.md)
 for the retained source audit, final ownership graph, lifecycle/failure contracts, exact physical evidence, test matrix,
 save/graphics results, omissions, and M7B recommendation.
+
+## M7B Validation Baseline (2026-09-19)
+
+- Unity 6000.0.71f1 compilation: clean
+- focused M7B EditMode: 27 passed / 0 failed / 0 skipped / 0 inconclusive
+- required M7A/M6C/M6B/M6A/navigation/interaction/session regressions: 179 passed / 0 failed / 0 skipped /
+  0 inconclusive
+- complete EditMode: 612 passed / 0 failed / 0 skipped / 0 inconclusive
+- literal overland entrance click -> exact Bates map 12 `(104,92)` -> literal passive exit -> exact overland map 1
+  `(61976,65664)` -> literal re-entry: passed
+- same production PC ObjectID/reference, standing/facing and complete M3-M6 domain snapshot across every transition:
+  passed
+- Bates and overland dynamic world state survived A/B/A and B/A/B; retained identities/references were not duplicated:
+  passed
+- pending interaction cancellation, stale-target rejection, single activation, reentrant rejection and route
+  normalization: passed
+- invalid entrance/preflight and presentation-rejection rollback leave map, PC, gameplay and presentation unchanged:
+  passed
+- V1 save/load inside Bates and on returned overland restores exact side/location/state: passed; schema unchanged
+- Original -> Enhanced -> Original on both sides: passed; user-owned graphicsMode: 1 asset preserved/excluded
+- repeated transitions/rebuilds/loads retained unique gameplay and presentation owners
+- final physical Play Mode warnings/errors: 0/0 (full EditMode compatibility fixtures retain expected fail-closed
+  dialogue warnings)
+
+See [`documentation_unity/m7b-area-entrance-audit.md`](documentation_unity/m7b-area-entrance-audit.md) for the exact
+source fixture, coordinate-space distinction, final call graph, lifecycle and state contracts, physical trace, rollback,
+save/graphics evidence, tests, omissions, and M7C recommendation.
 
 ## Verified Baseline
 
@@ -1426,13 +1460,13 @@ Completed on 2026-09-13 with Unity 6000.0.71f1 on `feature/inventory-commands`.
 
 ## Next Recommended Milestone
 
-M7A is complete: the authentic Bates passive exit uses coordinator-owned strict preflight, teardown, same-PC relocation,
-and destination projection. V1 exact-arrival restore and all prior domains remain functional. The overland source has
-no reciprocal map.jmp, so no direct return was invented. See
-[`documentation_unity/m7a-local-map-transition-audit.md`](documentation_unity/m7a-local-map-transition-audit.md).
+M7B is complete: the real overland Bates Scenery/SAP_USE 1267 enters map 12 at `(104,92)` through the same
+coordinator-owned transition pipeline, and the authored passive exit returns to map 1 at `(61976,65664)`. Repeated
+physical loops, both-side V1 restores and both-side graphics rebuilds preserve the same PC and complete prior-domain
+state. See [`documentation_unity/m7b-area-entrance-audit.md`](documentation_unity/m7b-area-entrance-audit.md).
 
-The exact recommended next task is **M7B — source-audit and implement one bounded authentic overland/area entrance
-and return path**, beginning with the Bates entrance relationship. Trace actual entrance/discovery and destination
-coordinates before selecting a fixture; reuse the coordinator and V1 rather than fabricate a reverse passive jump.
-Keep non-positive/same-map teleport branches, encounters, broad travel/time, combat, followers, and barter outside that
-bounded slice unless separately authorized. M7B has not been started.
+The exact recommended next task is **M7C — source-audit and implement bounded authoritative known-area/discovery state
+with one authentic discovery path and versioned save persistence**. Establish source-faithful discovery identity and
+mutation ownership before exposing world-map destination selection. Keep world-map route simulation, travel time,
+encounters, party/follower relocation, broad teleport semantics, and M8 combat outside that bounded slice unless
+separately authorized.
