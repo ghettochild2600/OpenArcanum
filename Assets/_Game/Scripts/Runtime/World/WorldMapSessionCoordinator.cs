@@ -50,6 +50,7 @@ namespace Arcanum.Runtime.World
         private MapTransitionResolver _mapTransitions;
         private AreaEntranceResolver _areaEntrances;
         private AreaList _areaSource;
+        private WorldMapDestinationProjection _worldMapDestinations;
         private bool _mapTransitionActive;
         private ulong _nextDynamicIdentity = 1;
 
@@ -77,6 +78,8 @@ namespace Arcanum.Runtime.World
         public JournalProjectionService Journal => _journal ??= CreateJournal();
         public SessionSaveService SaveGames => _saveGames ??= new SessionSaveService(this);
         public SessionSaveSlotService SaveSlots => _saveSlots ??= new SessionSaveSlotService(this);
+        public WorldMapDestinationProjection WorldMapDestinations
+            => _worldMapDestinations ??= new WorldMapDestinationProjection(_areaSource, Campaign);
         public bool IsMapTransitionActive => _mapTransitionActive;
         public MapTransitionResult LastMapTransitionResult { get; private set; }
         public AreaEntranceResult LastAreaEntranceResult { get; private set; }
@@ -261,6 +264,7 @@ namespace Arcanum.Runtime.World
         {
             _areaSource = source ?? throw new ArgumentNullException(nameof(source));
             Campaign.BindAreaSource(source);
+            _worldMapDestinations = null;
         }
 
         internal AreaList AreaSource => _areaSource;
@@ -1725,6 +1729,7 @@ namespace Arcanum.Runtime.World
             _inventoryCapacity = null;
             _derivedStats = null;
             _campaign = null;
+            _worldMapDestinations = null;
             _portals = null;
             _dialogue = null;
             _journal = null;
@@ -1755,6 +1760,7 @@ namespace Arcanum.Runtime.World
             _derivedStats = plan.DerivedStats;
             _campaign = plan.Campaign;
             if (_areaSource != null) _campaign.BindAreaSource(_areaSource);
+            _worldMapDestinations = null;
             _portals = new PortalTransitionScheduler();
             _dialogue = null;
             _journal = null;
