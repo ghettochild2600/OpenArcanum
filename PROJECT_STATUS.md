@@ -14,14 +14,15 @@ M1 traversal, the bounded M2 interaction/SAP_USE kernel, M3A-M3E inventory/comma
 M4A-M4D character attributes/vitality/progression/derived statistics, M5A-M5C campaign/dialogue/quest/journal/trainer
 vertical slices, M6A authoritative session save/load, M6B migration boundaries/domain save slots, and M6C bounded
 player-facing manual save/load presentation, M7A bounded passive local map transitions, and M7B bounded authentic
-overland/Bates area entrance and return are complete.
+overland/Bates area entrance and return, and M7C bounded authoritative known-area discovery are complete.
 `WorldMapSessionCoordinator` owns typed `World`, `Contained(parent)`, and `Equipped(parent, wornLocation)` placement,
 atomic raw item transfers/equipment replacement/stack merge and split, deterministic session-created item identities,
 source-faithful pickup/drop/owner-transfer policy, and pre-mutation weight/grid-capacity guards independently of Unity
 presentation.
 `CharacterStatService`, `CharacterProgressionService`, `CharacterVitalityService`, and
 `CharacterDerivedStatService` provide stable ObjectID-keyed character rules. `CampaignStateService` now owns source-
-bounded global/PC flags and variables, monotonic quest state/timestamps, and per-object/per-SAP state;
+bounded global/PC flags and variables, monotonic quest state/timestamps, per-object/per-SAP state, and a typed,
+source-validated known-area set;
 `ProductionDialogueSession` owns stable-ID conversation lifecycle, strict source evaluation, and transient training
 subviews independently of Unity presentation. `DialogueTrainingService` routes the audited `t:` transaction through
 M4C training, derived reaction, and existing Gold-stack authority. `JournalProjectionService` is a read-only
@@ -48,9 +49,15 @@ M7B adds one strict source-decoded physical entrance: overland prototype-4036 Sc
 PC and all authoritative M3-M6 state. Tarant's world-map origin remains a distinct coordinate and no discovery gate is
 invented for this ungated placed object. V1 remains unchanged.
 
-The next recommended objective is M7C - source-audit and implement bounded authoritative known-area/discovery state
-with one authentic discovery path and versioned save persistence. Broader town/world-map travel, encounters,
-clock/day-night behavior, autosave, quicksave,
+M7C binds the immutable 82-entry `AreaList` source to coordinator-owned campaign state and adds typed `AreaId`
+validation, default-unknown/idempotent discovery, a single discovery event, and read-only known/selection queries.
+Clarissa Shalmo's authentic dialogue 1497 response 93 executes exact `mm58` to reveal K'na Tha; no map entry or
+presentation state invents discovery. Sorted IDs round-trip in the existing V1 campaign payload, older V1 documents
+without the field remain an empty set, and invalid non-empty data fails transactionally before the session changes.
+
+The next recommended objective is M7D - source-audit and implement a read-only world-map destination
+projection/selection boundary gated by authoritative known-area state. Broader route simulation, travel time,
+encounters, clock/day-night behavior, autosave, quicksave,
 cloud sync, original Arcanum save compatibility, combat, followers, and barter remain deferred.
 
 ## Current Branch
@@ -152,6 +159,27 @@ save/graphics results, omissions, and M7B recommendation.
 See [`documentation_unity/m7b-area-entrance-audit.md`](documentation_unity/m7b-area-entrance-audit.md) for the exact
 source fixture, coordinate-space distinction, final call graph, lifecycle and state contracts, physical trace, rollback,
 save/graphics evidence, tests, omissions, and M7C recommendation.
+
+## M7C Validation Baseline (2026-09-20)
+
+- Unity 6000.0.71f1 compilation: clean
+- focused M7C EditMode: 14 passed / 0 failed / 0 skipped / 0 inconclusive
+- required M7B/M7A/M6C/M6B/M6A/M5C/M5B/M5A/navigation/world-session regressions: 237 passed / 0 failed /
+  0 skipped / 0 inconclusive
+- complete EditMode: 626 passed / 0 failed / 0 skipped / 0 inconclusive
+- retail audit: 82 areas, 167 dialogue marks, 54 dialogue resources, 146 placed dialogue NPCs, 22 script marks,
+  0 invalid constant area references
+- literal Clarissa click and physical authored responses `2 -> 44 -> 55 -> 70 -> 77 -> 81 -> 97 -> 88 -> 93`:
+  passed; exact response 93 `mm58` revealed K'na Tha and emitted one idempotent discovery event
+- same-map sector transition, authentic overland -> Bates transition, authoritative reset, V1 slot restore, and
+  Clarissa/Bates visual rebuilds preserved exactly one known area and the same production PC identity/state
+- entering Bates did not invent Tarant discovery; reset restored the source-correct empty known set
+- Original -> Enhanced -> Original: passed; unique gameplay/presentation owners retained
+- final physical Play Mode warnings/errors: 0/0; user-owned graphicsMode: 1 asset preserved/excluded
+
+See [`documentation_unity/m7c-area-discovery.md`](documentation_unity/m7c-area-discovery.md) for the source semantics,
+retail audit and exact fixture, final ownership/call graph, V1 compatibility contract, validation evidence, omissions,
+and M7D recommendation.
 
 ## Verified Baseline
 
@@ -1460,13 +1488,11 @@ Completed on 2026-09-13 with Unity 6000.0.71f1 on `feature/inventory-commands`.
 
 ## Next Recommended Milestone
 
-M7B is complete: the real overland Bates Scenery/SAP_USE 1267 enters map 12 at `(104,92)` through the same
-coordinator-owned transition pipeline, and the authored passive exit returns to map 1 at `(61976,65664)`. Repeated
-physical loops, both-side V1 restores and both-side graphics rebuilds preserve the same PC and complete prior-domain
-state. See [`documentation_unity/m7b-area-entrance-audit.md`](documentation_unity/m7b-area-entrance-audit.md).
+M7C is complete: campaign-owned typed discovery now validates against the retail area table, Clarissa's authentic
+`mm58` reveals K'na Tha, and the state survives sector/map transitions, graphics rebuilds, reset/load, and existing V1
+save compatibility. See [`documentation_unity/m7c-area-discovery.md`](documentation_unity/m7c-area-discovery.md).
 
-The exact recommended next task is **M7C — source-audit and implement bounded authoritative known-area/discovery state
-with one authentic discovery path and versioned save persistence**. Establish source-faithful discovery identity and
-mutation ownership before exposing world-map destination selection. Keep world-map route simulation, travel time,
-encounters, party/follower relocation, broad teleport semantics, and M8 combat outside that bounded slice unless
-separately authorized.
+The exact recommended next task is **M7D — source-audit and implement a read-only world-map destination
+projection/selection boundary gated by `CampaignStateService.CanSelectWorldArea`**. Keep route simulation, travel
+time, encounters, proximity discovery, party/follower relocation, broad teleport semantics, and M8 combat outside
+that bounded slice unless separately authorized.
