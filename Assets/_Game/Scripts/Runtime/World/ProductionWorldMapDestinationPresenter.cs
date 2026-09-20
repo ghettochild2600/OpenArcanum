@@ -19,6 +19,7 @@ namespace Arcanum.Runtime.World
         public bool IsOpen { get; private set; }
         public bool HasSelection { get; private set; }
         public WorldMapSelectionResult LastSelection { get; private set; }
+        public WorldMapTravelResult LastTravel { get; private set; }
         public event Action<WorldMapTravelRequest> TravelRequested;
 
         private void Awake()
@@ -50,6 +51,7 @@ namespace Arcanum.Runtime.World
             IsOpen = true;
             HasSelection = false;
             LastSelection = default;
+            LastTravel = default;
             _scroll = Vector2.zero;
             _inputGate?.SetBlocked(true);
         }
@@ -72,7 +74,13 @@ namespace Arcanum.Runtime.World
             EnsureSession();
             LastSelection = _session.WorldMapDestinations.TrySelectWorldArea(id);
             HasSelection = true;
-            if (LastSelection.Succeeded) TravelRequested?.Invoke(LastSelection.Request);
+            if (LastSelection.Succeeded)
+            {
+                TravelRequested?.Invoke(LastSelection.Request);
+                LastTravel = _session.RequestWorldMapTravel(
+                    _session.PlayerState?.Identity ?? default, LastSelection.Request);
+                if (LastTravel.Succeeded) Close();
+            }
             return LastSelection;
         }
 

@@ -45,7 +45,7 @@ namespace Arcanum.Runtime.World
         }
     }
 
-    /// <summary>Typed boundary value for a future travel system. M7D never consumes it.</summary>
+    /// <summary>Typed destination intent consumed by the authoritative world-travel service.</summary>
     public readonly struct WorldMapTravelRequest : IEquatable<WorldMapTravelRequest>
     {
         public AreaId AreaId { get; }

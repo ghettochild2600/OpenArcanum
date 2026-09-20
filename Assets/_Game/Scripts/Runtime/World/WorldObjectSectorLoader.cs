@@ -916,6 +916,8 @@ namespace Arcanum.Runtime.World
                 _vfs.Exists,
                 _vfs.ReadAllBytes);
             Session.BindMapTransitionSource(transitions);
+            Session.BindWorldMapTravelSource(new WorldMapTravelSource(
+                maps, transitions, _vfs.Exists, _vfs.ReadAllBytes));
             ScriptDatabase scripts = ScriptDatabase.Load(_vfs);
             AreaList areas = AreaList.FromMes(Arcanum.Formats.Text.MesReader.Read(
                 _vfs.ReadAllBytes("mes/gamearea.mes")));
