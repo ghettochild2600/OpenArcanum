@@ -36,6 +36,7 @@ namespace Arcanum.Runtime.World
         DialogueMissing,
         DialogueUnsupported,
         DialogueFailed,
+        TravelFailed,
     }
 
     /// <summary>One immutable gameplay command identified only by persistent domain identities.</summary>
@@ -85,13 +86,14 @@ namespace Arcanum.Runtime.World
         public ScriptExecutionStatus? ScriptStatus { get; }
         public bool? ScriptRunDefault { get; }
         public InventoryResultCode? InventoryStatus { get; }
+        public AreaEntranceResult? AreaEntrance { get; }
         public bool IsSuccess => Code == WorldInteractionResultCode.Success;
         public bool IsAccepted => IsSuccess || Code == WorldInteractionResultCode.Approaching;
 
         public WorldInteractionResult(WorldInteractionCommand command, WorldInteractionResultCode code,
             bool? requestedPortalOpen = null, int scriptNum = 0,
             ScriptExecutionStatus? scriptStatus = null, bool? scriptRunDefault = null,
-            InventoryResultCode? inventoryStatus = null)
+            InventoryResultCode? inventoryStatus = null, AreaEntranceResult? areaEntrance = null)
         {
             Command = command;
             Code = code;
@@ -100,6 +102,7 @@ namespace Arcanum.Runtime.World
             ScriptStatus = scriptStatus;
             ScriptRunDefault = scriptRunDefault;
             InventoryStatus = inventoryStatus;
+            AreaEntrance = areaEntrance;
         }
     }
 

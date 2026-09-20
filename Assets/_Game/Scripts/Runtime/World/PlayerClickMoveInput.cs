@@ -51,6 +51,7 @@ namespace Arcanum.Runtime.World
                 WorldInteractionResult result = targetType switch
                 {
                     ObjectType.Portal => _interaction.TryUse(target),
+                    ObjectType.Scenery => _interaction.TryUse(target),
                     ObjectType.Npc => _interaction.TryTalk(target),
                     _ => _interaction.TryPickUp(target),
                 };

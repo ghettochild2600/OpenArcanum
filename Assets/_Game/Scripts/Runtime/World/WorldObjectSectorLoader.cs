@@ -908,11 +908,16 @@ namespace Arcanum.Runtime.World
             _art = new ObjectArtResolvers(_vfs);
             Session.BindPrototypeSource(_prototypes.Get);
             Session.BindInventoryFootprintSource(ResolveInventoryFootprint);
-            Session.BindMapTransitionSource(new MapTransitionResolver(
-                MapList.Read(_vfs.ReadAllBytes("rules/maplist.mes")),
+            MapList maps = MapList.Read(_vfs.ReadAllBytes("rules/maplist.mes"));
+            var transitions = new MapTransitionResolver(
+                maps,
                 _vfs.Exists,
-                _vfs.ReadAllBytes));
+                _vfs.ReadAllBytes);
+            Session.BindMapTransitionSource(transitions);
             ScriptDatabase scripts = ScriptDatabase.Load(_vfs);
+            Session.BindAreaEntranceSource(new AreaEntranceResolver(maps,
+                AreaList.FromMes(Arcanum.Formats.Text.MesReader.Read(_vfs.ReadAllBytes("mes/gamearea.mes"))),
+                transitions, scripts.Get));
             Session.BindUseScriptSource(scripts);
             Session.BindDialogueSource(scripts.Get, dialogNum => DialogLocator.Load(_vfs, dialogNum));
             _generatedToMale = new GeneratedDialogText(MesReader.Read(_vfs.ReadAllBytes("mes/gd_pc2m.mes")));

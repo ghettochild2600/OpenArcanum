@@ -122,6 +122,7 @@ namespace Arcanum.Runtime.World
             Player = player;
             _facing = CritterArtResolver.RotationOf(player.ArtId);
             _follower.Cancel(player.TilePosition);
+            if (_loader.Session.IsMapTransitionActive) _entryFrameHold.Arm();
             _loader.NavigationMap?.SetControlledObject(player);
             ApplyState(player.TilePosition, StandAnimation, false);
             return true;

@@ -137,15 +137,22 @@ namespace Arcanum.Runtime.World
                 return Failure(MapTransitionFailure.JumpPointMissing, $"{source} is absent from map.jmp.");
 
             JumpPoint jump = match.Value;
-            if (jump.DstMap <= 0)
+            return ResolveDestination(source, jump.DstMap, new Vector2Int(jump.DstX, jump.DstY));
+        }
+
+        /// <summary>Shared strict preflight for a source-decoded jump or admitted physical entrance.</summary>
+        public MapTransitionResult ResolveDestination(MapTransitionSourceId source, int destinationMapId,
+            Vector2Int tile)
+        {
+            if (destinationMapId <= 0)
                 return Failure(MapTransitionFailure.UnsupportedDestinationMap,
-                    $"{source} uses non-positive destination map {jump.DstMap}; M7A does not infer that sentinel.");
-            if (!_maps.TryGet(jump.DstMap, out MapListEntry destinationMap))
+                    $"{source} uses non-positive destination map {destinationMapId}; no sentinel is inferred.");
+            if (!_maps.TryGet(destinationMapId, out MapListEntry destinationMap))
                 return Failure(MapTransitionFailure.DestinationMapMissing,
-                    $"Destination MapList id {jump.DstMap} is missing.");
-            if (jump.DstX < 0 || jump.DstY < 0)
+                    $"Destination MapList id {destinationMapId} is missing.");
+            if (tile.x < 0 || tile.y < 0)
                 return Failure(MapTransitionFailure.DestinationTileInvalid,
-                    $"Destination tile ({jump.DstX},{jump.DstY}) is negative.");
+                    $"Destination tile {tile} is negative.");
 
             string mapPath = "maps/" + destinationMap.Name.ToLowerInvariant();
             string propertiesPath = mapPath + "/map.prp";
@@ -159,12 +166,12 @@ namespace Arcanum.Runtime.World
                 return Failure(MapTransitionFailure.DestinationPropertiesMalformed,
                     $"Destination properties '{propertiesPath}' are malformed: {ex.Message}");
             }
-            if (jump.DstX >= properties.Width || jump.DstY >= properties.Height)
+            if (tile.x >= properties.Width || tile.y >= properties.Height)
                 return Failure(MapTransitionFailure.DestinationTileInvalid,
-                    $"Destination tile ({jump.DstX},{jump.DstY}) exceeds {properties.Width}x{properties.Height}.");
+                    $"Destination tile {tile} exceeds {properties.Width}x{properties.Height}.");
 
             var destination = new MapTransitionDestination(source, destinationMap.MapId, mapPath,
-                new Vector2Int(jump.DstX, jump.DstY));
+                tile);
             if (!_exists(destination.Sector.Path))
                 return Failure(MapTransitionFailure.DestinationSectorMissing,
                     $"Destination sector '{destination.Sector.Path}' is missing.");

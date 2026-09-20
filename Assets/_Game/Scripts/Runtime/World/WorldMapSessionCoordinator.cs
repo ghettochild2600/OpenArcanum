@@ -47,6 +47,7 @@ namespace Arcanum.Runtime.World
         private Func<ArcanumObjectId, char, string> _resolveGeneratedDialogueText;
         private ITrainingDialogueTextSource _trainingDialogueText;
         private MapTransitionResolver _mapTransitions;
+        private AreaEntranceResolver _areaEntrances;
         private bool _mapTransitionActive;
         private ulong _nextDynamicIdentity = 1;
 
@@ -76,6 +77,7 @@ namespace Arcanum.Runtime.World
         public SessionSaveSlotService SaveSlots => _saveSlots ??= new SessionSaveSlotService(this);
         public bool IsMapTransitionActive => _mapTransitionActive;
         public MapTransitionResult LastMapTransitionResult { get; private set; }
+        public AreaEntranceResult LastAreaEntranceResult { get; private set; }
         public WorldUseScriptDispatcher UseScripts { get; private set; }
         public event Action<string> SectorUnloading;
         public event Action<string> SectorSelected;
@@ -249,6 +251,13 @@ namespace Arcanum.Runtime.World
 
         public void BindMapTransitionSource(MapTransitionResolver resolver)
             => _mapTransitions = resolver ?? throw new ArgumentNullException(nameof(resolver));
+
+        public void BindAreaEntranceSource(AreaEntranceResolver resolver)
+            => _areaEntrances = resolver ?? throw new ArgumentNullException(nameof(resolver));
+
+        public bool IsAreaEntranceTarget(ArcanumObjectId identity)
+            => _areaEntrances != null && _states.TryGetValue(identity, out PersistentObjectState state)
+               && AreaEntranceResolver.IsAdmittedTarget(state);
 
         public bool SelectSector(string sectorPath)
         {
@@ -486,6 +495,7 @@ namespace Arcanum.Runtime.World
             if (state == null) return;
             _loaded[sector].Add(state.Identity, new LoadedBinding { Runtime = runtime, ObjectState = state });
             state.Restore(runtime);
+            runtime.Session = this;
         }
 
         public PersistentPlayerState GetOrCreatePlayer(
@@ -1280,6 +1290,14 @@ namespace Arcanum.Runtime.World
             if (!_states.TryGetValue(command.Target, out PersistentObjectState targetState) || targetState.Off
                 || !TryGetLoadedObject(command.Target, out WorldObject target))
                 return new WorldInteractionResult(command, WorldInteractionResultCode.TargetNotFound);
+            if (targetState.Type == ObjectType.Scenery && target.Type == ObjectType.Scenery)
+            {
+                AreaEntranceResult travel = RequestAreaEntrance(command.Actor, command.Target);
+                return new WorldInteractionResult(command, travel.Succeeded ? WorldInteractionResultCode.Success
+                        : travel.Failure == AreaEntranceFailure.OutOfRange ? WorldInteractionResultCode.OutOfRange
+                        : WorldInteractionResultCode.TravelFailed,
+                    scriptNum: targetState.UseScriptNum, scriptRunDefault: false, areaEntrance: travel);
+            }
             if (targetState.Type != ObjectType.Portal || target.Type != ObjectType.Portal)
                 return new WorldInteractionResult(command, WorldInteractionResultCode.InvalidTarget);
             if (!SectorCoordinate.TryParse(targetState.SourceSector, out SectorCoordinate targetSector))
@@ -1543,6 +1561,45 @@ namespace Arcanum.Runtime.World
                 return Remember(new MapTransitionResult(MapTransitionFailure.UnsupportedDestinationMap, destination,
                     "M7A admits one cross-map jump; remote same-map jumps remain deferred."));
 
+            return ApplyResolvedMapTransition(destination);
+        }
+
+        /// <summary>PC-only physical SAP_USE entrance. Discovery/UI/time/encounters are not fabricated.</summary>
+        public AreaEntranceResult RequestAreaEntrance(ArcanumObjectId actor, ArcanumObjectId entrance)
+        {
+            AreaEntranceResult result;
+            if (_mapTransitionActive)
+                result = new AreaEntranceResult(AreaEntranceFailure.Busy);
+            else if (PlayerState == null || PlayerState.Identity != actor || !HasSelectedSector)
+                result = new AreaEntranceResult(AreaEntranceFailure.InvalidActor);
+            else if (_areaEntrances == null)
+                result = new AreaEntranceResult(AreaEntranceFailure.NoSourceData);
+            else if (!_states.TryGetValue(entrance, out PersistentObjectState target) || target.Off
+                || !TryGetLoadedObject(entrance, out WorldObject runtime) || runtime.Type != target.Type
+                || target.Placement.Kind != ObjectPlacementKind.World || target.Placement.Sector != SelectedSector)
+                result = new AreaEntranceResult(AreaEntranceFailure.TargetUnavailable);
+            else
+            {
+                result = _areaEntrances.Resolve(target);
+                if (result.Succeeded)
+                {
+                    if (!SectorCoordinate.TryParse(SelectedSector, out SectorCoordinate current)
+                        || !SectorCoordinate.TryParse(PlayerState.Sector, out SectorCoordinate playerSector)
+                        || playerSector.MapPath != current.MapPath
+                        || !InteractionRangeRules.IsWithin(PlayerState.MapPosition, result.Source.Tile,
+                            InteractionRangeRules.PortalUseRange))
+                        result = new AreaEntranceResult(AreaEntranceFailure.OutOfRange, entrance);
+                    else result = result.WithTransition(ApplyResolvedMapTransition(result.Transition.Destination));
+                }
+            }
+            LastAreaEntranceResult = result;
+            return result;
+        }
+
+        // One shared pipeline for M7A passive jumps and M7B admitted physical entrances.
+        private MapTransitionResult ApplyResolvedMapTransition(MapTransitionDestination destination)
+        {
+            SectorCoordinate.TryParse(SelectedSector, out SectorCoordinate selected);
             string previousSector = SelectedSector;
             string previousMap = selected.MapPath;
             Vector2 previousPosition = PlayerState.MapPosition;
