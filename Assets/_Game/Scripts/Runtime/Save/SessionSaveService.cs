@@ -734,10 +734,11 @@ namespace Arcanum.Runtime.Save
             return new SessionLoadResult(SessionLoadFailure.None);
         }
 
-        private static SessionLoadResult BuildCampaign(CampaignSaveData data, SessionRestorePlan plan)
+        private SessionLoadResult BuildCampaign(CampaignSaveData data, SessionRestorePlan plan)
         {
             if (data.GlobalVariables == null || data.GlobalFlags == null || data.PcVariables == null
                 || data.PcFlags == null || data.Quests == null || data.Attachments == null || data.Reactions == null
+                || data.KnownAreas == null
                 || data.StoryState < 0)
                 return Failure(SessionLoadFailure.InvalidCampaign, "A campaign collection is missing or invalid.");
             if (!ValidateIndexed(data.GlobalVariables, CampaignStateService.GlobalVariableCount)
@@ -745,6 +746,13 @@ namespace Arcanum.Runtime.Save
                 || !ValidateIndexed(data.PcVariables, CampaignStateService.PcVariableCount)
                 || !ValidateIndexes(data.PcFlags, CampaignStateService.PcFlagCount))
                 return Failure(SessionLoadFailure.InvalidCampaign, "Campaign variables or flags are invalid.");
+
+            if (data.KnownAreas.Count > 0 && _session.AreaSource == null)
+                return Failure(SessionLoadFailure.InvalidCampaign, "Area source metadata is unavailable.");
+            var knownAreas = new HashSet<int>();
+            foreach (int value in data.KnownAreas)
+                if (value <= 0 || !_session.AreaSource.TryGet(value, out _) || !knownAreas.Add(value))
+                    return Failure(SessionLoadFailure.InvalidCampaign, $"Known area {value} is invalid.");
 
             var questNumbers = new HashSet<int>();
             ulong maximumTimestamp = 0;
@@ -786,6 +794,8 @@ namespace Arcanum.Runtime.Save
             try
             {
                 var campaign = new CampaignStateService();
+                if (_session.AreaSource != null)
+                    campaign.BindAreaSource(_session.AreaSource);
                 campaign.RestoreSaveData(data);
                 plan.Campaign = campaign;
             }

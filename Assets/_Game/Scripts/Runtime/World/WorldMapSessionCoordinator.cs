@@ -4,6 +4,7 @@ using System.Linq;
 using Arcanum.Formats.Art;
 using Arcanum.Formats.Objects;
 using Arcanum.Formats.Script;
+using Arcanum.Formats.World;
 using Arcanum.Runtime.Character;
 using Arcanum.Runtime.Campaign;
 using Arcanum.Runtime.Dialogue;
@@ -48,6 +49,7 @@ namespace Arcanum.Runtime.World
         private ITrainingDialogueTextSource _trainingDialogueText;
         private MapTransitionResolver _mapTransitions;
         private AreaEntranceResolver _areaEntrances;
+        private AreaList _areaSource;
         private bool _mapTransitionActive;
         private ulong _nextDynamicIdentity = 1;
 
@@ -67,7 +69,7 @@ namespace Arcanum.Runtime.World
         public InventoryCapacityService InventoryCapacity
             => _inventoryCapacity ??= new InventoryCapacityService(this);
         public PortalTransitionScheduler Portals => _portals ??= new PortalTransitionScheduler();
-        public CampaignStateService Campaign => _campaign ??= new CampaignStateService();
+        public CampaignStateService Campaign => _campaign ??= CreateCampaign();
         /// <summary>Compatibility name for the shared script/campaign store used by M2B callers.</summary>
         public CampaignStateService ScriptGlobals => Campaign;
         public ProductionDialogueSession Dialogue => _dialogue ??= CreateDialogue();
@@ -254,6 +256,21 @@ namespace Arcanum.Runtime.World
 
         public void BindAreaEntranceSource(AreaEntranceResolver resolver)
             => _areaEntrances = resolver ?? throw new ArgumentNullException(nameof(resolver));
+
+        public void BindAreaSource(AreaList source)
+        {
+            _areaSource = source ?? throw new ArgumentNullException(nameof(source));
+            Campaign.BindAreaSource(source);
+        }
+
+        internal AreaList AreaSource => _areaSource;
+
+        private CampaignStateService CreateCampaign()
+        {
+            var campaign = new CampaignStateService();
+            if (_areaSource != null) campaign.BindAreaSource(_areaSource);
+            return campaign;
+        }
 
         public bool IsAreaEntranceTarget(ArcanumObjectId identity)
             => _areaEntrances != null && _states.TryGetValue(identity, out PersistentObjectState state)
@@ -1737,6 +1754,7 @@ namespace Arcanum.Runtime.World
             _inventoryCapacity = plan.InventoryCapacity;
             _derivedStats = plan.DerivedStats;
             _campaign = plan.Campaign;
+            if (_areaSource != null) _campaign.BindAreaSource(_areaSource);
             _portals = new PortalTransitionScheduler();
             _dialogue = null;
             _journal = null;

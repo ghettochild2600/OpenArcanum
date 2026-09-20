@@ -4,6 +4,7 @@ using Arcanum.Formats.Dialog;
 using Arcanum.Formats.Objects;
 using Arcanum.Formats.Quest;
 using Arcanum.Formats.Script;
+using Arcanum.Formats.World;
 using Arcanum.Runtime.Campaign;
 using Arcanum.Runtime.Character;
 using Arcanum.Runtime.World;
@@ -98,6 +99,10 @@ namespace Arcanum.Runtime.Dialogue
             { "gf", "gv", "lf", "qu", "qb", "ra", "in", "ni", "re", "ch", "ha" };
         private static readonly HashSet<string> M5BAdmittedEffects = new(StringComparer.OrdinalIgnoreCase)
             { "lf", "qu", "fl", "in", "re", "$$" };
+        private static readonly HashSet<string> M7CAdmittedTests = new(StringComparer.OrdinalIgnoreCase)
+            { "gf", "gv", "lf", "qu", "qb", "qa", "ra", "in", "ni", "re", "ch", "ha", "tr", "sk", "ar" };
+        private static readonly HashSet<string> M7CAdmittedEffects = new(StringComparer.OrdinalIgnoreCase)
+            { "lf", "qu", "fl", "in", "re", "$$", "mm" };
 
         private readonly WorldMapSessionCoordinator _world;
         private readonly CampaignStateService _campaign;
@@ -131,12 +136,12 @@ namespace Arcanum.Runtime.Dialogue
         public bool IsBusy => Phase is DialogueSessionPhase.Starting or DialogueSessionPhase.Active
             or DialogueSessionPhase.AwaitingPlayerChoice or DialogueSessionPhase.ExecutingResponse;
 
-        private ISet<string> AdmittedTests => DialogueNumber == 1009
-            ? M5BAdmittedTests
-            : M5AAdmittedTests;
-        private ISet<string> AdmittedEffects => DialogueNumber == 1009
-            ? M5BAdmittedEffects
-            : M5AAdmittedEffects;
+        private ISet<string> AdmittedTests => DialogueNumber == 1497
+            ? M7CAdmittedTests
+            : DialogueNumber == 1009 ? M5BAdmittedTests : M5AAdmittedTests;
+        private ISet<string> AdmittedEffects => DialogueNumber == 1497
+            ? M7CAdmittedEffects
+            : DialogueNumber == 1009 ? M5BAdmittedEffects : M5AAdmittedEffects;
 
         public event Action Changed;
         public event Action<DialogueDiagnostic> Diagnostic;
@@ -786,6 +791,12 @@ namespace Arcanum.Runtime.Dialogue
         public int HaggleSkill => Skill(CharacterSkill.Haggle);
         public int BasicSkillLevel(int skill) => Skill((CharacterSkill)skill);
         public int TechSkillLevel(int skill) => Skill((CharacterSkill)(skill + 12));
+        public int SkillTrainingLevel(int skill)
+        {
+            if ((uint)skill >= CharacterSkillRules.SkillCount)
+                throw new ArgumentOutOfRangeException(nameof(skill));
+            return (int)_world.Progression.GetTrainingLevel(_pc, (CharacterSkill)skill);
+        }
         public bool PcIsMale => _world.Characters.Get(_pc).Gender == CharacterGender.Male;
         public string PcName => "Player";
         public string NpcName => $"NPC {_world.States[_npc].PrototypeNumber}";
@@ -837,7 +848,11 @@ namespace Arcanum.Runtime.Dialogue
         public bool HasReputation(int id) => throw Outside(nameof(HasReputation));
         public void AddReputation(int id) => throw Outside(nameof(AddReputation));
         public void RemoveReputation(int id) => throw Outside(nameof(RemoveReputation));
-        public void MarkAreaKnown(int id) => throw Outside(nameof(MarkAreaKnown));
+        public void MarkAreaKnown(int id)
+        {
+            if (id != 58) throw Outside($"{nameof(MarkAreaKnown)}({id})");
+            _campaign.DiscoverArea(new AreaId(id));
+        }
         public bool HasMetNpc => throw Outside(nameof(HasMetNpc));
         public void KillNpc() => throw Outside(nameof(KillNpc));
         public int NpcReaction => _world.DerivedStats.GetReaction(_npc, _pc);
@@ -864,7 +879,7 @@ namespace Arcanum.Runtime.Dialogue
         public void StartCombat() => throw Outside(nameof(StartCombat));
         public void RecruitNpc() => throw Outside(nameof(RecruitNpc));
         public bool IsNpcFollowingPc => throw Outside(nameof(IsNpcFollowingPc));
-        public bool AreaKnown(int id) => throw Outside(nameof(AreaKnown));
+        public bool AreaKnown(int id) => _campaign.IsAreaKnown(new AreaId(id));
         public void DisbandNpc() => throw Outside(nameof(DisbandNpc));
         public string GeneratedText(char token)
             => _resolveGeneratedText?.Invoke(_npc, token) ?? (token == 'e' ? "Goodbye." : null);
@@ -900,6 +915,14 @@ namespace Arcanum.Runtime.Dialogue
                             _world.DerivedStats.Get(_pc);
                             _world.DerivedStats.Get(_npc);
                         }
+                        return true;
+                    case "mm":
+                        if (first != 58)
+                        {
+                            failure = $"area {first} is outside the audited M7C dialogue path";
+                            return false;
+                        }
+                        _campaign.IsAreaKnown(new AreaId(first));
                         return true;
                     case "in":
                     {

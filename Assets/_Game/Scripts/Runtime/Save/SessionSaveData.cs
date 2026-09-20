@@ -151,6 +151,7 @@ namespace Arcanum.Runtime.Save
         public List<QuestSaveData> Quests { get; set; }
         public List<ScriptAttachmentSaveData> Attachments { get; set; }
         public List<ReactionSaveData> Reactions { get; set; }
+        public List<int> KnownAreas { get; set; } = new List<int>();
     }
 
     public sealed class IndexedIntSaveData

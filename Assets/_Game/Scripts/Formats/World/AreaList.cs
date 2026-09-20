@@ -1,9 +1,26 @@
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using Arcanum.Formats.Text;
 
 namespace Arcanum.Formats.World
 {
+    /// <summary>Stable source area key from <c>mes/gamearea.mes</c>.</summary>
+    public readonly struct AreaId : IEquatable<AreaId>, IComparable<AreaId>
+    {
+        public int Value { get; }
+
+        public AreaId(int value) => Value = value;
+
+        public int CompareTo(AreaId other) => Value.CompareTo(other.Value);
+        public bool Equals(AreaId other) => Value == other.Value;
+        public override bool Equals(object obj) => obj is AreaId other && Equals(other);
+        public override int GetHashCode() => Value;
+        public override string ToString() => Value.ToString(CultureInfo.InvariantCulture);
+        public static bool operator ==(AreaId left, AreaId right) => left.Equals(right);
+        public static bool operator !=(AreaId left, AreaId right) => !left.Equals(right);
+    }
+
     /// <summary>
     /// One named location on the world map — engine <c>Area</c> (game/area.c), loaded from
     /// <c>mes/gamearea.mes</c>. Area 0 is the special "unknown" placeholder.
@@ -63,6 +80,7 @@ namespace Arcanum.Formats.World
         public IReadOnlyList<Area> Areas => _areas;
         public int Count => _areas.Count;
         public bool TryGet(int id, out Area area) => _byId.TryGetValue(id, out area);
+        public bool TryGet(AreaId id, out Area area) => TryGet(id.Value, out area);
 
         public static AreaList FromMes(MesFile mes)
         {

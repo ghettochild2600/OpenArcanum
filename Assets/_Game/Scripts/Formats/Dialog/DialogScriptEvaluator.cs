@@ -149,6 +149,7 @@ namespace Arcanum.Formats.Dialog
                     return t.A < BasicSkillCount
                         ? Cmp(ctx.BasicSkillLevel(t.A), t.B)
                         : Cmp(ctx.TechSkillLevel(t.A - BasicSkillCount), t.B);
+                case "tr": return Cmp(ctx.SkillTrainingLevel(t.A), t.B);
                 case "fo": return t.A == 0 ? ctx.IsNpcFollowingPc : !ctx.IsNpcFollowingPc; // 0 = follows PC, 1 = doesn't
                 case "na": return t.A < 0 ? ctx.Alignment <= t.A : ctx.Alignment >= -t.A;  // alignment, sign-reversed vs `al`
                 case "ar": return t.A > 0 ? ctx.AreaKnown(t.A) : !ctx.AreaKnown(-t.A);     // area is / isn't known
@@ -167,8 +168,7 @@ namespace Arcanum.Formats.Dialog
                 case "rq": return t.A > 0 ? ctx.RumorQuelled(t.A) : !ctx.RumorQuelled(-t.A);
 
                 default:
-                    // Still documented-permissive: `tr` (skill TRAINING level — we model ranks, not training
-                    // tiers) and `ia` (PC's current worldmap area — no location→area table yet). See Docs/Dialog.md.
+                    // Still documented-permissive: `ia` (PC's current worldmap area — no location→area table yet).
                     OnUnsupported?.Invoke(t.Code, t.A);
                     return true; // permissive: don't hide an option we can't evaluate
             }

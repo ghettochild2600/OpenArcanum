@@ -30,6 +30,9 @@ namespace Arcanum.Formats.Dialog
 
         int TechSkillLevel(int skill);
 
+        /// <summary>Training tier for a source skill ID, used by the <c>tr</c> gate.</summary>
+        int SkillTrainingLevel(int skill) => 0;
+
         /// <summary>The PC's gender — selects an NPC line's gender variant and gates gender-specific options.</summary>
         bool PcIsMale { get; }
 

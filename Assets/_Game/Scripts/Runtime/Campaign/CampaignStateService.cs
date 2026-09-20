@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Arcanum.Formats.Objects;
 using Arcanum.Formats.Quest;
+using Arcanum.Formats.World;
 using Arcanum.Script;
 using Arcanum.Runtime.Save;
 
@@ -21,6 +22,8 @@ namespace Arcanum.Runtime.Campaign
         InvalidScriptAttachment,
         InvalidLocalFlag,
         InvalidLocalCounter,
+        AreaSourceUnavailable,
+        InvalidArea,
     }
 
     public readonly struct ScriptAttachmentState
@@ -82,15 +85,73 @@ namespace Arcanum.Runtime.Campaign
         private readonly QuestState[] _globalQuestStates = new QuestState[QuestCount];
         private readonly QuestTimestamp[] _pcQuestTimestamps = new QuestTimestamp[QuestCount];
         private readonly Dictionary<ScriptAttachmentKey, ScriptAttachmentState> _attachments = new();
+        private readonly HashSet<AreaId> _knownAreas = new();
+        private AreaList _areaSource;
         private int _storyState;
         private ulong _questClock;
 
         public event Action<int, QuestState, QuestState> PcQuestStateChanged;
+        public event Action<AreaId> AreaDiscovered;
 
         public CampaignStateService()
         {
             for (int index = 0; index < _globalQuestStates.Length; index++)
                 _globalQuestStates[index] = QuestState.Accepted;
+        }
+
+        /// <summary>Binds immutable retail area metadata without transferring campaign-state ownership.</summary>
+        public void BindAreaSource(AreaList source)
+        {
+            _areaSource = source ?? throw new ArgumentNullException(nameof(source));
+            foreach (AreaId id in _knownAreas) ValidateArea(id);
+        }
+
+        public bool IsAreaKnown(AreaId id)
+        {
+            ValidateArea(id);
+            return _knownAreas.Contains(id);
+        }
+
+        /// <summary>Read-only policy boundary for a future world-map destination presenter.</summary>
+        public bool CanSelectWorldArea(AreaId id) => IsAreaKnown(id);
+
+        public IReadOnlyList<AreaId> KnownAreas
+        {
+            get
+            {
+                var result = new List<AreaId>(_knownAreas);
+                result.Sort();
+                return result;
+            }
+        }
+
+        public bool TryDiscoverArea(AreaId id, out bool changed, out CampaignStateFailure failure)
+        {
+            changed = false;
+            try
+            {
+                ValidateArea(id);
+            }
+            catch (CampaignStateException ex)
+            {
+                failure = ex.Failure;
+                return false;
+            }
+            if (!_knownAreas.Add(id))
+            {
+                failure = CampaignStateFailure.None;
+                return true;
+            }
+            changed = true;
+            failure = CampaignStateFailure.None;
+            AreaDiscovered?.Invoke(id);
+            return true;
+        }
+
+        public void DiscoverArea(AreaId id)
+        {
+            if (!TryDiscoverArea(id, out _, out CampaignStateFailure failure))
+                throw Failure(failure, id.Value);
         }
 
         public int GetVar(int index) => _globalVariables[ValidateIndex(index, GlobalVariableCount,
@@ -287,6 +348,7 @@ namespace Arcanum.Runtime.Campaign
                 PcFlags = new List<int>(),
                 Quests = new List<QuestSaveData>(),
                 Attachments = new List<ScriptAttachmentSaveData>(),
+                KnownAreas = new List<int>(),
             };
             for (int index = 0; index < GlobalVariableCount; index++)
                 if (_globalVariables[index] != 0)
@@ -325,6 +387,7 @@ namespace Arcanum.Runtime.Campaign
                 int identity = string.CompareOrdinal(left.Identity, right.Identity);
                 return identity != 0 ? identity : left.AttachmentPoint.CompareTo(right.AttachmentPoint);
             });
+            foreach (AreaId id in KnownAreas) data.KnownAreas.Add(id.Value);
             return data;
         }
 
@@ -332,6 +395,7 @@ namespace Arcanum.Runtime.Campaign
         {
             _storyState = data.StoryState;
             _questClock = data.QuestClock;
+            foreach (int value in data.KnownAreas) DiscoverArea(new AreaId(value));
             foreach (IndexedIntSaveData entry in data.GlobalVariables) _globalVariables[entry.Index] = entry.Value;
             foreach (int index in data.GlobalFlags) SetBit(_globalFlags, index, 1);
             foreach (IndexedIntSaveData entry in data.PcVariables) _pcVariables[entry.Index] = entry.Value;
@@ -364,6 +428,7 @@ namespace Arcanum.Runtime.Campaign
             private readonly QuestState[] _globalQuestStates;
             private readonly QuestTimestamp[] _pcQuestTimestamps;
             private readonly Dictionary<ScriptAttachmentKey, ScriptAttachmentState> _attachments;
+            private readonly HashSet<AreaId> _knownAreas;
             private readonly int _storyState;
             private readonly ulong _questClock;
 
@@ -377,6 +442,7 @@ namespace Arcanum.Runtime.Campaign
                 _globalQuestStates = (QuestState[])state._globalQuestStates.Clone();
                 _pcQuestTimestamps = (QuestTimestamp[])state._pcQuestTimestamps.Clone();
                 _attachments = new Dictionary<ScriptAttachmentKey, ScriptAttachmentState>(state._attachments);
+                _knownAreas = new HashSet<AreaId>(state._knownAreas);
                 _storyState = state._storyState;
                 _questClock = state._questClock;
             }
@@ -392,6 +458,8 @@ namespace Arcanum.Runtime.Campaign
                 Array.Copy(_pcQuestTimestamps, state._pcQuestTimestamps, _pcQuestTimestamps.Length);
                 state._attachments.Clear();
                 foreach (var pair in _attachments) state._attachments.Add(pair.Key, pair.Value);
+                state._knownAreas.Clear();
+                foreach (AreaId id in _knownAreas) state._knownAreas.Add(id);
                 state._storyState = _storyState;
                 state._questClock = _questClock;
             }
@@ -401,6 +469,14 @@ namespace Arcanum.Runtime.Campaign
         {
             _questClock++;
             return new QuestTimestamp((uint)(_questClock / 86400000UL), (uint)(_questClock % 86400000UL));
+        }
+
+        private void ValidateArea(AreaId id)
+        {
+            if (_areaSource == null)
+                throw Failure(CampaignStateFailure.AreaSourceUnavailable, id.Value);
+            if (id.Value <= 0 || !_areaSource.TryGet(id, out _))
+                throw Failure(CampaignStateFailure.InvalidArea, id.Value);
         }
 
         private readonly struct ScriptAttachmentKey : IEquatable<ScriptAttachmentKey>
