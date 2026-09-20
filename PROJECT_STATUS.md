@@ -14,7 +14,8 @@ M1 traversal, the bounded M2 interaction/SAP_USE kernel, M3A-M3E inventory/comma
 M4A-M4D character attributes/vitality/progression/derived statistics, M5A-M5C campaign/dialogue/quest/journal/trainer
 vertical slices, M6A authoritative session save/load, M6B migration boundaries/domain save slots, and M6C bounded
 player-facing manual save/load presentation, M7A bounded passive local map transitions, and M7B bounded authentic
-overland/Bates area entrance and return, and M7C bounded authoritative known-area discovery are complete.
+overland/Bates area entrance and return, M7C bounded authoritative known-area discovery, and M7D read-only world-map
+destination projection/selection are complete.
 `WorldMapSessionCoordinator` owns typed `World`, `Contained(parent)`, and `Equipped(parent, wornLocation)` placement,
 atomic raw item transfers/equipment replacement/stack merge and split, deterministic session-created item identities,
 source-faithful pickup/drop/owner-transfer policy, and pre-mutation weight/grid-capacity guards independently of Unity
@@ -55,9 +56,17 @@ Clarissa Shalmo's authentic dialogue 1497 response 93 executes exact `mm58` to r
 presentation state invents discovery. Sorted IDs round-trip in the existing V1 campaign payload, older V1 documents
 without the field remain an empty set, and invalid non-empty data fails transactionally before the session changes.
 
-The next recommended objective is M7D - source-audit and implement a read-only world-map destination
-projection/selection boundary gated by authoritative known-area state. Broader route simulation, travel time,
-encounters, clock/day-night behavior, autosave, quicksave,
+M7D derives 79 valid immutable destinations from that shared source in deterministic source order and gates selection
+through `CampaignStateService.CanSelectWorldArea`. Unknown locations follow the source UI and remain hidden; explicit
+queries return unavailable, while invalid/source-less/duplicate records fail distinctly. Selecting known K'na Tha
+produces one typed `WorldMapTravelRequest` for area 58 at `(91902,39305)` without moving the PC, changing maps,
+advancing time, rolling encounters, or mutating campaign state. Projection state recomputes across authoritative reset
+and V1 restore; the minimal Unity presenter owns only display/input.
+
+The next recommended objective is M7E - source-audit and implement the bounded world-map route/travel execution
+lifecycle that consumes `WorldMapTravelRequest`, beginning with authoritative route and arrival-source semantics.
+Broader travel time, encounters, follower relocation, polished world-map animation, clock/day-night behavior,
+autosave, quicksave,
 cloud sync, original Arcanum save compatibility, combat, followers, and barter remain deferred.
 
 ## Current Branch
@@ -180,6 +189,28 @@ save/graphics evidence, tests, omissions, and M7C recommendation.
 See [`documentation_unity/m7c-area-discovery.md`](documentation_unity/m7c-area-discovery.md) for the source semantics,
 retail audit and exact fixture, final ownership/call graph, V1 compatibility contract, validation evidence, omissions,
 and M7D recommendation.
+
+## M7D Validation Baseline (2026-09-20)
+
+- Unity 6000.0.71f1 compilation: clean
+- focused M7D EditMode: 16 passed / 0 failed / 0 skipped / 0 inconclusive
+- required M7C/M7B/M7A/M6C/M6B/M6A/M5C/M5B/M5A/player-navigation/world-session regressions: 251 passed /
+  0 failed / 0 skipped / 0 inconclusive
+- complete EditMode: 642 passed / 0 failed / 0 skipped / 0 inconclusive
+- retail destination audit: 82 canonical areas, 79 valid nonzero destinations, zero duplicate IDs, two explicit
+  invalid aliases (36/46), 73 map associations across 31 areas
+- reset campaign hid K'na Tha and Tarant; literal Clarissa click plus authored responses
+  `2 -> 44 -> 55 -> 70 -> 77 -> 81 -> 97 -> 88 -> 93` made only K'na Tha visible/selectable
+- literal K'na Tha selection emitted exactly `WorldMapTravelRequest(area 58, (91902,39305))`; PC position, sector,
+  transition state, time/encounters, and campaign state did not change
+- V1 save -> authoritative reset -> load restored the same PC/sector and K'na Tha selection state; Tarant remained
+  unavailable and no save field was added
+- Original -> Enhanced -> Original retained one of every gameplay/presentation owner and one presentation per identity
+- final physical Play Mode warnings/errors: 0/0; user-owned graphicsMode: 1 asset preserved/excluded
+
+See [`documentation_unity/m7d-world-map-destination-selection.md`](documentation_unity/m7d-world-map-destination-selection.md)
+for source fields and hide semantics, the final ownership graph, typed failures/request contract, authentic fixture,
+persistence/graphics evidence, deliberate omissions, and the exact M7E recommendation.
 
 ## Verified Baseline
 
