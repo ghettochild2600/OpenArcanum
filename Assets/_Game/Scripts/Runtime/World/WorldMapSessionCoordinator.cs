@@ -12,6 +12,7 @@ using Arcanum.Formats.Quest;
 using Arcanum.Script;
 using Arcanum.World;
 using Arcanum.Runtime.Save;
+using Arcanum.Runtime.Combat;
 using UnityEngine;
 
 namespace Arcanum.Runtime.World
@@ -53,6 +54,7 @@ namespace Arcanum.Runtime.World
         private WorldMapDestinationProjection _worldMapDestinations;
         private WorldMapTravelSource _worldMapTravelSource;
         private WorldMapTravelService _worldMapTravel;
+        private CombatStateService _combat;
         private bool _mapTransitionActive;
         private ulong _nextDynamicIdentity = 1;
 
@@ -84,6 +86,7 @@ namespace Arcanum.Runtime.World
             => _worldMapDestinations ??= new WorldMapDestinationProjection(_areaSource, Campaign);
         public WorldMapTravelService WorldMapTravel
             => _worldMapTravel ??= new WorldMapTravelService(this, _worldMapTravelSource);
+        public CombatStateService Combat => _combat ??= new CombatStateService(this);
         public bool IsMapTransitionActive => _mapTransitionActive;
         public MapTransitionResult LastMapTransitionResult { get; private set; }
         public AreaEntranceResult LastAreaEntranceResult { get; private set; }
@@ -309,6 +312,9 @@ namespace Arcanum.Runtime.World
 
             SelectedSector = sector;
             SectorSelected?.Invoke(sector);
+            if (PlayerState != null)
+                Combat.RegisterActorSource(new CombatActorSource(PlayerState.Identity, ObjectType.Pc, null,
+                    PlayerState.Sector, int.MaxValue, 0, 0, 0));
             return true;
         }
 
@@ -323,6 +329,7 @@ namespace Arcanum.Runtime.World
         public void ClearSelectedSector()
         {
             string sector = SelectedSector ?? _objectOwner?.PresentedSector ?? _terrainOwner?.PresentedSector;
+            _combat?.ResetForWorldChange();
             _dialogue?.Cancel("Sector unloaded during dialogue.");
             if (sector != null) SectorUnloading?.Invoke(sector);
             _objectOwner?.ClearPresentedSector();
@@ -544,6 +551,8 @@ namespace Arcanum.Runtime.World
             Progression.GetOrCreateDevelopmentPlayer(identity);
             DerivedStats.GetOrCreateDevelopmentPlayer(identity);
             Vitality.GetOrCreateDevelopmentPlayer(identity);
+            Combat.RegisterActorSource(new CombatActorSource(identity, ObjectType.Pc, null, normalized,
+                int.MaxValue, 0, 0, 0));
             if (PlayerState == null)
                 PlayerState = new PersistentPlayerState(identity, normalized, spawnTile, artId);
             else
@@ -1305,6 +1314,8 @@ namespace Arcanum.Runtime.World
         {
             if (PlayerState == null || PlayerState.Identity != command.Actor)
                 return new WorldInteractionResult(command, WorldInteractionResultCode.ActorNotFound);
+            if (Combat.IsActive)
+                return new WorldInteractionResult(command, WorldInteractionResultCode.Blocked);
             return command.Type switch
             {
                 WorldInteractionCommandType.Use => ExecuteUse(command),
@@ -1748,6 +1759,7 @@ namespace Arcanum.Runtime.World
             _campaign = null;
             _worldMapDestinations = null;
             _worldMapTravel = null;
+            _combat = null;
             _portals = null;
             _dialogue = null;
             _journal = null;
@@ -1780,6 +1792,7 @@ namespace Arcanum.Runtime.World
             if (_areaSource != null) _campaign.BindAreaSource(_areaSource);
             _worldMapDestinations = null;
             _worldMapTravel = null;
+            _combat = null;
             _portals = new PortalTransitionScheduler();
             _dialogue = null;
             _journal = null;
@@ -1788,6 +1801,8 @@ namespace Arcanum.Runtime.World
                 : new WorldUseScriptDispatcher(this, _resolveUseScript, Campaign);
             CurrentMap = null;
             SelectedSector = null;
+            Combat.RegisterActorSource(new CombatActorSource(PlayerState.Identity, ObjectType.Pc, null,
+                PlayerState.Sector, int.MaxValue, 0, 0, 0));
             return SelectSector(plan.SelectedSector);
         }
 

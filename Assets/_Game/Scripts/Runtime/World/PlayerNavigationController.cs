@@ -51,6 +51,11 @@ namespace Arcanum.Runtime.World
         internal void AdvanceNavigation(float tileSteps)
         {
             if (Player == null || !_follower.IsMoving) return;
+            if (!_loader.Session.Combat.CanUseOrdinaryMovement(Player.Identity))
+            {
+                CancelRoute();
+                return;
+            }
 
             int facingBefore = _follower.Facing;
             if (facingBefore >= 0 && facingBefore != _facing)
@@ -139,6 +144,7 @@ namespace Arcanum.Runtime.World
         public bool TrySetGlobalDestination(Vector2Int destination)
         {
             if (Player == null || _loader?.NavigationMap == null) return false;
+            if (!_loader.Session.Combat.CanUseOrdinaryMovement(Player.Identity)) return false;
             DestinationRequested?.Invoke();
             CancelRoute();
             _rejectedBoundaryExits.Clear();

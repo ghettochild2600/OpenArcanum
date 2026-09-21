@@ -50,6 +50,11 @@ namespace Arcanum.Runtime.World
             }
             WorldInteractionCommand command = PendingCommand.Value;
             WorldMapSessionCoordinator session = _loader.Session;
+            if (session.Combat.IsActive)
+            {
+                Resolve(command, WorldInteractionResultCode.Cancelled, true);
+                return;
+            }
             if (session.PlayerState == null || session.PlayerState.Identity != command.Actor)
             {
                 Resolve(command, WorldInteractionResultCode.ActorNotFound, true);

@@ -11,6 +11,7 @@ using Arcanum.Formats.Text;
 using Arcanum.Formats.Tiles;
 using Arcanum.Formats.World;
 using Arcanum.Runtime.Character;
+using Arcanum.Runtime.Combat;
 using Arcanum.Runtime.Dialogue;
 using Arcanum.Runtime.Save;
 using Arcanum.World;
@@ -233,8 +234,10 @@ namespace Arcanum.Runtime.World
             int derivedPortals = 0;
             var byType = new Dictionary<ObjectType, int>();
 
+            int sourceOrder = 0;
             foreach (ObjectInstance instance in instances)
             {
+                int combatSourceOrder = sourceOrder++;
                 ArcanumObjectId identity = identities[instance];
                 if (!identity.IsPersistent) LastNonPersistentIdentityCount++;
                 if (!instance.Location.HasValue) continue;
@@ -327,6 +330,16 @@ namespace Arcanum.Runtime.World
                 }
                 if (state != null)
                 {
+                    if (instance.Type is ObjectType.Pc or ObjectType.Npc)
+                    {
+                        Session.Combat.RegisterActorSource(new CombatActorSource(identity, instance.Type,
+                            instance.PrototypeNumber, sectorPath, combatSourceOrder,
+                            instance.NpcFlags ?? proto?.NpcFlags ?? 0,
+                            instance.CritterFlags ?? proto?.CritterFlags ?? 0,
+                            instance.WillKosScriptNum != 0
+                                ? instance.WillKosScriptNum
+                                : proto?.WillKosScriptNum ?? 0));
+                    }
                     artId = state.ArtId;
                     artPath = _art.Resolve(artId);
                     flags = state.Off ? flags | ObjectFlagOff : flags & ~ObjectFlagOff;
