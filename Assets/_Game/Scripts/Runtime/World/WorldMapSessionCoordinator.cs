@@ -257,6 +257,9 @@ namespace Arcanum.Runtime.World
         public void BindPrototypeSource(Func<int, ObjectProtoInfo> resolvePrototype)
             => _resolvePrototype = resolvePrototype ?? throw new ArgumentNullException(nameof(resolvePrototype));
 
+        internal ObjectProtoInfo ResolvePrototype(int prototypeNumber)
+            => _resolvePrototype?.Invoke(prototypeNumber);
+
         public void BindInventoryFootprintSource(Func<uint?, InventoryFootprint> resolveInventoryFootprint)
             => _resolveInventoryFootprint = resolveInventoryFootprint
                 ?? throw new ArgumentNullException(nameof(resolveInventoryFootprint));
@@ -504,7 +507,9 @@ namespace Arcanum.Runtime.World
             InventoryFootprint? inventoryFootprint = null,
             int? inventoryLocation = null,
             int? nameIndex = null,
-            int? socialClass = null)
+            int? socialClass = null,
+            Weapon weaponData = null,
+            int? ammoItemType = null)
         {
             if (!identity.IsPersistent) return null;
             if (_removedObjectIdentities.Contains(identity)) return null;
@@ -515,7 +520,7 @@ namespace Arcanum.Runtime.World
             }
             var state = new PersistentObjectState(source, identity, sector, artId, off, locked, itemFlags,
                 inventoryArtId, weaponFlags, genericFlags, stackQuantity, unitWeight, inventoryFootprint,
-                inventoryLocation, nameIndex, socialClass);
+                inventoryLocation, nameIndex, socialClass, weaponData, ammoItemType);
             _states.Add(identity, state);
             return state;
         }
@@ -523,10 +528,11 @@ namespace Arcanum.Runtime.World
         public PersistentObjectState GetOrCreate(ObjectInstance source, string sector, uint artId, bool off, bool locked,
             int itemFlags = 0, uint? inventoryArtId = null, int weaponFlags = 0, int genericFlags = 0,
             int? stackQuantity = null, int? unitWeight = null, InventoryFootprint? inventoryFootprint = null,
-            int? inventoryLocation = null, int? nameIndex = null, int? socialClass = null)
+            int? inventoryLocation = null, int? nameIndex = null, int? socialClass = null,
+            Weapon weaponData = null, int? ammoItemType = null)
             => GetOrCreate(source, source.Identity, sector, artId, off, locked, itemFlags, inventoryArtId,
                 weaponFlags, genericFlags, stackQuantity, unitWeight, inventoryFootprint, inventoryLocation,
-                nameIndex, socialClass);
+                nameIndex, socialClass, weaponData, ammoItemType);
 
         public void Bind(string sector, PersistentObjectState state, WorldObject runtime)
         {
@@ -620,6 +626,48 @@ namespace Arcanum.Runtime.World
                         item = candidate;
                 }
             return item != null;
+        }
+
+        /// <summary>Finds the stable source-shaped ammo stack used by the bounded ranged transaction.</summary>
+        public bool TryGetAmmo(ArcanumObjectId owner, int ammoType, int quantity,
+            out PersistentObjectState ammo)
+        {
+            ammo = null;
+            if (quantity < 1) return false;
+            foreach (PersistentObjectState candidate in _states.Values)
+            {
+                if (candidate.Type != ObjectType.Ammo || candidate.AmmoItemType != ammoType
+                    || candidate.StackQuantity.GetValueOrDefault() < quantity
+                    || candidate.Placement.Kind != ObjectPlacementKind.Contained
+                    || candidate.Placement.ParentIdentity != owner) continue;
+                if (ammo == null || string.CompareOrdinal(candidate.Identity.Key, ammo.Identity.Key) < 0)
+                    ammo = candidate;
+            }
+            return ammo != null;
+        }
+
+        /// <summary>Consumes a preflighted ammo stack; zero quantity becomes a persistent tombstone.</summary>
+        internal bool ConsumeAmmo(ArcanumObjectId identity, int quantity, out int remaining)
+        {
+            remaining = 0;
+            if (quantity < 1 || !_states.TryGetValue(identity, out PersistentObjectState ammo)
+                || ammo.Type != ObjectType.Ammo || ammo.StackQuantity.GetValueOrDefault() < quantity)
+                return false;
+            int previous = ammo.StackQuantity.Value;
+            remaining = previous - quantity;
+            if (remaining == 0)
+            {
+                ObjectPlacement placement = ammo.Placement;
+                _states.Remove(identity);
+                _removedObjectIdentities.Add(identity);
+                ObjectStateRemoved?.Invoke(ammo, placement);
+            }
+            else
+            {
+                ammo.StackQuantity = remaining;
+                ObjectQuantityChanged?.Invoke(ammo, previous, remaining);
+            }
+            return true;
         }
 
         /// <summary>Returns the source worn location currently carried by an item.</summary>
@@ -1522,6 +1570,8 @@ namespace Arcanum.Runtime.World
             {
                 state.TilePosition = tilePosition;
                 state.ArtId = artId;
+                if (state.Placement.Kind == ObjectPlacementKind.World)
+                    state.Placement = ObjectPlacement.InWorld(state.Placement.Sector, tilePosition);
             }
             else if (PlayerState != null && PlayerState.Identity == identity)
             {

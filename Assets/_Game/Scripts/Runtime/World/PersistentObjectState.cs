@@ -1,5 +1,6 @@
 using Arcanum.Formats.Art;
 using Arcanum.Formats.Objects;
+using Arcanum.Runtime.Combat;
 using UnityEngine;
 
 namespace Arcanum.Runtime.World
@@ -28,6 +29,10 @@ namespace Arcanum.Runtime.World
         public int ItemFlags { get; }
         public uint? InventoryArtId { get; }
         public int WeaponFlags { get; }
+        /// <summary>Effective prototype combat facts retained independently of Unity presentation.</summary>
+        public Weapon WeaponData { get; }
+        /// <summary>Effective source OBJ_F_AMMO_TYPE for an ammo stack.</summary>
+        public int? AmmoItemType { get; }
         public int GenericFlags { get; }
         /// <summary>Effective stored OBJ_F_ITEM_WEIGHT (instance override, otherwise prototype).</summary>
         public int UnitWeight { get; }
@@ -58,7 +63,9 @@ namespace Arcanum.Runtime.World
             InventoryFootprint? inventoryFootprint = null,
             int? inventoryLocation = null,
             int? nameIndex = null,
-            int? socialClass = null)
+            int? socialClass = null,
+            Weapon weaponData = null,
+            int? ammoItemType = null)
         {
             Identity = identity;
             AuthoredParentIdentity = source.ParentIdentity;
@@ -76,6 +83,8 @@ namespace Arcanum.Runtime.World
             ItemFlags = itemFlags;
             InventoryArtId = inventoryArtId;
             WeaponFlags = weaponFlags;
+            WeaponData = weaponData?.Clone();
+            AmmoItemType = ammoItemType;
             GenericFlags = genericFlags;
             UnitWeight = unitWeight ?? source.Weight ?? 0;
             InventoryFootprint = inventoryFootprint ?? InventoryFootprint.OneCell;
@@ -111,6 +120,8 @@ namespace Arcanum.Runtime.World
             ItemFlags = prototype.ItemFlags ?? 0;
             InventoryArtId = prototype.InvAid;
             WeaponFlags = prototype.Weapon?.Flags ?? 0;
+            WeaponData = prototype.Weapon != null ? Weapon.FromFields(prototype.Weapon) : null;
+            AmmoItemType = prototype.AmmoItemType;
             GenericFlags = prototype.GenericFlags ?? 0;
             UnitWeight = prototype.Weight;
             InventoryFootprint = inventoryFootprint;
@@ -144,6 +155,8 @@ namespace Arcanum.Runtime.World
             ItemFlags = source.ItemFlags;
             InventoryArtId = source.InventoryArtId;
             WeaponFlags = source.WeaponFlags;
+            WeaponData = source.WeaponData?.Clone();
+            AmmoItemType = source.AmmoItemType;
             GenericFlags = source.GenericFlags;
             UnitWeight = source.UnitWeight;
             InventoryFootprint = source.InventoryFootprint;
@@ -160,7 +173,8 @@ namespace Arcanum.Runtime.World
             long? authoredLocation, uint artId, bool off, bool locked, int useScriptNum, int dialogNum,
             int itemFlags, uint? inventoryArtId, int weaponFlags, int genericFlags, int unitWeight,
             InventoryFootprint inventoryFootprint, int inventoryLocation, int? stackQuantity, bool portalOpen,
-            Vector2 tilePosition, ObjectPlacement placement, bool isRuntimeCreated)
+            Vector2 tilePosition, ObjectPlacement placement, bool isRuntimeCreated,
+            Weapon weaponData = null, int? ammoItemType = null)
         {
             Identity = identity;
             AuthoredParentIdentity = authoredParentIdentity;
@@ -178,6 +192,8 @@ namespace Arcanum.Runtime.World
             ItemFlags = itemFlags;
             InventoryArtId = inventoryArtId;
             WeaponFlags = weaponFlags;
+            WeaponData = weaponData?.Clone();
+            AmmoItemType = ammoItemType;
             GenericFlags = genericFlags;
             UnitWeight = unitWeight;
             InventoryFootprint = inventoryFootprint;

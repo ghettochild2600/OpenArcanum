@@ -46,8 +46,11 @@ namespace Arcanum.Runtime.Combat
         Unreachable,
         InsufficientActionPoints,
         OutOfRange,
+        LineOfFireBlocked,
         UnsupportedAttackMode,
         UnsupportedWeapon,
+        NoAmmo,
+        IncompatibleAmmo,
         UnsupportedDamageProfile,
         PresentationUnavailable,
     }
@@ -63,6 +66,7 @@ namespace Arcanum.Runtime.Combat
     public enum CombatAttackMode
     {
         BasicMelee,
+        BasicRanged,
     }
 
     public interface ICombatRandom
@@ -136,6 +140,10 @@ namespace Arcanum.Runtime.Combat
         public int ActionPointCost { get; }
         public int ActionPointsSpent { get; }
         public int OverdrawFatigueDamage { get; }
+        public ArcanumObjectId WeaponIdentity { get; }
+        public ArcanumObjectId AmmoIdentity { get; }
+        public int AmmoQuantityBefore { get; }
+        public int AmmoQuantityAfter { get; }
         public CombatHitChance Chance { get; }
 
         internal CombatAttackResult(CombatFailure failure, CombatHitChance chance = default,
@@ -143,7 +151,9 @@ namespace Arcanum.Runtime.Combat
             int rawHitPointDamage = 0, int mitigatedHitPointDamage = 0,
             int rawFatigueDamage = 0, int mitigatedFatigueDamage = 0,
             int resultingHitPoints = 0, int resultingFatigue = 0,
-            int actionPointCost = 0, int actionPointsSpent = 0, int overdrawFatigueDamage = 0)
+            int actionPointCost = 0, int actionPointsSpent = 0, int overdrawFatigueDamage = 0,
+            ArcanumObjectId weaponIdentity = default, ArcanumObjectId ammoIdentity = default,
+            int ammoQuantityBefore = 0, int ammoQuantityAfter = 0)
         {
             Failure = failure;
             Chance = chance;
@@ -160,6 +170,10 @@ namespace Arcanum.Runtime.Combat
             ActionPointCost = actionPointCost;
             ActionPointsSpent = actionPointsSpent;
             OverdrawFatigueDamage = overdrawFatigueDamage;
+            WeaponIdentity = weaponIdentity;
+            AmmoIdentity = ammoIdentity;
+            AmmoQuantityBefore = ammoQuantityBefore;
+            AmmoQuantityAfter = ammoQuantityAfter;
         }
     }
 
@@ -501,7 +515,7 @@ namespace Arcanum.Runtime.Combat
         {
             if (!TryValidateActionActor(actor, out CombatActorSource source, out CombatFailure failure))
                 return AttackFailure(failure);
-            if (!Enum.IsDefined(typeof(CombatAttackMode), mode) || mode != CombatAttackMode.BasicMelee)
+            if (!Enum.IsDefined(typeof(CombatAttackMode), mode))
                 return AttackFailure(CombatFailure.UnsupportedAttackMode);
             if (actor == target) return AttackFailure(CombatFailure.SameParticipant);
             if (!_participants.Any(value => value.Identity == target))
@@ -509,11 +523,13 @@ namespace Arcanum.Runtime.Combat
             if (!_sources.TryGetValue(target, out CombatActorSource targetSource))
                 return AttackFailure(CombatFailure.TargetNotFound);
             if (!IsEligible(targetSource)) return AttackFailure(CombatFailure.ParticipantUnavailable);
-            if (_world.TryGetEquippedItem(actor, WornLocation.Weapon, out _))
-                return AttackFailure(CombatFailure.UnsupportedWeapon);
             if (!TryGetCombatPosition(actor, out Vector2Int actorPosition)
                 || !TryGetCombatPosition(target, out Vector2Int targetPosition))
                 return AttackFailure(CombatFailure.PresentationUnavailable);
+            if (mode == CombatAttackMode.BasicRanged)
+                return AttackRanged(source, actor, target, actorPosition, targetPosition);
+            if (_world.TryGetEquippedItem(actor, WornLocation.Weapon, out _))
+                return AttackFailure(CombatFailure.UnsupportedWeapon);
             if (InteractionRangeRules.Distance(actorPosition, targetPosition) > 1)
                 return AttackFailure(CombatFailure.OutOfRange);
 
@@ -566,6 +582,115 @@ namespace Arcanum.Runtime.Combat
             return new CombatAttackResult(CombatFailure.None, chance, hit, dodged, attackRoll, dodgeRoll,
                 rawNormal, mitigatedNormal, rawFatigue, mitigatedFatigue,
                 resultingHitPoints, resultingFatigue, UnarmedAttackActionPointCost, spent, overdrawFatigue);
+        }
+
+        public CombatHitChance GetBasicRangedHitChance(ArcanumObjectId actor, ArcanumObjectId target,
+            Weapon weapon, int distance)
+        {
+            if (weapon == null) throw new ArgumentNullException(nameof(weapon));
+            CharacterSkill skill = weapon.Skill == WeaponSkill.Bow ? CharacterSkill.Bow : CharacterSkill.Firearms;
+            int effectiveness = checked(5 * _world.Progression.GetEffectiveSkillRank(actor, skill) + 25);
+            if (_world.Characters.GetEffectiveAttribute(actor, CharacterAttribute.Intelligence) >= 20)
+                effectiveness += 10;
+            int armorClass = _world.DerivedStats.GetArmorClass(target);
+            int difficulty = effectiveness * (armorClass / 2) / 100;
+            int strength = _world.Characters.GetEffectiveAttribute(actor, CharacterAttribute.Strength);
+            if (strength < weapon.MinStrength) difficulty += checked(5 * (weapon.MinStrength - strength));
+            int perception = _world.Characters.GetEffectiveAttribute(actor, CharacterAttribute.Perception);
+            difficulty += checked(5 * Math.Max(0, distance - perception / 2));
+            difficulty -= weapon.BonusToHit;
+            int attackChance = ClampPercent(effectiveness - difficulty);
+            int dodge = 5 * _world.Progression.GetEffectiveSkillRank(target, CharacterSkill.Dodge);
+            if (_world.Characters.GetEffectiveAttribute(target, CharacterAttribute.Intelligence) >= 20)
+                dodge += 10;
+            dodge = Math.Min(95, Math.Max(0, dodge));
+            return new CombatHitChance(effectiveness, armorClass, difficulty, attackChance, dodge);
+        }
+
+        private CombatAttackResult AttackRanged(CombatActorSource source, ArcanumObjectId actor,
+            ArcanumObjectId target, Vector2Int actorPosition, Vector2Int targetPosition)
+        {
+            if (!_world.TryGetEquippedItem(actor, WornLocation.Weapon, out PersistentObjectState equipped)
+                || equipped.Type != ObjectType.Weapon || equipped.WeaponData == null)
+                return AttackFailure(CombatFailure.UnsupportedWeapon);
+            Weapon weapon = equipped.WeaponData;
+            if (weapon.Skill != WeaponSkill.Bow || !weapon.UsesAmmo || weapon.AmmoConsumption < 1)
+                return AttackFailure(CombatFailure.UnsupportedWeapon);
+            int distance = InteractionRangeRules.Distance(actorPosition, targetPosition);
+            if (distance > weapon.Range) return AttackFailure(CombatFailure.OutOfRange);
+            if (_navigationMap == null) return AttackFailure(CombatFailure.NavigationUnavailable);
+            if (!_navigationMap.HasProjectileLineOfFire(actorPosition, targetPosition))
+                return AttackFailure(CombatFailure.LineOfFireBlocked);
+            if (!_world.TryGetAmmo(actor, weapon.AmmoType, weapon.AmmoConsumption,
+                    out PersistentObjectState ammo))
+            {
+                bool hasOtherAmmo = _world.ChildrenOf(actor).Any(identity =>
+                    _world.TryGetObjectState(identity, out PersistentObjectState item)
+                    && item.Type == ObjectType.Ammo && item.StackQuantity.GetValueOrDefault() > 0);
+                return AttackFailure(hasOtherAmmo ? CombatFailure.IncompatibleAmmo : CombatFailure.NoAmmo);
+            }
+
+            int actionPointCost = weapon.AttackActionPointCost;
+            bool overdraw = CurrentActionPoints < actionPointCost;
+            if (overdraw && (source.ObjectType != ObjectType.Pc || CurrentActionPoints <= 0
+                             || _world.Vitality.GetCurrentFatigue(actor) <= 1))
+                return AttackFailure(CombatFailure.InsufficientActionPoints);
+            if (!TryGetWeaponDamageRange(weapon, DamageType.Normal, out int normalMinimum,
+                    out int normalMaximum)
+                || !TryGetWeaponDamageRange(weapon, DamageType.Fatigue, out int fatigueMinimum,
+                    out int fatigueMaximum)
+                || weapon.DamageMax[(int)DamageType.Poison] != 0
+                || weapon.DamageMax[(int)DamageType.Electrical] != 0
+                || weapon.DamageMax[(int)DamageType.Fire] != 0)
+                return AttackFailure(CombatFailure.UnsupportedDamageProfile);
+
+            CombatHitChance chance = GetBasicRangedHitChance(actor, target, weapon, distance);
+            int spent = Math.Min(CurrentActionPoints, actionPointCost);
+            int previousActionPoints = CurrentActionPoints;
+            int ammoBefore = ammo.StackQuantity.Value;
+            CurrentActionPoints -= spent;
+            if (!_world.ConsumeAmmo(ammo.Identity, weapon.AmmoConsumption, out int ammoAfter))
+            {
+                CurrentActionPoints = previousActionPoints;
+                return AttackFailure(CombatFailure.NoAmmo);
+            }
+
+            int attackRoll = _random.NextInclusive(1, 100);
+            bool hit = attackRoll <= chance.AttackChance;
+            int dodgeRoll = 0;
+            bool dodged = false;
+            if (hit && chance.DodgeChance > 0)
+            {
+                dodgeRoll = _random.NextInclusive(1, 100);
+                dodged = dodgeRoll <= chance.DodgeChance;
+                hit = !dodged;
+            }
+
+            int rawNormal = 0;
+            int mitigatedNormal = 0;
+            int rawFatigue = 0;
+            int mitigatedFatigue = 0;
+            if (hit)
+            {
+                rawNormal = RollDamage(normalMinimum, normalMaximum);
+                rawFatigue = RollDamage(fatigueMinimum, fatigueMaximum);
+                int resistance = _world.DerivedStats.GetResistance(target, CharacterResistance.Normal);
+                mitigatedNormal = ApplyResistance(rawNormal, resistance);
+                mitigatedFatigue = ApplyResistance(rawFatigue, 3 * resistance / 4);
+            }
+
+            int overdrawFatigue = overdraw ? 2 : 0;
+            if (overdrawFatigue > 0) _world.Vitality.ApplyFatigueDamage(actor, overdrawFatigue);
+            if (mitigatedNormal > 0) _world.Vitality.ApplyHitPointDamage(target, mitigatedNormal);
+            if (mitigatedFatigue > 0) _world.Vitality.ApplyFatigueDamage(target, mitigatedFatigue);
+            int resultingHitPoints = _world.Vitality.GetCurrentHitPoints(target);
+            int resultingFatigue = _world.Vitality.GetCurrentFatigue(target);
+            if (CurrentActionPoints == 0) AdvanceToNextEligibleParticipant(actor);
+
+            return new CombatAttackResult(CombatFailure.None, chance, hit, dodged, attackRoll, dodgeRoll,
+                rawNormal, mitigatedNormal, rawFatigue, mitigatedFatigue,
+                resultingHitPoints, resultingFatigue, actionPointCost, spent, overdrawFatigue,
+                equipped.Identity, ammo.Identity, ammoBefore, ammoAfter);
         }
 
         public CombatResult EndCombat(ArcanumObjectId actor)
@@ -671,6 +796,18 @@ namespace Arcanum.Runtime.Combat
             }
             minimum = Math.Min(Math.Max(0, minimum), massiveDamage);
             maximum = Math.Min(Math.Max(0, maximum), massiveDamage);
+            return maximum >= minimum;
+        }
+
+        private static bool TryGetWeaponDamageRange(Weapon weapon, DamageType type,
+            out int minimum, out int maximum)
+        {
+            minimum = weapon.DamageMin[(int)type];
+            maximum = weapon.DamageMax[(int)type];
+            if (minimum < 0 || maximum < minimum) return false;
+            int cap = checked(3 * maximum);
+            minimum = Math.Min(Math.Max(0, minimum), cap);
+            maximum = Math.Min(Math.Max(0, maximum), cap);
             return maximum >= minimum;
         }
 

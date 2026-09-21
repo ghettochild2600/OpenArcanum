@@ -508,13 +508,16 @@ namespace Arcanum.Runtime.Save
 
             try
             {
+                ObjectProtoInfo prototype = _session.ResolvePrototype(value.PrototypeNumber);
                 state = new PersistentObjectState(identity, authoredParent, sourceSector, type, value.PrototypeNumber,
                     value.NameIndex, value.SocialClass, value.AuthoredLocation, value.ArtId, value.Off, value.Locked,
                     value.UseScriptNum, value.DialogNum, value.ItemFlags, value.InventoryArtId, value.WeaponFlags,
                     value.GenericFlags, value.UnitWeight,
                     new InventoryFootprint(value.FootprintWidth, value.FootprintHeight), value.InventoryLocation,
                     value.StackQuantity, value.PortalOpen, new Vector2(value.TileX, value.TileY), placement,
-                    value.RuntimeCreated);
+                    value.RuntimeCreated,
+                    prototype?.Weapon != null ? Combat.Weapon.FromFields(prototype.Weapon) : null,
+                    prototype?.AmmoItemType);
             }
             catch (Exception ex)
             {

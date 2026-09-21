@@ -323,7 +323,9 @@ namespace Arcanum.Runtime.World
                     ResolveInventoryFootprint(instance.InvAid ?? proto?.InvAid),
                     instance.InvLocation,
                     instance.NameIndex ?? proto?.NameIndex,
-                    instance.SocialClass ?? proto?.SocialClass);
+                    instance.SocialClass ?? proto?.SocialClass,
+                    proto?.Weapon != null ? Weapon.FromFields(proto.Weapon) : null,
+                    instance.AmmoItemType ?? proto?.AmmoItemType);
                 if (state == null && Session.IsObjectRemoved(identity))
                 {
                     suppressed++;

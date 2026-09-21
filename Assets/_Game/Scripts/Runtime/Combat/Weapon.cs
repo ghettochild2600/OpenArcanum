@@ -38,6 +38,32 @@ namespace Arcanum.Runtime.Combat
 
         public bool IsRanged => Range > 1;
 
+        /// <summary>Source <c>combat_attack_cost</c> for the effective weapon speed.</summary>
+        public int AttackActionPointCost
+            => SpeedFactor > 24 ? 1 : SpeedFactor > 20 ? 2 : System.Math.Max(1, 8 - SpeedFactor / 3);
+
+        public Weapon Clone()
+        {
+            var copy = new Weapon
+            {
+                Skill = Skill,
+                BonusToHit = BonusToHit,
+                SpeedFactor = SpeedFactor,
+                Range = Range,
+                MinStrength = MinStrength,
+                AmmoType = AmmoType,
+                AmmoConsumption = AmmoConsumption,
+                MissileAid = MissileAid,
+                ItemArtId = ItemArtId,
+                SoundEffect = SoundEffect,
+                MaterialId = MaterialId,
+                Weight = Weight,
+            };
+            System.Array.Copy(DamageMin, copy.DamageMin, DamageMin.Length);
+            System.Array.Copy(DamageMax, copy.DamageMax, DamageMax.Length);
+            return copy;
+        }
+
         /// <summary>Bare hands: melee, range 1, light normal damage (engine unarmed: min = base−25 (≥1), max = base+5).</summary>
         public static Weapon Unarmed()
         {
@@ -48,8 +74,7 @@ namespace Arcanum.Runtime.Combat
         }
 
         /// <summary>Builds a real weapon from parsed <c>OBJ_F_WEAPON_*</c> data (now that protos read
-        /// correctly). Skill is decided like the engine's <c>item_weapon_skill</c>: ranged + tech = firearms,
-        /// ranged = bow, else melee (boomerang flag = throwing).</summary>
+        /// correctly). Skill is decided like the engine's <c>item_weapon_skill</c>.</summary>
         public static Weapon FromFields(WeaponFields f)
         {
             if (f == null) return Unarmed();
@@ -73,11 +98,17 @@ namespace Arcanum.Runtime.Combat
         }
 
         private const int OwfBoomerangs = 0x40; // OBJ_F_WEAPON_FLAGS bit (throwable returns)
+        private const int AmmoArrow = 0;
+        private const int AmmoBullet = 1;
+        private const int AmmoCharge = 2;
+        private const int AmmoFuel = 3;
         private static WeaponSkill ResolveSkill(WeaponFields f)
         {
             if ((f.Flags & OwfBoomerangs) != 0) return WeaponSkill.Throwing;
-            if (f.Range >= 3)
-                return f.MagicTechComplexity < 0 ? WeaponSkill.Firearms : WeaponSkill.Bow; // −complexity = tech
+            if (f.Range >= 3 && f.MagicTechComplexity < 0
+                && f.AmmoType is AmmoBullet or AmmoCharge or AmmoFuel)
+                return WeaponSkill.Firearms;
+            if (f.AmmoType == AmmoArrow) return WeaponSkill.Bow;
             return WeaponSkill.Melee;
         }
     }

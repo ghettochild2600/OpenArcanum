@@ -17,10 +17,14 @@ namespace Arcanum.Runtime.World
     {
         private const int Size = SectorTerrain.Size;
         private const int ObjectFlagNoBlock = 0x00000400;
+        private const int ObjectFlagShootThrough = 0x00000020;
 
         private readonly bool[] _terrainBlocked = new bool[SectorTerrain.TileCount];
         private readonly int[] _objectBlockers = new int[SectorTerrain.TileCount];
+        private readonly int[] _projectileBlockers = new int[SectorTerrain.TileCount];
         private readonly Dictionary<Vector2Int, List<WorldObject>> _edgeObjects = new();
+        private readonly Dictionary<WorldObject, int> _sourceFlags = new();
+        private readonly Dictionary<WorldObject, Vector2Int> _projectileObjects = new();
         private readonly Dictionary<ArcanumObjectId, Vector2Int> _ordinaryObjects = new();
         private ArcanumObjectId _controlledIdentity;
 
@@ -50,6 +54,7 @@ namespace Arcanum.Runtime.World
         public void Register(WorldObject obj, int sourceFlags)
         {
             if (obj == null || !Contains(obj.Tile)) return;
+            _sourceFlags[obj] = sourceFlags;
             if (obj.Type == ObjectType.Wall || obj.Type == ObjectType.Portal)
             {
                 if (!_edgeObjects.TryGetValue(obj.Tile, out List<WorldObject> objects))
@@ -62,11 +67,17 @@ namespace Arcanum.Runtime.World
             if (!IsOrdinaryBlockingType(obj.Type)) return;
             _objectBlockers[Index(obj.Tile.x, obj.Tile.y)]++;
             if (obj.Identity.IsPersistent) _ordinaryObjects[obj.Identity] = obj.Tile;
+            if (IsProjectileBlockingType(obj.Type) && (sourceFlags & ObjectFlagShootThrough) == 0)
+            {
+                _projectileBlockers[Index(obj.Tile.x, obj.Tile.y)]++;
+                _projectileObjects[obj] = obj.Tile;
+            }
         }
 
         public void Unregister(WorldObject obj)
         {
             if (obj == null || !Contains(obj.Tile)) return;
+            _sourceFlags.Remove(obj);
             if (obj.Type == ObjectType.Wall || obj.Type == ObjectType.Portal)
             {
                 if (_edgeObjects.TryGetValue(obj.Tile, out List<WorldObject> objects))
@@ -76,6 +87,9 @@ namespace Arcanum.Runtime.World
                 }
                 return;
             }
+            if (_projectileObjects.Remove(obj, out Vector2Int projectileTile))
+                _projectileBlockers[Index(projectileTile.x, projectileTile.y)] = Math.Max(0,
+                    _projectileBlockers[Index(projectileTile.x, projectileTile.y)] - 1);
             if (!_ordinaryObjects.Remove(obj.Identity)) return;
             _objectBlockers[Index(obj.Tile.x, obj.Tile.y)] = Math.Max(0,
                 _objectBlockers[Index(obj.Tile.x, obj.Tile.y)] - 1);
@@ -116,6 +130,67 @@ namespace Arcanum.Runtime.World
         {
             foreach (KeyValuePair<ArcanumObjectId, Vector2Int> pair in _ordinaryObjects)
                 if (pair.Key != identity && pair.Value == tile) return true;
+            return false;
+        }
+
+        /// <summary>Source projectile traversal: hard blockers count, intervening critters do not.</summary>
+        public bool HasProjectileLineOfFire(Vector2Int source, Vector2Int target)
+        {
+            if (!Contains(source) || !Contains(target)) return false;
+            int x = source.x;
+            int y = source.y;
+            int dx = Math.Abs(target.x - source.x);
+            int dy = Math.Abs(target.y - source.y);
+            int sx = source.x < target.x ? 1 : -1;
+            int sy = source.y < target.y ? 1 : -1;
+            int error = dx - dy;
+            while (x != target.x || y != target.y)
+            {
+                int twice = 2 * error;
+                int nextX = x;
+                int nextY = y;
+                if (twice > -dy) { error -= dy; nextX += sx; }
+                if (twice < dx) { error += dx; nextY += sy; }
+                var from = new Vector2Int(x, y);
+                var to = new Vector2Int(nextX, nextY);
+                if (ProjectileEdgeBlocked(from, to) || _terrainBlocked[Index(to.x, to.y)]) return false;
+                if (to != target && _projectileBlockers[Index(to.x, to.y)] > 0) return false;
+                x = nextX;
+                y = nextY;
+            }
+            return true;
+        }
+
+        private bool ProjectileEdgeBlocked(Vector2Int from, Vector2Int to)
+        {
+            int dx = Math.Sign(to.x - from.x);
+            int dy = Math.Sign(to.y - from.y);
+            int rotation = IsoProjection.DirFromDelta(dx, dy);
+            if ((rotation & 1) != 0) return ProjectileBlocksAt(from, rotation)
+                                             || ProjectileBlocksAt(to, (rotation + 4) & 7);
+            int ccw = (rotation + 7) & 7;
+            int cw = (rotation + 1) & 7;
+            return ProjectileBlocksAt(from, ccw)
+                   || ProjectileBlocksAt(from + IsoProjection.DirDelta[ccw], cw)
+                   || ProjectileBlocksAt(from, cw)
+                   || ProjectileBlocksAt(from + IsoProjection.DirDelta[cw], ccw);
+        }
+
+        private bool ProjectileBlocksAt(Vector2Int tile, int crossingRotation)
+        {
+            if (!_edgeObjects.TryGetValue(tile, out List<WorldObject> objects)) return false;
+            foreach (WorldObject obj in objects)
+            {
+                if (obj == null || obj.Off
+                    || _sourceFlags.TryGetValue(obj, out int flags) && (flags & ObjectFlagShootThrough) != 0)
+                    continue;
+                int artRotation = CritterArtResolver.RotationOf(obj.ArtId);
+                if ((artRotation & 1) == 0) artRotation++;
+                if (artRotation != crossingRotation) continue;
+                if (obj.Type == ObjectType.Portal) return !obj.IsOpen;
+                int piece = (int)((obj.ArtId >> 14) & 0x3F);
+                if (!IsWallPassagePiece(piece)) return true;
+            }
             return false;
         }
 
@@ -206,6 +281,10 @@ namespace Arcanum.Runtime.World
         private static bool IsOrdinaryBlockingType(ObjectType type)
             => type == ObjectType.Container || type == ObjectType.Scenery || type == ObjectType.Projectile
                || type == ObjectType.Pc || type == ObjectType.Npc || type == ObjectType.Trap;
+
+        private static bool IsProjectileBlockingType(ObjectType type)
+            => type == ObjectType.Container || type == ObjectType.Scenery
+               || type == ObjectType.Projectile || type == ObjectType.Trap;
 
         private static int Index(int x, int y) => y * Size + x;
     }
