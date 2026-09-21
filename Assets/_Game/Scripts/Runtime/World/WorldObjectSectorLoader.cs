@@ -216,6 +216,7 @@ namespace Arcanum.Runtime.World
             }
             ClearObjects();
             NavigationMap = navigationMap;
+            Session.Combat.BindNavigationMap(NavigationMap);
             Session.BeginSector(sectorPath);
             _registeredSector = sectorPath;
             LastNonPersistentIdentityCount = 0;
@@ -338,7 +339,8 @@ namespace Arcanum.Runtime.World
                             instance.CritterFlags ?? proto?.CritterFlags ?? 0,
                             instance.WillKosScriptNum != 0
                                 ? instance.WillKosScriptNum
-                                : proto?.WillKosScriptNum ?? 0));
+                                : proto?.WillKosScriptNum ?? 0,
+                            instance.NpcDamage ?? proto?.NpcDamage));
                     }
                     artId = state.ArtId;
                     artPath = _art.Resolve(artId);

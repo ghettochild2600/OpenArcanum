@@ -15,6 +15,36 @@ internal sealed class M8ATestExecution : ScriptableObject, ICallbacks
     [MenuItem("OpenArcanum/M8A/Run Focused EditMode Tests")]
     private static void RunFocused() => Run(Category("M8ACoreCombatState"), "focused EditMode");
 
+    [MenuItem("OpenArcanum/M8B/Run Focused EditMode Tests")]
+    private static void RunM8BFocused() => Run(Category("M8BTurnBasedCombat"), "M8B focused EditMode");
+
+    [MenuItem("OpenArcanum/M8B/Run Required Regression Tests")]
+    private static void RunM8BRequired()
+    {
+        RunMany(
+            new[]
+            {
+                Category("M8ACoreCombatState"), Category("M7EWorldMapTravel"),
+                Category("M7DWorldMapDestination"), Category("M7CAreaDiscovery"),
+                Category("M7BAreaEntrance"), Category("M7ALocalTransition"), Category("M6C"),
+                Category("M6B"), Category("M6A"), Category("M4BCharacterVitality"),
+                Category("M4CCharacterProgression"), Category("M4DDerivedCharacterStats"),
+                Category("PlayerNavigation"), Category("M2AInteraction"), Category("M2BUseScript"),
+                Test("Arcanum.Formats.Tests.WorldSessionStateTests"),
+            },
+            new[]
+            {
+                "M8A core combat", "M7E world-map travel", "M7D destination selection",
+                "M7C area discovery", "M7B area entrance", "M7A local transition",
+                "M6C manual save/load", "M6B slots/migration", "M6A session save/load",
+                "M4B vitality", "M4C progression", "M4D derived stats", "player navigation",
+                "M2A interaction", "M2B use-script interaction", "world session state",
+            });
+    }
+
+    [MenuItem("OpenArcanum/M8B/Run Complete EditMode Tests")]
+    private static void RunM8BAll() => Run(new Filter { testMode = TestMode.EditMode }, "M8B complete EditMode");
+
     [MenuItem("OpenArcanum/M8A/Run Required Regression Tests")]
     private static void RunRequired()
     {

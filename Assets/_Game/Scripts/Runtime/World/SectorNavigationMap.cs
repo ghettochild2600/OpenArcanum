@@ -93,6 +93,32 @@ namespace Arcanum.Runtime.World
                 _objectBlockers[Index(tile.x, tile.y)] = Math.Max(0, _objectBlockers[Index(tile.x, tile.y)] - 1);
         }
 
+        /// <summary>Moves one registered critter occupancy after an authoritative combat route is preflighted.</summary>
+        internal bool MoveRegisteredObject(ArcanumObjectId identity, Vector2Int destination)
+        {
+            if (!identity.IsPersistent || !Contains(destination)
+                || !_ordinaryObjects.TryGetValue(identity, out Vector2Int previous)) return false;
+            if (previous == destination) return true;
+            bool controlled = _controlledIdentity == identity;
+            if (!controlled && !IsWalkable(destination)) return false;
+            if (!controlled)
+            {
+                _objectBlockers[Index(previous.x, previous.y)] = Math.Max(0,
+                    _objectBlockers[Index(previous.x, previous.y)] - 1);
+                _objectBlockers[Index(destination.x, destination.y)]++;
+            }
+            _ordinaryObjects[identity] = destination;
+            return true;
+        }
+
+        /// <summary>Combat actors ignore their own registered tile but never another actor's tile.</summary>
+        internal bool IsOccupiedByOther(ArcanumObjectId identity, Vector2Int tile)
+        {
+            foreach (KeyValuePair<ArcanumObjectId, Vector2Int> pair in _ordinaryObjects)
+                if (pair.Key != identity && pair.Value == tile) return true;
+            return false;
+        }
+
         public bool CanTraverse(Vector2Int from, int rotation)
         {
             if (rotation < 0 || rotation >= IsoProjection.DirDelta.Length || !Contains(from)) return false;

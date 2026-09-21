@@ -158,6 +158,9 @@ namespace Arcanum.Formats.Objects
         /// <summary><c>OBJ_F_RESISTANCE_IDX</c> base resistances; <c>OBJ_F_ARMOR_RESISTANCE_ADJ_IDX</c> armour bonus.</summary>
         public int[] Resistances { get; internal set; }
 
+        /// <summary><c>OBJ_F_NPC_DAMAGE_IDX</c> — five unarmed damage min/max pairs.</summary>
+        public int[] NpcDamage { get; internal set; }
+
         public int[] ArmorResist { get; internal set; }
 
         /// <summary>Base max HP (<c>OBJ_F_HP_PTS</c>) — combined with an instance's <c>HpDamage</c> to tell if a
@@ -287,6 +290,7 @@ namespace Arcanum.Formats.Objects
                         TechSkills = p.TechSkills,
                         Resistances = p.Resistances,
                         ArmorResist = p.ArmorResist,
+                        NpcDamage = p.NpcDamage,
                         HpPoints = p.HpPoints,
                         HpAdjustment = p.HpAdjustment,
                         HpDamage = p.HpDamage,

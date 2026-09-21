@@ -184,6 +184,10 @@ namespace Arcanum.Formats.Objects
         /// (NORMAL,FIRE,ELECTRICAL,POISON,MAGIC); null if unset. For armour, <c>OBJ_F_ARMOR_RESISTANCE_ADJ_IDX</c>.</summary>
         public int[] Resistances { get; internal set; }
 
+        /// <summary><c>OBJ_F_NPC_DAMAGE_IDX</c> — five inclusive unarmed damage ranges stored as
+        /// min/max pairs in <c>DAMAGE_TYPE_*</c> order.</summary>
+        public int[] NpcDamage { get; internal set; }
+
         public int[] ArmorResist { get; internal set; }
 
         /// <summary>Base max HP (<c>OBJ_F_HP_PTS</c>): a critter is dead when <c>HP_PTS − <see cref="HpDamage"/> ≤ 0</c>.
@@ -337,6 +341,7 @@ namespace Arcanum.Formats.Objects
         private const int F_NPC_SOCIAL_CLASS = 296;         // OBJ_F_NPC_SOCIAL_CLASS (INT32) → SOCIAL_CLASS_*
         private const int F_NPC_ORIGIN = 291;               // OBJ_F_NPC_ORIGIN (INT32) → home town/area id
         private const int F_NPC_EXPERIENCE_WORTH = 285;      // OBJ_F_NPC_EXPERIENCE_WORTH (INT32) → kill XP (engine ×20/100)
+        private const int F_NPC_DAMAGE = 303;                // OBJ_F_NPC_DAMAGE_IDX (UINT32_ARRAY), 5 min/max pairs
         private const int F_NAME = 22;                       // OBJ_F_NAME (INT32) → name index (SCT_OBJ_IS_NAMED)
         private const int F_AC = 26;                         // OBJ_F_AC (INT32) → stored base armour class
         private const int F_MATERIAL = 30;                   // OBJ_F_MATERIAL (INT32) → Material (sound classes)
@@ -355,6 +360,7 @@ namespace Arcanum.Formats.Objects
         private const int F_RESISTANCE = 31;            // OBJ_F_RESISTANCE_IDX (common INT32_ARRAY) — base damage resistances
         private const int F_ARMOR_RESISTANCE_ADJ = 154; // OBJ_F_ARMOR_RESISTANCE_ADJ_IDX (INT32_ARRAY) — armour resist bonus
         private const int ResistanceCount = 5;          // RESISTANCE_TYPE_COUNT (NORMAL,FIRE,ELECTRICAL,POISON,MAGIC)
+        private const int NpcDamageValueCount = ResistanceCount * 2;
         private const int F_CRITTER_BASIC_SKILL = 221;  // OBJ_F_CRITTER_BASIC_SKILL_IDX (INT32_ARRAY) by BASIC_SKILL_*
         private const int F_CRITTER_SPELL_TECH = 223;   // OBJ_F_CRITTER_SPELL_TECH_IDX (INT32_ARRAY): colleges 0–16, tech 17–24
         private const int F_CRITTER_TECH_SKILL = 222;   // OBJ_F_CRITTER_TECH_SKILL_IDX (INT32_ARRAY) by TECH_SKILL_*
@@ -479,7 +485,7 @@ namespace Arcanum.Formats.Objects
             int? itemSpell = null, spellMana = null;
             int? armorAc = null;
             int[] basicSkills = null, techSkills = null;
-            int[] resistances = null, armorResist = null;
+            int[] resistances = null, armorResist = null, npcDamage = null;
             int invLocation = -1;
             uint? invAid = null;
             int? weight = null, worth = null;
@@ -751,6 +757,10 @@ namespace Arcanum.Formats.Objects
                         armorResist = ReadIntArray(b, o, ResistanceCount);
                         o += FieldSize(b, o, od);
                         break;
+                    case F_NPC_DAMAGE:
+                        npcDamage = ReadIntArray(b, o, NpcDamageValueCount);
+                        o += FieldSize(b, o, od);
+                        break;
 
                     // Weapon fields only populate on a weapon record (wf != null); otherwise they fall to default.
                     case F_ITEM_MAGIC_TECH_COMPLEXITY: // any item: crafting expertise; weapons also keep it
@@ -893,6 +903,7 @@ namespace Arcanum.Formats.Objects
                 TechSkills = techSkills,
                 Resistances = resistances,
                 ArmorResist = armorResist,
+                NpcDamage = npcDamage,
                 HpPoints = hpPoints,
                 ItemFlags = itemFlags,
                 GenericFlags = genericFlags,

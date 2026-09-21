@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -15,9 +16,14 @@ namespace Arcanum.Runtime.World
         private readonly bool[] _closed = new bool[Count];
 
         public bool TryFindPath(SectorNavigationMap map, Vector2Int start, Vector2Int destination, List<Vector2Int> result)
+            => TryFindPath(map, start, destination, result, null);
+
+        internal bool TryFindPath(SectorNavigationMap map, Vector2Int start, Vector2Int destination,
+            List<Vector2Int> result, Func<Vector2Int, bool> canEnter)
         {
             result?.Clear();
-            if (map == null || result == null || !map.Contains(start) || !map.IsWalkable(destination)) return false;
+            if (map == null || result == null || !map.Contains(start) || !map.IsWalkable(destination)
+                || canEnter != null && !canEnter(destination)) return false;
             if (start == destination) return true;
 
             for (int i = 0; i < Count; i++)
@@ -55,6 +61,7 @@ namespace Arcanum.Runtime.World
                 {
                     if (!map.CanTraverse(tile, rotation)) continue;
                     Vector2Int next = tile + IsoProjection.DirDelta[rotation];
+                    if (canEnter != null && !canEnter(next)) continue;
                     int nextIndex = Index(next);
                     if (_closed[nextIndex]) continue;
 
