@@ -15,7 +15,8 @@ M4A-M4D character attributes/vitality/progression/derived statistics, M5A-M5C ca
 vertical slices, M6A authoritative session save/load, M6B migration boundaries/domain save slots, and M6C bounded
 player-facing manual save/load presentation, M7A bounded passive local map transitions, and M7B bounded authentic
   overland/Bates area entrance and return, M7C bounded authoritative known-area discovery, M7D read-only world-map
-  destination projection/selection, and M7E bounded authoritative route/travel execution are complete.
+  destination projection/selection, M7E bounded authoritative route/travel execution, and M8A bounded authoritative
+  core combat state are complete.
 `WorldMapSessionCoordinator` owns typed `World`, `Contained(parent)`, and `Equipped(parent, wornLocation)` placement,
 atomic raw item transfers/equipment replacement/stack merge and split, deterministic session-created item identities,
 source-faithful pickup/drop/owner-transfer policy, and pre-mutation weight/grid-capacity guards independently of Unity
@@ -71,9 +72,12 @@ route is four eastward sector rotations `5,5,5,5`, arriving on START_MAP id 1 at
 substituted with an invented route. The synchronous lifecycle is Planning -> Travelling -> Arriving -> Completed ->
 Idle; stable post-arrival state remains V1.
 
-M7E is complete and M8 has not begun. Travel time, encounters, follower relocation, mid-route cancellation, route
-animation, clock/day-night behavior, autosave, quicksave, cloud sync, original Arcanum save compatibility, combat,
-followers, and barter remain deferred.
+M8A adds coordinator-owned turn-based combat lifecycle, source-bounded actor/hostility eligibility, stable-ID
+participants, authentic non-PC-first ordering, M4D Speed-derived turn AP, and explicit world-input lockout. Combat is
+transient: sector unload, cross-map selection, reset, and V1 restore normalize it to Inactive; V1 remains unchanged.
+M8B has not begun. Travel time, encounters, follower relocation, mid-route cancellation, route animation,
+clock/day-night behavior, autosave, quicksave, cloud sync, original Arcanum save compatibility, combat attacks/damage,
+AI, spells, technology, followers, loot, and barter remain deferred.
 
 ## Current Branch
 
@@ -1543,11 +1547,22 @@ Completed on 2026-09-13 with Unity 6000.0.71f1 on `feature/inventory-commands`.
 - Full source evidence, candidate classification, final ownership/call graph, transaction contract, fixture, validation,
   and deferred boundaries: [`documentation_unity/m5c-trainer-dialogue.md`](documentation_unity/m5c-trainer-dialogue.md).
 
+## M8A Core Combat State Validation Baseline (2026-09-20)
+
+M8A is complete. `CombatStateService` is coordinator-owned and provides the bounded
+`Inactive -> Starting -> Active -> Ending -> Inactive` turn-based lifecycle, eligibility and hostility admission,
+stable-ID participants, authentic non-PC-first order, and M4D Speed-derived current-turn AP. The authentic physical
+fixture is the Polar Bear Cub in `maps/arcanum1-024-fixed/47781512457.sec`, ObjectID
+`G_9B807B01_A142_4949_80CE_5A085F3BEEB1`, prototype 28422. It acts before the PC and receives 5 AP from Speed 4.
+
+Computer Use physical Play Mode validation passed start/end and failure paths, interaction/navigation/dialogue
+lockout, graphics rebuild, unload, cross-map transition, and V1 save/load normalization with stable identities and no
+duplicates. Final validation was M8A 22/22, required regressions 296/296, complete EditMode 679/679, and physical
+Play Mode with 0 warnings and 0 errors. Save format remains V1 and active combat is intentionally not serialized.
+See [`documentation_unity/m8a-core-combat-state-audit.md`](documentation_unity/m8a-core-combat-state-audit.md).
+
 ## Next Recommended Milestone
 
-M7E is complete: coordinator-owned travel now consumes the M7D request, reproduces bounded retail sector routing,
-and reaches the authentic START_MAP arrival through the existing transactional M7 pipeline. See
-[`documentation_unity/m7e-world-map-route-audit.md`](documentation_unity/m7e-world-map-route-audit.md).
-
-M8 has not begun. Any M8 work, or expansion into travel time, encounters, followers, route animation, or mid-travel
-cancellation, requires a separately authorized milestone.
+The next recommended separately authorized milestone is **M8B: one bounded basic attack and damage-resolution path**
+using the audited original formulas and the existing M4B vitality plus M8A participant/AP owners. Do not broaden it
+into AI, spells, technology, followers, loot, real-time scheduling, or unrelated travel work without explicit scope.
