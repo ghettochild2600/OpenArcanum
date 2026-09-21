@@ -15,8 +15,8 @@ M4A-M4D character attributes/vitality/progression/derived statistics, M5A-M5C ca
 vertical slices, M6A authoritative session save/load, M6B migration boundaries/domain save slots, and M6C bounded
 player-facing manual save/load presentation, M7A bounded passive local map transitions, and M7B bounded authentic
   overland/Bates area entrance and return, M7C bounded authoritative known-area discovery, M7D read-only world-map
-  destination projection/selection, M7E bounded authoritative route/travel execution, and M8A bounded authoritative
-  core combat state are complete.
+  destination projection/selection, M7E bounded authoritative route/travel execution, M8A bounded authoritative
+  core combat state, and M8B bounded turn-based movement/basic attack/damage are complete.
 `WorldMapSessionCoordinator` owns typed `World`, `Contained(parent)`, and `Equipped(parent, wornLocation)` placement,
 atomic raw item transfers/equipment replacement/stack merge and split, deterministic session-created item identities,
 source-faithful pickup/drop/owner-transfer policy, and pre-mutation weight/grid-capacity guards independently of Unity
@@ -75,9 +75,12 @@ Idle; stable post-arrival state remains V1.
 M8A adds coordinator-owned turn-based combat lifecycle, source-bounded actor/hostility eligibility, stable-ID
 participants, authentic non-PC-first ordering, M4D Speed-derived turn AP, and explicit world-input lockout. Combat is
 transient: sector unload, cross-map selection, reset, and V1 restore normalize it to Inactive; V1 remains unchanged.
-M8B has not begun. Travel time, encounters, follower relocation, mid-route cancellation, route animation,
-clock/day-night behavior, autosave, quicksave, cloud sync, original Arcanum save compatibility, combat attacks/damage,
-AI, spells, technology, followers, loot, and barter remain deferred.
+M8B adds source-AP-aware combat movement, one authentic unarmed melee attack, injected authoritative randomness,
+hit/Dodge and normal/fatigue resistance resolution, and damage exclusively through M4B vitality. AP exhaustion advances
+the stable turn/round loop; every rejected command is transactional. Combat remains transient and Save V1 is unchanged.
+Travel time, encounters, follower relocation, mid-route cancellation, route animation, clock/day-night behavior,
+autosave, quicksave, cloud sync, original Arcanum save compatibility, equipped/ranged attacks, criticals, death/loot/XP,
+AI, spells, technology, followers, and barter remain deferred.
 
 ## Current Branch
 
@@ -1561,8 +1564,30 @@ duplicates. Final validation was M8A 22/22, required regressions 296/296, comple
 Play Mode with 0 warnings and 0 errors. Save format remains V1 and active combat is intentionally not serialized.
 See [`documentation_unity/m8a-core-combat-state-audit.md`](documentation_unity/m8a-core-combat-state-audit.md).
 
+## M8B Turn-Based Combat Validation Baseline (2026-09-20)
+
+M8B is complete. The authentic production proof uses Polar Bear Cub
+`G_9B807B01_A142_4949_80CE_5A085F3BEEB1` in
+`maps/arcanum1-024-fixed/47781512457.sec` against the production PC. Bear Speed 4 gives 5 AP; unarmed attack costs
+5 AP; walking costs 2 AP per cardinal or diagonal step; optional PC always-run costs 1 AP per step; and one admitted
+PC overdraw step applies 2 Fatigue. The bear's source natural normal damage 3..6 becomes 2..5 at Strength 7. Its
+effective Melee 3 yields a 40% ordinary hit chance against the fixture PC's AC 0/Dodge 0. Normal and fatigue resistance
+use the audited integer rules, and all committed damage routes only through M4B vitality.
+
+Computer Use physical Play Mode proved seeded hit and miss, single damage application, exact AP spend, bear -> PC ->
+next-round bear advancement, NPC atomic over-budget rejection, PC walk/run/overdraw movement, rollback invariants,
+Original -> Enhanced -> Original rebuild, `EndCombat` with damage retention and ordinary gameplay resumption, and
+transient save/load/unload/transition normalization. The physical run recorded 0 warnings and 0 errors. Final
+compilation was clean; focused M8B was **23/23**, required regressions were **347/347**, and complete EditMode was
+**702/702** with 0 failed, 0 skipped, and 0 inconclusive. The complete-suite console contained 6 known compatibility
+warnings and 0 errors. Save format remains V1.
+
+See [`documentation_unity/m8b-turn-based-combat-audit.md`](documentation_unity/m8b-turn-based-combat-audit.md).
+
 ## Next Recommended Milestone
 
-The next recommended separately authorized milestone is **M8B: one bounded basic attack and damage-resolution path**
-using the audited original formulas and the existing M4B vitality plus M8A participant/AP owners. Do not broaden it
-into AI, spells, technology, followers, loot, real-time scheduling, or unrelated travel work without explicit scope.
+The next recommended separately authorized milestone is **M8C: one bounded equipped ranged-weapon attack and
+ammunition transaction path**: source range/line-of-sight, weapon attack speed and to-hit modifiers, one authentic
+projectile/ammunition pairing, atomic ammunition consumption, seeded hit/miss, rollback, and the existing M4B damage
+handoff. Do not broaden it into critical tables, death/loot/XP, AI, spells, real-time scheduling, or unrelated travel
+work without explicit scope.
