@@ -16,7 +16,8 @@ vertical slices, M6A authoritative session save/load, M6B migration boundaries/d
 player-facing manual save/load presentation, M7A bounded passive local map transitions, and M7B bounded authentic
   overland/Bates area entrance and return, M7C bounded authoritative known-area discovery, M7D read-only world-map
   destination projection/selection, M7E bounded authoritative route/travel execution, M8A bounded authoritative
-  core combat state, and M8B bounded turn-based movement/basic attack/damage are complete.
+  core combat state, M8B bounded turn-based movement/basic attack/damage, and M8C bounded equipped bow/arrow combat
+  are complete.
 `WorldMapSessionCoordinator` owns typed `World`, `Contained(parent)`, and `Equipped(parent, wornLocation)` placement,
 atomic raw item transfers/equipment replacement/stack merge and split, deterministic session-created item identities,
 source-faithful pickup/drop/owner-transfer policy, and pre-mutation weight/grid-capacity guards independently of Unity
@@ -79,7 +80,7 @@ M8B adds source-AP-aware combat movement, one authentic unarmed melee attack, in
 hit/Dodge and normal/fatigue resistance resolution, and damage exclusively through M4B vitality. AP exhaustion advances
 the stable turn/round loop; every rejected command is transactional. Combat remains transient and Save V1 is unchanged.
 Travel time, encounters, follower relocation, mid-route cancellation, route animation, clock/day-night behavior,
-autosave, quicksave, cloud sync, original Arcanum save compatibility, equipped/ranged attacks, criticals, death/loot/XP,
+autosave, quicksave, cloud sync, original Arcanum save compatibility, criticals, death/loot/XP,
 AI, spells, technology, followers, and barter remain deferred.
 
 ## Current Branch
@@ -1584,10 +1585,35 @@ warnings and 0 errors. Save format remains V1.
 
 See [`documentation_unity/m8b-turn-based-combat-audit.md`](documentation_unity/m8b-turn-based-combat-audit.md).
 
+## M8C Ranged Combat Validation Baseline (2026-09-21)
+
+M8C is complete. The authentic production fixture is bow
+`G_1575DBCA_4990_C243_8184_524D51F7D533` (prototype 6055) and the authored 70-arrow stack
+`G_FBFA4631_D97D_D740_9636_F131B2FD9F7B` (prototype 7058), acquired from
+`maps/arcanum1-024-fixed/101602821844.sec` and equipped through M3C. The bow costs 6 AP, has range 15, and rolls
+Normal 1..10 plus Fatigue 2..5 without a melee Strength bonus. Compatible arrows are selected deterministically by
+stable ObjectID, consumed once before hit resolution (including misses), and use M3D tombstones at depletion.
+
+Computer Use physical Play Mode validation passed against the authentic Polar Bear Cub target. A seeded hit rolled
+10 Normal/5 Fatigue and resistance reduced that to 8/5; a seeded miss spent 6 AP and one arrow with zero vitality
+damage. The run proved in-range clear fire, out-of-range and authentic wall/scenery rejection, deterministic
+multi-stack selection/fallback, quantity-1 depletion followed by `NoAmmo`, authoritative equipment-only weapon
+resolution, a 1 AP move followed by the 6 AP attack from the updated placement, transactional failure rollback,
+Original -> Enhanced -> Original rebuild, end/restart, and transient load/unload/map-transition normalization. The
+selected authentic sectors contain no portal whose open state alone clears projectile LOS, so closed/open portal
+semantics are covered by focused source-grid validation rather than an invented physical fixture.
+
+Final Unity compilation was clean; focused M8C was **12/12**, required regressions were **377/377**, and complete
+EditMode was **714/714**, all with 0 failed, 0 skipped, and 0 inconclusive. The complete-suite console contained the
+same 6 known dialogue-compatibility warnings and 0 errors; the physical run recorded 0 warnings and 0 errors. Save
+format remains V1: committed equipment, ammunition, placement, and vitality persist, while active combat normalizes
+to Inactive.
+
+See [`documentation_unity/m8c-ranged-combat-audit.md`](documentation_unity/m8c-ranged-combat-audit.md).
+
 ## Next Recommended Milestone
 
-The next recommended separately authorized milestone is **M8C: one bounded equipped ranged-weapon attack and
-ammunition transaction path**: source range/line-of-sight, weapon attack speed and to-hit modifiers, one authentic
-projectile/ammunition pairing, atomic ammunition consumption, seeded hit/miss, rollback, and the existing M4B damage
-handoff. Do not broaden it into critical tables, death/loot/XP, AI, spells, real-time scheduling, or unrelated travel
-work without explicit scope.
+The next recommended separately authorized milestone is **M8D: bounded defeat/death and corpse-state combat
+resolution**: source thresholds and eligibility, deterministic combat exit, persistent defeated-state ownership, and
+save/reload behavior for one authentic fixture. Keep loot transfer, XP awards, critical tables/effects, AI, spells,
+real-time scheduling, and unrelated travel work outside that slice unless separately authorized.
