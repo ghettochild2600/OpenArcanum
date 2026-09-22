@@ -16,8 +16,8 @@ vertical slices, M6A authoritative session save/load, M6B migration boundaries/d
 player-facing manual save/load presentation, M7A bounded passive local map transitions, and M7B bounded authentic
   overland/Bates area entrance and return, M7C bounded authoritative known-area discovery, M7D read-only world-map
   destination projection/selection, M7E bounded authoritative route/travel execution, M8A bounded authoritative
-  core combat state, M8B bounded turn-based movement/basic attack/damage, and M8C bounded equipped bow/arrow combat
-  are complete.
+  core combat state, M8B bounded turn-based movement/basic attack/damage, M8C bounded equipped bow/arrow combat, and
+  M8D bounded vitality-derived defeat/death/unconsciousness and corpse state are complete.
 `WorldMapSessionCoordinator` owns typed `World`, `Contained(parent)`, and `Equipped(parent, wornLocation)` placement,
 atomic raw item transfers/equipment replacement/stack merge and split, deterministic session-created item identities,
 source-faithful pickup/drop/owner-transfer policy, and pre-mutation weight/grid-capacity guards independently of Unity
@@ -1611,9 +1611,36 @@ to Inactive.
 
 See [`documentation_unity/m8c-ranged-combat-audit.md`](documentation_unity/m8c-ranged-combat-audit.md).
 
+## M8D Defeat, Death, Unconsciousness, and Corpse-State Validation Baseline (2026-09-21)
+
+M8D is complete. M4B `CharacterVitalityService` remains the sole HP/fatigue authority: dead is current HP `<= 0`,
+and ordinary unconsciousness is current Fatigue `<= 0` while alive, with the audited undead/fatigue-immune exclusion.
+No independent dead flag, replacement corpse identity, or Save V2 field was introduced.
+
+Death removes the stable ObjectID from active combat participation and advances exactly once if it owned the current
+turn. Unconscious participants remain registered but are skipped and keep blocking movement. The existing critter
+becomes the corpse: it retains object type, ObjectID, inventory, and equipment relationships; projects fall-down
+animation 7; and loses dynamic navigation occupancy only when dead. Graphics rebuild, sector reload, and Save V1
+restore derive presentation and blocking from the authoritative domain state. Combat does not end automatically;
+existing explicit `EndCombat` succeeds once no eligible hostile remains.
+
+Computer Use physical Play Mode used the authentic Polar Bear Cub
+`G_9B807B01_A142_4949_80CE_5A085F3BEEB1` in
+`maps/arcanum1-024-fixed/47781512457.sec`. Six deterministic attacks through the real M8C bow/arrow production path
+crossed HP zero exactly once, retained the bear's identity and relationships, removed its blocker and participant,
+and created no duplicate corpse. The same run proved unconscious/current-actor advancement, idempotent repeats,
+Original -> Enhanced -> Original rebuild, sector reload, and dead/unconscious Save V1 round trips. It recorded 0
+warnings and 0 errors.
+
+Final validation was focused M8D **11/11**, required regressions **150/150**, and complete EditMode **725/725**, all
+with 0 failed, 0 skipped, and 0 inconclusive. The complete suite emitted 5 known intentional fail-closed dialogue
+compatibility warnings and 0 errors. Death scripts, XP/rewards, quest/reputation/follower consequences, corpse-looting
+UI, loot transfer, wake-up/regeneration, decay, resurrection, AI, and real-time combat remain deferred.
+
+See [`documentation_unity/m8d-defeat-state-audit.md`](documentation_unity/m8d-defeat-state-audit.md).
+
 ## Next Recommended Milestone
 
-The next recommended separately authorized milestone is **M8D: bounded defeat/death and corpse-state combat
-resolution**: source thresholds and eligibility, deterministic combat exit, persistent defeated-state ownership, and
-save/reload behavior for one authentic fixture. Keep loot transfer, XP awards, critical tables/effects, AI, spells,
-real-time scheduling, and unrelated travel work outside that slice unless separately authorized.
+The next recommended separately authorized milestone is **M8E: bounded source-authentic death consequences and corpse
+interaction/loot**: establish `SAP_DYING`/reward ordering and one audited corpse inventory transaction without
+broadening into general AI, spells, critical tables/effects, real-time scheduling, or unrelated travel work.
