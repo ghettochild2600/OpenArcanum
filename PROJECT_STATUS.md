@@ -17,7 +17,8 @@ player-facing manual save/load presentation, M7A bounded passive local map trans
   overland/Bates area entrance and return, M7C bounded authoritative known-area discovery, M7D read-only world-map
   destination projection/selection, M7E bounded authoritative route/travel execution, M8A bounded authoritative
   core combat state, M8B bounded turn-based movement/basic attack/damage, M8C bounded equipped bow/arrow combat, and
-  M8D bounded vitality-derived defeat/death/unconsciousness and corpse state are complete.
+  M8D bounded vitality-derived defeat/death/unconsciousness and corpse state, and M8E bounded source-authentic death
+  consequences/corpse loot are complete.
 `WorldMapSessionCoordinator` owns typed `World`, `Contained(parent)`, and `Equipped(parent, wornLocation)` placement,
 atomic raw item transfers/equipment replacement/stack merge and split, deterministic session-created item identities,
 source-faithful pickup/drop/owner-transfer policy, and pre-mutation weight/grid-capacity guards independently of Unity
@@ -80,7 +81,7 @@ M8B adds source-AP-aware combat movement, one authentic unarmed melee attack, in
 hit/Dodge and normal/fatigue resistance resolution, and damage exclusively through M4B vitality. AP exhaustion advances
 the stable turn/round loop; every rejected command is transactional. Combat remains transient and Save V1 is unchanged.
 Travel time, encounters, follower relocation, mid-route cancellation, route animation, clock/day-night behavior,
-autosave, quicksave, cloud sync, original Arcanum save compatibility, criticals, death/loot/XP,
+autosave, quicksave, cloud sync, original Arcanum save compatibility, criticals, broader death scripts/consequences,
 AI, spells, technology, followers, and barter remain deferred.
 
 ## Current Branch
@@ -1639,8 +1640,37 @@ UI, loot transfer, wake-up/regeneration, decay, resurrection, AI, and real-time 
 
 See [`documentation_unity/m8d-defeat-state-audit.md`](documentation_unity/m8d-defeat-state-audit.md).
 
+## M8E Death Consequence and Corpse-Loot Validation Baseline (2026-09-22)
+
+M8E is complete. The authentic fixture is Greater Skeleton
+`G_5ADE34A3_86FB_7A40_98C0_DDEB6335E848`, prototype 28460, at `(31883,56988)` in
+`maps/arcanum1-024-fixed/59726889458.sec`. It carries source worth 440, no effective `SAP_DYING`, authentic 89-gold
+object `G_6413F64C_29FD_4A44_8E2C_E9A414888116`, and equipped sword
+`G_2EB46E07_6D15_AD4C_87A1_B8543AA54F91`. Its inventory-rich source instance starts behind object flag `OFF`; the
+physical validator clears only that encounter gate before starting ordinary production combat.
+
+Lethal melee/ranged attacks preflight unsupported death scripts before AP, ammunition, vitality, XP, inventory, or
+campaign mutation. The supported no-script path applies damage through M4B, lets M8D derive one death/removal, then
+uses the coordinator-owned `DeathConsequenceService` to attribute the production-PC kill and award exactly 88 XP
+through M4C. The marker commits once and persists as an additive Save V1 field. The original NPC ObjectID remains the
+corpse and retains contained/equipped children until explicit, capacity-checked coordinator inventory transactions move
+them; no corpse or loot identity is synthesized.
+
+Computer Use physical Play Mode used six deterministic production bow attacks and recorded one death transition,
+XP `0 -> 88`, same-identity corpse retention, participant removal, authentic Gold and equipped-sword loot, blocked
+repeat processing/loot, explicit `EndCombat`, Original -> Enhanced -> Original rebuild, sector unload/reload, and V1
+save/load without consequence replay. It passed with 0 new warnings and 0 errors. Final compilation was clean;
+focused M8E was **7/7** and complete EditMode was **732/732**, with 0 failed, 0 skipped, and 0 inconclusive. The complete
+suite emitted five known intentional fail-closed dialogue compatibility warnings and 0 errors.
+
+Broader/nonzero death-script execution, damage-proportional XP, follower credit, alignment/reputation/kill-log effects,
+decay, resurrection, generated loot, corpse UI, AI, real-time combat, spells, and technology remain deferred.
+
+See [`documentation_unity/m8e-death-consequence-audit.md`](documentation_unity/m8e-death-consequence-audit.md).
+
 ## Next Recommended Milestone
 
-The next recommended separately authorized milestone is **M8E: bounded source-authentic death consequences and corpse
-interaction/loot**: establish `SAP_DYING`/reward ordering and one audited corpse inventory transaction without
-broadening into general AI, spells, critical tables/effects, real-time scheduling, or unrelated travel work.
+The next recommended separately authorized milestone is **M8F: bounded source-authentic critical success and critical
+failure resolution**: audit and admit one deterministic melee/ranged critical-table slice while preserving the existing
+attack/death transaction boundaries, without broadening into M9 real-time scheduling, general status-effect execution,
+combat UI/audio, AI, spells, technology, or unrelated travel work.
