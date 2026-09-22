@@ -342,7 +342,11 @@ namespace Arcanum.Runtime.World
                             instance.WillKosScriptNum != 0
                                 ? instance.WillKosScriptNum
                                 : proto?.WillKosScriptNum ?? 0,
-                            instance.NpcDamage ?? proto?.NpcDamage));
+                            instance.NpcDamage ?? proto?.NpcDamage,
+                            instance.DyingScriptNum != 0
+                                ? instance.DyingScriptNum
+                                : proto?.DyingScriptNum ?? 0,
+                            instance.ExperienceWorth ?? proto?.ExperienceWorth ?? 0));
                     }
                     artId = state.ArtId;
                     artPath = _art.Resolve(artId);

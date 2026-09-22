@@ -52,6 +52,7 @@ namespace Arcanum.Runtime.Combat
         NoAmmo,
         IncompatibleAmmo,
         UnsupportedDamageProfile,
+        UnresolvedDeathScript,
         PresentationUnavailable,
     }
 
@@ -191,16 +192,20 @@ namespace Arcanum.Runtime.Combat
         public int NpcFlags { get; }
         public int CritterFlags { get; }
         public int WillKosScriptNum { get; }
+        public int DyingScriptNum { get; }
+        public int ExperienceWorth { get; }
 
         public CombatActorSource(ArcanumObjectId identity, ObjectType objectType, int? prototypeNumber,
             string sourceSector, int sourceOrder, int npcFlags, int critterFlags, int willKosScriptNum,
-            int[] naturalDamage = null)
+            int[] naturalDamage = null, int dyingScriptNum = 0, int experienceWorth = 0)
         {
             if (!identity.IsPersistent)
                 throw new ArgumentException("Combat actors require a persistent ObjectID.", nameof(identity));
             if (objectType is not (ObjectType.Pc or ObjectType.Npc))
                 throw new ArgumentOutOfRangeException(nameof(objectType));
             if (sourceOrder < 0) throw new ArgumentOutOfRangeException(nameof(sourceOrder));
+            if (dyingScriptNum < 0) throw new ArgumentOutOfRangeException(nameof(dyingScriptNum));
+            if (experienceWorth < 0) throw new ArgumentOutOfRangeException(nameof(experienceWorth));
             Identity = identity;
             ObjectType = objectType;
             PrototypeNumber = prototypeNumber;
@@ -209,6 +214,8 @@ namespace Arcanum.Runtime.Combat
             NpcFlags = npcFlags;
             CritterFlags = critterFlags;
             WillKosScriptNum = willKosScriptNum;
+            DyingScriptNum = dyingScriptNum;
+            ExperienceWorth = experienceWorth;
             if (naturalDamage != null && naturalDamage.Length < DamageTypeCount * 2)
                 throw new ArgumentException("Natural damage requires five min/max source pairs.",
                     nameof(naturalDamage));
@@ -227,6 +234,7 @@ namespace Arcanum.Runtime.Combat
                && PrototypeNumber == other.PrototypeNumber && SourceSector == other.SourceSector
                && SourceOrder == other.SourceOrder && NpcFlags == other.NpcFlags
                && CritterFlags == other.CritterFlags && WillKosScriptNum == other.WillKosScriptNum
+               && DyingScriptNum == other.DyingScriptNum && ExperienceWorth == other.ExperienceWorth
                && NaturalDamageEquals(other);
 
         public override bool Equals(object obj) => obj is CombatActorSource other && Equals(other);
@@ -241,6 +249,8 @@ namespace Arcanum.Runtime.Combat
             hash.Add(NpcFlags);
             hash.Add(CritterFlags);
             hash.Add(WillKosScriptNum);
+            hash.Add(DyingScriptNum);
+            hash.Add(ExperienceWorth);
             for (int index = 0; index < DamageTypeCount * 2; index++)
                 hash.Add(_naturalDamage?[index] ?? 0);
             return hash.ToHashCode();
@@ -329,7 +339,9 @@ namespace Arcanum.Runtime.Combat
                     && existing.SourceOrder == source.SourceOrder
                     && existing.NpcFlags == source.NpcFlags
                     && existing.CritterFlags == source.CritterFlags
-                    && existing.WillKosScriptNum == source.WillKosScriptNum)
+                    && existing.WillKosScriptNum == source.WillKosScriptNum
+                    && existing.DyingScriptNum == source.DyingScriptNum
+                    && existing.ExperienceWorth == source.ExperienceWorth)
                 {
                     _sources[source.Identity] = source;
                     return;
@@ -530,7 +542,7 @@ namespace Arcanum.Runtime.Combat
                 || !TryGetCombatPosition(target, out Vector2Int targetPosition))
                 return AttackFailure(CombatFailure.PresentationUnavailable);
             if (mode == CombatAttackMode.BasicRanged)
-                return AttackRanged(source, actor, target, actorPosition, targetPosition);
+                return AttackRanged(source, targetSource, actor, target, actorPosition, targetPosition);
             if (_world.TryGetEquippedItem(actor, WornLocation.Weapon, out _))
                 return AttackFailure(CombatFailure.UnsupportedWeapon);
             if (InteractionRangeRules.Distance(actorPosition, targetPosition) > 1)
@@ -572,6 +584,10 @@ namespace Arcanum.Runtime.Combat
                 mitigatedFatigue = ApplyResistance(rawFatigue, 3 * resistance / 4);
             }
 
+            int hitPointsBefore = _world.Vitality.GetCurrentHitPoints(target);
+            if (hit && mitigatedNormal >= hitPointsBefore && targetSource.DyingScriptNum != 0)
+                return AttackFailure(CombatFailure.UnresolvedDeathScript);
+
             int spent = Math.Min(CurrentActionPoints, UnarmedAttackActionPointCost);
             int overdrawFatigue = overdraw ? 2 : 0;
             CurrentActionPoints -= spent;
@@ -580,6 +596,8 @@ namespace Arcanum.Runtime.Combat
             if (mitigatedFatigue > 0) _world.Vitality.ApplyFatigueDamage(target, mitigatedFatigue);
             int resultingHitPoints = _world.Vitality.GetCurrentHitPoints(target);
             int resultingFatigue = _world.Vitality.GetCurrentFatigue(target);
+            if (hitPointsBefore > 0 && resultingHitPoints <= 0)
+                _world.DeathConsequences.Process(actor, target);
             if (CurrentParticipant == actor && CurrentActionPoints == 0)
                 AdvanceToNextEligibleParticipant(actor);
 
@@ -611,7 +629,8 @@ namespace Arcanum.Runtime.Combat
             return new CombatHitChance(effectiveness, armorClass, difficulty, attackChance, dodge);
         }
 
-        private CombatAttackResult AttackRanged(CombatActorSource source, ArcanumObjectId actor,
+        private CombatAttackResult AttackRanged(CombatActorSource source, CombatActorSource targetSource,
+            ArcanumObjectId actor,
             ArcanumObjectId target, Vector2Int actorPosition, Vector2Int targetPosition)
         {
             if (!_world.TryGetEquippedItem(actor, WornLocation.Weapon, out PersistentObjectState equipped)
@@ -649,15 +668,7 @@ namespace Arcanum.Runtime.Combat
                 return AttackFailure(CombatFailure.UnsupportedDamageProfile);
 
             CombatHitChance chance = GetBasicRangedHitChance(actor, target, weapon, distance);
-            int spent = Math.Min(CurrentActionPoints, actionPointCost);
-            int previousActionPoints = CurrentActionPoints;
             int ammoBefore = ammo.StackQuantity.Value;
-            CurrentActionPoints -= spent;
-            if (!_world.ConsumeAmmo(ammo.Identity, weapon.AmmoConsumption, out int ammoAfter))
-            {
-                CurrentActionPoints = previousActionPoints;
-                return AttackFailure(CombatFailure.NoAmmo);
-            }
 
             int attackRoll = _random.NextInclusive(1, 100);
             bool hit = attackRoll <= chance.AttackChance;
@@ -683,12 +694,26 @@ namespace Arcanum.Runtime.Combat
                 mitigatedFatigue = ApplyResistance(rawFatigue, 3 * resistance / 4);
             }
 
+            int hitPointsBefore = _world.Vitality.GetCurrentHitPoints(target);
+            if (hit && mitigatedNormal >= hitPointsBefore && targetSource.DyingScriptNum != 0)
+                return AttackFailure(CombatFailure.UnresolvedDeathScript);
+
+            int spent = Math.Min(CurrentActionPoints, actionPointCost);
+            int previousActionPoints = CurrentActionPoints;
+            CurrentActionPoints -= spent;
+            if (!_world.ConsumeAmmo(ammo.Identity, weapon.AmmoConsumption, out int ammoAfter))
+            {
+                CurrentActionPoints = previousActionPoints;
+                return AttackFailure(CombatFailure.NoAmmo);
+            }
             int overdrawFatigue = overdraw ? 2 : 0;
             if (overdrawFatigue > 0) _world.Vitality.ApplyFatigueDamage(actor, overdrawFatigue);
             if (mitigatedNormal > 0) _world.Vitality.ApplyHitPointDamage(target, mitigatedNormal);
             if (mitigatedFatigue > 0) _world.Vitality.ApplyFatigueDamage(target, mitigatedFatigue);
             int resultingHitPoints = _world.Vitality.GetCurrentHitPoints(target);
             int resultingFatigue = _world.Vitality.GetCurrentFatigue(target);
+            if (hitPointsBefore > 0 && resultingHitPoints <= 0)
+                _world.DeathConsequences.Process(actor, target);
             if (CurrentParticipant == actor && CurrentActionPoints == 0)
                 AdvanceToNextEligibleParticipant(actor);
 

@@ -58,6 +58,8 @@ namespace Arcanum.Formats.Objects
 
         public int FirstHeartbeatScriptNum { get; }
 
+        public int DyingScriptNum { get; internal set; }
+
         /// <summary>The prototype's <c>OBJ_F_ITEM_INV_AID</c> — the compact inventory-icon art id, or null if unset.</summary>
         public uint? InvAid { get; }
 
@@ -269,6 +271,7 @@ namespace Arcanum.Formats.Objects
                         BuyObjectScriptNum = p.BuyObjectScriptNum,
                         DialogOverrideNum = p.DialogOverrideNum,
                         WillKosScriptNum = p.WillKosScriptNum,
+                        DyingScriptNum = p.DyingScriptNum,
                         NpcFlags = p.NpcFlags,
                         AiData = p.AiData,
                         SocialClass = p.SocialClass,

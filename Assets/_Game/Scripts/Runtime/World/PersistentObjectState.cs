@@ -46,6 +46,8 @@ namespace Arcanum.Runtime.World
         public Vector2 TilePosition { get; internal set; }
         public ObjectPlacement Placement { get; internal set; }
         public bool IsRuntimeCreated { get; }
+        /// <summary>Persistent exact-once guard for the supported default death consequence transaction.</summary>
+        public bool DeathConsequencesProcessed { get; internal set; }
 
         public PersistentObjectState(
             ObjectInstance source,
@@ -174,7 +176,7 @@ namespace Arcanum.Runtime.World
             int itemFlags, uint? inventoryArtId, int weaponFlags, int genericFlags, int unitWeight,
             InventoryFootprint inventoryFootprint, int inventoryLocation, int? stackQuantity, bool portalOpen,
             Vector2 tilePosition, ObjectPlacement placement, bool isRuntimeCreated,
-            Weapon weaponData = null, int? ammoItemType = null)
+            Weapon weaponData = null, int? ammoItemType = null, bool deathConsequencesProcessed = false)
         {
             Identity = identity;
             AuthoredParentIdentity = authoredParentIdentity;
@@ -203,6 +205,7 @@ namespace Arcanum.Runtime.World
             TilePosition = tilePosition;
             Placement = placement;
             IsRuntimeCreated = isRuntimeCreated;
+            DeathConsequencesProcessed = deathConsequencesProcessed;
         }
 
         internal bool Matches(ObjectInstance source, string sector)

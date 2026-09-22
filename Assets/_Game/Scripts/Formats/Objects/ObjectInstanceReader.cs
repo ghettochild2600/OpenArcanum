@@ -72,6 +72,10 @@ namespace Arcanum.Formats.Objects
 
         public int FirstHeartbeatScriptNum { get; internal set; }
 
+        /// <summary>The <c>SAP_DYING</c> script number — the veto hook run before default kill consequences;
+        /// 0 = none.</summary>
+        public int DyingScriptNum { get; internal set; }
+
         /// <summary>The <c>SAP_BUY_OBJECT</c> script number — a merchant's veto hook, run when the PC offers
         /// an item for sale (<c>item_check_sell</c>); 0 = none.</summary>
         public int BuyObjectScriptNum { get; internal set; }
@@ -408,6 +412,7 @@ namespace Arcanum.Formats.Objects
         private const int SAP_USE = 1;
         private const int SAP_DIALOG = 9;
         private const int SAP_FIRST_HEARTBEAT = 10; // fires once when the object first ticks
+        private const int SAP_DYING = 12;           // veto hook before default kill consequences
         private const int SAP_BUY_OBJECT = 17;      // merchant veto: "will I buy this item?" (item_check_sell)
         private const int SAP_WILL_KOS = 22;        // NPC veto: "will I kill this on sight?" (ai_check_kos)
         private const int SAP_HEARTBEAT = 19;       // periodic tick (AI, self-gating NPCs that toggle off/kill)
@@ -467,6 +472,7 @@ namespace Arcanum.Formats.Objects
             int examineScriptNum = 0;
             int heartbeatScriptNum = 0;
             int firstHeartbeatScriptNum = 0;
+            int dyingScriptNum = 0;
             int buyObjectScriptNum = 0;
             int dialogOverrideNum = 0;
             int willKosScriptNum = 0;
@@ -840,6 +846,7 @@ namespace Arcanum.Formats.Objects
                             examineScriptNum = ScriptNum(b, o, SAP_EXAMINE);     // look-at script (signs, often floats text)
                             heartbeatScriptNum = ScriptNum(b, o, SAP_HEARTBEAT); // periodic tick (AI / self-gating NPCs)
                             firstHeartbeatScriptNum = ScriptNum(b, o, SAP_FIRST_HEARTBEAT);
+                            dyingScriptNum = ScriptNum(b, o, SAP_DYING);
                             buyObjectScriptNum = ScriptNum(b, o, SAP_BUY_OBJECT); // merchant "will I buy this?" veto
                             willKosScriptNum = ScriptNum(b, o, SAP_WILL_KOS);     // "will I kill this on sight?" veto
                         }
@@ -870,6 +877,7 @@ namespace Arcanum.Formats.Objects
                 ExamineScriptNum = examineScriptNum,
                 HeartbeatScriptNum = heartbeatScriptNum,
                 FirstHeartbeatScriptNum = firstHeartbeatScriptNum,
+                DyingScriptNum = dyingScriptNum,
                 BuyObjectScriptNum = buyObjectScriptNum,
                 DialogOverrideNum = dialogOverrideNum,
                 HpDamage = hpDamage,

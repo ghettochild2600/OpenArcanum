@@ -59,6 +59,7 @@ namespace Arcanum.Runtime.Save
         public float TileY { get; set; }
         public PlacementSaveData Placement { get; set; }
         public bool RuntimeCreated { get; set; }
+        public bool DeathConsequencesProcessed { get; set; }
     }
 
     public sealed class PlacementSaveData

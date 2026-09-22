@@ -312,6 +312,7 @@ namespace Arcanum.Runtime.Save
                 TileY = state.TilePosition.y,
                 Placement = CapturePlacement(state.Placement),
                 RuntimeCreated = state.IsRuntimeCreated,
+                DeathConsequencesProcessed = state.DeathConsequencesProcessed,
             };
 
         private static PlacementSaveData CapturePlacement(ObjectPlacement placement)
@@ -517,7 +518,7 @@ namespace Arcanum.Runtime.Save
                     value.StackQuantity, value.PortalOpen, new Vector2(value.TileX, value.TileY), placement,
                     value.RuntimeCreated,
                     prototype?.Weapon != null ? Combat.Weapon.FromFields(prototype.Weapon) : null,
-                    prototype?.AmmoItemType);
+                    prototype?.AmmoItemType, value.DeathConsequencesProcessed);
             }
             catch (Exception ex)
             {

@@ -55,6 +55,7 @@ namespace Arcanum.Runtime.World
         private WorldMapTravelSource _worldMapTravelSource;
         private WorldMapTravelService _worldMapTravel;
         private CombatStateService _combat;
+        private DeathConsequenceService _deathConsequences;
         private bool _mapTransitionActive;
         private ulong _nextDynamicIdentity = 1;
 
@@ -87,6 +88,8 @@ namespace Arcanum.Runtime.World
         public WorldMapTravelService WorldMapTravel
             => _worldMapTravel ??= new WorldMapTravelService(this, _worldMapTravelSource);
         public CombatStateService Combat => _combat ??= new CombatStateService(this);
+        public DeathConsequenceService DeathConsequences
+            => _deathConsequences ??= new DeathConsequenceService(this);
         public bool IsMapTransitionActive => _mapTransitionActive;
         public MapTransitionResult LastMapTransitionResult { get; private set; }
         public AreaEntranceResult LastAreaEntranceResult { get; private set; }
@@ -1073,6 +1076,41 @@ namespace Arcanum.Runtime.World
             return new InventoryTransferResult(InventoryResultCode.Success, itemIdentity, previous, destination);
         }
 
+        /// <summary>
+        /// Atomic source-owner transfer used only after the death-consequence service has established a corpse.
+        /// Ordinary inventory reuses <see cref="TransferItem"/>; worn items move directly to looter containment.
+        /// </summary>
+        internal InventoryTransferResult TransferCorpseOwnedItem(ArcanumObjectId itemIdentity,
+            ArcanumObjectId corpseIdentity, ArcanumObjectId destinationOwner)
+        {
+            if (!_states.TryGetValue(itemIdentity, out PersistentObjectState item))
+                return new InventoryTransferResult(InventoryResultCode.ItemNotFound, itemIdentity, default,
+                    ObjectPlacement.ContainedBy(destinationOwner));
+            ObjectPlacement previous = item.Placement;
+            ObjectPlacement destination = ObjectPlacement.ContainedBy(destinationOwner);
+            if (item.ParentIdentity != corpseIdentity
+                || previous.Kind is not (ObjectPlacementKind.Contained or ObjectPlacementKind.Equipped))
+                return new InventoryTransferResult(InventoryResultCode.SourceMismatch, itemIdentity, previous,
+                    destination);
+            if (previous.Kind == ObjectPlacementKind.Contained)
+                return TransferItem(itemIdentity, previous, destination);
+            if ((item.ItemFlags & 0x20) != 0)
+                return new InventoryTransferResult(InventoryResultCode.EquipmentCommandRequired, itemIdentity,
+                    previous, destination);
+
+            InventoryResultCode validation = ValidateDestination(itemIdentity, destination);
+            if (validation != InventoryResultCode.Success)
+                return new InventoryTransferResult(validation, itemIdentity, previous, destination);
+            InventoryAcceptance acceptance = InventoryCapacity.Evaluate(item, destinationOwner);
+            if (!acceptance.Succeeded)
+                return new InventoryTransferResult(acceptance.Code, itemIdentity, previous, destination);
+
+            item.Placement = destination;
+            item.InventoryLocation = acceptance.InventoryLocation;
+            ObjectPlacementChanged?.Invoke(item, previous, destination);
+            return new InventoryTransferResult(InventoryResultCode.Success, itemIdentity, previous, destination);
+        }
+
         public bool TryFindContainedItem(ArcanumObjectId ownerIdentity, int prototypeNumber,
             out PersistentObjectState item)
         {
@@ -1810,6 +1848,7 @@ namespace Arcanum.Runtime.World
             _worldMapDestinations = null;
             _worldMapTravel = null;
             _combat = null;
+            _deathConsequences = null;
             _portals = null;
             _dialogue = null;
             _journal = null;
