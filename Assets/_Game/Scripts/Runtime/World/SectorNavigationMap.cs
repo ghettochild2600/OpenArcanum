@@ -26,6 +26,7 @@ namespace Arcanum.Runtime.World
         private readonly Dictionary<WorldObject, int> _sourceFlags = new();
         private readonly Dictionary<WorldObject, Vector2Int> _projectileObjects = new();
         private readonly Dictionary<ArcanumObjectId, Vector2Int> _ordinaryObjects = new();
+        private readonly HashSet<ArcanumObjectId> _ordinaryBlockers = new();
         private ArcanumObjectId _controlledIdentity;
 
         public SectorNavigationMap(SectorTerrain terrain, bool[] placedBlocks, TileNameTable tileNames)
@@ -63,10 +64,11 @@ namespace Arcanum.Runtime.World
                 return;
             }
 
-            if ((sourceFlags & ObjectFlagNoBlock) != 0) return;
             if (!IsOrdinaryBlockingType(obj.Type)) return;
-            _objectBlockers[Index(obj.Tile.x, obj.Tile.y)]++;
             if (obj.Identity.IsPersistent) _ordinaryObjects[obj.Identity] = obj.Tile;
+            if ((sourceFlags & ObjectFlagNoBlock) != 0) return;
+            _objectBlockers[Index(obj.Tile.x, obj.Tile.y)]++;
+            if (obj.Identity.IsPersistent) _ordinaryBlockers.Add(obj.Identity);
             if (IsProjectileBlockingType(obj.Type) && (sourceFlags & ObjectFlagShootThrough) == 0)
             {
                 _projectileBlockers[Index(obj.Tile.x, obj.Tile.y)]++;
@@ -91,20 +93,44 @@ namespace Arcanum.Runtime.World
                 _projectileBlockers[Index(projectileTile.x, projectileTile.y)] = Math.Max(0,
                     _projectileBlockers[Index(projectileTile.x, projectileTile.y)] - 1);
             if (!_ordinaryObjects.Remove(obj.Identity)) return;
-            _objectBlockers[Index(obj.Tile.x, obj.Tile.y)] = Math.Max(0,
-                _objectBlockers[Index(obj.Tile.x, obj.Tile.y)] - 1);
+            if (_ordinaryBlockers.Remove(obj.Identity))
+                _objectBlockers[Index(obj.Tile.x, obj.Tile.y)] = Math.Max(0,
+                    _objectBlockers[Index(obj.Tile.x, obj.Tile.y)] - 1);
             if (_controlledIdentity == obj.Identity) _controlledIdentity = default;
         }
 
         /// <summary>Removes the controlled critter from static occupancy without ignoring other occupants.</summary>
         public void SetControlledObject(WorldObject obj)
         {
-            if (_controlledIdentity.IsPersistent && _ordinaryObjects.TryGetValue(_controlledIdentity, out Vector2Int oldTile))
+            if (_controlledIdentity.IsPersistent && _ordinaryBlockers.Contains(_controlledIdentity)
+                && _ordinaryObjects.TryGetValue(_controlledIdentity, out Vector2Int oldTile))
                 _objectBlockers[Index(oldTile.x, oldTile.y)]++;
 
             _controlledIdentity = obj != null ? obj.Identity : default;
-            if (obj != null && obj.Identity.IsPersistent && _ordinaryObjects.TryGetValue(obj.Identity, out Vector2Int tile))
+            if (obj != null && obj.Identity.IsPersistent && _ordinaryBlockers.Contains(obj.Identity)
+                && _ordinaryObjects.TryGetValue(obj.Identity, out Vector2Int tile))
                 _objectBlockers[Index(tile.x, tile.y)] = Math.Max(0, _objectBlockers[Index(tile.x, tile.y)] - 1);
+        }
+
+        /// <summary>Projects source OF_NO_BLOCK without losing the registered stable identity.</summary>
+        internal bool SetRegisteredObjectBlocking(ArcanumObjectId identity, bool blocks)
+        {
+            if (!identity.IsPersistent || !_ordinaryObjects.TryGetValue(identity, out Vector2Int tile)) return false;
+            bool wasBlocking = _ordinaryBlockers.Contains(identity);
+            if (wasBlocking == blocks) return true;
+            if (blocks)
+            {
+                _ordinaryBlockers.Add(identity);
+                if (_controlledIdentity != identity) _objectBlockers[Index(tile.x, tile.y)]++;
+            }
+            else
+            {
+                _ordinaryBlockers.Remove(identity);
+                if (_controlledIdentity != identity)
+                    _objectBlockers[Index(tile.x, tile.y)] = Math.Max(0,
+                        _objectBlockers[Index(tile.x, tile.y)] - 1);
+            }
+            return true;
         }
 
         /// <summary>Moves one registered critter occupancy after an authoritative combat route is preflighted.</summary>
@@ -113,9 +139,9 @@ namespace Arcanum.Runtime.World
             if (!identity.IsPersistent || !Contains(destination)
                 || !_ordinaryObjects.TryGetValue(identity, out Vector2Int previous)) return false;
             if (previous == destination) return true;
-            bool controlled = _controlledIdentity == identity;
-            if (!controlled && !IsWalkable(destination)) return false;
-            if (!controlled)
+            bool contributes = _ordinaryBlockers.Contains(identity) && _controlledIdentity != identity;
+            if (contributes && !IsWalkable(destination)) return false;
+            if (contributes)
             {
                 _objectBlockers[Index(previous.x, previous.y)] = Math.Max(0,
                     _objectBlockers[Index(previous.x, previous.y)] - 1);
@@ -129,7 +155,7 @@ namespace Arcanum.Runtime.World
         internal bool IsOccupiedByOther(ArcanumObjectId identity, Vector2Int tile)
         {
             foreach (KeyValuePair<ArcanumObjectId, Vector2Int> pair in _ordinaryObjects)
-                if (pair.Key != identity && pair.Value == tile) return true;
+                if (pair.Key != identity && _ordinaryBlockers.Contains(pair.Key) && pair.Value == tile) return true;
             return false;
         }
 

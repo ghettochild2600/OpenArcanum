@@ -4,6 +4,25 @@ using Arcanum.Formats.Objects;
 
 namespace Arcanum.Runtime.Character
 {
+    public readonly struct CharacterVitalityChange
+    {
+        public ArcanumObjectId Identity { get; }
+        public int PreviousHitPoints { get; }
+        public int CurrentHitPoints { get; }
+        public int PreviousFatigue { get; }
+        public int CurrentFatigue { get; }
+
+        internal CharacterVitalityChange(ArcanumObjectId identity, int previousHitPoints,
+            int currentHitPoints, int previousFatigue, int currentFatigue)
+        {
+            Identity = identity;
+            PreviousHitPoints = previousHitPoints;
+            CurrentHitPoints = currentHitPoints;
+            PreviousFatigue = previousFatigue;
+            CurrentFatigue = currentFatigue;
+        }
+    }
+
     /// <summary>Authoritative M4B HP/fatigue derivation and mutation service for persistent critters.</summary>
     public sealed class CharacterVitalityService
     {
@@ -12,6 +31,7 @@ namespace Arcanum.Runtime.Character
         private readonly Dictionary<ArcanumObjectId, PersistentCharacterVitalityState> _states = new();
 
         public IReadOnlyDictionary<ArcanumObjectId, PersistentCharacterVitalityState> States => _states;
+        public event Action<CharacterVitalityChange> Changed;
 
         public CharacterVitalityService(CharacterStatService characters, ICharacterLevelProvider levels = null)
         {
@@ -51,37 +71,63 @@ namespace Arcanum.Runtime.Character
         public int GetCurrentHitPoints(ArcanumObjectId identity) => Get(identity).CurrentHitPoints;
         public int GetMaximumFatigue(ArcanumObjectId identity) => Get(identity).MaximumFatigue;
         public int GetCurrentFatigue(ArcanumObjectId identity) => Get(identity).CurrentFatigue;
+        public bool IsDead(ArcanumObjectId identity) => GetCurrentHitPoints(identity) <= 0;
+        public bool IsAlive(ArcanumObjectId identity) => !IsDead(identity);
+        public bool IsUnconscious(ArcanumObjectId identity, bool fatigueImmune = false)
+            => !fatigueImmune && IsAlive(identity) && GetCurrentFatigue(identity) <= 0;
+        public bool IsConscious(ArcanumObjectId identity, bool fatigueImmune = false)
+            => IsAlive(identity) && !IsUnconscious(identity, fatigueImmune);
 
         public void ApplyHitPointDamage(ArcanumObjectId identity, int amount)
         {
             ValidateAmount(amount);
             PersistentCharacterVitalityState state = Get(identity);
+            int previousHitPoints = state.CurrentHitPoints;
+            int previousFatigue = state.CurrentFatigue;
             int damage = checked(state.HitPointDamage + amount);
             state.SetDamage(damage, state.FatigueDamage);
+            RaiseChanged(state, previousHitPoints, previousFatigue);
         }
 
         public void RestoreHitPoints(ArcanumObjectId identity, int amount)
         {
             ValidateAmount(amount);
             PersistentCharacterVitalityState state = Get(identity);
+            int previousHitPoints = state.CurrentHitPoints;
+            int previousFatigue = state.CurrentFatigue;
             int damage = amount >= state.HitPointDamage ? 0 : state.HitPointDamage - amount;
             state.SetDamage(damage, state.FatigueDamage);
+            RaiseChanged(state, previousHitPoints, previousFatigue);
         }
 
         public void ApplyFatigueDamage(ArcanumObjectId identity, int amount)
         {
             ValidateAmount(amount);
             PersistentCharacterVitalityState state = Get(identity);
+            int previousHitPoints = state.CurrentHitPoints;
+            int previousFatigue = state.CurrentFatigue;
             int damage = checked(state.FatigueDamage + amount);
             state.SetDamage(state.HitPointDamage, damage);
+            RaiseChanged(state, previousHitPoints, previousFatigue);
         }
 
         public void RestoreFatigue(ArcanumObjectId identity, int amount)
         {
             ValidateAmount(amount);
             PersistentCharacterVitalityState state = Get(identity);
+            int previousHitPoints = state.CurrentHitPoints;
+            int previousFatigue = state.CurrentFatigue;
             int damage = amount >= state.FatigueDamage ? 0 : state.FatigueDamage - amount;
             state.SetDamage(state.HitPointDamage, damage);
+            RaiseChanged(state, previousHitPoints, previousFatigue);
+        }
+
+        private void RaiseChanged(PersistentCharacterVitalityState state, int previousHitPoints,
+            int previousFatigue)
+        {
+            if (previousHitPoints == state.CurrentHitPoints && previousFatigue == state.CurrentFatigue) return;
+            Changed?.Invoke(new CharacterVitalityChange(state.Identity, previousHitPoints,
+                state.CurrentHitPoints, previousFatigue, state.CurrentFatigue));
         }
 
         private PersistentCharacterVitalityState GetOrCreate(ArcanumObjectId identity, ObjectType objectType,

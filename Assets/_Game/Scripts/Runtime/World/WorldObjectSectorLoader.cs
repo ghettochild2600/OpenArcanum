@@ -431,6 +431,7 @@ namespace Arcanum.Runtime.World
                     continue;
                 }
 
+                flags = ApplyDefeatProjection(worldObject, flags);
                 worldObject.SourceFlags = flags;
                 worldObject.Blocks = (flags & 0x00000400) == 0;
                 NavigationMap.Register(worldObject, flags);
@@ -698,6 +699,8 @@ namespace Arcanum.Runtime.World
             int flags = instance.Flags ?? proto?.Flags ?? 0;
             runtime.SourceFlags = flags & ~ObjectFlagInventory;
             runtime.Blocks = (runtime.SourceFlags & 0x00000400) == 0;
+            runtime.SourceFlags = ApplyDefeatProjection(runtime, runtime.SourceFlags);
+            runtime.Blocks = (runtime.SourceFlags & 0x00000400) == 0;
             NavigationMap?.Register(runtime, runtime.SourceFlags);
             return true;
         }
@@ -746,9 +749,29 @@ namespace Arcanum.Runtime.World
             }
 
             Session.BindPlayer(_registeredSector, player, worldObject);
-            NavigationMap?.Register(worldObject, 0);
+            int flags = ApplyDefeatProjection(worldObject, 0);
+            worldObject.SourceFlags = flags;
+            worldObject.Blocks = (flags & 0x00000400) == 0;
+            NavigationMap?.Register(worldObject, flags);
             _spriteOwners.Add(owner);
             return worldObject;
+        }
+
+        private int ApplyDefeatProjection(WorldObject runtime, int flags)
+        {
+            if (runtime == null || runtime.Type is not ObjectType.Pc and not ObjectType.Npc
+                || !Session.Vitality.TryGet(runtime.Identity, out _)) return flags;
+            bool dead = Session.Vitality.IsDead(runtime.Identity);
+            bool fatigueImmune = Session.Combat.TryGetActorSource(runtime.Identity, out CombatActorSource source)
+                                 && (source.CritterFlags & 0x04000004) != 0;
+            bool unconscious = Session.Vitality.IsUnconscious(runtime.Identity, fatigueImmune);
+            if (!dead && !unconscious) return flags;
+
+            int facing = CritterArtResolver.RotationOf(runtime.ArtId);
+            uint fallenArt = CritterArtResolver.WithAnimRotation(runtime.ArtId, 7, facing) & ~(0x1Fu << 14);
+            runtime.IsDead = dead;
+            runtime.SetArt(fallenArt);
+            return dead ? flags | 0x00000400 : flags;
         }
 
         private WorldObject CreateWorldObject(

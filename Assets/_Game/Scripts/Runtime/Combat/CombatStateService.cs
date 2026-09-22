@@ -283,6 +283,7 @@ namespace Arcanum.Runtime.Combat
         internal const int OnfKos = 0x00000100;
         internal const int OnfNoAttack = 0x20000000;
         internal const int OcfUndead = 0x00000004;
+        internal const int OcfFatigueImmune = 0x04000000;
         internal const int OcfStunned = 0x00000020;
         internal const int OcfParalyzed = 0x00000040;
 
@@ -307,6 +308,7 @@ namespace Arcanum.Runtime.Combat
         {
             _world = world ?? throw new ArgumentNullException(nameof(world));
             _random = new SystemCombatRandom();
+            _world.Vitality.Changed += OnVitalityChanged;
         }
 
         internal void BindNavigationMap(SectorNavigationMap map) => _navigationMap = map;
@@ -489,7 +491,8 @@ namespace Arcanum.Runtime.Combat
 
             CurrentActionPoints -= spent;
             if (fatigueDamage > 0) _world.Vitality.ApplyFatigueDamage(actor, fatigueDamage);
-            if (CurrentActionPoints == 0) AdvanceToNextEligibleParticipant(actor);
+            if (CurrentParticipant == actor && CurrentActionPoints == 0)
+                AdvanceToNextEligibleParticipant(actor);
             return new CombatMoveResult(CombatFailure.None, start, destination, finalPosition,
                 _route.Count, steps, spent, fatigueDamage);
         }
@@ -577,7 +580,8 @@ namespace Arcanum.Runtime.Combat
             if (mitigatedFatigue > 0) _world.Vitality.ApplyFatigueDamage(target, mitigatedFatigue);
             int resultingHitPoints = _world.Vitality.GetCurrentHitPoints(target);
             int resultingFatigue = _world.Vitality.GetCurrentFatigue(target);
-            if (CurrentActionPoints == 0) AdvanceToNextEligibleParticipant(actor);
+            if (CurrentParticipant == actor && CurrentActionPoints == 0)
+                AdvanceToNextEligibleParticipant(actor);
 
             return new CombatAttackResult(CombatFailure.None, chance, hit, dodged, attackRoll, dodgeRoll,
                 rawNormal, mitigatedNormal, rawFatigue, mitigatedFatigue,
@@ -685,7 +689,8 @@ namespace Arcanum.Runtime.Combat
             if (mitigatedFatigue > 0) _world.Vitality.ApplyFatigueDamage(target, mitigatedFatigue);
             int resultingHitPoints = _world.Vitality.GetCurrentHitPoints(target);
             int resultingFatigue = _world.Vitality.GetCurrentFatigue(target);
-            if (CurrentActionPoints == 0) AdvanceToNextEligibleParticipant(actor);
+            if (CurrentParticipant == actor && CurrentActionPoints == 0)
+                AdvanceToNextEligibleParticipant(actor);
 
             return new CombatAttackResult(CombatFailure.None, chance, hit, dodged, attackRoll, dodgeRoll,
                 rawNormal, mitigatedNormal, rawFatigue, mitigatedFatigue,
@@ -897,10 +902,69 @@ namespace Arcanum.Runtime.Combat
             if (source.ObjectType == ObjectType.Npc
                 && (!_world.TryGetObjectState(source.Identity, out PersistentObjectState state) || state.Off))
                 return false;
-            if (!_world.Vitality.TryGet(source.Identity, out PersistentCharacterVitalityState vitality)
-                || vitality.CurrentHitPoints <= 0) return false;
+            if (!_world.Vitality.TryGet(source.Identity, out _)
+                || _world.Vitality.IsDead(source.Identity)) return false;
             if ((source.CritterFlags & (OcfStunned | OcfParalyzed)) != 0) return false;
-            return (source.CritterFlags & OcfUndead) != 0 || vitality.CurrentFatigue > 0;
+            bool fatigueImmune = (source.CritterFlags & (OcfUndead | OcfFatigueImmune)) != 0;
+            return !_world.Vitality.IsUnconscious(source.Identity, fatigueImmune);
+        }
+
+        private void OnVitalityChanged(CharacterVitalityChange change)
+        {
+            if (!_sources.TryGetValue(change.Identity, out CombatActorSource source)) return;
+            bool fatigueImmune = (source.CritterFlags & (OcfUndead | OcfFatigueImmune)) != 0;
+            bool becameDead = change.PreviousHitPoints > 0 && change.CurrentHitPoints <= 0;
+            bool becameUnconscious = !fatigueImmune && change.PreviousHitPoints > 0
+                && change.CurrentHitPoints > 0 && change.PreviousFatigue > 0 && change.CurrentFatigue <= 0;
+            if (!becameDead && !becameUnconscious) return;
+
+            ProjectDefeat(change.Identity, becameDead);
+            if (!IsActive) return;
+            int index = _participants.FindIndex(value => value.Identity == change.Identity);
+            if (index < 0) return;
+            if (becameDead)
+            {
+                bool wasCurrent = CurrentParticipant == change.Identity;
+                _participants.RemoveAt(index);
+                if (_participants.Count == 0)
+                {
+                    ClearTransient();
+                    return;
+                }
+                if (wasCurrent) BeginNextEligibleFromRemovedIndex(index);
+            }
+            else if (CurrentParticipant == change.Identity)
+            {
+                CurrentActionPoints = 0;
+                AdvanceToNextEligibleParticipant(change.Identity);
+            }
+        }
+
+        private void ProjectDefeat(ArcanumObjectId identity, bool dead)
+        {
+            if (!_world.TryGetLoadedObject(identity, out WorldObject runtime)) return;
+            int facing = CritterArtResolver.RotationOf(runtime.ArtId);
+            uint fallenArt = CritterArtResolver.WithAnimRotation(runtime.ArtId, 7, facing) & ~(0x1Fu << 14);
+            runtime.IsDead = dead;
+            runtime.SetArt(fallenArt);
+            if (!dead) return;
+            runtime.Blocks = false;
+            _navigationMap?.SetRegisteredObjectBlocking(identity, false);
+        }
+
+        private void BeginNextEligibleFromRemovedIndex(int removedIndex)
+        {
+            for (int offset = 0; offset < _participants.Count; offset++)
+            {
+                int index = (removedIndex + offset) % _participants.Count;
+                CombatParticipant candidate = _participants[index];
+                if (!_sources.TryGetValue(candidate.Identity, out CombatActorSource source) || !IsEligible(source))
+                    continue;
+                if (removedIndex + offset >= _participants.Count) RoundNumber++;
+                BeginParticipantTurn(candidate.Identity, requireActive: false);
+                return;
+            }
+            ClearTransient();
         }
 
         private static bool IsSourceHostile(CombatActorSource source)

@@ -288,16 +288,16 @@ namespace Arcanum.Formats.Tests
         }
 
         [Test]
-        public void DeadCurrentActorCannotAttackOrSpendActionPoints()
+        public void DeadCurrentActorIsRemovedAndCannotAttackOrSpendActionPoints()
         {
             Start();
             _session.Vitality.ApplyHitPointDamage(_npc, _session.Vitality.GetCurrentHitPoints(_npc));
 
             CombatAttackResult result = _session.Combat.Attack(_npc, _pc.Identity);
 
-            Assert.That(result.Failure, Is.EqualTo(CombatFailure.ParticipantUnavailable));
-            Assert.That(_session.Combat.CurrentActionPoints, Is.EqualTo(5));
-            Assert.That(_session.Combat.CurrentParticipant, Is.EqualTo(_npc));
+            Assert.That(result.Failure, Is.EqualTo(CombatFailure.NotCurrentParticipant));
+            Assert.That(_session.Combat.CurrentParticipant, Is.EqualTo(_pc.Identity));
+            Assert.That(_session.Combat.Participants.Any(value => value.Identity == _npc), Is.False);
         }
 
         [Test]
@@ -328,7 +328,7 @@ namespace Arcanum.Formats.Tests
             _session.Vitality.ApplyHitPointDamage(_pc.Identity,
                 _session.Vitality.GetCurrentHitPoints(_pc.Identity));
             Assert.That(_session.Combat.Attack(_npc, _pc.Identity).Failure,
-                Is.EqualTo(CombatFailure.ParticipantUnavailable));
+                Is.EqualTo(CombatFailure.ParticipantNotRegistered));
             Assert.That(_session.Combat.CurrentActionPoints, Is.EqualTo(5));
         }
 
