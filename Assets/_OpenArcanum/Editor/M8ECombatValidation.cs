@@ -118,8 +118,8 @@ internal static class M8ECombatValidation
                 CombatHitChance chance = session.Combat.GetBasicRangedHitChance(pc, Skeleton,
                     bow.WeaponData, InteractionRangeRules.Distance(pcRuntime.Tile, skeletonRuntime.Tile));
                 session.Combat.SetRandomSource(chance.DodgeChance > 0
-                    ? new SequenceRandom(1, 100, 10, 5)
-                    : new SequenceRandom(1, 10, 5));
+                    ? new SequenceRandom(1, 100, 100, 10, 5)
+                    : new SequenceRandom(1, 100, 10, 5));
                 CombatAttackResult attack = session.Combat.Attack(pc, Skeleton, CombatAttackMode.BasicRanged);
                 Check(attack.Succeeded && attack.Hit && attack.WeaponIdentity == Bow
                       && attack.AmmoIdentity == Arrows && attack.MitigatedHitPointDamage > 0,

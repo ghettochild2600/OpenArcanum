@@ -147,7 +147,7 @@ namespace Arcanum.Formats.Tests
             Assert.That(_session.Combat.StartCombat(_pc.Identity, scripted).Succeeded, Is.True);
             Assert.That(_session.Combat.EndCurrentTurn(scripted).Succeeded, Is.True);
             int actionPoints = _session.Combat.CurrentActionPoints;
-            _session.Combat.SetRandomSource(new SequenceRandom(1, 4, 4));
+            _session.Combat.SetRandomSource(new SequenceRandom(1, 100, 4, 4));
 
             CombatAttackResult result = _session.Combat.Attack(_pc.Identity, scripted);
 
@@ -248,7 +248,7 @@ namespace Arcanum.Formats.Tests
                 _session.Vitality.GetCurrentHitPoints(_skeleton) - 1);
             Assert.That(_session.Combat.StartCombat(_pc.Identity, _skeleton).Succeeded, Is.True);
             Assert.That(_session.Combat.EndCurrentTurn(_skeleton).Succeeded, Is.True);
-            _session.Combat.SetRandomSource(new SequenceRandom(1, 4, 4));
+            _session.Combat.SetRandomSource(new SequenceRandom(1, 100, 4, 4));
             CombatAttackResult result = _session.Combat.Attack(_pc.Identity, _skeleton);
             Assert.That(result.Succeeded && result.Hit, Is.True);
             Assert.That(_session.Vitality.IsDead(_skeleton), Is.True);

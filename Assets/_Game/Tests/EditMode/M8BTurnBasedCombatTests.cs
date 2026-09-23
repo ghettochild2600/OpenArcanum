@@ -204,7 +204,7 @@ namespace Arcanum.Formats.Tests
         public void SeededBasicAttackHitSpendsApAndUsesM4BVitalityAuthority()
         {
             Start();
-            _session.Combat.SetRandomSource(new SequenceRandom(1, 5));
+            _session.Combat.SetRandomSource(new SequenceRandom(1, 100, 5));
             int beforeHp = _session.Vitality.GetCurrentHitPoints(_pc.Identity);
             int states = _session.States.Count;
 
@@ -224,7 +224,7 @@ namespace Arcanum.Formats.Tests
         public void SeededBasicAttackMissStillSpendsApAndAdvancesTurn()
         {
             Start();
-            _session.Combat.SetRandomSource(new SequenceRandom(100));
+            _session.Combat.SetRandomSource(new SequenceRandom(100, 100));
             int beforeHp = _session.Vitality.GetCurrentHitPoints(_pc.Identity);
 
             CombatAttackResult result = _session.Combat.Attack(_npc, _pc.Identity);
@@ -245,7 +245,7 @@ namespace Arcanum.Formats.Tests
             _map.Register(defenderRuntime, 0);
             Start();
             Assert.That(_session.Combat.RegisterParticipant(defender).Succeeded, Is.True);
-            _session.Combat.SetRandomSource(new SequenceRandom(1, 5));
+            _session.Combat.SetRandomSource(new SequenceRandom(1, 100, 5));
             int before = _session.Vitality.GetCurrentHitPoints(defender);
 
             CombatAttackResult result = _session.Combat.Attack(_npc, defender);
@@ -352,7 +352,7 @@ namespace Arcanum.Formats.Tests
         {
             Start();
             Assert.That(_session.Combat.EndCurrentTurn(_npc).Succeeded, Is.True);
-            _session.Combat.SetRandomSource(new SequenceRandom(100));
+            _session.Combat.SetRandomSource(new SequenceRandom(100, 100));
             Assert.That(_session.Combat.Attack(_pc.Identity, _npc).Succeeded, Is.True);
             Assert.That(_session.Combat.CurrentActionPoints, Is.EqualTo(3));
             Assert.That(_session.Combat.MoveInCombat(_pc.Identity, new Vector2Int(1, 2)).Succeeded, Is.True);

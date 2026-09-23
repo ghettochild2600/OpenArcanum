@@ -146,7 +146,7 @@ internal static class M8BCombatValidation
                   && session.Combat.RoundNumber == 2 && session.Combat.CurrentActionPoints == 5,
                 "PC turn rolls exactly once to round-two bear AP 5");
 
-            session.Combat.SetRandomSource(new SequenceRandom(1, 5));
+            session.Combat.SetRandomSource(new SequenceRandom(1, 100, 5));
             CombatHitChance hitChance = session.Combat.GetBasicMeleeHitChance(FixtureIdentity, pc);
             CombatAttackResult hit = session.Combat.Attack(FixtureIdentity, pc);
             Check(hit.Succeeded && hit.Hit && !hit.Dodged && hitChance.AttackChance == 40
@@ -166,7 +166,7 @@ internal static class M8BCombatValidation
                   && session.Combat.CurrentParticipant == FixtureIdentity
                   && session.Combat.RoundNumber == 3 && session.Combat.CurrentActionPoints == 5,
                 "round-three bear begins with AP reset to 5");
-            session.Combat.SetRandomSource(new SequenceRandom(100));
+            session.Combat.SetRandomSource(new SequenceRandom(100, 100));
             int missHp = session.Vitality.GetCurrentHitPoints(pc);
             int missFatigue = session.Vitality.GetCurrentFatigue(pc);
             CombatAttackResult miss = session.Combat.Attack(FixtureIdentity, pc);

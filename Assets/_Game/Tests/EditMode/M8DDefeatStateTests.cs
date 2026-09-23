@@ -97,7 +97,7 @@ namespace Arcanum.Formats.Tests
             _session.Vitality.ApplyHitPointDamage(victim, hp - 1);
             Start();
             Assert.That(_session.Combat.RegisterParticipant(victim).Succeeded, Is.True);
-            _session.Combat.SetRandomSource(new SequenceRandom(1, 3));
+            _session.Combat.SetRandomSource(new SequenceRandom(1, 100, 3));
 
             CombatAttackResult result = _session.Combat.Attack(_bear, victim);
 

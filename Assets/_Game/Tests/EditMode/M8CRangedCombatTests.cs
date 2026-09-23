@@ -81,7 +81,7 @@ namespace Arcanum.Formats.Tests
         public void SeededBowHitSpendsSixApConsumesArrowAndAppliesBothDamageChannels()
         {
             StartPcTurn();
-            _session.Combat.SetRandomSource(new SequenceRandom(1, 10, 5));
+            _session.Combat.SetRandomSource(new SequenceRandom(1, 100, 10, 5));
             int hp = _session.Vitality.GetCurrentHitPoints(_target);
             int fatigue = _session.Vitality.GetCurrentFatigue(_target);
 
@@ -104,7 +104,7 @@ namespace Arcanum.Formats.Tests
         public void MissStillSpendsApAndConsumesArrowButDoesNoDamage()
         {
             StartPcTurn();
-            _session.Combat.SetRandomSource(new SequenceRandom(100));
+            _session.Combat.SetRandomSource(new SequenceRandom(100, 100));
             int hp = _session.Vitality.GetCurrentHitPoints(_target);
 
             CombatAttackResult result = Shoot();
@@ -185,7 +185,7 @@ namespace Arcanum.Formats.Tests
             _map.Register(Runtime("ShootThrough", ObjectType.Scenery, new Vector2Int(2, 1)), 0x20);
             _map.Register(Runtime("InterveningCritter", ObjectType.Npc, new Vector2Int(3, 1)), 0);
             StartPcTurn();
-            _session.Combat.SetRandomSource(new SequenceRandom(100));
+            _session.Combat.SetRandomSource(new SequenceRandom(100, 100));
 
             Assert.That(Shoot().Succeeded, Is.True);
             Assert.That(_arrows.StackQuantity, Is.EqualTo(69));
@@ -218,7 +218,7 @@ namespace Arcanum.Formats.Tests
             Assert.That(_session.ConsumeAmmo(_arrows.Identity, 69, out int remaining), Is.True);
             Assert.That(remaining, Is.EqualTo(1));
             StartPcTurn();
-            _session.Combat.SetRandomSource(new SequenceRandom(100));
+            _session.Combat.SetRandomSource(new SequenceRandom(100, 100));
 
             CombatAttackResult first = Shoot();
             Assert.That(first.Succeeded, Is.True);

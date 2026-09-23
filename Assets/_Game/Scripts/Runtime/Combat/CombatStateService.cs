@@ -52,6 +52,7 @@ namespace Arcanum.Runtime.Combat
         NoAmmo,
         IncompatibleAmmo,
         UnsupportedDamageProfile,
+        UnsupportedCriticalEffect,
         UnresolvedDeathScript,
         PresentationUnavailable,
     }
@@ -68,6 +69,23 @@ namespace Arcanum.Runtime.Combat
     {
         BasicMelee,
         BasicRanged,
+    }
+
+    public enum CombatAttackOutcome
+    {
+        Miss,
+        Hit,
+        CriticalSuccess,
+        CriticalFailure,
+    }
+
+    public enum CombatCriticalEffect
+    {
+        None,
+        BonusDamage50,
+        BonusDamage100,
+        BonusDamage200,
+        SelfHit,
     }
 
     public interface ICombatRandom
@@ -146,6 +164,14 @@ namespace Arcanum.Runtime.Combat
         public int AmmoQuantityBefore { get; }
         public int AmmoQuantityAfter { get; }
         public CombatHitChance Chance { get; }
+        public CombatAttackOutcome Outcome { get; }
+        public int CriticalRoll { get; }
+        public int CriticalChance { get; }
+        public CombatCriticalEffect CriticalEffect { get; }
+        public int CriticalEffectRoll { get; }
+        public int SecondaryCriticalEffectRoll { get; }
+        public int TertiaryCriticalEffectRoll { get; }
+        public ArcanumObjectId EffectTargetIdentity { get; }
 
         internal CombatAttackResult(CombatFailure failure, CombatHitChance chance = default,
             bool hit = false, bool dodged = false, int attackRoll = 0, int dodgeRoll = 0,
@@ -154,7 +180,12 @@ namespace Arcanum.Runtime.Combat
             int resultingHitPoints = 0, int resultingFatigue = 0,
             int actionPointCost = 0, int actionPointsSpent = 0, int overdrawFatigueDamage = 0,
             ArcanumObjectId weaponIdentity = default, ArcanumObjectId ammoIdentity = default,
-            int ammoQuantityBefore = 0, int ammoQuantityAfter = 0)
+            int ammoQuantityBefore = 0, int ammoQuantityAfter = 0,
+            CombatAttackOutcome outcome = CombatAttackOutcome.Miss,
+            int criticalRoll = 0, int criticalChance = 0,
+            CombatCriticalEffect criticalEffect = CombatCriticalEffect.None,
+            int criticalEffectRoll = 0, int secondaryCriticalEffectRoll = 0,
+            int tertiaryCriticalEffectRoll = 0, ArcanumObjectId effectTargetIdentity = default)
         {
             Failure = failure;
             Chance = chance;
@@ -175,6 +206,14 @@ namespace Arcanum.Runtime.Combat
             AmmoIdentity = ammoIdentity;
             AmmoQuantityBefore = ammoQuantityBefore;
             AmmoQuantityAfter = ammoQuantityAfter;
+            Outcome = outcome;
+            CriticalRoll = criticalRoll;
+            CriticalChance = criticalChance;
+            CriticalEffect = criticalEffect;
+            CriticalEffectRoll = criticalEffectRoll;
+            SecondaryCriticalEffectRoll = secondaryCriticalEffectRoll;
+            TertiaryCriticalEffectRoll = tertiaryCriticalEffectRoll;
+            EffectTargetIdentity = effectTargetIdentity;
         }
     }
 
@@ -561,7 +600,13 @@ namespace Arcanum.Runtime.Combat
 
             CombatHitChance chance = GetBasicMeleeHitChance(actor, target);
             int attackRoll = _random.NextInclusive(1, 100);
-            bool hit = attackRoll <= chance.AttackChance;
+            bool ordinaryHit = attackRoll <= chance.AttackChance;
+            int criticalRoll = _random.NextInclusive(1, 100);
+            bool masterMelee = _world.Progression.GetTrainingLevel(actor, CharacterSkill.Melee)
+                               == SkillTrainingLevel.Master;
+            int criticalChance = GetCriticalChance(chance.MeleeEffectiveness, ordinaryHit, masterMelee);
+            CombatAttackOutcome outcome = ClassifyAttack(ordinaryHit, criticalRoll, criticalChance);
+            bool hit = ordinaryHit;
             int dodgeRoll = 0;
             bool dodged = false;
             if (hit && chance.DodgeChance > 0)
@@ -569,41 +614,73 @@ namespace Arcanum.Runtime.Combat
                 dodgeRoll = _random.NextInclusive(1, 100);
                 dodged = dodgeRoll <= chance.DodgeChance;
                 hit = !dodged;
+                if (dodged) outcome = CombatAttackOutcome.Miss;
             }
+            if (outcome == CombatAttackOutcome.CriticalSuccess
+                && source.ObjectType == ObjectType.Npc && targetSource.ObjectType == ObjectType.Pc)
+                return AttackFailure(CombatFailure.UnsupportedCriticalEffect);
 
             int rawNormal = 0;
             int mitigatedNormal = 0;
             int rawFatigue = 0;
             int mitigatedFatigue = 0;
-            if (hit)
+            CombatCriticalEffect criticalEffect = CombatCriticalEffect.None;
+            int criticalEffectRoll = 0;
+            int secondaryCriticalEffectRoll = 0;
+            int tertiaryCriticalEffectRoll = 0;
+            ArcanumObjectId effectTarget = target;
+            CombatActorSource effectTargetSource = targetSource;
+            if (outcome == CombatAttackOutcome.CriticalFailure)
+            {
+                criticalEffectRoll = _random.NextInclusive(1, 100);
+                if (criticalEffectRoll <= 50)
+                    return AttackFailure(CombatFailure.UnsupportedCriticalEffect);
+                criticalEffect = CombatCriticalEffect.SelfHit;
+                effectTarget = actor;
+                effectTargetSource = source;
+            }
+
+            bool resolvesDamage = hit || outcome == CombatAttackOutcome.CriticalFailure;
+            if (resolvesDamage)
             {
                 rawNormal = RollDamage(normalMinimum, normalMaximum);
                 rawFatigue = RollDamage(fatigueMinimum, fatigueMaximum);
-                int resistance = _world.DerivedStats.GetResistance(target, CharacterResistance.Normal);
+                int resistance = _world.DerivedStats.GetResistance(effectTarget, CharacterResistance.Normal);
                 mitigatedNormal = ApplyResistance(rawNormal, resistance);
                 mitigatedFatigue = ApplyResistance(rawFatigue, 3 * resistance / 4);
+                if (outcome == CombatAttackOutcome.CriticalSuccess)
+                {
+                    criticalEffect = ResolveDamageOnlyCritical(out criticalEffectRoll,
+                        out secondaryCriticalEffectRoll, out tertiaryCriticalEffectRoll);
+                    mitigatedNormal = ApplyCriticalDamageBonus(mitigatedNormal, criticalEffect);
+                }
             }
 
-            int hitPointsBefore = _world.Vitality.GetCurrentHitPoints(target);
-            if (hit && mitigatedNormal >= hitPointsBefore && targetSource.DyingScriptNum != 0)
+            int hitPointsBefore = _world.Vitality.GetCurrentHitPoints(effectTarget);
+            if (resolvesDamage && mitigatedNormal >= hitPointsBefore && effectTargetSource.DyingScriptNum != 0)
                 return AttackFailure(CombatFailure.UnresolvedDeathScript);
 
             int spent = Math.Min(CurrentActionPoints, UnarmedAttackActionPointCost);
             int overdrawFatigue = overdraw ? 2 : 0;
             CurrentActionPoints -= spent;
             if (overdrawFatigue > 0) _world.Vitality.ApplyFatigueDamage(actor, overdrawFatigue);
-            if (mitigatedNormal > 0) _world.Vitality.ApplyHitPointDamage(target, mitigatedNormal);
-            if (mitigatedFatigue > 0) _world.Vitality.ApplyFatigueDamage(target, mitigatedFatigue);
-            int resultingHitPoints = _world.Vitality.GetCurrentHitPoints(target);
-            int resultingFatigue = _world.Vitality.GetCurrentFatigue(target);
+            if (mitigatedNormal > 0) _world.Vitality.ApplyHitPointDamage(effectTarget, mitigatedNormal);
+            if (mitigatedFatigue > 0) _world.Vitality.ApplyFatigueDamage(effectTarget, mitigatedFatigue);
+            int resultingHitPoints = _world.Vitality.GetCurrentHitPoints(effectTarget);
+            int resultingFatigue = _world.Vitality.GetCurrentFatigue(effectTarget);
             if (hitPointsBefore > 0 && resultingHitPoints <= 0)
-                _world.DeathConsequences.Process(actor, target);
+                _world.DeathConsequences.Process(actor, effectTarget);
             if (CurrentParticipant == actor && CurrentActionPoints == 0)
                 AdvanceToNextEligibleParticipant(actor);
 
             return new CombatAttackResult(CombatFailure.None, chance, hit, dodged, attackRoll, dodgeRoll,
                 rawNormal, mitigatedNormal, rawFatigue, mitigatedFatigue,
-                resultingHitPoints, resultingFatigue, UnarmedAttackActionPointCost, spent, overdrawFatigue);
+                resultingHitPoints, resultingFatigue, UnarmedAttackActionPointCost, spent, overdrawFatigue,
+                outcome: outcome, criticalRoll: criticalRoll, criticalChance: criticalChance,
+                criticalEffect: criticalEffect, criticalEffectRoll: criticalEffectRoll,
+                secondaryCriticalEffectRoll: secondaryCriticalEffectRoll,
+                tertiaryCriticalEffectRoll: tertiaryCriticalEffectRoll,
+                effectTargetIdentity: effectTarget);
         }
 
         public CombatHitChance GetBasicRangedHitChance(ArcanumObjectId actor, ArcanumObjectId target,
@@ -671,7 +748,13 @@ namespace Arcanum.Runtime.Combat
             int ammoBefore = ammo.StackQuantity.Value;
 
             int attackRoll = _random.NextInclusive(1, 100);
-            bool hit = attackRoll <= chance.AttackChance;
+            bool ordinaryHit = attackRoll <= chance.AttackChance;
+            int criticalRoll = _random.NextInclusive(1, 100);
+            int criticalChance = GetCriticalChance(chance.MeleeEffectiveness, ordinaryHit);
+            CombatAttackOutcome outcome = ClassifyAttack(ordinaryHit, criticalRoll, criticalChance);
+            if (outcome == CombatAttackOutcome.CriticalFailure)
+                return AttackFailure(CombatFailure.UnsupportedCriticalEffect);
+            bool hit = ordinaryHit;
             int dodgeRoll = 0;
             bool dodged = false;
             if (hit && chance.DodgeChance > 0)
@@ -679,12 +762,17 @@ namespace Arcanum.Runtime.Combat
                 dodgeRoll = _random.NextInclusive(1, 100);
                 dodged = dodgeRoll <= chance.DodgeChance;
                 hit = !dodged;
+                if (dodged) outcome = CombatAttackOutcome.Miss;
             }
 
             int rawNormal = 0;
             int mitigatedNormal = 0;
             int rawFatigue = 0;
             int mitigatedFatigue = 0;
+            CombatCriticalEffect criticalEffect = CombatCriticalEffect.None;
+            int criticalEffectRoll = 0;
+            int secondaryCriticalEffectRoll = 0;
+            int tertiaryCriticalEffectRoll = 0;
             if (hit)
             {
                 rawNormal = RollDamage(normalMinimum, normalMaximum);
@@ -692,6 +780,12 @@ namespace Arcanum.Runtime.Combat
                 int resistance = _world.DerivedStats.GetResistance(target, CharacterResistance.Normal);
                 mitigatedNormal = ApplyResistance(rawNormal, resistance);
                 mitigatedFatigue = ApplyResistance(rawFatigue, 3 * resistance / 4);
+                if (outcome == CombatAttackOutcome.CriticalSuccess)
+                {
+                    criticalEffect = ResolveDamageOnlyCritical(out criticalEffectRoll,
+                        out secondaryCriticalEffectRoll, out tertiaryCriticalEffectRoll);
+                    mitigatedNormal = ApplyCriticalDamageBonus(mitigatedNormal, criticalEffect);
+                }
             }
 
             int hitPointsBefore = _world.Vitality.GetCurrentHitPoints(target);
@@ -720,7 +814,9 @@ namespace Arcanum.Runtime.Combat
             return new CombatAttackResult(CombatFailure.None, chance, hit, dodged, attackRoll, dodgeRoll,
                 rawNormal, mitigatedNormal, rawFatigue, mitigatedFatigue,
                 resultingHitPoints, resultingFatigue, actionPointCost, spent, overdrawFatigue,
-                equipped.Identity, ammo.Identity, ammoBefore, ammoAfter);
+                equipped.Identity, ammo.Identity, ammoBefore, ammoAfter,
+                outcome, criticalRoll, criticalChance, criticalEffect, criticalEffectRoll,
+                secondaryCriticalEffectRoll, tertiaryCriticalEffectRoll, target);
         }
 
         public CombatResult EndCombat(ArcanumObjectId actor)
@@ -851,6 +947,43 @@ namespace Arcanum.Runtime.Combat
 
         private int RollDamage(int minimum, int maximum)
             => maximum <= 0 ? 0 : _random.NextInclusive(minimum, maximum);
+
+        private static int GetCriticalChance(int effectiveness, bool ordinaryHit,
+            bool suppressCriticalFailure = false)
+            => ordinaryHit ? Math.Max(0, effectiveness / 20)
+                : suppressCriticalFailure ? 0 : Math.Max(2, (100 - effectiveness) / 7);
+
+        private static CombatAttackOutcome ClassifyAttack(bool ordinaryHit, int criticalRoll,
+            int criticalChance)
+            => ordinaryHit
+                ? criticalRoll <= criticalChance
+                    ? CombatAttackOutcome.CriticalSuccess
+                    : CombatAttackOutcome.Hit
+                : criticalRoll <= criticalChance
+                    ? CombatAttackOutcome.CriticalFailure
+                    : CombatAttackOutcome.Miss;
+
+        private CombatCriticalEffect ResolveDamageOnlyCritical(out int firstRoll, out int secondRoll,
+            out int thirdRoll)
+        {
+            firstRoll = _random.NextInclusive(1, 100);
+            secondRoll = 0;
+            thirdRoll = 0;
+            if (firstRoll <= 10) return CombatCriticalEffect.BonusDamage200;
+            secondRoll = _random.NextInclusive(1, 100);
+            if (secondRoll <= 30) return CombatCriticalEffect.BonusDamage100;
+            thirdRoll = _random.NextInclusive(1, 100);
+            return CombatCriticalEffect.BonusDamage50;
+        }
+
+        private static int ApplyCriticalDamageBonus(int damage, CombatCriticalEffect effect)
+            => effect switch
+            {
+                CombatCriticalEffect.BonusDamage200 => checked(damage * 3),
+                CombatCriticalEffect.BonusDamage100 => checked(damage * 2),
+                CombatCriticalEffect.BonusDamage50 => checked(damage * 3 / 2),
+                _ => damage,
+            };
 
         private static int ApplyResistance(int damage, int resistance)
             => resistance > 0 ? damage - resistance * damage / 100 : damage;

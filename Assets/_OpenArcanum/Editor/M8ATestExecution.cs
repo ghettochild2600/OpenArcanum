@@ -24,6 +24,26 @@ internal sealed class M8ATestExecution : ScriptableObject, ICallbacks
     [MenuItem("OpenArcanum/M8D/Run Focused EditMode Tests")]
     private static void RunM8DFocused() => Run(Category("M8DDefeatState"), "M8D focused EditMode");
 
+    [MenuItem("OpenArcanum/M8F/Run Focused EditMode Tests")]
+    private static void RunM8FFocused()
+        => Run(Category("M8FCriticalResolution"), "M8F focused EditMode");
+
+    [MenuItem("OpenArcanum/M8F/Run Required Combat Regression Tests")]
+    private static void RunM8FRequired()
+    {
+        RunMany(
+            new[]
+            {
+                Category("M8EDeathConsequences"), Category("M8DDefeatState"),
+                Category("M8CRangedCombat"), Category("M8BTurnBasedCombat"),
+            },
+            new[]
+            {
+                "M8E death consequences", "M8D defeat state",
+                "M8C ranged combat", "M8B turn-based combat",
+            });
+    }
+
     [MenuItem("OpenArcanum/M8D/Run Required Regression Tests")]
     private static void RunM8DRequired()
     {

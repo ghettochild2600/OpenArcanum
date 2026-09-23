@@ -138,8 +138,8 @@ internal static class M8CCombatValidation
             CombatHitChance hitChance = session.Combat.GetBasicRangedHitChance(pc, BearIdentity,
                 bow.WeaponData, 3);
             session.Combat.SetRandomSource(hitChance.DodgeChance > 0
-                ? new SequenceRandom(1, 100, 10, 5)
-                : new SequenceRandom(1, 10, 5));
+                ? new SequenceRandom(1, 100, 100, 10, 5)
+                : new SequenceRandom(1, 100, 10, 5));
             CombatAttackResult hit = session.Combat.Attack(pc, BearIdentity, CombatAttackMode.BasicRanged);
             int expectedHpDamage = 10 - resistance * 10 / 100;
             int expectedFatigueDamage = 5 - (3 * resistance / 4) * 5 / 100;
@@ -158,7 +158,7 @@ internal static class M8CCombatValidation
             NextPcTurn(session, pc);
             int missHp = session.Vitality.GetCurrentHitPoints(BearIdentity);
             int missFatigue = session.Vitality.GetCurrentFatigue(BearIdentity);
-            session.Combat.SetRandomSource(new SequenceRandom(100));
+            session.Combat.SetRandomSource(new SequenceRandom(100, 100));
             CombatAttackResult miss = session.Combat.Attack(pc, BearIdentity, CombatAttackMode.BasicRanged);
             Check(miss.Succeeded && !miss.Hit && miss.ActionPointsSpent == 6
                   && miss.AmmoQuantityBefore == 69 && miss.AmmoQuantityAfter == 68
@@ -174,13 +174,13 @@ internal static class M8CCombatValidation
                   && ammo.Identity == selectionSplit.CreatedState.Identity,
                 "deterministic stable-ID selection chooses the same lowest compatible stack");
             ArcanumObjectId selectedStack = selectionSplit.CreatedState.Identity;
-            session.Combat.SetRandomSource(new SequenceRandom(100));
+            session.Combat.SetRandomSource(new SequenceRandom(100, 100));
             CombatAttackResult selectedFirst = session.Combat.Attack(pc, BearIdentity, CombatAttackMode.BasicRanged);
             Check(selectedFirst.Succeeded && selectedFirst.AmmoIdentity == selectedStack
                   && selectedFirst.AmmoQuantityBefore == 2 && selectedFirst.AmmoQuantityAfter == 1
                   && arrows.StackQuantity == authoredBeforeSelection - 2,
                 "only the selected compatible stack decrements");
-            session.Combat.SetRandomSource(new SequenceRandom(100));
+            session.Combat.SetRandomSource(new SequenceRandom(100, 100));
             CombatAttackResult selectedLast = session.Combat.Attack(pc, BearIdentity, CombatAttackMode.BasicRanged);
             Check(selectedLast.Succeeded && selectedLast.AmmoIdentity == selectedStack
                   && selectedLast.AmmoQuantityAfter == 0 && session.IsObjectRemoved(selectedStack)
@@ -190,7 +190,7 @@ internal static class M8CCombatValidation
                 "PC overdraw reaches zero AP and advances exactly once");
             Check(session.Combat.EndCurrentTurn(BearIdentity).Succeeded
                   && session.Combat.CurrentParticipant == pc, "next PC turn follows depleted-stack attack");
-            session.Combat.SetRandomSource(new SequenceRandom(100));
+            session.Combat.SetRandomSource(new SequenceRandom(100, 100));
             CombatAttackResult fallback = session.Combat.Attack(pc, BearIdentity, CombatAttackMode.BasicRanged);
             Check(fallback.Succeeded && fallback.AmmoIdentity == ArrowIdentity
                   && fallback.AmmoQuantityBefore == authoredBeforeSelection - 2,
@@ -203,7 +203,7 @@ internal static class M8CCombatValidation
             Check(session.TransferItem(ArrowIdentity, arrows.Placement,
                 ObjectPlacement.ContainedBy(sourceContainer)).Succeeded,
                 "remaining authored arrows move out through M3A for depletion proof");
-            session.Combat.SetRandomSource(new SequenceRandom(100));
+            session.Combat.SetRandomSource(new SequenceRandom(100, 100));
             CombatAttackResult depletion = session.Combat.Attack(pc, BearIdentity, CombatAttackMode.BasicRanged);
             Check(depletion.Succeeded && depletion.AmmoIdentity == lastArrow.CreatedState.Identity
                   && depletion.AmmoQuantityBefore == 1 && depletion.AmmoQuantityAfter == 0
@@ -238,7 +238,7 @@ internal static class M8CCombatValidation
             MoveActor(session, loader, pc, pcRuntime, clearAfterBlock, controlled: true);
             Check(loader.NavigationMap.HasProjectileLineOfFire(clearAfterBlock, bearRuntime.Tile),
                 "clear combat-sector geometry permits source-grid LOS");
-            session.Combat.SetRandomSource(new SequenceRandom(100));
+            session.Combat.SetRandomSource(new SequenceRandom(100, 100));
             CombatAttackResult clearLosShot = session.Combat.Attack(pc, BearIdentity, CombatAttackMode.BasicRanged);
             Check(clearLosShot.Succeeded && !clearLosShot.Hit,
                 "the same ranged transaction succeeds on clear authentic geometry");
@@ -283,7 +283,7 @@ internal static class M8CCombatValidation
                       ObjectPlacement.ContainedBy(pc)).Succeeded,
                 "ammo fixtures return through authoritative transfers");
 
-            session.Combat.SetRandomSource(new SequenceRandom(100));
+            session.Combat.SetRandomSource(new SequenceRandom(100, 100));
             Check(session.Combat.Attack(pc, BearIdentity, CombatAttackMode.BasicRanged).Succeeded
                   && session.Combat.CurrentActionPoints == 2,
                 "ordinary ranged miss prepares the audited PC overdraw boundary");
@@ -329,7 +329,7 @@ internal static class M8CCombatValidation
             Check(loader.NavigationMap.HasProjectileLineOfFire(step, bearRuntime.Tile)
                   && InteractionRangeRules.Distance(step, bearRuntime.Tile) <= bow.WeaponData.Range,
                 "range and LOS recalculate from the moved authoritative position");
-            session.Combat.SetRandomSource(new SequenceRandom(100));
+            session.Combat.SetRandomSource(new SequenceRandom(100, 100));
             CombatAttackResult movedShot = session.Combat.Attack(pc, BearIdentity, CombatAttackMode.BasicRanged);
             Check(movedShot.Succeeded && movedShot.ActionPointsSpent == 6
                   && session.Combat.CurrentActionPoints == 1,
@@ -354,7 +354,7 @@ internal static class M8CCombatValidation
                       && session.Vitality.GetCurrentFatigue(BearIdentity) == graphicsBearFatigue,
                     $"{mode} rebuild preserves combat/equipment/ammo/vitality without duplication");
             }
-            session.Combat.SetRandomSource(new SequenceRandom(100));
+            session.Combat.SetRandomSource(new SequenceRandom(100, 100));
             Check(session.Combat.Attack(pc, BearIdentity, CombatAttackMode.BasicRanged).Succeeded,
                 "ranged attack still succeeds after Original-Enhanced-Original rebuild");
 
