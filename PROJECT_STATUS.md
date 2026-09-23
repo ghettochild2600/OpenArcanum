@@ -1695,6 +1695,29 @@ diagnostics, the final Unity Console was 0 warnings and 0 errors. Save format re
 
 See [`documentation_unity/m8f-critical-resolution-audit.md`](documentation_unity/m8f-critical-resolution-audit.md).
 
+## Post-M8F Turn-Based Combat Gap Audit (2026-09-23)
+
+The bounded read-only comparison of M8A-M8F against the original-source mirror is complete. It found that a narrow
+M8G **Turn-Based Combat Kernel Closure** is required before real-time scheduling. The pre-real-time authority gaps are:
+source-shaped roster growth and runtime engagement; an exactly-once +1,000 ms round-boundary hook; a structured attack
+request with called locations and an inspectable modifier ledger; numeric cover distinct from hard line-of-fire; the
+supported Bow Master range exemption and Expert/Master two-impact behavior; and source critical-Dodge
+reclassification.
+
+M8G has not started. The audit explicitly defers AI, followers, equipped melee weapons, firearms, throwing,
+explosives/AOE, magic, technology, combat UI, projectile presentation, critical injury/equipment effects, and active
+combat persistence. Save format remains V1. It also found no source basis for general attacks of opportunity, a
+separate initiative/surprise-round system, generic combat stances/reload actions, a generic nonlethal toggle, or
+ordinary-attack knockback.
+
+Audit-tail validation retained a clean Unity compile and complete EditMode **741/741**, with 0 failed, 0 skipped,
+and 0 inconclusive. The same five expected intentional dialogue-compatibility warnings were cleared after the run;
+the final Unity Console was 0 warnings and 0 errors. No production code or tests changed.
+
+See [`documentation_unity/m8-post-m8f-combat-gap-audit.md`](documentation_unity/m8-post-m8f-combat-gap-audit.md).
+
 ## Next Recommended Milestone
 
-M8F is complete. No subsequent milestone has been started; any next scope requires separate authorization.
+M8F is complete and no subsequent implementation milestone has started. The recommended next separately authorized
+scope is M8G — Turn-Based Combat Kernel Closure, bounded exactly by the post-M8F gap audit. Real-time scheduling should
+not begin before that closure is complete.
