@@ -17,8 +17,8 @@ player-facing manual save/load presentation, M7A bounded passive local map trans
   overland/Bates area entrance and return, M7C bounded authoritative known-area discovery, M7D read-only world-map
   destination projection/selection, M7E bounded authoritative route/travel execution, M8A bounded authoritative
   core combat state, M8B bounded turn-based movement/basic attack/damage, M8C bounded equipped bow/arrow combat, and
-  M8D bounded vitality-derived defeat/death/unconsciousness and corpse state, and M8E bounded source-authentic death
-  consequences/corpse loot are complete.
+  M8D bounded vitality-derived defeat/death/unconsciousness and corpse state, M8E bounded source-authentic death
+  consequences/corpse loot, and M8F bounded source-authentic critical success/failure resolution are complete.
 `WorldMapSessionCoordinator` owns typed `World`, `Contained(parent)`, and `Equipped(parent, wornLocation)` placement,
 atomic raw item transfers/equipment replacement/stack merge and split, deterministic session-created item identities,
 source-faithful pickup/drop/owner-transfer policy, and pre-mutation weight/grid-capacity guards independently of Unity
@@ -79,10 +79,13 @@ participants, authentic non-PC-first ordering, M4D Speed-derived turn AP, and ex
 transient: sector unload, cross-map selection, reset, and V1 restore normalize it to Inactive; V1 remains unchanged.
 M8B adds source-AP-aware combat movement, one authentic unarmed melee attack, injected authoritative randomness,
 hit/Dodge and normal/fatigue resistance resolution, and damage exclusively through M4B vitality. AP exhaustion advances
-the stable turn/round loop; every rejected command is transactional. Combat remains transient and Save V1 is unchanged.
+the stable turn/round loop; every rejected command is transactional. M8F classifies ordinary results with the source
+critical roll, applies the bounded +50%/+100%/+200% damage-only success family after resistance, admits the ordinary
+self-hit critical failure, suppresses failure for Master Melee, and rejects unsupported critical effects before any
+authoritative mutation. Combat remains transient and Save V1 is unchanged.
 Travel time, encounters, follower relocation, mid-route cancellation, route animation, clock/day-night behavior,
-autosave, quicksave, cloud sync, original Arcanum save compatibility, criticals, broader death scripts/consequences,
-AI, spells, technology, followers, and barter remain deferred.
+autosave, quicksave, cloud sync, original Arcanum save compatibility, unsupported critical-table effects, broader death
+scripts/consequences, AI, spells, technology, followers, and barter remain deferred.
 
 ## Current Branch
 
@@ -1668,9 +1671,30 @@ decay, resurrection, generated loot, corpse UI, AI, real-time combat, spells, an
 
 See [`documentation_unity/m8e-death-consequence-audit.md`](documentation_unity/m8e-death-consequence-audit.md).
 
+## M8F Critical Success / Critical Failure Validation Baseline (2026-09-22)
+
+M8F is complete. Every attack now performs the source-ordered ordinary roll followed by a critical roll. The bounded
+success path implements the source damage-only +50%, +100%, and +200% results after normal resistance. The bounded
+failure path admits the source ordinary self-hit for a qualifying secondary roll above 50, and Master Melee suppresses
+critical failure. Injury, equipment, the secondary critical-hit failure branch, and unsupported NPC-to-PC critical
+tables fail closed before AP, ammunition, vitality, death-consequence, or turn mutation.
+
+Computer Use physical Play Mode validation used the production unarmed PC and authentic Polar Bear Cub to prove all
+three critical-success thresholds, ordinary attack AP/turn behavior, M4B-only vitality mutation, the bear's ordinary
+self-hit critical failure, Master Melee suppression, unsupported-branch rollback, and active-combat
+Original -> Enhanced -> Original rebuilds without authority changes. A lethal unarmed critical against the authentic
+Greater Skeleton produced exactly one death transition, same-identity corpse, 88 XP reward, and processed consequence
+marker with no replay. Combat end/restart and Save V1 load retained committed vitality/death/world consequences while
+normalizing the transient attack, critical, participant, turn, and AP state.
+
+Final Unity compilation was clean. Focused M8F was **9/9**; the required M8B-M8E combat regression matrix was
+**53/53** (M8B 23, M8C 12, M8D 11, M8E 7); and the complete EditMode suite was **741/741**, all with 0 failed,
+0 skipped, and 0 inconclusive. The physical run recorded 0 warnings and 0 errors. The complete suite emitted the same
+five known intentional fail-closed dialogue-compatibility warnings and 0 errors; after clearing those expected test
+diagnostics, the final Unity Console was 0 warnings and 0 errors. Save format remains V1.
+
+See [`documentation_unity/m8f-critical-resolution-audit.md`](documentation_unity/m8f-critical-resolution-audit.md).
+
 ## Next Recommended Milestone
 
-The next recommended separately authorized milestone is **M8F: bounded source-authentic critical success and critical
-failure resolution**: audit and admit one deterministic melee/ranged critical-table slice while preserving the existing
-attack/death transaction boundaries, without broadening into M9 real-time scheduling, general status-effect execution,
-combat UI/audio, AI, spells, technology, or unrelated travel work.
+M8F is complete. No subsequent milestone has been started; any next scope requires separate authorization.
