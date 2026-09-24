@@ -46,6 +46,227 @@ internal static class M8FCriticalValidation
         loader.StartCoroutine(Validate(loader));
     }
 
+    [MenuItem("OpenArcanum/M8G Phase 2/Run Physical PlayMode Validation")]
+    private static void RunStructuredAttackValidation()
+    {
+        if (!Application.isPlaying || _running)
+            throw new InvalidOperationException("Enter TestTerrain Play mode; run only one M8G Phase 2 harness.");
+        WorldObjectSectorLoader loader = Object.FindFirstObjectByType<WorldObjectSectorLoader>()
+                                         ?? throw new InvalidOperationException("TestTerrain has no world-object loader.");
+        loader.StartCoroutine(ValidateStructuredAttacks(loader));
+    }
+
+    private static IEnumerator ValidateStructuredAttacks(WorldObjectSectorLoader loader)
+    {
+        _running = true;
+        _warnings = _errors = 0;
+        GraphicsMode initialMode = OpenArcanumGraphicsSettings.Mode;
+        Application.logMessageReceived += Track;
+        WorldMapSessionCoordinator session = loader.Session;
+        Action<CombatRoundBoundary> roundHandler = null;
+        try
+        {
+            session.ResetAuthoritativeSession();
+            yield return null;
+            Check(session.SelectSector(EquipmentSector), "Phase 2 authentic bow/ammo sector loads");
+            yield return null;
+            Refresh(out loader, out ProductionPlayerLifecycle lifecycle);
+            if (lifecycle.Presentation == null) Check(lifecycle.SpawnAndBind(), "Phase 2 production PC binds");
+            ArcanumObjectId pc = session.PlayerState.Identity;
+            PersistentObjectState bow = Require(session, Bow, ObjectType.Weapon, 6055);
+            PersistentObjectState arrows = Require(session, Arrows, ObjectType.Ammo, 7058);
+            MoveOwnedItem(session, bow, pc);
+            MoveOwnedItem(session, arrows, pc);
+
+            Check(session.SelectSector(BearSector), "Phase 2 authentic Polar Bear Cub sector loads");
+            yield return null;
+            Refresh(out loader, out lifecycle);
+            if (lifecycle.Presentation == null) Check(lifecycle.SpawnAndBind(), "Phase 2 production PC rebinds");
+            WorldObject pcRuntime = lifecycle.Presentation;
+            PersistentObjectState bear = Require(session, Bear, ObjectType.Npc, BearPrototype);
+            Check(session.TryGetLoadedObject(Bear, out WorldObject bearRuntime),
+                "Phase 2 Polar Bear Cub has one production presentation");
+            MoveActor(session, loader, pc, pcRuntime, FindClearMeleeTile(loader.NavigationMap, bearRuntime.Tile));
+
+            Check(session.Combat.StartCombat(pc, Bear).Succeeded, "structured melee combat starts");
+            session.Combat.SetRandomSource(new SequenceRandom(100, 100));
+            CombatAttackResult normalMelee = session.Combat.Attack(new CombatAttackRequest(Bear, pc));
+            Check(normalMelee.Succeeded && normalMelee.Request.Attacker == Bear
+                  && normalMelee.Request.Target == pc
+                  && normalMelee.Request.Mode == CombatAttackMode.BasicMelee
+                  && normalMelee.RequestedLocation == CombatCalledLocation.None
+                  && normalMelee.ActionPointsSpent == CombatStateService.UnarmedAttackActionPointCost
+                  && normalMelee.ModifierLedger.Entries.Count == 7
+                  && normalMelee.ModifierLedger.UnclampedTotal
+                     == normalMelee.ModifierLedger.Entries.Where(value => value.Applied && !value.Suppressed)
+                         .Sum(value => value.Value)
+                  && normalMelee.FinalEffectiveAttackValue == normalMelee.Chance.AttackChance,
+                "ordinary structured melee uses the immutable request and authoritative modifier ledger");
+            AdvanceTo(session, pc);
+
+            int invalidAp = session.Combat.CurrentActionPoints;
+            int invalidHp = session.Vitality.GetCurrentHitPoints(Bear);
+            int invalidAmmo = arrows.StackQuantity.Value;
+            ArcanumObjectId invalidTurn = session.Combat.CurrentParticipant;
+            CombatAttackResult invalid = session.Combat.Attack(new CombatAttackRequest(pc, Bear,
+                CombatAttackMode.BasicMelee, (CombatCalledLocation)99));
+            Check(invalid.Failure == CombatFailure.InvalidCalledLocation
+                  && session.Combat.CurrentActionPoints == invalidAp
+                  && session.Vitality.GetCurrentHitPoints(Bear) == invalidHp
+                  && arrows.StackQuantity == invalidAmmo
+                  && session.Combat.CurrentParticipant == invalidTurn,
+                "malformed called location fails before AP, ammo, vitality, or turn mutation: "
+                + $"failure={invalid.Failure}; ap={invalidAp}->{session.Combat.CurrentActionPoints}; "
+                + $"hp={invalidHp}->{session.Vitality.GetCurrentHitPoints(Bear)}; "
+                + $"ammo={invalidAmmo}->{arrows.StackQuantity}; "
+                + $"turn={invalidTurn}->{session.Combat.CurrentParticipant}");
+            EndStructuredCombat(session, pc);
+
+            var locations = new[]
+            {
+                (CombatCalledLocation.Torso, 0, 40),
+                (CombatCalledLocation.Head, -50, 0),
+                (CombatCalledLocation.Arm, -30, 10),
+                (CombatCalledLocation.Leg, -30, 10),
+            };
+            foreach ((CombatCalledLocation location, int modifier, int final) in locations)
+            {
+                Check(session.Combat.StartCombat(pc, Bear).Succeeded,
+                    $"{location} called-location combat starts");
+                session.Combat.SetRandomSource(new SequenceRandom(100, 100));
+                CombatAttackResult called = session.Combat.Attack(new CombatAttackRequest(
+                    Bear, pc, CombatAttackMode.BasicMelee, location));
+                CombatAttackModifier locationEntry = called.ModifierLedger.Entries.Single(
+                    value => value.Reason == CombatAttackModifierReason.CalledLocation);
+                Check(called.Succeeded && called.RequestedLocation == location
+                      && (int)location == Array.IndexOf(new[]
+                      {
+                          CombatCalledLocation.Torso, CombatCalledLocation.Head,
+                          CombatCalledLocation.Arm, CombatCalledLocation.Leg,
+                      }, location)
+                      && locationEntry.Value == modifier && locationEntry.Applied
+                      && called.FinalEffectiveAttackValue == final,
+                    $"source location {location} maps once to modifier {modifier} and final {final}");
+                EndStructuredCombat(session, pc);
+            }
+
+            int bearHp = session.Vitality.GetCurrentHitPoints(Bear);
+            Check(session.Combat.StartCombat(pc, Bear).Succeeded, "called critical-failure combat starts");
+            session.Combat.SetRandomSource(new SequenceRandom(100, 1, 100, 3, 0));
+            CombatAttackResult criticalFailure = session.Combat.Attack(new CombatAttackRequest(
+                Bear, pc, CombatAttackMode.BasicMelee, CombatCalledLocation.Head));
+            Check(criticalFailure.Succeeded
+                  && criticalFailure.Outcome == CombatAttackOutcome.CriticalFailure
+                  && criticalFailure.CriticalEffect == CombatCriticalEffect.SelfHit
+                  && criticalFailure.EffectTargetIdentity == Bear
+                  && session.Vitality.GetCurrentHitPoints(Bear) < bearHp,
+                "called melee critical failure reuses the existing self-hit transaction");
+            EndStructuredCombat(session, pc);
+            RestoreDamage(session, Bear, bearHp);
+
+            Check(session.Progression.IncreaseSkill(pc, CharacterSkill.Bow) == SkillIncreaseResult.Success,
+                "production PC receives one bounded Bow increase for called-shot proof");
+            Check(session.EquipItem(pc, Bow, WornLocation.Weapon).Succeeded,
+                "authentic bow equips through M3 authority");
+            MoveActor(session, loader, pc, pcRuntime,
+                FindClearRangedTile(loader.NavigationMap, bearRuntime.Tile, 3, 8));
+            Check(session.Combat.StartCombat(pc, Bear).Succeeded, "structured ranged combat starts");
+            AdvanceTo(session, pc);
+
+            invalidAp = session.Combat.CurrentActionPoints;
+            invalidHp = session.Vitality.GetCurrentHitPoints(Bear);
+            invalidAmmo = arrows.StackQuantity.Value;
+            invalid = session.Combat.Attack(new CombatAttackRequest(pc, Bear,
+                CombatAttackMode.BasicRanged, (CombatCalledLocation)99));
+            Check(invalid.Failure == CombatFailure.InvalidCalledLocation
+                  && session.Combat.CurrentActionPoints == invalidAp
+                  && session.Vitality.GetCurrentHitPoints(Bear) == invalidHp
+                  && arrows.StackQuantity == invalidAmmo,
+                "malformed ranged request also rolls back atomically");
+
+            int completedRounds = 0;
+            roundHandler = _ => completedRounds++;
+            session.Combat.RoundCompleted += roundHandler;
+            session.Combat.SetRandomSource(new SequenceRandom(1, 1, 5, 2, 100, 100, 100));
+            CombatAttackResult calledRanged = session.Combat.Attack(new CombatAttackRequest(
+                pc, Bear, CombatAttackMode.BasicRanged, CombatCalledLocation.Arm));
+            CombatAttackModifier strength = calledRanged.ModifierLedger.Entries.Single(
+                value => value.Reason == CombatAttackModifierReason.MinimumStrength);
+            CombatAttackModifier range = calledRanged.ModifierLedger.Entries.Single(
+                value => value.Reason == CombatAttackModifierReason.PerceptionRange);
+            CombatAttackModifier weapon = calledRanged.ModifierLedger.Entries.Single(
+                value => value.Reason == CombatAttackModifierReason.WeaponToHit);
+            CombatAttackModifier arm = calledRanged.ModifierLedger.Entries.Single(
+                value => value.Reason == CombatAttackModifierReason.CalledLocation);
+            Check(calledRanged.Succeeded && calledRanged.Outcome == CombatAttackOutcome.CriticalSuccess
+                  && calledRanged.CriticalChance == 8
+                  && calledRanged.CriticalEffect == CombatCriticalEffect.BonusDamage50
+                  && calledRanged.RequestedLocation == CombatCalledLocation.Arm
+                  && strength.Value == -10 && range.Value == 0 && weapon.Value == 0 && arm.Value == -30
+                  && calledRanged.ModifierLedger.UnclampedTotal
+                     == calledRanged.ModifierLedger.Entries.Where(value => value.Applied && !value.Suppressed)
+                         .Sum(value => value.Value)
+                  && calledRanged.FinalEffectiveAttackValue == calledRanged.Chance.AttackChance,
+                "called ranged critical records skill/strength/range/weapon/location once and reuses M8F damage");
+            int committedBearHp = session.Vitality.GetCurrentHitPoints(Bear);
+
+            var delayedRequest = new CombatAttackRequest(pc, Bear,
+                CombatAttackMode.BasicRanged, CombatCalledLocation.Leg);
+            ArcanumObjectId authority = session.Combat.CurrentParticipant;
+            int roundBeforeRebuild = session.Combat.RoundNumber;
+            int apBeforeRebuild = session.Combat.CurrentActionPoints;
+            foreach (GraphicsMode mode in new[] { GraphicsMode.Original, GraphicsMode.Enhanced, GraphicsMode.Original })
+            {
+                OpenArcanumGraphicsSettings.SetRuntimeMode(mode);
+                loader.RebuildVisuals();
+                Check(session.Combat.CurrentParticipant == authority
+                      && session.Combat.RoundNumber == roundBeforeRebuild
+                      && session.Combat.CurrentActionPoints == apBeforeRebuild
+                      && completedRounds == 0,
+                    $"{mode} presentation rebuild cannot mutate request/combat/round authority");
+            }
+            session.Combat.SetRandomSource(new SequenceRandom(100, 100));
+            CombatAttackResult delayed = session.Combat.Attack(delayedRequest);
+            Check(delayed.Succeeded && delayed.RequestedLocation == CombatCalledLocation.Leg
+                  && delayed.ModifierLedger.Entries.Single(value =>
+                      value.Reason == CombatAttackModifierReason.CalledLocation).Value == -30
+                  && session.Combat.CurrentParticipant == Bear && completedRounds == 1,
+                "pre-rebuild request resolves against current authority and completes exactly one Phase 1 round");
+
+            string json = session.SaveGames.SerializeCurrentSession();
+            Check(json.Contains("\"version\": 1") && session.Combat.LastAttackResult.HasValue,
+                "active structured-attack save remains V1 with transient diagnostic present only in memory");
+            Check(session.SaveGames.LoadJson(json).Succeeded, "structured-attack V1 load succeeds");
+            yield return null;
+            Refresh(out loader, out lifecycle);
+            bear = Require(session, Bear, ObjectType.Npc, BearPrototype);
+            Check(!session.Combat.IsActive && session.Combat.Participants.Count == 0
+                  && !session.Combat.LastAttackResult.HasValue && completedRounds == 1
+                  && session.Vitality.GetCurrentHitPoints(Bear) == committedBearHp,
+                "V1 load drops request/ledger/combat transients, preserves committed vitality, and emits no boundary");
+
+            session.Combat.RoundCompleted -= roundHandler;
+            roundHandler = null;
+            Application.logMessageReceived -= Track;
+            Check(_warnings == 0 && _errors == 0, $"warnings={_warnings}; errors={_errors}");
+            Debug.Log("M8G PHASE 2 PLAYMODE VALIDATION PASS: requests=melee+ranged immutable; "
+                      + "locations=torso0/head1/arm2/leg3; modifiers=0/-50/-30/-30 exactlyOnce; "
+                      + "ledger=skill+attribute+armor+strength+range+weapon+location authoritative; "
+                      + "criticalSuccess=calledArm+50; criticalFailure=calledHead+selfHit; "
+                      + "malformed=failClosed; graphics=Original->Enhanced->Original independent; "
+                      + "roundBoundary=exactlyOnce; saveV1=noRequestOrLedgerTransient+vitalityRetained; "
+                      + $"warnings={_warnings}; errors={_errors}.");
+        }
+        finally
+        {
+            if (roundHandler != null) session.Combat.RoundCompleted -= roundHandler;
+            session.Combat.ResetRandomSource();
+            OpenArcanumGraphicsSettings.SetRuntimeMode(initialMode);
+            Application.logMessageReceived -= Track;
+            _running = false;
+        }
+    }
+
     private static IEnumerator Validate(WorldObjectSectorLoader loader)
     {
         _running = true;
@@ -396,6 +617,16 @@ internal static class M8FCriticalValidation
     {
         Check(session.Combat.EndCurrentTurn(pc).Succeeded, "PC turn ends between threshold proofs");
         AdvanceTo(session, pc);
+    }
+
+    private static void EndStructuredCombat(WorldMapSessionCoordinator session, ArcanumObjectId pc)
+    {
+        foreach (ArcanumObjectId identity in session.Combat.Participants
+                     .Select(value => value.Identity).Where(value => value != pc).ToArray())
+            Check(session.Combat.RemoveParticipant(identity).Succeeded,
+                "Phase 2 validation removes each engaged hostile before ending combat");
+        Check(session.Combat.EndCombat(pc).Succeeded,
+            "Phase 2 validation clears only transient combat state");
     }
 
     private static void AdvanceTo(WorldMapSessionCoordinator session, ArcanumObjectId identity)

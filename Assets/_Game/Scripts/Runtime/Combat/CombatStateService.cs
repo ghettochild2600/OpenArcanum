@@ -52,6 +52,7 @@ namespace Arcanum.Runtime.Combat
         NoAmmo,
         IncompatibleAmmo,
         UnsupportedDamageProfile,
+        InvalidCalledLocation,
         UnsupportedCriticalEffect,
         UnresolvedDeathScript,
         PresentationUnavailable,
@@ -69,6 +70,97 @@ namespace Arcanum.Runtime.Combat
     {
         BasicMelee,
         BasicRanged,
+    }
+
+    /// <summary>Source hit-location ids. None preserves the bounded ordinary-attack path.</summary>
+    public enum CombatCalledLocation
+    {
+        None = -1,
+        Torso = 0,
+        Head = 1,
+        Arm = 2,
+        Leg = 3,
+    }
+
+    public readonly struct CombatAttackRequest
+    {
+        public ArcanumObjectId Attacker { get; }
+        public ArcanumObjectId Target { get; }
+        public CombatAttackMode Mode { get; }
+        public CombatCalledLocation CalledLocation { get; }
+
+        public CombatAttackRequest(ArcanumObjectId attacker, ArcanumObjectId target,
+            CombatAttackMode mode = CombatAttackMode.BasicMelee,
+            CombatCalledLocation calledLocation = CombatCalledLocation.None)
+        {
+            Attacker = attacker;
+            Target = target;
+            Mode = mode;
+            CalledLocation = calledLocation;
+        }
+    }
+
+    public enum CombatAttackModifierStage
+    {
+        BaseEffectiveness,
+        Attribute,
+        TargetDefense,
+        WeaponRequirement,
+        Distance,
+        Weapon,
+        CalledLocation,
+    }
+
+    public enum CombatAttackModifierReason
+    {
+        BaseSkill,
+        IntelligenceTwenty,
+        ArmorClass,
+        MinimumStrength,
+        PerceptionRange,
+        WeaponToHit,
+        CalledLocation,
+    }
+
+    public readonly struct CombatAttackModifier
+    {
+        public CombatAttackModifierStage Stage { get; }
+        public CombatAttackModifierReason Reason { get; }
+        public int Value { get; }
+        public bool Applied { get; }
+        public bool Suppressed { get; }
+        public int SourceValue { get; }
+
+        internal CombatAttackModifier(CombatAttackModifierStage stage,
+            CombatAttackModifierReason reason, int value, bool applied, bool suppressed = false,
+            int sourceValue = 0)
+        {
+            Stage = stage;
+            Reason = reason;
+            Value = value;
+            Applied = applied;
+            Suppressed = suppressed;
+            SourceValue = sourceValue;
+        }
+    }
+
+    public sealed class CombatAttackModifierLedger
+    {
+        private readonly IReadOnlyList<CombatAttackModifier> _entries;
+
+        public static CombatAttackModifierLedger Empty { get; } = new(Array.Empty<CombatAttackModifier>());
+        public IReadOnlyList<CombatAttackModifier> Entries => _entries;
+        public int UnclampedTotal { get; }
+        public int FinalEffectiveValue { get; }
+
+        internal CombatAttackModifierLedger(IEnumerable<CombatAttackModifier> entries)
+        {
+            CombatAttackModifier[] copy = entries?.ToArray() ?? Array.Empty<CombatAttackModifier>();
+            _entries = Array.AsReadOnly(copy);
+            UnclampedTotal = copy.Where(value => value.Applied && !value.Suppressed)
+                .Sum(value => value.Value);
+            FinalEffectiveValue = Math.Min(100, Math.Max(0, UnclampedTotal));
+        }
     }
 
     public enum CombatAttackOutcome
@@ -172,6 +264,10 @@ namespace Arcanum.Runtime.Combat
         public int SecondaryCriticalEffectRoll { get; }
         public int TertiaryCriticalEffectRoll { get; }
         public ArcanumObjectId EffectTargetIdentity { get; }
+        public CombatAttackRequest Request { get; }
+        public CombatAttackModifierLedger ModifierLedger { get; }
+        public CombatCalledLocation RequestedLocation => Request.CalledLocation;
+        public int FinalEffectiveAttackValue => ModifierLedger?.FinalEffectiveValue ?? Chance.AttackChance;
 
         internal CombatAttackResult(CombatFailure failure, CombatHitChance chance = default,
             bool hit = false, bool dodged = false, int attackRoll = 0, int dodgeRoll = 0,
@@ -185,7 +281,8 @@ namespace Arcanum.Runtime.Combat
             int criticalRoll = 0, int criticalChance = 0,
             CombatCriticalEffect criticalEffect = CombatCriticalEffect.None,
             int criticalEffectRoll = 0, int secondaryCriticalEffectRoll = 0,
-            int tertiaryCriticalEffectRoll = 0, ArcanumObjectId effectTargetIdentity = default)
+            int tertiaryCriticalEffectRoll = 0, ArcanumObjectId effectTargetIdentity = default,
+            CombatAttackRequest request = default, CombatAttackModifierLedger modifierLedger = null)
         {
             Failure = failure;
             Chance = chance;
@@ -214,6 +311,8 @@ namespace Arcanum.Runtime.Combat
             SecondaryCriticalEffectRoll = secondaryCriticalEffectRoll;
             TertiaryCriticalEffectRoll = tertiaryCriticalEffectRoll;
             EffectTargetIdentity = effectTargetIdentity;
+            Request = request;
+            ModifierLedger = modifierLedger ?? CombatAttackModifierLedger.Empty;
         }
     }
 
@@ -372,6 +471,7 @@ namespace Arcanum.Runtime.Combat
         public long ElapsedCombatTimeMilliseconds { get; private set; }
         public int CurrentActionPoints { get; private set; }
         public int MaximumActionPoints { get; private set; }
+        public CombatAttackResult? LastAttackResult { get; private set; }
         public event Action<CombatRoundBoundary> RoundCompleted;
 
         public CombatStateService(WorldMapSessionCoordinator world)
@@ -599,14 +699,44 @@ namespace Arcanum.Runtime.Combat
         }
 
         public CombatHitChance GetBasicMeleeHitChance(ArcanumObjectId actor, ArcanumObjectId target)
+            => BuildMeleeHitChance(actor, target, CombatCalledLocation.None, out _);
+
+        private CombatHitChance BuildMeleeHitChance(ArcanumObjectId actor, ArcanumObjectId target,
+            CombatCalledLocation calledLocation, out CombatAttackModifierLedger ledger)
         {
             int melee = _world.Progression.GetEffectiveSkillRank(actor, CharacterSkill.Melee);
             int effectiveness = checked(5 * melee + 25);
-            if (_world.Characters.GetEffectiveAttribute(actor, CharacterAttribute.Intelligence) >= 20)
-                effectiveness += 10;
+            bool intelligenceBonus = _world.Characters.GetEffectiveAttribute(actor,
+                CharacterAttribute.Intelligence) >= 20;
+            if (intelligenceBonus) effectiveness += 10;
             int armorClass = _world.DerivedStats.GetArmorClass(target);
             int difficulty = effectiveness * (armorClass / 2) / 100;
-            int attackChance = ClampPercent(effectiveness - difficulty);
+            int calledPenalty = GetCalledLocationPenalty(calledLocation);
+            var modifiers = new[]
+            {
+                new CombatAttackModifier(CombatAttackModifierStage.BaseEffectiveness,
+                    CombatAttackModifierReason.BaseSkill, checked(5 * melee + 25), true,
+                    sourceValue: melee),
+                new CombatAttackModifier(CombatAttackModifierStage.Attribute,
+                    CombatAttackModifierReason.IntelligenceTwenty, intelligenceBonus ? 10 : 0,
+                    intelligenceBonus,
+                    sourceValue: _world.Characters.GetEffectiveAttribute(actor,
+                        CharacterAttribute.Intelligence)),
+                new CombatAttackModifier(CombatAttackModifierStage.TargetDefense,
+                    CombatAttackModifierReason.ArmorClass, -difficulty, true,
+                    sourceValue: armorClass),
+                new CombatAttackModifier(CombatAttackModifierStage.WeaponRequirement,
+                    CombatAttackModifierReason.MinimumStrength, 0, false),
+                new CombatAttackModifier(CombatAttackModifierStage.Distance,
+                    CombatAttackModifierReason.PerceptionRange, 0, false),
+                new CombatAttackModifier(CombatAttackModifierStage.Weapon,
+                    CombatAttackModifierReason.WeaponToHit, 0, false),
+                new CombatAttackModifier(CombatAttackModifierStage.CalledLocation,
+                    CombatAttackModifierReason.CalledLocation, calledPenalty,
+                    IsCalledLocation(calledLocation), sourceValue: (int)calledLocation),
+            };
+            ledger = new CombatAttackModifierLedger(modifiers);
+            int attackChance = ledger.FinalEffectiveValue;
             int dodge = 5 * _world.Progression.GetEffectiveSkillRank(target, CharacterSkill.Dodge);
             if (_world.Characters.GetEffectiveAttribute(target, CharacterAttribute.Intelligence) >= 20)
                 dodge += 10;
@@ -616,45 +746,62 @@ namespace Arcanum.Runtime.Combat
 
         public CombatAttackResult Attack(ArcanumObjectId actor, ArcanumObjectId target,
             CombatAttackMode mode = CombatAttackMode.BasicMelee)
+            => Attack(new CombatAttackRequest(actor, target, mode));
+
+        public CombatAttackResult Attack(CombatAttackRequest request)
         {
+            CombatAttackResult result = ResolveAttack(request);
+            LastAttackResult = result;
+            return result;
+        }
+
+        private CombatAttackResult ResolveAttack(CombatAttackRequest request)
+        {
+            ArcanumObjectId actor = request.Attacker;
+            ArcanumObjectId target = request.Target;
+            CombatAttackMode mode = request.Mode;
             if (!TryValidateActionActor(actor, out CombatActorSource source, out CombatFailure failure))
-                return AttackFailure(failure);
+                return AttackFailure(failure, request);
             if (!Enum.IsDefined(typeof(CombatAttackMode), mode))
-                return AttackFailure(CombatFailure.UnsupportedAttackMode);
-            if (actor == target) return AttackFailure(CombatFailure.SameParticipant);
+                return AttackFailure(CombatFailure.UnsupportedAttackMode, request);
+            if (!Enum.IsDefined(typeof(CombatCalledLocation), request.CalledLocation))
+                return AttackFailure(CombatFailure.InvalidCalledLocation, request);
+            if (actor == target) return AttackFailure(CombatFailure.SameParticipant, request);
             if (!_participants.Any(value => value.Identity == target))
-                return AttackFailure(CombatFailure.ParticipantNotRegistered);
+                return AttackFailure(CombatFailure.ParticipantNotRegistered, request);
             if (!_sources.TryGetValue(target, out CombatActorSource targetSource))
-                return AttackFailure(CombatFailure.TargetNotFound);
-            if (!IsEligible(targetSource)) return AttackFailure(CombatFailure.ParticipantUnavailable);
+                return AttackFailure(CombatFailure.TargetNotFound, request);
+            if (!IsEligible(targetSource)) return AttackFailure(CombatFailure.ParticipantUnavailable, request);
             if (!TryGetCombatPosition(actor, out Vector2Int actorPosition)
                 || !TryGetCombatPosition(target, out Vector2Int targetPosition))
-                return AttackFailure(CombatFailure.PresentationUnavailable);
+                return AttackFailure(CombatFailure.PresentationUnavailable, request);
             if (mode == CombatAttackMode.BasicRanged)
-                return AttackRanged(source, targetSource, actor, target, actorPosition, targetPosition);
+                return AttackRanged(request, source, targetSource, actorPosition, targetPosition);
             if (_world.TryGetEquippedItem(actor, WornLocation.Weapon, out _))
-                return AttackFailure(CombatFailure.UnsupportedWeapon);
+                return AttackFailure(CombatFailure.UnsupportedWeapon, request);
             if (InteractionRangeRules.Distance(actorPosition, targetPosition) > 1)
-                return AttackFailure(CombatFailure.OutOfRange);
+                return AttackFailure(CombatFailure.OutOfRange, request);
 
             bool overdraw = CurrentActionPoints < UnarmedAttackActionPointCost;
             if (overdraw && (source.ObjectType != ObjectType.Pc || CurrentActionPoints <= 0
                              || _world.Vitality.GetCurrentFatigue(actor) <= 1))
-                return AttackFailure(CombatFailure.InsufficientActionPoints);
+                return AttackFailure(CombatFailure.InsufficientActionPoints, request);
             if (!TryGetUnarmedDamageRange(source, DamageType.Normal, out int normalMinimum,
                     out int normalMaximum)
                 || !TryGetUnarmedDamageRange(source, DamageType.Fatigue, out int fatigueMinimum,
                     out int fatigueMaximum)
                 || HasUnsupportedNaturalDamage(source))
-                return AttackFailure(CombatFailure.UnsupportedDamageProfile);
+                return AttackFailure(CombatFailure.UnsupportedDamageProfile, request);
 
-            CombatHitChance chance = GetBasicMeleeHitChance(actor, target);
+            CombatHitChance chance = BuildMeleeHitChance(actor, target, request.CalledLocation,
+                out CombatAttackModifierLedger modifiers);
             int attackRoll = _random.NextInclusive(1, 100);
             bool ordinaryHit = attackRoll <= chance.AttackChance;
             int criticalRoll = _random.NextInclusive(1, 100);
             bool masterMelee = _world.Progression.GetTrainingLevel(actor, CharacterSkill.Melee)
                                == SkillTrainingLevel.Master;
-            int criticalChance = GetCriticalChance(chance.MeleeEffectiveness, ordinaryHit, masterMelee);
+            int criticalChance = GetCriticalChance(chance.MeleeEffectiveness, ordinaryHit, masterMelee,
+                GetCalledLocationCriticalBonus(request.CalledLocation));
             CombatAttackOutcome outcome = ClassifyAttack(ordinaryHit, criticalRoll, criticalChance);
             bool hit = ordinaryHit;
             int dodgeRoll = 0;
@@ -668,7 +815,7 @@ namespace Arcanum.Runtime.Combat
             }
             if (outcome == CombatAttackOutcome.CriticalSuccess
                 && source.ObjectType == ObjectType.Npc && targetSource.ObjectType == ObjectType.Pc)
-                return AttackFailure(CombatFailure.UnsupportedCriticalEffect);
+                return AttackFailure(CombatFailure.UnsupportedCriticalEffect, request);
 
             int rawNormal = 0;
             int mitigatedNormal = 0;
@@ -684,7 +831,7 @@ namespace Arcanum.Runtime.Combat
             {
                 criticalEffectRoll = _random.NextInclusive(1, 100);
                 if (criticalEffectRoll <= 50)
-                    return AttackFailure(CombatFailure.UnsupportedCriticalEffect);
+                    return AttackFailure(CombatFailure.UnsupportedCriticalEffect, request);
                 criticalEffect = CombatCriticalEffect.SelfHit;
                 effectTarget = actor;
                 effectTargetSource = source;
@@ -708,7 +855,7 @@ namespace Arcanum.Runtime.Combat
 
             int hitPointsBefore = _world.Vitality.GetCurrentHitPoints(effectTarget);
             if (resolvesDamage && mitigatedNormal >= hitPointsBefore && effectTargetSource.DyingScriptNum != 0)
-                return AttackFailure(CombatFailure.UnresolvedDeathScript);
+                return AttackFailure(CombatFailure.UnresolvedDeathScript, request);
 
             int spent = Math.Min(CurrentActionPoints, UnarmedAttackActionPointCost);
             int overdrawFatigue = overdraw ? 2 : 0;
@@ -730,25 +877,63 @@ namespace Arcanum.Runtime.Combat
                 criticalEffect: criticalEffect, criticalEffectRoll: criticalEffectRoll,
                 secondaryCriticalEffectRoll: secondaryCriticalEffectRoll,
                 tertiaryCriticalEffectRoll: tertiaryCriticalEffectRoll,
-                effectTargetIdentity: effectTarget);
+                effectTargetIdentity: effectTarget, request: request, modifierLedger: modifiers);
         }
 
         public CombatHitChance GetBasicRangedHitChance(ArcanumObjectId actor, ArcanumObjectId target,
             Weapon weapon, int distance)
+            => BuildRangedHitChance(actor, target, weapon, distance,
+                CombatCalledLocation.None, out _);
+
+        private CombatHitChance BuildRangedHitChance(ArcanumObjectId actor, ArcanumObjectId target,
+            Weapon weapon, int distance, CombatCalledLocation calledLocation,
+            out CombatAttackModifierLedger ledger)
         {
             if (weapon == null) throw new ArgumentNullException(nameof(weapon));
             CharacterSkill skill = weapon.Skill == WeaponSkill.Bow ? CharacterSkill.Bow : CharacterSkill.Firearms;
-            int effectiveness = checked(5 * _world.Progression.GetEffectiveSkillRank(actor, skill) + 25);
-            if (_world.Characters.GetEffectiveAttribute(actor, CharacterAttribute.Intelligence) >= 20)
-                effectiveness += 10;
+            int skillRank = _world.Progression.GetEffectiveSkillRank(actor, skill);
+            int effectiveness = checked(5 * skillRank + 25);
+            int intelligence = _world.Characters.GetEffectiveAttribute(actor, CharacterAttribute.Intelligence);
+            bool intelligenceBonus = intelligence >= 20;
+            if (intelligenceBonus) effectiveness += 10;
             int armorClass = _world.DerivedStats.GetArmorClass(target);
             int difficulty = effectiveness * (armorClass / 2) / 100;
             int strength = _world.Characters.GetEffectiveAttribute(actor, CharacterAttribute.Strength);
-            if (strength < weapon.MinStrength) difficulty += checked(5 * (weapon.MinStrength - strength));
+            int strengthPenalty = strength < weapon.MinStrength
+                ? checked(5 * (weapon.MinStrength - strength)) : 0;
+            difficulty += strengthPenalty;
             int perception = _world.Characters.GetEffectiveAttribute(actor, CharacterAttribute.Perception);
-            difficulty += checked(5 * Math.Max(0, distance - perception / 2));
+            int rangePenalty = checked(5 * Math.Max(0, distance - perception / 2));
+            difficulty += rangePenalty;
             difficulty -= weapon.BonusToHit;
-            int attackChance = ClampPercent(effectiveness - difficulty);
+            int armorDifficulty = effectiveness * (armorClass / 2) / 100;
+            int calledPenalty = GetCalledLocationPenalty(calledLocation);
+            var modifiers = new[]
+            {
+                new CombatAttackModifier(CombatAttackModifierStage.BaseEffectiveness,
+                    CombatAttackModifierReason.BaseSkill, checked(5 * skillRank + 25), true,
+                    sourceValue: skillRank),
+                new CombatAttackModifier(CombatAttackModifierStage.Attribute,
+                    CombatAttackModifierReason.IntelligenceTwenty, intelligenceBonus ? 10 : 0,
+                    intelligenceBonus, sourceValue: intelligence),
+                new CombatAttackModifier(CombatAttackModifierStage.TargetDefense,
+                    CombatAttackModifierReason.ArmorClass, -armorDifficulty, true,
+                    sourceValue: armorClass),
+                new CombatAttackModifier(CombatAttackModifierStage.WeaponRequirement,
+                    CombatAttackModifierReason.MinimumStrength, -strengthPenalty,
+                    strengthPenalty > 0, sourceValue: weapon.MinStrength),
+                new CombatAttackModifier(CombatAttackModifierStage.Distance,
+                    CombatAttackModifierReason.PerceptionRange, -rangePenalty,
+                    rangePenalty > 0, sourceValue: distance),
+                new CombatAttackModifier(CombatAttackModifierStage.Weapon,
+                    CombatAttackModifierReason.WeaponToHit, weapon.BonusToHit,
+                    weapon.BonusToHit != 0, sourceValue: weapon.BonusToHit),
+                new CombatAttackModifier(CombatAttackModifierStage.CalledLocation,
+                    CombatAttackModifierReason.CalledLocation, calledPenalty,
+                    IsCalledLocation(calledLocation), sourceValue: (int)calledLocation),
+            };
+            ledger = new CombatAttackModifierLedger(modifiers);
+            int attackChance = ledger.FinalEffectiveValue;
             int dodge = 5 * _world.Progression.GetEffectiveSkillRank(target, CharacterSkill.Dodge);
             if (_world.Characters.GetEffectiveAttribute(target, CharacterAttribute.Intelligence) >= 20)
                 dodge += 10;
@@ -756,35 +941,36 @@ namespace Arcanum.Runtime.Combat
             return new CombatHitChance(effectiveness, armorClass, difficulty, attackChance, dodge);
         }
 
-        private CombatAttackResult AttackRanged(CombatActorSource source, CombatActorSource targetSource,
-            ArcanumObjectId actor,
-            ArcanumObjectId target, Vector2Int actorPosition, Vector2Int targetPosition)
+        private CombatAttackResult AttackRanged(CombatAttackRequest request, CombatActorSource source,
+            CombatActorSource targetSource, Vector2Int actorPosition, Vector2Int targetPosition)
         {
+            ArcanumObjectId actor = request.Attacker;
+            ArcanumObjectId target = request.Target;
             if (!_world.TryGetEquippedItem(actor, WornLocation.Weapon, out PersistentObjectState equipped)
                 || equipped.Type != ObjectType.Weapon || equipped.WeaponData == null)
-                return AttackFailure(CombatFailure.UnsupportedWeapon);
+                return AttackFailure(CombatFailure.UnsupportedWeapon, request);
             Weapon weapon = equipped.WeaponData;
             if (weapon.Skill != WeaponSkill.Bow || !weapon.UsesAmmo || weapon.AmmoConsumption < 1)
-                return AttackFailure(CombatFailure.UnsupportedWeapon);
+                return AttackFailure(CombatFailure.UnsupportedWeapon, request);
             int distance = InteractionRangeRules.Distance(actorPosition, targetPosition);
-            if (distance > weapon.Range) return AttackFailure(CombatFailure.OutOfRange);
-            if (_navigationMap == null) return AttackFailure(CombatFailure.NavigationUnavailable);
+            if (distance > weapon.Range) return AttackFailure(CombatFailure.OutOfRange, request);
+            if (_navigationMap == null) return AttackFailure(CombatFailure.NavigationUnavailable, request);
             if (!_navigationMap.HasProjectileLineOfFire(actorPosition, targetPosition))
-                return AttackFailure(CombatFailure.LineOfFireBlocked);
+                return AttackFailure(CombatFailure.LineOfFireBlocked, request);
             if (!_world.TryGetAmmo(actor, weapon.AmmoType, weapon.AmmoConsumption,
                     out PersistentObjectState ammo))
             {
                 bool hasOtherAmmo = _world.ChildrenOf(actor).Any(identity =>
                     _world.TryGetObjectState(identity, out PersistentObjectState item)
                     && item.Type == ObjectType.Ammo && item.StackQuantity.GetValueOrDefault() > 0);
-                return AttackFailure(hasOtherAmmo ? CombatFailure.IncompatibleAmmo : CombatFailure.NoAmmo);
+                return AttackFailure(hasOtherAmmo ? CombatFailure.IncompatibleAmmo : CombatFailure.NoAmmo, request);
             }
 
             int actionPointCost = weapon.AttackActionPointCost;
             bool overdraw = CurrentActionPoints < actionPointCost;
             if (overdraw && (source.ObjectType != ObjectType.Pc || CurrentActionPoints <= 0
                              || _world.Vitality.GetCurrentFatigue(actor) <= 1))
-                return AttackFailure(CombatFailure.InsufficientActionPoints);
+                return AttackFailure(CombatFailure.InsufficientActionPoints, request);
             if (!TryGetWeaponDamageRange(weapon, DamageType.Normal, out int normalMinimum,
                     out int normalMaximum)
                 || !TryGetWeaponDamageRange(weapon, DamageType.Fatigue, out int fatigueMinimum,
@@ -792,18 +978,20 @@ namespace Arcanum.Runtime.Combat
                 || weapon.DamageMax[(int)DamageType.Poison] != 0
                 || weapon.DamageMax[(int)DamageType.Electrical] != 0
                 || weapon.DamageMax[(int)DamageType.Fire] != 0)
-                return AttackFailure(CombatFailure.UnsupportedDamageProfile);
+                return AttackFailure(CombatFailure.UnsupportedDamageProfile, request);
 
-            CombatHitChance chance = GetBasicRangedHitChance(actor, target, weapon, distance);
+            CombatHitChance chance = BuildRangedHitChance(actor, target, weapon, distance,
+                request.CalledLocation, out CombatAttackModifierLedger modifiers);
             int ammoBefore = ammo.StackQuantity.Value;
 
             int attackRoll = _random.NextInclusive(1, 100);
             bool ordinaryHit = attackRoll <= chance.AttackChance;
             int criticalRoll = _random.NextInclusive(1, 100);
-            int criticalChance = GetCriticalChance(chance.MeleeEffectiveness, ordinaryHit);
+            int criticalChance = GetCriticalChance(chance.MeleeEffectiveness, ordinaryHit,
+                calledLocationBonus: GetCalledLocationCriticalBonus(request.CalledLocation));
             CombatAttackOutcome outcome = ClassifyAttack(ordinaryHit, criticalRoll, criticalChance);
             if (outcome == CombatAttackOutcome.CriticalFailure)
-                return AttackFailure(CombatFailure.UnsupportedCriticalEffect);
+                return AttackFailure(CombatFailure.UnsupportedCriticalEffect, request);
             bool hit = ordinaryHit;
             int dodgeRoll = 0;
             bool dodged = false;
@@ -840,7 +1028,7 @@ namespace Arcanum.Runtime.Combat
 
             int hitPointsBefore = _world.Vitality.GetCurrentHitPoints(target);
             if (hit && mitigatedNormal >= hitPointsBefore && targetSource.DyingScriptNum != 0)
-                return AttackFailure(CombatFailure.UnresolvedDeathScript);
+                return AttackFailure(CombatFailure.UnresolvedDeathScript, request);
 
             int spent = Math.Min(CurrentActionPoints, actionPointCost);
             int previousActionPoints = CurrentActionPoints;
@@ -848,7 +1036,7 @@ namespace Arcanum.Runtime.Combat
             if (!_world.ConsumeAmmo(ammo.Identity, weapon.AmmoConsumption, out int ammoAfter))
             {
                 CurrentActionPoints = previousActionPoints;
-                return AttackFailure(CombatFailure.NoAmmo);
+                return AttackFailure(CombatFailure.NoAmmo, request);
             }
             int overdrawFatigue = overdraw ? 2 : 0;
             if (overdrawFatigue > 0) _world.Vitality.ApplyFatigueDamage(actor, overdrawFatigue);
@@ -866,7 +1054,7 @@ namespace Arcanum.Runtime.Combat
                 resultingHitPoints, resultingFatigue, actionPointCost, spent, overdrawFatigue,
                 equipped.Identity, ammo.Identity, ammoBefore, ammoAfter,
                 outcome, criticalRoll, criticalChance, criticalEffect, criticalEffectRoll,
-                secondaryCriticalEffectRoll, tertiaryCriticalEffectRoll, target);
+                secondaryCriticalEffectRoll, tertiaryCriticalEffectRoll, target, request, modifiers);
         }
 
         public CombatResult EndCombat(ArcanumObjectId actor)
@@ -1000,9 +1188,30 @@ namespace Arcanum.Runtime.Combat
             => maximum <= 0 ? 0 : _random.NextInclusive(minimum, maximum);
 
         private static int GetCriticalChance(int effectiveness, bool ordinaryHit,
-            bool suppressCriticalFailure = false)
-            => ordinaryHit ? Math.Max(0, effectiveness / 20)
+            bool suppressCriticalFailure = false, int calledLocationBonus = 0)
+            => ordinaryHit ? Math.Max(0, effectiveness / 20 + calledLocationBonus)
                 : suppressCriticalFailure ? 0 : Math.Max(2, (100 - effectiveness) / 7);
+
+        private static bool IsCalledLocation(CombatCalledLocation location)
+            => location != CombatCalledLocation.None;
+
+        private static int GetCalledLocationPenalty(CombatCalledLocation location)
+            => location switch
+            {
+                CombatCalledLocation.None or CombatCalledLocation.Torso => 0,
+                CombatCalledLocation.Head => -50,
+                CombatCalledLocation.Arm or CombatCalledLocation.Leg => -30,
+                _ => throw new ArgumentOutOfRangeException(nameof(location)),
+            };
+
+        private static int GetCalledLocationCriticalBonus(CombatCalledLocation location)
+            => location switch
+            {
+                CombatCalledLocation.None or CombatCalledLocation.Torso => 0,
+                CombatCalledLocation.Head => 10,
+                CombatCalledLocation.Arm or CombatCalledLocation.Leg => 6,
+                _ => throw new ArgumentOutOfRangeException(nameof(location)),
+            };
 
         private static CombatAttackOutcome ClassifyAttack(bool ordinaryHit, int criticalRoll,
             int criticalChance)
@@ -1248,6 +1457,7 @@ namespace Arcanum.Runtime.Combat
             ElapsedCombatTimeMilliseconds = 0;
             CurrentActionPoints = 0;
             MaximumActionPoints = 0;
+            LastAttackResult = null;
             Mode = CombatMode.TurnBased;
             Lifecycle = CombatLifecycle.Inactive;
         }
@@ -1274,8 +1484,9 @@ namespace Arcanum.Runtime.Combat
             return new CombatMoveResult(failure, start, destination, start);
         }
 
-        private static CombatAttackResult AttackFailure(CombatFailure failure)
-            => new(failure);
+        private static CombatAttackResult AttackFailure(CombatFailure failure,
+            CombatAttackRequest request = default)
+            => new(failure, request: request);
 
         private static int ClampPercent(int value) => Math.Max(0, Math.Min(100, value));
 
