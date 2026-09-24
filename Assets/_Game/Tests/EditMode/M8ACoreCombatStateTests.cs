@@ -129,11 +129,16 @@ namespace Arcanum.Formats.Tests
         }
 
         [Test]
-        public void RealTimeStartIsAnExplicitDeferredBoundary()
+        public void RealTimeStartUsesM8HSchedulerWithoutTurnOwnershipOrActionPoints()
         {
             CombatResult result = _session.Combat.StartCombat(_pc.Identity, _npc, CombatMode.RealTime);
-            Assert.That(result.Failure, Is.EqualTo(CombatFailure.UnsupportedMode));
-            Assert.That(_session.Combat.Lifecycle, Is.EqualTo(CombatLifecycle.Inactive));
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(_session.Combat.Lifecycle, Is.EqualTo(CombatLifecycle.Active));
+            Assert.That(_session.Combat.Mode, Is.EqualTo(CombatMode.RealTime));
+            Assert.That(_session.Combat.RoundNumber, Is.EqualTo(1));
+            Assert.That(_session.Combat.CurrentParticipant.IsNull, Is.True);
+            Assert.That(_session.Combat.CurrentActionPoints, Is.Zero);
+            Assert.That(_session.Combat.MaximumActionPoints, Is.Zero);
         }
 
         [Test]

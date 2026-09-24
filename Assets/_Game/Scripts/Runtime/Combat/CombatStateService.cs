@@ -29,6 +29,10 @@ namespace Arcanum.Runtime.Combat
         Inactive,
         AlreadyActive,
         UnsupportedMode,
+        InvalidTimeAdvance,
+        TimingUnavailable,
+        ActorBusy,
+        ActorNotReady,
         ActorNotFound,
         TargetNotFound,
         InvalidActor,
@@ -540,7 +544,7 @@ namespace Arcanum.Runtime.Combat
     /// Session-owned M8A combat state. It owns only transient participants, order, current turn and AP;
     /// character HP/fatigue remain authoritative in <see cref="CharacterVitalityService"/>.
     /// </summary>
-    public sealed class CombatStateService
+    public sealed partial class CombatStateService
     {
         public const int UnarmedAttackActionPointCost = 5;
         public const int WalkingActionPointCostPerStep = 2;
@@ -622,7 +626,7 @@ namespace Arcanum.Runtime.Combat
             CombatMode mode = CombatMode.TurnBased)
         {
             if (Lifecycle != CombatLifecycle.Inactive) return Fail(CombatFailure.AlreadyActive);
-            if (mode != CombatMode.TurnBased) return Fail(CombatFailure.UnsupportedMode);
+            if (!Enum.IsDefined(typeof(CombatMode), mode)) return Fail(CombatFailure.UnsupportedMode);
             if (actor == target) return Fail(CombatFailure.SameParticipant);
             if (!TryValidateActor(actor, out CombatActorSource actorSource, out CombatFailure actorFailure))
                 return Fail(actorFailure);
@@ -648,7 +652,10 @@ namespace Arcanum.Runtime.Combat
             _engaged.UnionWith(pendingEngagement);
             Mode = mode;
             RoundNumber = 1;
-            BeginParticipantTurn(_participants[0].Identity, requireActive: false);
+            if (mode == CombatMode.TurnBased)
+                BeginParticipantTurn(_participants[0].Identity, requireActive: false);
+            else
+                InitializeRealTimeCombat();
             Lifecycle = CombatLifecycle.Active;
             return Success();
         }
@@ -664,6 +671,7 @@ namespace Arcanum.Runtime.Combat
             _participants.Add(new CombatParticipant(source));
             _engaged.Add(identity);
             SortSourceOrder(_participants);
+            SynchronizeRealTimeActors();
             return Success();
         }
 
@@ -686,6 +694,7 @@ namespace Arcanum.Runtime.Combat
                 _participants.Add(new CombatParticipant(source));
                 SortSourceOrder(_participants);
             }
+            SynchronizeRealTimeActors();
             return Success();
         }
 
@@ -699,6 +708,7 @@ namespace Arcanum.Runtime.Combat
             bool wasCurrent = CurrentParticipant == identity;
             _participants.RemoveAt(index);
             _engaged.Remove(identity);
+            RemoveRealTimeActor(identity);
             if (_participants.Count == 0)
             {
                 ClearTransient();
@@ -715,6 +725,7 @@ namespace Arcanum.Runtime.Combat
         public CombatResult EndCurrentTurn(ArcanumObjectId actor)
         {
             if (!IsActive) return Fail(CombatFailure.Inactive);
+            if (Mode != CombatMode.TurnBased) return Fail(CombatFailure.UnsupportedMode);
             if (CurrentParticipant != actor) return Fail(CombatFailure.NotCurrentParticipant);
             if (_participants.All(value => value.Identity != actor))
                 return Fail(CombatFailure.ParticipantNotRegistered);
@@ -744,11 +755,12 @@ namespace Arcanum.Runtime.Combat
             if (_route.Count == 0)
                 return new CombatMoveResult(CombatFailure.None, start, destination, start);
 
+            bool turnBased = Mode == CombatMode.TurnBased;
             int perStep = pcAlwaysRun ? RunningActionPointCostPerStep : WalkingActionPointCostPerStep;
             int fullCost = checked(_route.Count * perStep);
             int steps = _route.Count;
             int fatigueDamage = 0;
-            if (CurrentActionPoints < fullCost)
+            if (turnBased && CurrentActionPoints < fullCost)
             {
                 if (source.ObjectType != ObjectType.Pc)
                     return new CombatMoveResult(CombatFailure.InsufficientActionPoints, start, destination, start,
@@ -767,7 +779,7 @@ namespace Arcanum.Runtime.Combat
             }
 
             Vector2Int finalPosition = _route[steps - 1];
-            int spent = Math.Min(CurrentActionPoints, checked(steps * perStep));
+            int spent = turnBased ? Math.Min(CurrentActionPoints, checked(steps * perStep)) : 0;
             if (!_navigationMap.MoveRegisteredObject(actor, finalPosition))
                 return new CombatMoveResult(CombatFailure.PresentationUnavailable, start, destination, start,
                     _route.Count);
@@ -792,9 +804,9 @@ namespace Arcanum.Runtime.Combat
                     _route.Count);
             }
 
-            CurrentActionPoints -= spent;
+            if (turnBased) CurrentActionPoints -= spent;
             if (fatigueDamage > 0) _world.Vitality.ApplyFatigueDamage(actor, fatigueDamage);
-            if (CurrentParticipant == actor && CurrentActionPoints == 0)
+            if (turnBased && CurrentParticipant == actor && CurrentActionPoints == 0)
                 AdvanceToNextEligibleParticipant(actor);
             return new CombatMoveResult(CombatFailure.None, start, destination, finalPosition,
                 _route.Count, steps, spent, fatigueDamage);
@@ -884,7 +896,8 @@ namespace Arcanum.Runtime.Combat
             if (InteractionRangeRules.Distance(actorPosition, targetPosition) > 1)
                 return AttackFailure(CombatFailure.OutOfRange, request);
 
-            bool overdraw = CurrentActionPoints < UnarmedAttackActionPointCost;
+            bool turnBased = Mode == CombatMode.TurnBased;
+            bool overdraw = turnBased && CurrentActionPoints < UnarmedAttackActionPointCost;
             if (overdraw && (source.ObjectType != ObjectType.Pc || CurrentActionPoints <= 0
                              || _world.Vitality.GetCurrentFatigue(actor) <= 1))
                 return AttackFailure(CombatFailure.InsufficientActionPoints, request);
@@ -960,9 +973,9 @@ namespace Arcanum.Runtime.Combat
             if (resolvesDamage && mitigatedNormal >= hitPointsBefore && effectTargetSource.DyingScriptNum != 0)
                 return AttackFailure(CombatFailure.UnresolvedDeathScript, request);
 
-            int spent = Math.Min(CurrentActionPoints, UnarmedAttackActionPointCost);
+            int spent = turnBased ? Math.Min(CurrentActionPoints, UnarmedAttackActionPointCost) : 0;
             int overdrawFatigue = overdraw ? 2 : 0;
-            CurrentActionPoints -= spent;
+            if (turnBased) CurrentActionPoints -= spent;
             if (overdrawFatigue > 0) _world.Vitality.ApplyFatigueDamage(actor, overdrawFatigue);
             if (mitigatedNormal > 0) _world.Vitality.ApplyHitPointDamage(effectTarget, mitigatedNormal);
             if (mitigatedFatigue > 0) _world.Vitality.ApplyFatigueDamage(effectTarget, mitigatedFatigue);
@@ -970,7 +983,7 @@ namespace Arcanum.Runtime.Combat
             int resultingFatigue = _world.Vitality.GetCurrentFatigue(effectTarget);
             if (hitPointsBefore > 0 && resultingHitPoints <= 0)
                 _world.DeathConsequences.Process(actor, effectTarget);
-            if (CurrentParticipant == actor && CurrentActionPoints == 0)
+            if (turnBased && CurrentParticipant == actor && CurrentActionPoints == 0)
                 AdvanceToNextEligibleParticipant(actor);
 
             return new CombatAttackResult(CombatFailure.None, chance, hit, dodge.Succeeded,
@@ -1084,7 +1097,8 @@ namespace Arcanum.Runtime.Combat
             }
 
             int actionPointCost = weapon.AttackActionPointCost;
-            bool overdraw = CurrentActionPoints < actionPointCost;
+            bool turnBased = Mode == CombatMode.TurnBased;
+            bool overdraw = turnBased && CurrentActionPoints < actionPointCost;
             if (overdraw && (source.ObjectType != ObjectType.Pc || CurrentActionPoints <= 0
                              || _world.Vitality.GetCurrentFatigue(actor) <= 1))
                 return AttackFailure(CombatFailure.InsufficientActionPoints, request);
@@ -1176,12 +1190,12 @@ namespace Arcanum.Runtime.Combat
                     secondaryCriticalEffectRoll, tertiaryCriticalEffectRoll);
             }
 
-            int spent = Math.Min(CurrentActionPoints, actionPointCost);
+            int spent = turnBased ? Math.Min(CurrentActionPoints, actionPointCost) : 0;
             int previousActionPoints = CurrentActionPoints;
-            CurrentActionPoints -= spent;
+            if (turnBased) CurrentActionPoints -= spent;
             if (!_world.ConsumeAmmo(ammo.Identity, weapon.AmmoConsumption, out int ammoAfter))
             {
-                CurrentActionPoints = previousActionPoints;
+                if (turnBased) CurrentActionPoints = previousActionPoints;
                 return AttackFailure(CombatFailure.NoAmmo, request);
             }
             int overdrawFatigue = overdraw ? 2 : 0;
@@ -1216,7 +1230,7 @@ namespace Arcanum.Runtime.Combat
                     plan.RawFatigue, plan.MitigatedFatigue, resultingHitPoints,
                     resultingFatigue));
             }
-            if (CurrentParticipant == actor && CurrentActionPoints == 0)
+            if (turnBased && CurrentParticipant == actor && CurrentActionPoints == 0)
                 AdvanceToNextEligibleParticipant(actor);
 
             CombatImpactPlan first = plans[0];
@@ -1272,7 +1286,12 @@ namespace Arcanum.Runtime.Combat
                 failure = CombatFailure.Inactive;
                 return false;
             }
-            if (CurrentParticipant != actor)
+            if (Mode == CombatMode.RealTime && !_resolvingRealTimeAction)
+            {
+                failure = CombatFailure.ActorNotReady;
+                return false;
+            }
+            if (Mode == CombatMode.TurnBased && CurrentParticipant != actor)
             {
                 failure = CombatFailure.NotCurrentParticipant;
                 return false;
@@ -1588,6 +1607,7 @@ namespace Arcanum.Runtime.Combat
             if (index < 0) return;
             if (becameDead)
             {
+                RemoveRealTimeActor(change.Identity);
                 bool wasCurrent = CurrentParticipant == change.Identity;
                 _participants.RemoveAt(index);
                 _engaged.Remove(change.Identity);
@@ -1602,6 +1622,10 @@ namespace Arcanum.Runtime.Combat
             {
                 CurrentActionPoints = 0;
                 AdvanceToNextEligibleParticipant(change.Identity);
+            }
+            else if (Mode == CombatMode.RealTime)
+            {
+                SuspendRealTimeActor(change.Identity);
             }
         }
 
@@ -1647,6 +1671,7 @@ namespace Arcanum.Runtime.Combat
 
             RoundNumber = checked(RoundNumber + 1);
             DiscoverNearbyHostiles();
+            SynchronizeRealTimeActors();
             foreach (CombatParticipant candidate in _participants)
             {
                 if (_sources.TryGetValue(candidate.Identity, out CombatActorSource source) && IsEligible(source))
@@ -1699,6 +1724,7 @@ namespace Arcanum.Runtime.Combat
 
         private void ClearTransient()
         {
+            ClearRealTimeTransient();
             _participants.Clear();
             _engaged.Clear();
             CurrentParticipant = default;

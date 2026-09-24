@@ -105,6 +105,35 @@ internal sealed class M8ATestExecution : ScriptableObject, ICallbacks
     private static void RunM8GPhase4All()
         => Run(new Filter { testMode = TestMode.EditMode }, "M8G Phase 4 complete EditMode");
 
+    [MenuItem("OpenArcanum/M8H/Run Focused EditMode Tests")]
+    private static void RunM8HFocused()
+        => Run(Category("M8HRealTimeCombat"), "M8H focused EditMode");
+
+    [MenuItem("OpenArcanum/M8H/Run M8A-M8G Combat Regression Tests")]
+    private static void RunM8HCombatRegression()
+    {
+        RunMany(
+            new[]
+            {
+                Category("M8GBowCriticalDodgePhase4"), Category("M8GCoverMasterPhase3"),
+                Category("M8GStructuredAttackPhase2"), Category("M8GCombatLoopPhase1"),
+                Category("M8FCriticalResolution"), Category("M8EDeathConsequences"),
+                Category("M8DDefeatState"), Category("M8CRangedCombat"),
+                Category("M8BTurnBasedCombat"), Category("M8ACoreCombatState"),
+            },
+            new[]
+            {
+                "M8G Phase 4 Bow/Critical Dodge", "M8G Phase 3 cover/Bow Master",
+                "M8G Phase 2 structured attacks", "M8G Phase 1 combat loop",
+                "M8F critical resolution", "M8E death consequences", "M8D defeat state",
+                "M8C ranged combat", "M8B turn-based combat", "M8A core combat",
+            });
+    }
+
+    [MenuItem("OpenArcanum/M8H/Run Complete EditMode Tests")]
+    private static void RunM8HAll()
+        => Run(new Filter { testMode = TestMode.EditMode }, "M8H complete EditMode");
+
     [MenuItem("OpenArcanum/M8G Phase 2/Run M8A-M8G Phase 1 Combat Regression Tests")]
     private static void RunM8GPhase2CombatRegression()
     {

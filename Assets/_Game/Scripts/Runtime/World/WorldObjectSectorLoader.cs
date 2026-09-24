@@ -24,7 +24,8 @@ namespace Arcanum.Runtime.World
     /// It consumes real sector instances, resolves inherited prototype ART ids, and creates
     /// runtime <see cref="WorldObject"/> presentations. Terrain remains a separate owner.
     /// </summary>
-    public sealed class WorldObjectSectorLoader : MonoBehaviour, ISectorPresentationOwner
+    public sealed class WorldObjectSectorLoader : MonoBehaviour, ISectorPresentationOwner,
+        ICombatRealTimeTimingSource
     {
         private const string ObjectRootName = "WorldObjects";
         private const uint PortalWallIdentityMask = (0x1FFu << 19) | (7u << 11);
@@ -153,6 +154,90 @@ namespace Arcanum.Runtime.World
             authority.ObjectPlacementChanged += OnObjectPlacementChanged;
             authority.ObjectStateRemoved -= OnObjectStateRemoved;
             authority.ObjectStateRemoved += OnObjectStateRemoved;
+            authority.Combat.BindRealTimeTimingSource(this);
+        }
+
+        public bool TryGetTiming(CombatRealTimeTimingRequest request,
+            out CombatRealTimeTiming timing)
+        {
+            timing = default;
+            if (_vfs == null || _art == null
+                || !Session.TryGetLoadedObject(request.Actor, out WorldObject runtime)) return false;
+
+            const int walkAnimation = 1;
+            const int runAnimation = 6;
+            const int attackAnimation = 20;
+            const int unarmedWeaponArt = 1;
+            const int bowWeaponArt = 8;
+            int animation = request.Kind == CombatRealTimeActionKind.Move
+                ? request.Running ? runAnimation : walkAnimation
+                : attackAnimation;
+            uint artId = CritterArtResolver.WithAnimRotation(runtime.ArtId, animation,
+                CritterArtResolver.RotationOf(runtime.ArtId)) & ~(0x1Fu << 14);
+            if (request.Kind == CombatRealTimeActionKind.MeleeAttack)
+                artId = (artId & ~0xFu) | unarmedWeaponArt;
+            else if (request.Kind == CombatRealTimeActionKind.RangedAttack)
+                artId = (artId & ~0xFu) | bowWeaponArt;
+
+            string path = _art.Resolve(artId);
+            if (string.IsNullOrEmpty(path) || !_vfs.Exists(path)) return false;
+            ArtFile art;
+            try
+            {
+                art = ArtReader.Read(_vfs.ReadAllBytes(path));
+            }
+            catch
+            {
+                return false;
+            }
+            if (art.FramesPerRotation <= 0) return false;
+
+            int speed = Session.DerivedStats.GetDerivedStat(request.Actor,
+                CharacterDerivedStat.Speed);
+            bool smallBody = ArtId.Type(artId) == ArtId.TypeCritter
+                             && ((artId >> 24) & 7) is 1 or 2;
+            CombatRealTimeSourceTimingProfile profile = request.Kind switch
+            {
+                CombatRealTimeActionKind.Move when request.Running
+                    => CombatRealTimeSourceTimingProfile.Run,
+                CombatRealTimeActionKind.Move => CombatRealTimeSourceTimingProfile.Walk,
+                CombatRealTimeActionKind.RangedAttack => CombatRealTimeSourceTimingProfile.BowAttack,
+                _ => CombatRealTimeSourceTimingProfile.UnarmedAttack,
+            };
+            int effectiveFps = CombatRealTimeSourceTiming.AdjustedFramesPerSecond(profile,
+                speed, smallBody);
+            if (effectiveFps <= 0) effectiveFps = art.Fps > 0 ? art.Fps : 10;
+            int interval = CombatRealTimeSourceTiming.FrameIntervalMilliseconds(effectiveFps);
+
+            if (request.Kind == CombatRealTimeActionKind.Move)
+            {
+                int steps = Math.Max(1, request.RouteSteps);
+                int duration = checked(interval * art.FramesPerRotation * steps);
+                timing = new CombatRealTimeTiming(duration, duration, interval,
+                    art.FramesPerRotation, art.FramesPerRotation);
+                return true;
+            }
+
+            int weaponSpeed = 10;
+            if (request.Kind == CombatRealTimeActionKind.RangedAttack
+                && Session.TryGetEquippedItem(request.Actor, WornLocation.Weapon,
+                    out PersistentObjectState equipped)
+                && equipped.WeaponData != null)
+            {
+                weaponSpeed = equipped.WeaponData.SpeedFactor;
+                if (equipped.WeaponData.Skill == WeaponSkill.Bow
+                    && Session.Progression.GetTrainingLevel(request.Actor, CharacterSkill.Bow)
+                    >= SkillTrainingLevel.Apprentice)
+                    weaponSpeed += 5;
+            }
+            interval = CombatRealTimeSourceTiming.ApplyWeaponSpeed(interval, weaponSpeed);
+            int actionFrame = Math.Max(0, art.ActionFrame);
+            int effectDelay = checked(interval * actionFrame);
+            int readyDelay = checked(interval * art.FramesPerRotation);
+            readyDelay = Math.Max(effectDelay, readyDelay);
+            timing = new CombatRealTimeTiming(effectDelay, readyDelay, interval,
+                actionFrame, art.FramesPerRotation);
+            return true;
         }
 
         private void Start()
@@ -217,6 +302,7 @@ namespace Arcanum.Runtime.World
             ClearObjects();
             NavigationMap = navigationMap;
             Session.Combat.BindNavigationMap(NavigationMap);
+            Session.Combat.BindRealTimeTimingSource(this);
             Session.BeginSector(sectorPath);
             _registeredSector = sectorPath;
             LastNonPersistentIdentityCount = 0;
