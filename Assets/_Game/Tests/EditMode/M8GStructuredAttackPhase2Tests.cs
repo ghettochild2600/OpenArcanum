@@ -211,11 +211,13 @@ namespace Arcanum.Formats.Tests
                 CombatAttackModifierReason.ArmorClass,
                 CombatAttackModifierReason.MinimumStrength,
                 CombatAttackModifierReason.PerceptionRange,
+                CombatAttackModifierReason.Cover,
                 CombatAttackModifierReason.WeaponToHit,
                 CombatAttackModifierReason.CalledLocation,
             }));
             Assert.That(Entry(result, CombatAttackModifierReason.MinimumStrength).Value, Is.EqualTo(-10));
             Assert.That(Entry(result, CombatAttackModifierReason.PerceptionRange).Value, Is.Zero);
+            Assert.That(Entry(result, CombatAttackModifierReason.Cover).Value, Is.Zero);
             Assert.That(Entry(result, CombatAttackModifierReason.WeaponToHit).Value, Is.Zero);
             Assert.That(Entry(result, CombatAttackModifierReason.CalledLocation).Value, Is.EqualTo(-30));
             Assert.That(result.FinalEffectiveAttackValue, Is.EqualTo(result.Chance.AttackChance));

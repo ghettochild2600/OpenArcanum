@@ -53,6 +53,29 @@ internal sealed class M8ATestExecution : ScriptableObject, ICallbacks
     private static void RunM8GPhase2Focused()
         => Run(Category("M8GStructuredAttackPhase2"), "M8G Phase 2 focused EditMode");
 
+    [MenuItem("OpenArcanum/M8G Phase 3/Run Focused EditMode Tests")]
+    private static void RunM8GPhase3Focused()
+        => Run(Category("M8GCoverMasterPhase3"), "M8G Phase 3 focused EditMode");
+
+    [MenuItem("OpenArcanum/M8G Phase 3/Run Phase 1-2 and M8A-M8F Regression Tests")]
+    private static void RunM8GPhase3CombatRegression()
+    {
+        RunMany(
+            new[]
+            {
+                Category("M8GStructuredAttackPhase2"), Category("M8GCombatLoopPhase1"),
+                Category("M8FCriticalResolution"), Category("M8EDeathConsequences"),
+                Category("M8DDefeatState"), Category("M8CRangedCombat"),
+                Category("M8BTurnBasedCombat"), Category("M8ACoreCombatState"),
+            },
+            new[]
+            {
+                "M8G Phase 2 structured attacks", "M8G Phase 1 combat loop",
+                "M8F critical resolution", "M8E death consequences", "M8D defeat state",
+                "M8C ranged combat", "M8B turn-based combat", "M8A core combat",
+            });
+    }
+
     [MenuItem("OpenArcanum/M8G Phase 2/Run M8A-M8G Phase 1 Combat Regression Tests")]
     private static void RunM8GPhase2CombatRegression()
     {

@@ -8,6 +8,18 @@ using UnityEngine;
 
 namespace Arcanum.Runtime.World
 {
+    public readonly struct ProjectileTraversalResult
+    {
+        public bool IsBlocked { get; }
+        public int CoverPenalty { get; }
+
+        internal ProjectileTraversalResult(bool isBlocked, int coverPenalty)
+        {
+            IsBlocked = isBlocked;
+            CoverPenalty = coverPenalty;
+        }
+    }
+
     /// <summary>
     /// The navigable surface of one 64x64 Arcanum sector. Tile masks and terrain flags
     /// block destinations; walls and portals block the directional edge crossed by a step.
@@ -17,7 +29,9 @@ namespace Arcanum.Runtime.World
     {
         private const int Size = SectorTerrain.Size;
         private const int ObjectFlagNoBlock = 0x00000400;
+        private const int ObjectFlagSeeThrough = 0x00000010;
         private const int ObjectFlagShootThrough = 0x00000020;
+        private const int ObjectFlagProvidesCover = 0x00004000;
 
         private readonly bool[] _terrainBlocked = new bool[SectorTerrain.TileCount];
         private readonly int[] _objectBlockers = new int[SectorTerrain.TileCount];
@@ -25,6 +39,7 @@ namespace Arcanum.Runtime.World
         private readonly Dictionary<Vector2Int, List<WorldObject>> _edgeObjects = new();
         private readonly Dictionary<WorldObject, int> _sourceFlags = new();
         private readonly Dictionary<WorldObject, Vector2Int> _projectileObjects = new();
+        private readonly Dictionary<WorldObject, int> _projectileCoverObjects = new();
         private readonly Dictionary<ArcanumObjectId, Vector2Int> _ordinaryObjects = new();
         private readonly HashSet<ArcanumObjectId> _ordinaryBlockers = new();
         private ArcanumObjectId _controlledIdentity;
@@ -69,10 +84,16 @@ namespace Arcanum.Runtime.World
             if ((sourceFlags & ObjectFlagNoBlock) != 0) return;
             _objectBlockers[Index(obj.Tile.x, obj.Tile.y)]++;
             if (obj.Identity.IsPersistent) _ordinaryBlockers.Add(obj.Identity);
-            if (IsProjectileBlockingType(obj.Type) && (sourceFlags & ObjectFlagShootThrough) == 0)
+            if (!IsProjectileBlockingType(obj.Type)) return;
+            if ((sourceFlags & ObjectFlagShootThrough) == 0)
             {
                 _projectileBlockers[Index(obj.Tile.x, obj.Tile.y)]++;
                 _projectileObjects[obj] = obj.Tile;
+            }
+            else
+            {
+                int coverPenalty = CoverPenaltyForFlags(sourceFlags);
+                if (coverPenalty > 0) _projectileCoverObjects[obj] = coverPenalty;
             }
         }
 
@@ -92,6 +113,7 @@ namespace Arcanum.Runtime.World
             if (_projectileObjects.Remove(obj, out Vector2Int projectileTile))
                 _projectileBlockers[Index(projectileTile.x, projectileTile.y)] = Math.Max(0,
                     _projectileBlockers[Index(projectileTile.x, projectileTile.y)] - 1);
+            _projectileCoverObjects.Remove(obj);
             if (!_ordinaryObjects.Remove(obj.Identity)) return;
             if (_ordinaryBlockers.Remove(obj.Identity))
                 _objectBlockers[Index(obj.Tile.x, obj.Tile.y)] = Math.Max(0,
@@ -159,10 +181,12 @@ namespace Arcanum.Runtime.World
             return false;
         }
 
-        /// <summary>Source projectile traversal: hard blockers count, intervening critters do not.</summary>
-        public bool HasProjectileLineOfFire(Vector2Int source, Vector2Int target)
+        /// <summary>Source projectile traversal: hard blockers reject; shoot-through obstacles add cover.</summary>
+        public ProjectileTraversalResult GetProjectileTraversal(Vector2Int source, Vector2Int target)
         {
-            if (!Contains(source) || !Contains(target)) return false;
+            if (!Contains(source) || !Contains(target)) return new ProjectileTraversalResult(true, 0);
+            int coverPenalty = 0;
+            var countedCover = new HashSet<WorldObject>();
             int x = source.x;
             int y = source.y;
             int dx = Math.Abs(target.x - source.x);
@@ -179,43 +203,68 @@ namespace Arcanum.Runtime.World
                 if (twice < dx) { error += dx; nextY += sy; }
                 var from = new Vector2Int(x, y);
                 var to = new Vector2Int(nextX, nextY);
-                if (ProjectileEdgeBlocked(from, to) || _terrainBlocked[Index(to.x, to.y)]) return false;
-                if (to != target && _projectileBlockers[Index(to.x, to.y)] > 0) return false;
+                if (AccumulateProjectileEdge(from, to, countedCover, ref coverPenalty)
+                    || _terrainBlocked[Index(to.x, to.y)])
+                    return new ProjectileTraversalResult(true, 0);
+                if (to != target && _projectileBlockers[Index(to.x, to.y)] > 0)
+                    return new ProjectileTraversalResult(true, 0);
+                if (to != target)
+                    foreach (KeyValuePair<WorldObject, int> pair in _projectileCoverObjects)
+                        if (pair.Key != null && !pair.Key.Off && pair.Key.Tile == to && countedCover.Add(pair.Key))
+                            coverPenalty = checked(coverPenalty + pair.Value);
                 x = nextX;
                 y = nextY;
             }
-            return true;
+            return new ProjectileTraversalResult(false, coverPenalty);
         }
 
-        private bool ProjectileEdgeBlocked(Vector2Int from, Vector2Int to)
+        public bool HasProjectileLineOfFire(Vector2Int source, Vector2Int target)
+            => !GetProjectileTraversal(source, target).IsBlocked;
+
+        private bool AccumulateProjectileEdge(Vector2Int from, Vector2Int to,
+            HashSet<WorldObject> countedCover, ref int coverPenalty)
         {
             int dx = Math.Sign(to.x - from.x);
             int dy = Math.Sign(to.y - from.y);
             int rotation = IsoProjection.DirFromDelta(dx, dy);
-            if ((rotation & 1) != 0) return ProjectileBlocksAt(from, rotation)
-                                             || ProjectileBlocksAt(to, (rotation + 4) & 7);
+            if ((rotation & 1) != 0) return AccumulateProjectileAt(from, rotation,
+                                                 countedCover, ref coverPenalty)
+                                             || AccumulateProjectileAt(to, (rotation + 4) & 7,
+                                                 countedCover, ref coverPenalty);
             int ccw = (rotation + 7) & 7;
             int cw = (rotation + 1) & 7;
-            return ProjectileBlocksAt(from, ccw)
-                   || ProjectileBlocksAt(from + IsoProjection.DirDelta[ccw], cw)
-                   || ProjectileBlocksAt(from, cw)
-                   || ProjectileBlocksAt(from + IsoProjection.DirDelta[cw], ccw);
+            return AccumulateProjectileAt(from, ccw, countedCover, ref coverPenalty)
+                   || AccumulateProjectileAt(from + IsoProjection.DirDelta[ccw], cw,
+                       countedCover, ref coverPenalty)
+                   || AccumulateProjectileAt(from, cw, countedCover, ref coverPenalty)
+                   || AccumulateProjectileAt(from + IsoProjection.DirDelta[cw], ccw,
+                       countedCover, ref coverPenalty);
         }
 
-        private bool ProjectileBlocksAt(Vector2Int tile, int crossingRotation)
+        private bool AccumulateProjectileAt(Vector2Int tile, int crossingRotation,
+            HashSet<WorldObject> countedCover, ref int coverPenalty)
         {
             if (!_edgeObjects.TryGetValue(tile, out List<WorldObject> objects)) return false;
             foreach (WorldObject obj in objects)
             {
-                if (obj == null || obj.Off
-                    || _sourceFlags.TryGetValue(obj, out int flags) && (flags & ObjectFlagShootThrough) != 0)
-                    continue;
+                if (obj == null || obj.Off) continue;
                 int artRotation = CritterArtResolver.RotationOf(obj.ArtId);
                 if ((artRotation & 1) == 0) artRotation++;
                 if (artRotation != crossingRotation) continue;
-                if (obj.Type == ObjectType.Portal) return !obj.IsOpen;
-                int piece = (int)((obj.ArtId >> 14) & 0x3F);
-                if (!IsWallPassagePiece(piece)) return true;
+                if (obj.Type == ObjectType.Portal)
+                {
+                    if (obj.IsOpen) continue;
+                }
+                else
+                {
+                    int piece = (int)((obj.ArtId >> 14) & 0x3F);
+                    if (IsWallPassagePiece(piece)) continue;
+                }
+
+                _sourceFlags.TryGetValue(obj, out int flags);
+                if ((flags & ObjectFlagShootThrough) == 0) return true;
+                if (!countedCover.Add(obj)) continue;
+                coverPenalty = checked(coverPenalty + CoverPenaltyForFlags(flags));
             }
             return false;
         }
@@ -311,6 +360,13 @@ namespace Arcanum.Runtime.World
         private static bool IsProjectileBlockingType(ObjectType type)
             => type == ObjectType.Container || type == ObjectType.Scenery
                || type == ObjectType.Projectile || type == ObjectType.Trap;
+
+        private static int CoverPenaltyForFlags(int sourceFlags)
+        {
+            if ((sourceFlags & ObjectFlagShootThrough) == 0) return 0;
+            if ((sourceFlags & ObjectFlagSeeThrough) == 0) return 50;
+            return (sourceFlags & ObjectFlagProvidesCover) != 0 ? 20 : 0;
+        }
 
         private static int Index(int x, int y) => y * Size + x;
     }

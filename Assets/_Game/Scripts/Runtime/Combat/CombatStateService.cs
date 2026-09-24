@@ -107,6 +107,7 @@ namespace Arcanum.Runtime.Combat
         TargetDefense,
         WeaponRequirement,
         Distance,
+        Cover,
         Weapon,
         CalledLocation,
     }
@@ -118,6 +119,7 @@ namespace Arcanum.Runtime.Combat
         ArmorClass,
         MinimumStrength,
         PerceptionRange,
+        Cover,
         WeaponToHit,
         CalledLocation,
     }
@@ -883,10 +885,10 @@ namespace Arcanum.Runtime.Combat
         public CombatHitChance GetBasicRangedHitChance(ArcanumObjectId actor, ArcanumObjectId target,
             Weapon weapon, int distance)
             => BuildRangedHitChance(actor, target, weapon, distance,
-                CombatCalledLocation.None, out _);
+                0, CombatCalledLocation.None, out _);
 
         private CombatHitChance BuildRangedHitChance(ArcanumObjectId actor, ArcanumObjectId target,
-            Weapon weapon, int distance, CombatCalledLocation calledLocation,
+            Weapon weapon, int distance, int coverPenalty, CombatCalledLocation calledLocation,
             out CombatAttackModifierLedger ledger)
         {
             if (weapon == null) throw new ArgumentNullException(nameof(weapon));
@@ -903,8 +905,13 @@ namespace Arcanum.Runtime.Combat
                 ? checked(5 * (weapon.MinStrength - strength)) : 0;
             difficulty += strengthPenalty;
             int perception = _world.Characters.GetEffectiveAttribute(actor, CharacterAttribute.Perception);
-            int rangePenalty = checked(5 * Math.Max(0, distance - perception / 2));
+            int sourceRangePenalty = checked(5 * Math.Max(0, distance - perception / 2));
+            bool bowMaster = skill == CharacterSkill.Bow
+                             && _world.Progression.GetTrainingLevel(actor, CharacterSkill.Bow)
+                             == SkillTrainingLevel.Master;
+            int rangePenalty = bowMaster ? 0 : sourceRangePenalty;
             difficulty += rangePenalty;
+            difficulty += coverPenalty;
             difficulty -= weapon.BonusToHit;
             int armorDifficulty = effectiveness * (armorClass / 2) / 100;
             int calledPenalty = GetCalledLocationPenalty(calledLocation);
@@ -923,8 +930,11 @@ namespace Arcanum.Runtime.Combat
                     CombatAttackModifierReason.MinimumStrength, -strengthPenalty,
                     strengthPenalty > 0, sourceValue: weapon.MinStrength),
                 new CombatAttackModifier(CombatAttackModifierStage.Distance,
-                    CombatAttackModifierReason.PerceptionRange, -rangePenalty,
-                    rangePenalty > 0, sourceValue: distance),
+                    CombatAttackModifierReason.PerceptionRange, -sourceRangePenalty,
+                    sourceRangePenalty > 0, bowMaster && sourceRangePenalty > 0, sourceValue: distance),
+                new CombatAttackModifier(CombatAttackModifierStage.Cover,
+                    CombatAttackModifierReason.Cover, -coverPenalty,
+                    coverPenalty > 0, sourceValue: coverPenalty),
                 new CombatAttackModifier(CombatAttackModifierStage.Weapon,
                     CombatAttackModifierReason.WeaponToHit, weapon.BonusToHit,
                     weapon.BonusToHit != 0, sourceValue: weapon.BonusToHit),
@@ -955,7 +965,9 @@ namespace Arcanum.Runtime.Combat
             int distance = InteractionRangeRules.Distance(actorPosition, targetPosition);
             if (distance > weapon.Range) return AttackFailure(CombatFailure.OutOfRange, request);
             if (_navigationMap == null) return AttackFailure(CombatFailure.NavigationUnavailable, request);
-            if (!_navigationMap.HasProjectileLineOfFire(actorPosition, targetPosition))
+            ProjectileTraversalResult traversal = _navigationMap.GetProjectileTraversal(actorPosition,
+                targetPosition);
+            if (traversal.IsBlocked)
                 return AttackFailure(CombatFailure.LineOfFireBlocked, request);
             if (!_world.TryGetAmmo(actor, weapon.AmmoType, weapon.AmmoConsumption,
                     out PersistentObjectState ammo))
@@ -981,7 +993,7 @@ namespace Arcanum.Runtime.Combat
                 return AttackFailure(CombatFailure.UnsupportedDamageProfile, request);
 
             CombatHitChance chance = BuildRangedHitChance(actor, target, weapon, distance,
-                request.CalledLocation, out CombatAttackModifierLedger modifiers);
+                traversal.CoverPenalty, request.CalledLocation, out CombatAttackModifierLedger modifiers);
             int ammoBefore = ammo.StackQuantity.Value;
 
             int attackRoll = _random.NextInclusive(1, 100);

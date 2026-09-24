@@ -17,6 +17,7 @@ internal static class M8FCriticalValidation
     private const string EquipmentSector = "maps/arcanum1-024-fixed/101602821844.sec";
     private const string BearSector = "maps/arcanum1-024-fixed/47781512457.sec";
     private const string SkeletonSector = "maps/arcanum1-024-fixed/59726889458.sec";
+    private const string CoverSector = "maps/arcanum1-024-fixed/101535712980.sec";
     private const int OnfKos = 0x00000100;
     private const int OcfAnimal = 0x00008000;
     private const int BearPrototype = 28422;
@@ -29,6 +30,10 @@ internal static class M8FCriticalValidation
     private static readonly ArcanumObjectId Skeleton = Parse("G_5ADE34A3_86FB_7A40_98C0_DDEB6335E848");
     private static readonly ArcanumObjectId Master = ArcanumObjectId.CreateGuid(
         Guid.Parse("f8f8f8f8-f8f8-f8f8-f8f8-f8f8f8f8f8f8"));
+    private static readonly ArcanumObjectId BowMaster = ArcanumObjectId.CreateGuid(
+        Guid.Parse("f6f6f6f6-f6f6-f6f6-f6f6-f6f6f6f6f6f6"));
+    private static readonly ArcanumObjectId CoverTarget = ArcanumObjectId.CreateGuid(
+        Guid.Parse("f5f5f5f5-f5f5-f5f5-f5f5-f5f5f5f5f5f5"));
     private static readonly ArcanumObjectId ArmoredTarget = ArcanumObjectId.CreateGuid(
         Guid.Parse("f7f7f7f7-f7f7-f7f7-f7f7-f7f7f7f7f7f7"));
 
@@ -54,6 +59,178 @@ internal static class M8FCriticalValidation
         WorldObjectSectorLoader loader = Object.FindFirstObjectByType<WorldObjectSectorLoader>()
                                          ?? throw new InvalidOperationException("TestTerrain has no world-object loader.");
         loader.StartCoroutine(ValidateStructuredAttacks(loader));
+    }
+
+    [MenuItem("OpenArcanum/M8G Phase 3/Run Physical PlayMode Validation")]
+    private static void RunCoverMasterValidation()
+    {
+        if (!Application.isPlaying || _running)
+            throw new InvalidOperationException("Enter TestTerrain Play mode; run only one M8G Phase 3 harness.");
+        WorldObjectSectorLoader loader = Object.FindFirstObjectByType<WorldObjectSectorLoader>()
+                                         ?? throw new InvalidOperationException("TestTerrain has no world-object loader.");
+        loader.StartCoroutine(ValidateCoverAndBowMaster(loader));
+    }
+
+    private static IEnumerator ValidateCoverAndBowMaster(WorldObjectSectorLoader loader)
+    {
+        _running = true;
+        _warnings = _errors = 0;
+        Application.logMessageReceived += Track;
+        WorldMapSessionCoordinator session = loader.Session;
+        try
+        {
+            session.ResetAuthoritativeSession();
+            yield return null;
+            Check(session.SelectSector(EquipmentSector), "Phase 3 authentic bow/ammo sector loads");
+            yield return null;
+            Refresh(out loader, out ProductionPlayerLifecycle lifecycle);
+            if (lifecycle.Presentation == null) Check(lifecycle.SpawnAndBind(), "Phase 3 production PC binds");
+            ArcanumObjectId pc = session.PlayerState.Identity;
+            PersistentObjectState bow = Require(session, Bow, ObjectType.Weapon, 6055);
+            PersistentObjectState arrows = Require(session, Arrows, ObjectType.Ammo, 7058);
+            MoveOwnedItem(session, bow, pc);
+            MoveOwnedItem(session, arrows, pc);
+            Check(session.EquipItem(pc, Bow, WornLocation.Weapon).Succeeded,
+                "authentic bow equips through production inventory authority");
+
+            Check(session.SelectSector(BearSector), "Phase 3 authentic Polar Bear Cub sector loads");
+            yield return null;
+            Refresh(out loader, out lifecycle);
+            if (lifecycle.Presentation == null) Check(lifecycle.SpawnAndBind(), "Phase 3 production PC rebinds");
+            WorldObject pcRuntime = lifecycle.Presentation;
+            Require(session, Bear, ObjectType.Npc, BearPrototype);
+            Check(session.TryGetLoadedObject(Bear, out WorldObject bearRuntime),
+                "Phase 3 Polar Bear Cub has one production presentation");
+
+            Vector2Int clearSource = FindClearRangedTile(loader.NavigationMap, bearRuntime.Tile, 3, 8);
+            MoveActor(session, loader, pc, pcRuntime, clearSource);
+            Check(session.Combat.StartCombat(pc, Bear).Succeeded, "clear Bow-shot combat starts");
+            AdvanceTo(session, pc);
+            session.Combat.SetRandomSource(new SequenceRandom(100, 100));
+            CombatAttackResult clear = session.Combat.Attack(new CombatAttackRequest(
+                pc, Bear, CombatAttackMode.BasicRanged));
+            CombatAttackModifier clearCover = clear.ModifierLedger.Entries.Single(value =>
+                value.Reason == CombatAttackModifierReason.Cover);
+            Check(clear.Succeeded && clearCover.Value == 0 && !clearCover.Applied,
+                "clear authentic Bow shot is legal and records no cover contribution");
+            EndStructuredCombat(session, pc);
+
+            FindBlockedPair(loader.NavigationMap, out Vector2Int blockedSource,
+                out Vector2Int blockedTarget);
+            MoveActor(session, loader, Bear, bearRuntime, blockedTarget);
+            MoveActor(session, loader, pc, pcRuntime, blockedSource);
+            Check(session.Combat.StartCombat(pc, Bear).Succeeded, "hard-blocked Bow-shot combat starts");
+            AdvanceTo(session, pc);
+            int blockedAp = session.Combat.CurrentActionPoints;
+            int blockedAmmo = arrows.StackQuantity.Value;
+            int blockedHp = session.Vitality.GetCurrentHitPoints(Bear);
+            ArcanumObjectId blockedTurn = session.Combat.CurrentParticipant;
+            CombatAttackResult blocked = session.Combat.Attack(new CombatAttackRequest(
+                pc, Bear, CombatAttackMode.BasicRanged));
+            Check(blocked.Failure == CombatFailure.LineOfFireBlocked
+                  && session.Combat.CurrentActionPoints == blockedAp
+                  && arrows.StackQuantity == blockedAmmo
+                  && session.Vitality.GetCurrentHitPoints(Bear) == blockedHp
+                  && session.Combat.CurrentParticipant == blockedTurn,
+                "authentic hard line-of-fire rejects before AP, ammo, vitality, or turn mutation");
+            EndStructuredCombat(session, pc);
+
+            ArcanumObjectId coveredTargetIdentity = Bear;
+            WorldObject coveredTargetRuntime = bearRuntime;
+            if (!TryFindCoverPair(loader, out WorldObject coverFixture, out Vector2Int coverSource,
+                    out Vector2Int coverTarget, out int expectedCover))
+            {
+                Check(session.SelectSector(CoverSector),
+                    "Phase 3 audited authentic cover sector loads");
+                yield return null;
+                Refresh(out loader, out lifecycle);
+                if (lifecycle.Presentation == null)
+                    Check(lifecycle.SpawnAndBind(), "Phase 3 production PC rebinds in cover sector");
+                pcRuntime = lifecycle.Presentation;
+                Check(TryFindCoverPair(loader, out coverFixture, out coverSource,
+                        out coverTarget, out expectedCover),
+                    "audited source-flagged sector exposes traversable numeric cover");
+                coveredTargetIdentity = CoverTarget;
+                coveredTargetRuntime = RegisterCoverTarget(session, loader, coverTarget);
+            }
+            MoveActor(session, loader, coveredTargetIdentity, coveredTargetRuntime, coverTarget);
+            MoveActor(session, loader, pc, pcRuntime, coverSource);
+            Check(session.Combat.StartCombat(pc, coveredTargetIdentity).Succeeded,
+                "numeric-cover Bow-shot combat starts");
+            AdvanceTo(session, pc);
+            session.Combat.SetRandomSource(new SequenceRandom(100, 100));
+            CombatAttackResult covered = session.Combat.Attack(new CombatAttackRequest(
+                pc, coveredTargetIdentity, CombatAttackMode.BasicRanged));
+            CombatAttackModifier cover = covered.ModifierLedger.Entries.Single(value =>
+                value.Reason == CombatAttackModifierReason.Cover);
+            Check(covered.Succeeded && cover.Value == -expectedCover && cover.Applied
+                  && cover.SourceValue == expectedCover
+                  && covered.ModifierLedger.Entries.Count(value =>
+                      value.Reason == CombatAttackModifierReason.Cover) == 1
+                  && covered.FinalEffectiveAttackValue == covered.Chance.AttackChance,
+                $"authentic {coverFixture.Type}/{coverFixture.PrototypeNumber} cover contributes "
+                + $"exactly once at -{expectedCover} in the authoritative ledger");
+            EndStructuredCombat(session, pc);
+
+            if (session.SelectedSector != BearSector)
+            {
+                Check(session.SelectSector(BearSector),
+                    "Phase 3 returns to the authentic Polar Bear Cub sector");
+                yield return null;
+                Refresh(out loader, out lifecycle);
+                if (lifecycle.Presentation == null)
+                    Check(lifecycle.SpawnAndBind(), "Phase 3 production PC rebinds after cover proof");
+                pcRuntime = lifecycle.Presentation;
+                Check(session.TryGetLoadedObject(Bear, out bearRuntime),
+                    "Phase 3 Polar Bear Cub presentation is restored");
+            }
+
+            Check(session.UnequipItem(pc, WornLocation.Weapon).Succeeded,
+                "authentic bow unequips before source-derived Bow Master transfer");
+            Vector2Int masterTarget = bearRuntime.Tile;
+            Vector2Int masterTile = FindClearRangedTile(loader.NavigationMap, masterTarget, 5, 8);
+            WorldObject masterRuntime = RegisterBowMaster(session, loader, masterTile);
+            MoveOwnedItem(session, bow, BowMaster);
+            MoveOwnedItem(session, arrows, BowMaster);
+            Check(session.Progression.GetTrainingLevel(BowMaster, CharacterSkill.Bow)
+                  == SkillTrainingLevel.Master,
+                "validation actor resolves source-derived Master Bow training");
+            Check(session.EquipItem(BowMaster, Bow, WornLocation.Weapon).Succeeded,
+                "source-derived Bow Master equips the authentic production bow");
+            Check(session.Combat.StartCombat(pc, BowMaster).Succeeded,
+                "Bow Master representative combat starts");
+            if (session.Combat.Participants.All(value => value.Identity != Bear))
+                Check(session.Combat.RegisterParticipant(Bear).Succeeded,
+                    "authentic Polar Bear Cub joins the Bow Master proof");
+            AdvanceTo(session, BowMaster);
+            session.Combat.SetRandomSource(new SequenceRandom(100, 100));
+            CombatAttackResult mastered = session.Combat.Attack(new CombatAttackRequest(
+                BowMaster, Bear, CombatAttackMode.BasicRanged, CombatCalledLocation.Arm));
+            CombatAttackModifier masterRange = mastered.ModifierLedger.Entries.Single(value =>
+                value.Reason == CombatAttackModifierReason.PerceptionRange);
+            CombatAttackModifier masterLocation = mastered.ModifierLedger.Entries.Single(value =>
+                value.Reason == CombatAttackModifierReason.CalledLocation);
+            Check(mastered.Succeeded && masterRange.Value < 0 && masterRange.Applied
+                  && masterRange.Suppressed && masterLocation.Value == -30
+                  && masterLocation.Applied && !masterLocation.Suppressed,
+                "source-derived Bow Master suppresses only range while called-location remains");
+            EndStructuredCombat(session, pc);
+            Object.Destroy(masterRuntime.gameObject);
+
+            Application.logMessageReceived -= Track;
+            Check(_warnings == 0 && _errors == 0, $"warnings={_warnings}; errors={_errors}");
+            Debug.Log("M8G PHASE 3 PLAYMODE VALIDATION PASS: clearBow=legal+cover0; "
+                      + "hardBlock=LineOfFireBlocked+zeroMutation; "
+                      + $"numericCover={expectedCover}+singleLedgerEntry; "
+                      + "bowMaster=rangeSuppressed+calledArmRetained; fixtures=authenticBow+arrows+bear+cover; "
+                      + $"warnings={_warnings}; errors={_errors}.");
+        }
+        finally
+        {
+            session.Combat.ResetRandomSource();
+            Application.logMessageReceived -= Track;
+            _running = false;
+        }
     }
 
     private static IEnumerator ValidateStructuredAttacks(WorldObjectSectorLoader loader)
@@ -583,6 +760,69 @@ internal static class M8FCriticalValidation
         return runtime;
     }
 
+    private static WorldObject RegisterBowMaster(WorldMapSessionCoordinator session,
+        WorldObjectSectorLoader loader, Vector2Int tile)
+    {
+        int[] stats = (int[])BearStats.Clone();
+        stats[1] = 20;
+        stats[CharacterProgressionSource.LevelSourceSlot] = 30;
+        var basicSkills = new int[CharacterSkillRules.BasicSkillCount];
+        basicSkills[(int)CharacterSkill.Bow] = 5 | ((int)SkillTrainingLevel.Master << 6);
+        var source = new ObjectInstance(ObjectType.Npc, BearPrototype, Location(tile.x, tile.y),
+            0x28100000u, 0, 0, oid: GuidBytes(BowMaster));
+        PersistentObjectState state = session.GetOrCreate(source, BearSector, source.CurrentArtId.Value,
+            false, false);
+        session.Characters.GetOrCreateSourceCharacter(BowMaster, ObjectType.Npc, BearPrototype, stats, null);
+        session.Progression.GetOrCreateSourceCharacter(BowMaster, ObjectType.Npc, BearPrototype,
+            CharacterProgressionSource.Resolve(stats, null, basicSkills, null, null, null, 0));
+        session.DerivedStats.GetOrCreateSourceCharacter(BowMaster, ObjectType.Npc, BearPrototype,
+            CharacterDerivedSource.Resolve(stats, null, null, 0, new int[5], null, null, 50,
+                OnfKos, 0));
+        session.Vitality.GetOrCreateSourceCharacter(BowMaster, ObjectType.Npc, BearPrototype,
+            CharacterVitalitySource.Resolve(stats, null, null, 0, null, 15, null, 0,
+                null, 0, null, 0, null, 0));
+        var go = new GameObject("M8G Phase 3 Bow Master validation actor");
+        WorldObject runtime = go.AddComponent<WorldObject>();
+        runtime.Type = ObjectType.Npc;
+        runtime.Tile = tile;
+        runtime.TilePosition = tile;
+        session.Bind(BearSector, state, runtime);
+        session.Combat.RegisterActorSource(new CombatActorSource(BowMaster, ObjectType.Npc,
+            BearPrototype, BearSector, 10, OnfKos, 0, 0, BearDamage));
+        loader.NavigationMap.Register(runtime, 0);
+        return runtime;
+    }
+
+    private static WorldObject RegisterCoverTarget(WorldMapSessionCoordinator session,
+        WorldObjectSectorLoader loader, Vector2Int tile)
+    {
+        string sector = session.SelectedSector;
+        int[] stats = (int[])BearStats.Clone();
+        var source = new ObjectInstance(ObjectType.Npc, BearPrototype, Location(tile.x, tile.y),
+            0x28100000u, 0, 0, oid: GuidBytes(CoverTarget));
+        PersistentObjectState state = session.GetOrCreate(source, sector, source.CurrentArtId.Value,
+            false, false);
+        session.Characters.GetOrCreateSourceCharacter(CoverTarget, ObjectType.Npc, BearPrototype, stats, null);
+        session.Progression.GetOrCreateSourceCharacter(CoverTarget, ObjectType.Npc, BearPrototype,
+            CharacterProgressionSource.Resolve(stats, null, null, null, null, null, OcfAnimal));
+        session.DerivedStats.GetOrCreateSourceCharacter(CoverTarget, ObjectType.Npc, BearPrototype,
+            CharacterDerivedSource.Resolve(stats, null, null, 0, new int[5], null, null, 50,
+                OnfKos, OcfAnimal));
+        session.Vitality.GetOrCreateSourceCharacter(CoverTarget, ObjectType.Npc, BearPrototype,
+            CharacterVitalitySource.Resolve(stats, null, null, 0, null, 15, null, 0,
+                null, 0, null, 0, null, 0));
+        var go = new GameObject("M8G Phase 3 cover validation target");
+        WorldObject runtime = go.AddComponent<WorldObject>();
+        runtime.Type = ObjectType.Npc;
+        runtime.Tile = tile;
+        runtime.TilePosition = tile;
+        session.Bind(sector, state, runtime);
+        session.Combat.RegisterActorSource(new CombatActorSource(CoverTarget, ObjectType.Npc,
+            BearPrototype, sector, 10, OnfKos, OcfAnimal, 0, BearDamage));
+        loader.NavigationMap.Register(runtime, 0);
+        return runtime;
+    }
+
     private static WorldObject RegisterArmoredTarget(WorldMapSessionCoordinator session,
         WorldObjectSectorLoader loader, Vector2Int masterTile, Vector2Int tile)
     {
@@ -687,10 +927,93 @@ internal static class M8FCriticalValidation
         for (int x = Math.Max(0, target.x - distance); x <= Math.Min(63, target.x + distance); x++)
         {
             var candidate = new Vector2Int(x, y);
+            ProjectileTraversalResult traversal = map.GetProjectileTraversal(candidate, target);
             if (InteractionRangeRules.Distance(candidate, target) == distance && map.IsWalkable(candidate)
-                && map.HasProjectileLineOfFire(candidate, target)) return candidate;
+                && !traversal.IsBlocked && traversal.CoverPenalty == 0) return candidate;
         }
         throw new InvalidOperationException("M8F validation FAIL: no clear ranged tile.");
+    }
+
+    private static void FindBlockedPair(SectorNavigationMap map,
+        out Vector2Int source, out Vector2Int target)
+    {
+        for (int targetY = 0; targetY < 64; targetY++)
+        for (int targetX = 0; targetX < 64; targetX++)
+        {
+            var candidateTarget = new Vector2Int(targetX, targetY);
+            if (!map.IsWalkable(candidateTarget)) continue;
+            for (int distance = 2; distance <= 15; distance++)
+            for (int sourceY = Math.Max(0, targetY - distance);
+                 sourceY <= Math.Min(63, targetY + distance); sourceY++)
+            for (int sourceX = Math.Max(0, targetX - distance);
+                 sourceX <= Math.Min(63, targetX + distance); sourceX++)
+            {
+                var candidateSource = new Vector2Int(sourceX, sourceY);
+                if (InteractionRangeRules.Distance(candidateSource, candidateTarget) != distance
+                    || !map.IsWalkable(candidateSource)
+                    || !map.GetProjectileTraversal(candidateSource, candidateTarget).IsBlocked) continue;
+                source = candidateSource;
+                target = candidateTarget;
+                return;
+            }
+        }
+        throw new InvalidOperationException("M8G Phase 3 validation FAIL: no authentic blocked LOS pair.");
+    }
+
+    private static bool TryFindCoverPair(WorldObjectSectorLoader loader, out WorldObject fixture,
+        out Vector2Int source, out Vector2Int target, out int coverPenalty)
+    {
+        var directions = new List<Vector2Int>();
+        for (int dy = -4; dy <= 4; dy++)
+        for (int dx = 0; dx <= 4; dx++)
+        {
+            if (dx == 0 && dy <= 0 || dx == 0 && dy == 0) continue;
+            int divisor = GreatestCommonDivisor(Math.Abs(dx), Math.Abs(dy));
+            if (divisor == 1) directions.Add(new Vector2Int(dx, dy));
+        }
+        foreach (WorldObject candidate in loader.SpriteOwners
+                     .Where(value => value?.WorldObject != null)
+                     .Select(value => value.WorldObject)
+                     .Where(value => !value.Off && value.Type is ObjectType.Container
+                         or ObjectType.Scenery or ObjectType.Projectile or ObjectType.Trap
+                         or ObjectType.Wall or ObjectType.Portal)
+                     .OrderBy(value => value.Identity.Key, StringComparer.Ordinal))
+        foreach (Vector2Int direction in directions)
+        for (int before = 1; before <= 7; before++)
+        for (int after = 1; after <= 7; after++)
+        {
+            Vector2Int candidateSource = candidate.Tile - direction * before;
+            Vector2Int candidateTarget = candidate.Tile + direction * after;
+            if (!loader.NavigationMap.Contains(candidateSource)
+                || !loader.NavigationMap.Contains(candidateTarget)
+                || !loader.NavigationMap.IsWalkable(candidateSource)
+                || !loader.NavigationMap.IsWalkable(candidateTarget)
+                || InteractionRangeRules.Distance(candidateSource, candidateTarget) > 15) continue;
+            ProjectileTraversalResult traversal = loader.NavigationMap.GetProjectileTraversal(
+                candidateSource, candidateTarget);
+            if (traversal.IsBlocked || traversal.CoverPenalty <= 0) continue;
+            fixture = candidate;
+            source = candidateSource;
+            target = candidateTarget;
+            coverPenalty = traversal.CoverPenalty;
+            return true;
+        }
+        fixture = null;
+        source = default;
+        target = default;
+        coverPenalty = 0;
+        return false;
+    }
+
+    private static int GreatestCommonDivisor(int left, int right)
+    {
+        while (right != 0)
+        {
+            int remainder = left % right;
+            left = right;
+            right = remainder;
+        }
+        return left;
     }
 
     private static PersistentObjectState Require(WorldMapSessionCoordinator session,
