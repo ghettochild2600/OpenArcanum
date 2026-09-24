@@ -319,6 +319,22 @@ namespace Arcanum.Runtime.Combat
         }
     }
 
+    /// <summary>Authoritative source-time increment emitted once after a completed turn-based round.</summary>
+    public readonly struct CombatRoundBoundary
+    {
+        public int CompletedRoundNumber { get; }
+        public int ElapsedMilliseconds { get; }
+        public long TotalElapsedMilliseconds { get; }
+
+        internal CombatRoundBoundary(int completedRoundNumber, int elapsedMilliseconds,
+            long totalElapsedMilliseconds)
+        {
+            CompletedRoundNumber = completedRoundNumber;
+            ElapsedMilliseconds = elapsedMilliseconds;
+            TotalElapsedMilliseconds = totalElapsedMilliseconds;
+        }
+    }
+
     /// <summary>
     /// Session-owned M8A combat state. It owns only transient participants, order, current turn and AP;
     /// character HP/fatigue remain authoritative in <see cref="CharacterVitalityService"/>.
@@ -328,6 +344,7 @@ namespace Arcanum.Runtime.Combat
         public const int UnarmedAttackActionPointCost = 5;
         public const int WalkingActionPointCostPerStep = 2;
         public const int RunningActionPointCostPerStep = 1;
+        public const int RoundBoundaryMilliseconds = 1000;
 
         internal const int OnfKos = 0x00000100;
         internal const int OnfNoAttack = 0x20000000;
@@ -339,6 +356,7 @@ namespace Arcanum.Runtime.Combat
         private readonly WorldMapSessionCoordinator _world;
         private readonly Dictionary<ArcanumObjectId, CombatActorSource> _sources = new();
         private readonly List<CombatParticipant> _participants = new();
+        private readonly HashSet<ArcanumObjectId> _engaged = new();
         private readonly DeterministicTilePathfinder _pathfinder = new();
         private readonly List<Vector2Int> _route = new();
         private SectorNavigationMap _navigationMap;
@@ -348,10 +366,13 @@ namespace Arcanum.Runtime.Combat
         public CombatMode Mode { get; private set; } = CombatMode.TurnBased;
         public bool IsActive => Lifecycle == CombatLifecycle.Active;
         public IReadOnlyList<CombatParticipant> Participants => _participants;
+        public IReadOnlyCollection<ArcanumObjectId> EngagedParticipants => _engaged;
         public ArcanumObjectId CurrentParticipant { get; private set; }
         public int RoundNumber { get; private set; }
+        public long ElapsedCombatTimeMilliseconds { get; private set; }
         public int CurrentActionPoints { get; private set; }
         public int MaximumActionPoints { get; private set; }
+        public event Action<CombatRoundBoundary> RoundCompleted;
 
         public CombatStateService(WorldMapSessionCoordinator world)
         {
@@ -415,11 +436,14 @@ namespace Arcanum.Runtime.Combat
                 new(targetSource),
                 new(actorSource),
             };
+            var pendingEngagement = new HashSet<ArcanumObjectId> { actor, target };
+            DiscoverNearbyHostiles(actor, pending, pendingEngagement);
             SortSourceOrder(pending);
 
             Lifecycle = CombatLifecycle.Starting;
             _world.Dialogue.Cancel("Combat started.");
             _participants.AddRange(pending);
+            _engaged.UnionWith(pendingEngagement);
             Mode = mode;
             RoundNumber = 1;
             BeginParticipantTurn(_participants[0].Identity, requireActive: false);
@@ -436,9 +460,34 @@ namespace Arcanum.Runtime.Combat
                 return Fail(CombatFailure.TargetNotFound);
             if (!IsEligible(source)) return Fail(CombatFailure.ParticipantUnavailable);
             _participants.Add(new CombatParticipant(source));
+            _engaged.Add(identity);
             SortSourceOrder(_participants);
             return Success();
         }
+
+        /// <summary>
+        /// Enrolls a loaded, active source-hostile NPC in the current encounter exactly once.
+        /// Later AI may call this authority without owning the participant roster.
+        /// </summary>
+        public CombatResult EngageParticipant(ArcanumObjectId identity)
+        {
+            if (!IsActive) return Fail(CombatFailure.Inactive);
+            if (!_sources.TryGetValue(identity, out CombatActorSource source))
+                return Fail(CombatFailure.TargetNotFound);
+            if (source.ObjectType != ObjectType.Npc) return Fail(CombatFailure.InvalidTarget);
+            if (!IsSourceHostile(source)) return Fail(CombatFailure.TargetNotHostile);
+            if (!IsEligible(source)) return Fail(CombatFailure.ParticipantUnavailable);
+            if (_engaged.Contains(identity)) return Fail(CombatFailure.AlreadyRegistered);
+            _engaged.Add(identity);
+            if (_participants.All(value => value.Identity != identity))
+            {
+                _participants.Add(new CombatParticipant(source));
+                SortSourceOrder(_participants);
+            }
+            return Success();
+        }
+
+        public bool IsParticipantEngaged(ArcanumObjectId identity) => _engaged.Contains(identity);
 
         public CombatResult RemoveParticipant(ArcanumObjectId identity)
         {
@@ -447,6 +496,7 @@ namespace Arcanum.Runtime.Combat
             if (index < 0) return Fail(CombatFailure.ParticipantNotRegistered);
             bool wasCurrent = CurrentParticipant == identity;
             _participants.RemoveAt(index);
+            _engaged.Remove(identity);
             if (_participants.Count == 0)
             {
                 ClearTransient();
@@ -827,7 +877,8 @@ namespace Arcanum.Runtime.Combat
             foreach (CombatParticipant participant in _participants)
             {
                 if (participant.Identity == actor || participant.ObjectType != ObjectType.Npc) continue;
-                if (_sources.TryGetValue(participant.Identity, out CombatActorSource source)
+                if (_engaged.Contains(participant.Identity)
+                    && _sources.TryGetValue(participant.Identity, out CombatActorSource source)
                     && IsSourceHostile(source) && IsEligible(source))
                     return Fail(CombatFailure.HostileParticipantActive);
             }
@@ -992,19 +1043,16 @@ namespace Arcanum.Runtime.Combat
         {
             int current = _participants.FindIndex(value => value.Identity == actor);
             if (current < 0 || _participants.Count == 0) return;
-            for (int offset = 1; offset <= _participants.Count; offset++)
+            for (int next = current + 1; next < _participants.Count; next++)
             {
-                int absolute = current + offset;
-                int next = absolute % _participants.Count;
                 CombatParticipant candidate = _participants[next];
                 if (_sources.TryGetValue(candidate.Identity, out CombatActorSource source) && IsEligible(source))
                 {
-                    if (absolute >= _participants.Count) RoundNumber++;
                     BeginParticipantTurn(candidate.Identity, requireActive: false);
                     return;
                 }
             }
-            ClearTransient();
+            CompleteRoundAndBeginNext();
         }
 
         private bool TryValidateActor(ArcanumObjectId identity, out CombatActorSource source,
@@ -1084,6 +1132,7 @@ namespace Arcanum.Runtime.Combat
             {
                 bool wasCurrent = CurrentParticipant == change.Identity;
                 _participants.RemoveAt(index);
+                _engaged.Remove(change.Identity);
                 if (_participants.Count == 0)
                 {
                     ClearTransient();
@@ -1112,17 +1161,69 @@ namespace Arcanum.Runtime.Combat
 
         private void BeginNextEligibleFromRemovedIndex(int removedIndex)
         {
-            for (int offset = 0; offset < _participants.Count; offset++)
+            for (int index = removedIndex; index < _participants.Count; index++)
             {
-                int index = (removedIndex + offset) % _participants.Count;
                 CombatParticipant candidate = _participants[index];
                 if (!_sources.TryGetValue(candidate.Identity, out CombatActorSource source) || !IsEligible(source))
                     continue;
-                if (removedIndex + offset >= _participants.Count) RoundNumber++;
                 BeginParticipantTurn(candidate.Identity, requireActive: false);
                 return;
             }
+            CompleteRoundAndBeginNext();
+        }
+
+        private void CompleteRoundAndBeginNext()
+        {
+            if (!IsActive || _participants.Count == 0)
+            {
+                ClearTransient();
+                return;
+            }
+
+            int completedRound = RoundNumber;
+            ElapsedCombatTimeMilliseconds = checked(ElapsedCombatTimeMilliseconds
+                                                    + RoundBoundaryMilliseconds);
+            RoundCompleted?.Invoke(new CombatRoundBoundary(completedRound,
+                RoundBoundaryMilliseconds, ElapsedCombatTimeMilliseconds));
+            if (!IsActive) return;
+
+            RoundNumber = checked(RoundNumber + 1);
+            DiscoverNearbyHostiles();
+            foreach (CombatParticipant candidate in _participants)
+            {
+                if (_sources.TryGetValue(candidate.Identity, out CombatActorSource source) && IsEligible(source))
+                {
+                    BeginParticipantTurn(candidate.Identity, requireActive: false);
+                    return;
+                }
+            }
             ClearTransient();
+        }
+
+        private void DiscoverNearbyHostiles()
+        {
+            if (_world.PlayerState == null) return;
+            DiscoverNearbyHostiles(_world.PlayerState.Identity, _participants, _engaged);
+            SortSourceOrder(_participants);
+        }
+
+        private void DiscoverNearbyHostiles(ArcanumObjectId pc, List<CombatParticipant> participants,
+            HashSet<ArcanumObjectId> engaged)
+        {
+            if (!TryGetCombatPosition(pc, out Vector2Int pcPosition)) return;
+            int perception = _world.Characters.GetEffectiveAttribute(pc, CharacterAttribute.Perception);
+            int range = Math.Max(10, perception / 2 + 5);
+            foreach (CombatActorSource source in _sources.Values)
+            {
+                if (source.ObjectType != ObjectType.Npc || !IsSourceHostile(source) || !IsEligible(source)
+                    || !TryGetCombatPosition(source.Identity, out Vector2Int position)
+                    || Math.Abs(position.x - pcPosition.x) > range
+                    || Math.Abs(position.y - pcPosition.y) > range)
+                    continue;
+                engaged.Add(source.Identity);
+                if (participants.All(value => value.Identity != source.Identity))
+                    participants.Add(new CombatParticipant(source));
+            }
         }
 
         private static bool IsSourceHostile(CombatActorSource source)
@@ -1141,8 +1242,10 @@ namespace Arcanum.Runtime.Combat
         private void ClearTransient()
         {
             _participants.Clear();
+            _engaged.Clear();
             CurrentParticipant = default;
             RoundNumber = 0;
+            ElapsedCombatTimeMilliseconds = 0;
             CurrentActionPoints = 0;
             MaximumActionPoints = 0;
             Mode = CombatMode.TurnBased;

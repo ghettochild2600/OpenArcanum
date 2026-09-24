@@ -145,7 +145,13 @@ namespace Arcanum.Formats.Tests
             _session.Vitality.ApplyHitPointDamage(scripted,
                 _session.Vitality.GetCurrentHitPoints(scripted) - 1);
             Assert.That(_session.Combat.StartCombat(_pc.Identity, scripted).Succeeded, Is.True);
-            Assert.That(_session.Combat.EndCurrentTurn(scripted).Succeeded, Is.True);
+            int turnGuard = _session.Combat.Participants.Count;
+            while (_session.Combat.CurrentParticipant != _pc.Identity && turnGuard-- > 0)
+            {
+                Assert.That(_session.Combat.EndCurrentTurn(
+                    _session.Combat.CurrentParticipant).Succeeded, Is.True);
+            }
+            Assert.That(_session.Combat.CurrentParticipant, Is.EqualTo(_pc.Identity));
             int actionPoints = _session.Combat.CurrentActionPoints;
             _session.Combat.SetRandomSource(new SequenceRandom(1, 100, 4, 4));
 
