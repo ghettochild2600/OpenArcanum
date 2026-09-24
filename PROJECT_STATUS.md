@@ -20,7 +20,8 @@ player-facing manual save/load presentation, M7A bounded passive local map trans
   M8D bounded vitality-derived defeat/death/unconsciousness and corpse state, M8E bounded source-authentic death
   consequences/corpse loot, M8F bounded source-authentic critical success/failure resolution, M8G Phase 1 dynamic
   roster/engagement plus completed-round authority, M8G Phase 2 structured attack requests/called locations/modifier
-  ledger, and M8G Phase 3 numeric cover/hard line-of-fire/Bow Master range exemption are complete.
+  ledger, M8G Phase 3 numeric cover/hard line-of-fire/Bow Master range exemption, and M8G Phase 4 Expert/Master Bow
+  multi-impact plus Critical-Dodge reclassification are complete. All bounded post-M8F M8G audit items are closed.
 `WorldMapSessionCoordinator` owns typed `World`, `Contained(parent)`, and `Equipped(parent, wornLocation)` placement,
 atomic raw item transfers/equipment replacement/stack merge and split, deterministic session-created item identities,
 source-faithful pickup/drop/owner-transfer policy, and pre-mutation weight/grid-capacity guards independently of Unity
@@ -94,6 +95,13 @@ modifier ledger whose clamped final effectiveness is the attack-roll authority. 
 blocks from numeric cover, accumulates source-flagged ordinary and wall/portal-edge cover exactly once in that ledger,
 and suppresses only the Perception-range entry for Bow Master. Open portals and wall-passage pieces contribute no
 cover; hard blocks remain transactional. Save V1 and presentation ownership remain unchanged.
+M8G Phase 4 makes Expert and Master Bow commands produce two ordered, same-target damage impacts inside one AP and
+one-ammunition transaction. Both impacts share the request, attack/critical classification, and Phase 2/3 ledger but
+roll damage, resistance, and supported critical damage effects independently. The second impact continues after a
+lethal first impact while M8D/M8E process death/corpse/XP exactly once. A defender's qualifying critical Dodge uses
+the exact 0/10/50/100 training table and reclassifies the cleared hit through the existing critical-failure path;
+unsupported secondary effects remain fail-closed. Save V1 remains unchanged and impact/Dodge diagnostics are
+transient.
 Travel time, encounters, follower relocation, mid-route cancellation, route animation, clock/day-night behavior,
 autosave, quicksave, cloud sync, original Arcanum save compatibility, unsupported critical-table effects, broader death
 scripts/consequences, AI, spells, technology, followers, and barter remain deferred.
@@ -1715,9 +1723,8 @@ request with called locations and an inspectable modifier ledger; numeric cover 
 supported Bow Master range exemption and Expert/Master two-impact behavior; and source critical-Dodge
 reclassification.
 
-M8G Phases 1-3 are now complete. The remaining audited M8G work is Expert/Master two-impact Bow attacks and
-Critical-Dodge reclassification. The audit explicitly defers AI,
-followers, equipped melee weapons, firearms, throwing,
+M8G Phases 1-4 are complete and close every required item in this audit. The audit explicitly defers AI, followers,
+equipped melee weapons, firearms, throwing,
 explosives/AOE, magic, technology, combat UI, projectile presentation, critical injury/equipment effects, and active
 combat persistence. Save format remains V1. It also found no source basis for general attacks of opportunity, a
 separate initiative/surprise-round system, generic combat stances/reload actions, a generic nonlethal toggle, or
@@ -1826,8 +1833,44 @@ was **786/786**. Every suite had 0 failed, 0 skipped, and 0 inconclusive; the fi
 
 See [`documentation_unity/m8g-phase3-cover-bow-master-audit.md`](documentation_unity/m8g-phase3-cover-bow-master-audit.md).
 
+## M8G Phase 4 Bow Multi-Impact / Critical-Dodge Validation Baseline (2026-09-24)
+
+M8G Phase 4 is complete. Source Bow training at Expert or Master produces exactly two ordered projectiles inside one
+attack command. The command spends one normal ranged AP cost and one weapon ammunition cost; both impacts share the
+request, target, attack/critical classification, called location, and Phase 2/3 modifier ledger. Damage, resistance,
+and supported critical damage effects resolve independently per impact. Below Expert remains single-impact.
+
+The intended second impact stays on the same target and still resolves after a lethal first impact. M4B remains the
+only vitality authority, while the existing M8D positive-to-nonpositive transition and M8E processed marker ensure
+death, corpse state, XP, and consequences occur exactly once.
+
+Critical Dodge begins only from an ordinary attack hit followed by a successful defender Dodge whose Dodge invocation
+is itself critical. The qualifying secondary 1..100 roll uses the defender's exact training thresholds None 0,
+Apprentice 10, Expert 50, and Master 100. The source leaves hit clear and restores the attack critical flag, so the
+final bounded result remains `CriticalFailure` with explicit Critical-Dodge diagnostics. Melee and ranged attacks use
+the same rule. The supported self-hit branch commits normal AP/ammunition/turn behavior; unsupported injury/equipment
+branches fail before all mutation.
+
+Computer Use physical Play Mode validation used the production PC, authentic Bow/70-arrow stack, authentic Polar
+Bear Cub, and source-derived Expert Bow/Master Dodge participants. It proved one ordinary single-impact shot, one
+Expert two-impact same-target shot for one AP cost and one arrow, shared range/called-Arm ledger diagnostics with
+independent damage, and a threshold-100 Critical Dodge routed through the self-hit critical-failure path with normal
+remaining-AP turn ownership. The proportional physical run recorded 0 warnings and 0 errors; deterministic focused
+coverage owns the lethal-first exact-once M8D/M8E permutation.
+
+Final Unity compilation was clean. Focused Phase 4 was **17/17**, Phase 3 was **12/12**, Phase 2 was **17/17**, Phase 1
+was **16/16**, and M8A-M8F combat regressions were **84/84**. The combined prior-phase/regression run was **129/129**.
+Complete EditMode was **803/803**. Every suite had 0 failed, 0 skipped, and 0 inconclusive. The full suite emitted the
+same five intentional fail-closed dialogue warnings and zero errors; the final cleared Unity Console was 0 logs,
+0 warnings, and 0 errors. Save format remains V1 and no attack/impact/Critical-Dodge transient is restored.
+
+The six post-M8F audit gaps are now all closed across M8G Phases 1-4. No required audit item remains before M8G can be
+considered complete.
+
+See
+[`documentation_unity/m8g-phase4-bow-multi-impact-critical-dodge-audit.md`](documentation_unity/m8g-phase4-bow-multi-impact-critical-dodge-audit.md).
+
 ## Next Recommended Milestone
 
-M8G Phase 3 is complete, but M8G is not. The next separately authorized bounded kernel work is Expert/Master
-two-impact Bow attacks and Critical-Dodge reclassification. Real-time scheduling must not begin before that closure
-is complete.
+M8G turn-based combat-kernel closure is complete. The next milestone must be selected and authorized separately; no
+M8H, real-time scheduling, combat UI, AI, followers, magic, technology, or other later system has started.
