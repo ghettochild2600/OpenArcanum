@@ -1754,9 +1754,42 @@ unchanged.
 
 See [`documentation_unity/m8g-phase1-combat-loop-audit.md`](documentation_unity/m8g-phase1-combat-loop-audit.md).
 
+## M8G Phase 2 Structured Attack Resolution Validation Baseline (2026-09-23)
+
+M8G Phase 2 is complete. `CombatStateService` now accepts immutable structured melee/ranged requests containing
+stable attacker/target ObjectIDs, attack mode, and called location. Legacy attack callers route through a `None`
+request and retain their M8B-M8F behavior and roll order. Requests resolve current roster, turn, position, equipment,
+ammunition, AP, range, hard line-of-fire, skills, attributes, and defenses at execution time; they do not carry stale
+authority.
+
+Source called-location IDs are exact: Torso 0, Head 1, Arm 2, Leg 3. Their hit modifiers are 0, -50, -30, and -30;
+Head adds 10 and Arm/Leg add 6 percentage points to critical-success chance after an ordinary hit. The ordered,
+immutable ledger exposes base skill, Intelligence 20, Armor Class, minimum Strength, Perception range, weapon to-hit,
+and called-location entries. Its applied/non-suppressed sum, clamped to 0..100, is the single value used for attack
+resolution. Numeric cover was not added; M8C hard line-of-fire remains a binary precondition.
+
+Computer Use physical Play Mode validation used the production PC, authentic Bow/70-arrow stack, and authentic Polar
+Bear Cub. It proved ordinary and called melee/ranged requests, all four IDs/modifiers, ledger single-application math,
+called Arm +50% critical success, called Head self-hit critical failure, malformed-request rollback, ordinary
+AP/ammunition/turn/vitality paths, Original -> Enhanced -> Original rebuild independence, one exact Phase 1 round
+boundary, and Save V1 transient normalization with committed vitality retention. The physical run recorded 0 warnings
+and 0 errors.
+
+Final Unity compilation was clean. Focused M8G Phase 2 was **17/17**. M8A-M8G Phase 1 combat regressions were
+**100/100** (M8A 22, M8B 23, M8C 12, M8D 11, M8E 7, M8F 9, M8G Phase 1 16). Complete EditMode was **774/774**.
+Every suite had 0 failed, 0 skipped, and 0 inconclusive. The complete suite emitted the same five intentional
+fail-closed dialogue warnings and 0 errors; after clearing them, the final Unity Console was 0 warnings and 0 errors.
+Save format remains V1 and request/result/ledger diagnostics are transient only.
+
+Weighted ordinary resolved hit location remains deferred because adding its extra source roll before supported
+location-effect tables would change the validated M8B-M8F deterministic sequence. Location injury/equipment effects,
+numeric cover, Bow mastery changes, Critical-Dodge, combat UI, AI, followers, magic, technology, and real-time combat
+remain outside this phase.
+
+See [`documentation_unity/m8g-phase2-attack-request-audit.md`](documentation_unity/m8g-phase2-attack-request-audit.md).
+
 ## Next Recommended Milestone
 
-M8G Phase 1 is complete and Phase 2 has not started. The next separately authorized scope is the remaining bounded
-M8G Turn-Based Combat Kernel Closure from the post-M8F audit: structured attack requests/called locations/modifier
-ledger, numeric cover, Bow Master range exemption plus Expert/Master two-impact attacks, and Critical-Dodge
-reclassification. Real-time scheduling must not begin before that closure is complete.
+M8G Phase 2 is complete. The next separately authorized M8G scope is the remaining bounded Turn-Based Combat Kernel
+Closure from the post-M8F audit: numeric cover, Bow Master range exemption plus Expert/Master two-impact attacks, and
+Critical-Dodge reclassification. Real-time scheduling must not begin before that closure is complete.
