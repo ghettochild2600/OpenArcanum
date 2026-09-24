@@ -18,7 +18,8 @@ player-facing manual save/load presentation, M7A bounded passive local map trans
   destination projection/selection, M7E bounded authoritative route/travel execution, M8A bounded authoritative
   core combat state, M8B bounded turn-based movement/basic attack/damage, M8C bounded equipped bow/arrow combat, and
   M8D bounded vitality-derived defeat/death/unconsciousness and corpse state, M8E bounded source-authentic death
-  consequences/corpse loot, and M8F bounded source-authentic critical success/failure resolution are complete.
+  consequences/corpse loot, M8F bounded source-authentic critical success/failure resolution, and M8G Phase 1
+  dynamic roster/engagement plus completed-round authority are complete.
 `WorldMapSessionCoordinator` owns typed `World`, `Contained(parent)`, and `Equipped(parent, wornLocation)` placement,
 atomic raw item transfers/equipment replacement/stack merge and split, deterministic session-created item identities,
 source-faithful pickup/drop/owner-transfer policy, and pre-mutation weight/grid-capacity guards independently of Unity
@@ -83,6 +84,10 @@ the stable turn/round loop; every rejected command is transactional. M8F classif
 critical roll, applies the bounded +50%/+100%/+200% damage-only success family after resistance, admits the ordinary
 self-hit critical failure, suppresses failure for Master Melee, and rejects unsupported critical effects before any
 authoritative mutation. Combat remains transient and Save V1 is unchanged.
+M8G Phase 1 discovers eligible nearby source-hostile NPCs at combat start and completed-round refresh, admits explicit
+runtime engagement exactly once, preserves stable source-order/PC-tail turns, and emits one deterministic +1,000 ms
+hook per completed round. Existing unconscious participants remain enrolled and are skipped; death/removal clears
+engagement. Graphics rebuild and Save V1 normalization do not replay discovery or a round boundary.
 Travel time, encounters, follower relocation, mid-route cancellation, route animation, clock/day-night behavior,
 autosave, quicksave, cloud sync, original Arcanum save compatibility, unsupported critical-table effects, broader death
 scripts/consequences, AI, spells, technology, followers, and barter remain deferred.
@@ -1704,7 +1709,8 @@ request with called locations and an inspectable modifier ledger; numeric cover 
 supported Bow Master range exemption and Expert/Master two-impact behavior; and source critical-Dodge
 reclassification.
 
-M8G has not started. The audit explicitly defers AI, followers, equipped melee weapons, firearms, throwing,
+M8G Phase 1 is now complete; the remaining audited M8G phases have not started. The audit explicitly defers AI,
+followers, equipped melee weapons, firearms, throwing,
 explosives/AOE, magic, technology, combat UI, projectile presentation, critical injury/equipment effects, and active
 combat persistence. Save format remains V1. It also found no source basis for general attacks of opportunity, a
 separate initiative/surprise-round system, generic combat stances/reload actions, a generic nonlethal toggle, or
@@ -1716,8 +1722,41 @@ the final Unity Console was 0 warnings and 0 errors. No production code or tests
 
 See [`documentation_unity/m8-post-m8f-combat-gap-audit.md`](documentation_unity/m8-post-m8f-combat-gap-audit.md).
 
+## M8G Phase 1 Dynamic Combat Loop Validation Baseline (2026-09-23)
+
+M8G Phase 1 is complete. `CombatStateService` now discovers loaded, eligible source-hostile NPCs in the PC perception
+square at combat start and completed-round refresh, admits explicit runtime engagement exactly once, preserves stable
+source-order/PC-tail ordering, retains enrolled actors that leave range, rejects dead/newly unconscious enrollment,
+and retains/skips existing unconscious participants under M8D semantics. Eligible engaged hostiles block explicit
+termination until removed or otherwise ineligible.
+
+Each completed round emits exactly one deterministic `CombatRoundBoundary` with a +1,000 ms delta and cumulative
+transient source-combat time. Partial rounds, actor enrollment, death/removal, unconscious skipping, graphics rebuild,
+combat termination/restart, and Save V1 normalization do not create or replay a hook. Save V1 remains unchanged and
+continues to preserve committed vitality/death/world consequences while restoring no transient roster, engagement,
+turn, AP, round, or elapsed-boundary state.
+
+Computer Use physical Play Mode validation used the production PC and authentic Polar Bear Cub sector. The authentic
+initial roster contained six unique participants. A validation hostile became relevant during active combat and was
+discovered once at the next boundary; a second was explicitly engaged once. Source ordering/current-turn ownership,
+death/removal, unconscious retention/skipping, out-of-range retention, termination, clean restart, three exact
+1,000 ms boundaries, Original -> Enhanced -> Original rebuild independence, and Save V1 transient normalization with
+committed vitality retention all passed. The physical run recorded 0 warnings and 0 errors.
+
+Final Unity compilation was clean. Focused M8G Phase 1 was **16/16**. Corrected M8A-M8F combat regressions were
+**84/84** (M8A 22, M8B 23, M8C 12, M8D 11, M8E 7, M8F 9). Complete EditMode was **757/757**. Every suite had 0 failed,
+0 skipped, and 0 inconclusive. The complete suite emitted the same five intentional fail-closed dialogue warnings and
+0 errors; after clearing them, the final Unity Console was 0 warnings and 0 errors.
+
+The M8E test correction advances through the authoritative discovered roster until the PC owns the turn instead of
+assuming the scripted target acts immediately. Production ordering and all death-consequence assertions remain
+unchanged.
+
+See [`documentation_unity/m8g-phase1-combat-loop-audit.md`](documentation_unity/m8g-phase1-combat-loop-audit.md).
+
 ## Next Recommended Milestone
 
-M8F is complete and no subsequent implementation milestone has started. The recommended next separately authorized
-scope is M8G — Turn-Based Combat Kernel Closure, bounded exactly by the post-M8F gap audit. Real-time scheduling should
-not begin before that closure is complete.
+M8G Phase 1 is complete and Phase 2 has not started. The next separately authorized scope is the remaining bounded
+M8G Turn-Based Combat Kernel Closure from the post-M8F audit: structured attack requests/called locations/modifier
+ledger, numeric cover, Bow Master range exemption plus Expert/Master two-impact attacks, and Critical-Dodge
+reclassification. Real-time scheduling must not begin before that closure is complete.
