@@ -18,8 +18,9 @@ player-facing manual save/load presentation, M7A bounded passive local map trans
   destination projection/selection, M7E bounded authoritative route/travel execution, M8A bounded authoritative
   core combat state, M8B bounded turn-based movement/basic attack/damage, M8C bounded equipped bow/arrow combat, and
   M8D bounded vitality-derived defeat/death/unconsciousness and corpse state, M8E bounded source-authentic death
-  consequences/corpse loot, M8F bounded source-authentic critical success/failure resolution, and M8G Phase 1
-  dynamic roster/engagement plus completed-round authority are complete.
+  consequences/corpse loot, M8F bounded source-authentic critical success/failure resolution, M8G Phase 1 dynamic
+  roster/engagement plus completed-round authority, M8G Phase 2 structured attack requests/called locations/modifier
+  ledger, and M8G Phase 3 numeric cover/hard line-of-fire/Bow Master range exemption are complete.
 `WorldMapSessionCoordinator` owns typed `World`, `Contained(parent)`, and `Equipped(parent, wornLocation)` placement,
 atomic raw item transfers/equipment replacement/stack merge and split, deterministic session-created item identities,
 source-faithful pickup/drop/owner-transfer policy, and pre-mutation weight/grid-capacity guards independently of Unity
@@ -88,6 +89,11 @@ M8G Phase 1 discovers eligible nearby source-hostile NPCs at combat start and co
 runtime engagement exactly once, preserves stable source-order/PC-tail turns, and emits one deterministic +1,000 ms
 hook per completed round. Existing unconscious participants remain enrolled and are skipped; death/removal clears
 engagement. Graphics rebuild and Save V1 normalization do not replay discovery or a round boundary.
+M8G Phase 2 adds immutable structured melee/ranged requests, exact called-location IDs/modifiers, and one ordered
+modifier ledger whose clamped final effectiveness is the attack-roll authority. M8G Phase 3 separates hard projectile
+blocks from numeric cover, accumulates source-flagged ordinary and wall/portal-edge cover exactly once in that ledger,
+and suppresses only the Perception-range entry for Bow Master. Open portals and wall-passage pieces contribute no
+cover; hard blocks remain transactional. Save V1 and presentation ownership remain unchanged.
 Travel time, encounters, follower relocation, mid-route cancellation, route animation, clock/day-night behavior,
 autosave, quicksave, cloud sync, original Arcanum save compatibility, unsupported critical-table effects, broader death
 scripts/consequences, AI, spells, technology, followers, and barter remain deferred.
@@ -1709,7 +1715,8 @@ request with called locations and an inspectable modifier ledger; numeric cover 
 supported Bow Master range exemption and Expert/Master two-impact behavior; and source critical-Dodge
 reclassification.
 
-M8G Phase 1 is now complete; the remaining audited M8G phases have not started. The audit explicitly defers AI,
+M8G Phases 1-3 are now complete. The remaining audited M8G work is Expert/Master two-impact Bow attacks and
+Critical-Dodge reclassification. The audit explicitly defers AI,
 followers, equipped melee weapons, firearms, throwing,
 explosives/AOE, magic, technology, combat UI, projectile presentation, critical injury/equipment effects, and active
 combat persistence. Save format remains V1. It also found no source basis for general attacks of opportunity, a
@@ -1788,8 +1795,39 @@ remain outside this phase.
 
 See [`documentation_unity/m8g-phase2-attack-request-audit.md`](documentation_unity/m8g-phase2-attack-request-audit.md).
 
+## M8G Phase 3 Numeric Cover / Hard Line-of-Fire / Bow Master Validation Baseline (2026-09-23)
+
+M8G Phase 3 is complete. `SectorNavigationMap` now returns one authoritative projectile traversal result containing
+hard-block state plus accumulated numeric cover. It uses source terrain/block masks, ordinary-object tiles, and
+wall/portal edge rotation/open state—not Unity colliders or presentation geometry. Non-shoot-through obstacles reject
+the attack before mutation. Shoot-through opaque obstacles contribute 50 difficulty; see-through objects contribute
+20 only when `OF_PROVIDES_COVER` is set. Contributions stack without an intermediate cover cap and appear once as a
+signed `Cover` modifier before the existing final-effectiveness clamp.
+
+The physical audit found and corrected an initial omission of shoot-through wall/portal-edge cover. Qualifying wall
+and closed-portal edges now use the same source flag table as ordinary obstacles; open portals and existing
+wall-passage pieces contribute neither block nor cover. The authoritative geometry remains the source-grid edge model.
+
+Bow Master preserves the raw long-range Perception modifier in the ledger but marks it suppressed, so it does not
+affect the final sum. Cover and called-location penalties remain active, and non-Bow calculations are unchanged. The
+ledger final effectiveness controls the ordinary hit decision consumed by M8F; M8F's established base-effectiveness
+critical percentage and called-location bonus remain unchanged.
+
+Computer Use physical Play Mode validation used the authentic Bow/70-arrow stack and Polar Bear Cub plus authentic
+retail cover geometry in `maps/arcanum1-024-fixed/101535712980.sec`. Clear Bow fire was legal with cover zero; a hard
+block returned `LineOfFireBlocked` with zero AP/ammunition/vitality/turn mutation; the cover route produced one active
+`-40` ledger entry; and Bow Master suppressed only range while called Arm `-30` remained active. The run recorded 0
+warnings and 0 errors.
+
+Final Unity compilation was clean. Focused Phase 3 was **12/12**, Phase 2 was **17/17**, Phase 1 was **16/16**, and
+M8A-M8F combat regressions were **84/84**. The combined prior-phase/regression run was **117/117**. Complete EditMode
+was **786/786**. Every suite had 0 failed, 0 skipped, and 0 inconclusive; the final cleared Unity Console was 0 logs,
+0 warnings, and 0 errors. Save format remains V1.
+
+See [`documentation_unity/m8g-phase3-cover-bow-master-audit.md`](documentation_unity/m8g-phase3-cover-bow-master-audit.md).
+
 ## Next Recommended Milestone
 
-M8G Phase 2 is complete. The next separately authorized M8G scope is the remaining bounded Turn-Based Combat Kernel
-Closure from the post-M8F audit: numeric cover, Bow Master range exemption plus Expert/Master two-impact attacks, and
-Critical-Dodge reclassification. Real-time scheduling must not begin before that closure is complete.
+M8G Phase 3 is complete, but M8G is not. The next separately authorized bounded kernel work is Expert/Master
+two-impact Bow attacks and Critical-Dodge reclassification. Real-time scheduling must not begin before that closure
+is complete.
