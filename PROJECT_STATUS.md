@@ -20,8 +20,9 @@ player-facing manual save/load presentation, M7A bounded passive local map trans
   M8D bounded vitality-derived defeat/death/unconsciousness and corpse state, M8E bounded source-authentic death
   consequences/corpse loot, M8F bounded source-authentic critical success/failure resolution, M8G Phase 1 dynamic
   roster/engagement plus completed-round authority, M8G Phase 2 structured attack requests/called locations/modifier
-  ledger, M8G Phase 3 numeric cover/hard line-of-fire/Bow Master range exemption, and M8G Phase 4 Expert/Master Bow
-  multi-impact plus Critical-Dodge reclassification are complete. All bounded post-M8F M8G audit items are closed.
+  ledger, M8G Phase 3 numeric cover/hard line-of-fire/Bow Master range exemption, M8G Phase 4 Expert/Master Bow
+  multi-impact plus Critical-Dodge reclassification, and the bounded M8H authoritative real-time scheduler vertical
+  slice are complete. All bounded post-M8F M8G audit items are closed.
 `WorldMapSessionCoordinator` owns typed `World`, `Contained(parent)`, and `Equipped(parent, wornLocation)` placement,
 atomic raw item transfers/equipment replacement/stack merge and split, deterministic session-created item identities,
 source-faithful pickup/drop/owner-transfer policy, and pre-mutation weight/grid-capacity guards independently of Unity
@@ -1870,7 +1871,40 @@ considered complete.
 See
 [`documentation_unity/m8g-phase4-bow-multi-impact-critical-dodge-audit.md`](documentation_unity/m8g-phase4-bow-multi-impact-critical-dodge-audit.md).
 
+## M8H Real-Time Combat Vertical Slice Validation Baseline (2026-09-24)
+
+The first bounded M8H real-time-combat vertical slice is complete. `CombatStateService` now owns one deterministic
+real-time scheduler over the established M8A-M8G roster and attack/movement kernels. Real-time combat has no turn
+owner and spends no turn AP, matching the source AP check/consume no-op outside turn-based mode. One pending action
+per actor records source-time start, ART action-frame effect, and full-animation readiness. Direct kernel bypass is
+rejected, simultaneous effects use stable roster/ObjectID ordering, large time advances remain exactly-once, and the
+existing 1,000 ms round hook fires once for every crossed boundary.
+
+Production timing comes from original ART metadata plus the audited Speed interpolation and weapon-speed adjustment,
+not Unity animation playback or frame rate. The bounded production profiles are walk, run, unarmed attack, and Bow
+attack. Physical validation exposed and corrected the exact source critter-ART weapon fields: unarmed 1 and Bow 8.
+Movement atomically commits through existing navigation at its source completion time; melee and Bow effects reuse
+the structured M8G request, modifier, cover, Critical-Dodge, multi-impact, critical, ammo, M4B vitality, M8D defeat,
+and M8E death-consequence authorities.
+
+Computer Use physical Play Mode validation used the production PC, authentic Bow/arrow objects, authentic Polar Bear
+Cub, production loader, and production combat service. Source-timed run, unarmed melee, Bow effect/recovery, readiness,
+runtime engagement, exact/hitch-safe round boundaries, Original -> Enhanced -> Original rebuild independence, lethal
+death/consequences exactly once, clean termination, and Save V1 transient normalization all passed. The accepted run
+recorded 0 warnings and 0 errors.
+
+Final Unity compilation was clean. Focused M8H was **22/22**; M8A-M8G combat regressions were **146/146**; and the
+complete EditMode suite was **825/825**, all with 0 failed, 0 skipped, and 0 inconclusive. The full suite emitted the
+same five intentional fail-closed dialogue warnings and 0 errors; the final cleared Unity Console was 0 logs,
+0 warnings, and 0 errors. Save format remains V1 and no clock, cooldown, pending action, attack, or critical transient
+is restored.
+
+See [`documentation_unity/m8h-real-time-combat-audit.md`](documentation_unity/m8h-real-time-combat-audit.md).
+
 ## Next Recommended Milestone
 
-M8G turn-based combat-kernel closure is complete. The next milestone must be selected and authorized separately; no
-M8H, real-time scheduling, combat UI, AI, followers, magic, technology, or other later system has started.
+M8H's first bounded real-time-combat vertical slice is complete. A next bounded M8H phase is required for the
+production wall-clock adapter, progressive movement/interruption, source-safe command replacement, active mode
+transfer, broader weapon timing, presentation observation, and deterministic NPC command policy. That work must be
+selected and authorized separately. M8I, combat UI, followers, magic, technology, and other later systems have not
+started.
