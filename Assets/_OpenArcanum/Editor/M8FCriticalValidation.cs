@@ -32,6 +32,8 @@ internal static class M8FCriticalValidation
         Guid.Parse("f8f8f8f8-f8f8-f8f8-f8f8-f8f8f8f8f8f8"));
     private static readonly ArcanumObjectId BowMaster = ArcanumObjectId.CreateGuid(
         Guid.Parse("f6f6f6f6-f6f6-f6f6-f6f6-f6f6f6f6f6f6"));
+    private static readonly ArcanumObjectId BowExpert = ArcanumObjectId.CreateGuid(
+        Guid.Parse("f4f4f4f4-f4f4-f4f4-f4f4-f4f4f4f4f4f4"));
     private static readonly ArcanumObjectId CoverTarget = ArcanumObjectId.CreateGuid(
         Guid.Parse("f5f5f5f5-f5f5-f5f5-f5f5-f5f5f5f5f5f5"));
     private static readonly ArcanumObjectId ArmoredTarget = ArcanumObjectId.CreateGuid(
@@ -69,6 +71,174 @@ internal static class M8FCriticalValidation
         WorldObjectSectorLoader loader = Object.FindFirstObjectByType<WorldObjectSectorLoader>()
                                          ?? throw new InvalidOperationException("TestTerrain has no world-object loader.");
         loader.StartCoroutine(ValidateCoverAndBowMaster(loader));
+    }
+
+    [MenuItem("OpenArcanum/M8G Phase 4/Run Physical PlayMode Validation")]
+    private static void RunBowMultiImpactCriticalDodgeValidation()
+    {
+        if (!Application.isPlaying || _running)
+            throw new InvalidOperationException("Enter TestTerrain Play mode; run only one M8G Phase 4 harness.");
+        WorldObjectSectorLoader loader = Object.FindFirstObjectByType<WorldObjectSectorLoader>()
+                                         ?? throw new InvalidOperationException("TestTerrain has no world-object loader.");
+        loader.StartCoroutine(ValidateBowMultiImpactAndCriticalDodge(loader));
+    }
+
+    private static IEnumerator ValidateBowMultiImpactAndCriticalDodge(WorldObjectSectorLoader loader)
+    {
+        _running = true;
+        _warnings = _errors = 0;
+        Application.logMessageReceived += Track;
+        WorldMapSessionCoordinator session = loader.Session;
+        try
+        {
+            session.ResetAuthoritativeSession();
+            yield return null;
+            Check(session.SelectSector(EquipmentSector), "Phase 4 authentic bow/ammo sector loads");
+            yield return null;
+            Refresh(out loader, out ProductionPlayerLifecycle lifecycle);
+            if (lifecycle.Presentation == null) Check(lifecycle.SpawnAndBind(), "Phase 4 production PC binds");
+            ArcanumObjectId pc = session.PlayerState.Identity;
+            PersistentObjectState bow = Require(session, Bow, ObjectType.Weapon, 6055);
+            PersistentObjectState arrows = Require(session, Arrows, ObjectType.Ammo, 7058);
+            MoveOwnedItem(session, bow, pc);
+            MoveOwnedItem(session, arrows, pc);
+            Check(session.EquipItem(pc, Bow, WornLocation.Weapon).Succeeded,
+                "Phase 4 authentic bow equips through production inventory authority");
+
+            Check(session.SelectSector(BearSector), "Phase 4 authentic Polar Bear Cub sector loads");
+            yield return null;
+            Refresh(out loader, out lifecycle);
+            if (lifecycle.Presentation == null) Check(lifecycle.SpawnAndBind(), "Phase 4 production PC rebinds");
+            WorldObject pcRuntime = lifecycle.Presentation;
+            Require(session, Bear, ObjectType.Npc, BearPrototype);
+            Check(session.TryGetLoadedObject(Bear, out WorldObject bearRuntime),
+                "Phase 4 Polar Bear Cub has one production presentation");
+            Vector2Int rangedTile = FindClearRangedTile(loader.NavigationMap, bearRuntime.Tile, 5, 8);
+            MoveActor(session, loader, pc, pcRuntime, rangedTile);
+
+            Check(session.Progression.GetTrainingLevel(pc, CharacterSkill.Bow) < SkillTrainingLevel.Expert,
+                "production PC begins below the two-impact Bow threshold");
+            Check(session.Combat.StartCombat(pc, Bear).Succeeded, "ordinary Bow proof combat starts");
+            AdvanceTo(session, pc);
+            int ordinaryAp = session.Combat.CurrentActionPoints;
+            int ordinaryAmmo = arrows.StackQuantity.Value;
+            int bearHp = session.Vitality.GetCurrentHitPoints(Bear);
+            session.Combat.SetRandomSource(new SequenceRandom(1, 100, 3, 2));
+            CombatAttackResult ordinary = session.Combat.Attack(new CombatAttackRequest(
+                pc, Bear, CombatAttackMode.BasicRanged));
+            Check(ordinary.Succeeded && ordinary.ImpactCount == 1
+                  && ordinary.ActionPointsSpent == ordinary.ActionPointCost
+                  && session.Combat.CurrentActionPoints == ordinaryAp - ordinary.ActionPointCost
+                  && arrows.StackQuantity == ordinaryAmmo - 1
+                  && ordinary.Impacts[0].TargetIdentity == Bear,
+                "below-Expert authentic Bow command produces one impact for one AP/ammo transaction");
+            EndStructuredCombat(session, pc);
+            RestoreDamage(session, Bear, bearHp);
+
+            Check(session.UnequipItem(pc, WornLocation.Weapon).Succeeded,
+                "authentic bow unequips before the source-derived Expert transfer");
+            MoveActor(session, loader, pc, pcRuntime,
+                FindClearMeleeTile(loader.NavigationMap, bearRuntime.Tile));
+            WorldObject expertRuntime = RegisterBowExpert(session, loader, rangedTile);
+            MoveOwnedItem(session, bow, BowExpert);
+            MoveOwnedItem(session, arrows, BowExpert);
+            Check(session.Progression.GetTrainingLevel(BowExpert, CharacterSkill.Bow)
+                  == SkillTrainingLevel.Expert,
+                "validation actor resolves the exact source Expert Bow threshold");
+            Check(session.EquipItem(BowExpert, Bow, WornLocation.Weapon).Succeeded,
+                "source-derived Bow Expert equips the authentic production bow");
+            Check(session.Combat.StartCombat(pc, BowExpert).Succeeded, "Expert Bow proof combat starts");
+            if (session.Combat.Participants.All(value => value.Identity != Bear))
+                Check(session.Combat.RegisterParticipant(Bear).Succeeded,
+                    "authentic Polar Bear Cub joins the Expert Bow proof");
+            AdvanceTo(session, BowExpert);
+            int expertAp = session.Combat.CurrentActionPoints;
+            int expertAmmo = arrows.StackQuantity.Value;
+            session.Combat.SetRandomSource(new SequenceRandom(1, 100, 3, 2, 7, 5));
+            CombatAttackResult expert = session.Combat.Attack(new CombatAttackRequest(
+                BowExpert, Bear, CombatAttackMode.BasicRanged, CombatCalledLocation.Arm));
+            CombatAttackModifier expertRange = expert.ModifierLedger.Entries.Single(value =>
+                value.Reason == CombatAttackModifierReason.PerceptionRange);
+            CombatAttackModifier expertLocation = expert.ModifierLedger.Entries.Single(value =>
+                value.Reason == CombatAttackModifierReason.CalledLocation);
+            Check(expert.Succeeded && expert.ImpactCount == 2
+                  && expert.Impacts.All(value => value.TargetIdentity == Bear
+                      && value.ModifierLedger == expert.ModifierLedger)
+                  && expert.Impacts.Select(value => value.RawHitPointDamage).SequenceEqual(new[] { 3, 7 })
+                  && expertRange.Applied && !expertRange.Suppressed
+                  && expertLocation.Applied && expertLocation.Value == -30
+                  && expert.ActionPointsSpent == expert.ActionPointCost
+                  && session.Combat.CurrentActionPoints == expertAp - expert.ActionPointCost
+                  && arrows.StackQuantity == expertAmmo - 1,
+                "Expert Bow command produces two ordered impacts sharing range/called-location authority "
+                + "while spending one AP cost and one arrow");
+            EndStructuredCombat(session, pc);
+            RestoreDamage(session, Bear, bearHp);
+            Object.Destroy(expertRuntime.gameObject);
+
+            session.ResetAuthoritativeSession();
+            yield return null;
+            Check(session.SelectSector(EquipmentSector), "Phase 4 Critical-Dodge bow/ammo sector reloads");
+            yield return null;
+            Refresh(out loader, out lifecycle);
+            if (lifecycle.Presentation == null)
+                Check(lifecycle.SpawnAndBind(), "Phase 4 Critical-Dodge production PC binds");
+            pc = session.PlayerState.Identity;
+            bow = Require(session, Bow, ObjectType.Weapon, 6055);
+            arrows = Require(session, Arrows, ObjectType.Ammo, 7058);
+            MoveOwnedItem(session, bow, pc);
+            MoveOwnedItem(session, arrows, pc);
+            Check(session.EquipItem(pc, Bow, WornLocation.Weapon).Succeeded,
+                "Phase 4 Critical-Dodge authentic bow equips");
+            Check(session.SelectSector(BearSector), "Phase 4 Critical-Dodge production sector loads");
+            yield return null;
+            Refresh(out loader, out lifecycle);
+            if (lifecycle.Presentation == null)
+                Check(lifecycle.SpawnAndBind(), "Phase 4 Critical-Dodge production PC rebinds");
+            pcRuntime = lifecycle.Presentation;
+            Check(session.TryGetLoadedObject(Bear, out bearRuntime),
+                "Phase 4 Critical-Dodge authentic sector presentation is ready");
+            Vector2Int dodgeTargetTile = FindClearRangedTile(loader.NavigationMap, bearRuntime.Tile, 2, 4);
+            WorldObject dodgeRuntime = RegisterBowMaster(session, loader, dodgeTargetTile, true);
+            Vector2Int dodgeSource = FindClearRangedTile(loader.NavigationMap, dodgeTargetTile, 3, 8);
+            MoveActor(session, loader, pc, pcRuntime, dodgeSource);
+            Check(session.Combat.StartCombat(pc, BowMaster).Succeeded, "Critical-Dodge proof combat starts");
+            AdvanceTo(session, pc);
+            int dodgeAp = session.Combat.CurrentActionPoints;
+            int dodgeAmmo = arrows.StackQuantity.Value;
+            int pcHp = session.Vitality.GetCurrentHitPoints(pc);
+            session.Combat.SetRandomSource(new SequenceRandom(1, 100, 1, 1, 100, 51, 3, 2));
+            CombatAttackResult criticalDodge = session.Combat.Attack(new CombatAttackRequest(
+                pc, BowMaster, CombatAttackMode.BasicRanged));
+            Check(criticalDodge.Succeeded && criticalDodge.Dodged && criticalDodge.CriticalDodge
+                  && criticalDodge.DodgeCriticalRoll == 1
+                  && criticalDodge.CriticalDodgeThreshold == 100
+                  && criticalDodge.CriticalDodgeThresholdRoll == 100
+                  && criticalDodge.Outcome == CombatAttackOutcome.CriticalFailure
+                  && criticalDodge.EffectTargetIdentity == pc
+                  && criticalDodge.ImpactCount == 1 && criticalDodge.Impacts[0].TargetIdentity == pc
+                  && session.Vitality.GetCurrentHitPoints(pc) == pcHp - 3
+                  && session.Combat.CurrentActionPoints == dodgeAp - criticalDodge.ActionPointCost
+                  && arrows.StackQuantity == dodgeAmmo - 1
+                  && session.Combat.CurrentParticipant == pc,
+                "defender Master Dodge critical reclassifies an ordinary hit through the supported "
+                + "critical-failure self-hit path and preserves the attacker's remaining-AP turn");
+            Object.Destroy(dodgeRuntime.gameObject);
+
+            Application.logMessageReceived -= Track;
+            Check(_warnings == 0 && _errors == 0, $"warnings={_warnings}; errors={_errors}");
+            Debug.Log("M8G PHASE 4 PLAYMODE VALIDATION PASS: ordinaryBow=singleImpact; "
+                      + "expertBow=twoOrderedImpacts+oneAPCost+oneArrow+sharedRangeCalledLedger; "
+                      + "criticalDodge=MasterThreshold100+CriticalFailureSelfHit+normalTransaction; "
+                      + "fixtures=authenticBow+arrows+PolarBearCub+productionPC; "
+                      + $"warnings={_warnings}; errors={_errors}.");
+        }
+        finally
+        {
+            session.Combat.ResetRandomSource();
+            Application.logMessageReceived -= Track;
+            _running = false;
+        }
     }
 
     private static IEnumerator ValidateCoverAndBowMaster(WorldObjectSectorLoader loader)
@@ -761,13 +931,15 @@ internal static class M8FCriticalValidation
     }
 
     private static WorldObject RegisterBowMaster(WorldMapSessionCoordinator session,
-        WorldObjectSectorLoader loader, Vector2Int tile)
+        WorldObjectSectorLoader loader, Vector2Int tile, bool includeMasterDodge = false)
     {
         int[] stats = (int[])BearStats.Clone();
         stats[1] = 20;
         stats[CharacterProgressionSource.LevelSourceSlot] = 30;
         var basicSkills = new int[CharacterSkillRules.BasicSkillCount];
         basicSkills[(int)CharacterSkill.Bow] = 5 | ((int)SkillTrainingLevel.Master << 6);
+        if (includeMasterDodge)
+            basicSkills[(int)CharacterSkill.Dodge] = 5 | ((int)SkillTrainingLevel.Master << 6);
         var source = new ObjectInstance(ObjectType.Npc, BearPrototype, Location(tile.x, tile.y),
             0x28100000u, 0, 0, oid: GuidBytes(BowMaster));
         PersistentObjectState state = session.GetOrCreate(source, BearSector, source.CurrentArtId.Value,
@@ -788,6 +960,39 @@ internal static class M8FCriticalValidation
         runtime.TilePosition = tile;
         session.Bind(BearSector, state, runtime);
         session.Combat.RegisterActorSource(new CombatActorSource(BowMaster, ObjectType.Npc,
+            BearPrototype, BearSector, 10, OnfKos, 0, 0, BearDamage));
+        loader.NavigationMap.Register(runtime, 0);
+        return runtime;
+    }
+
+    private static WorldObject RegisterBowExpert(WorldMapSessionCoordinator session,
+        WorldObjectSectorLoader loader, Vector2Int tile)
+    {
+        int[] stats = (int[])BearStats.Clone();
+        stats[1] = 20;
+        stats[CharacterProgressionSource.LevelSourceSlot] = 20;
+        var basicSkills = new int[CharacterSkillRules.BasicSkillCount];
+        basicSkills[(int)CharacterSkill.Bow] = 5 | ((int)SkillTrainingLevel.Expert << 6);
+        var source = new ObjectInstance(ObjectType.Npc, BearPrototype, Location(tile.x, tile.y),
+            0x28100000u, 0, 0, oid: GuidBytes(BowExpert));
+        PersistentObjectState state = session.GetOrCreate(source, BearSector, source.CurrentArtId.Value,
+            false, false);
+        session.Characters.GetOrCreateSourceCharacter(BowExpert, ObjectType.Npc, BearPrototype, stats, null);
+        session.Progression.GetOrCreateSourceCharacter(BowExpert, ObjectType.Npc, BearPrototype,
+            CharacterProgressionSource.Resolve(stats, null, basicSkills, null, null, null, 0));
+        session.DerivedStats.GetOrCreateSourceCharacter(BowExpert, ObjectType.Npc, BearPrototype,
+            CharacterDerivedSource.Resolve(stats, null, null, 0, new int[5], null, null, 50,
+                OnfKos, 0));
+        session.Vitality.GetOrCreateSourceCharacter(BowExpert, ObjectType.Npc, BearPrototype,
+            CharacterVitalitySource.Resolve(stats, null, null, 0, null, 15, null, 0,
+                null, 0, null, 0, null, 0));
+        var go = new GameObject("M8G Phase 4 Bow Expert validation actor");
+        WorldObject runtime = go.AddComponent<WorldObject>();
+        runtime.Type = ObjectType.Npc;
+        runtime.Tile = tile;
+        runtime.TilePosition = tile;
+        session.Bind(BearSector, state, runtime);
+        session.Combat.RegisterActorSource(new CombatActorSource(BowExpert, ObjectType.Npc,
             BearPrototype, BearSector, 10, OnfKos, 0, 0, BearDamage));
         loader.NavigationMap.Register(runtime, 0);
         return runtime;
