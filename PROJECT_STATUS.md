@@ -21,8 +21,9 @@ player-facing manual save/load presentation, M7A bounded passive local map trans
   consequences/corpse loot, M8F bounded source-authentic critical success/failure resolution, M8G Phase 1 dynamic
   roster/engagement plus completed-round authority, M8G Phase 2 structured attack requests/called locations/modifier
   ledger, M8G Phase 3 numeric cover/hard line-of-fire/Bow Master range exemption, M8G Phase 4 Expert/Master Bow
-  multi-impact plus Critical-Dodge reclassification, and the bounded M8H authoritative real-time scheduler vertical
-  slice are complete. All bounded post-M8F M8G audit items are closed.
+  multi-impact plus Critical-Dodge reclassification, the bounded M8H authoritative real-time scheduler vertical
+  slice, and the bounded M8I combat-UI command/projection vertical slice are complete. All bounded post-M8F M8G
+  audit items are closed.
 `WorldMapSessionCoordinator` owns typed `World`, `Contained(parent)`, and `Equipped(parent, wornLocation)` placement,
 atomic raw item transfers/equipment replacement/stack merge and split, deterministic session-created item identities,
 source-faithful pickup/drop/owner-transfer policy, and pre-mutation weight/grid-capacity guards independently of Unity
@@ -1901,10 +1902,33 @@ is restored.
 
 See [`documentation_unity/m8h-real-time-combat-audit.md`](documentation_unity/m8h-real-time-combat-audit.md).
 
+## M8I Combat UI Validation Baseline (2026-09-24)
+
+The bounded M8I combat-UI vertical slice is complete. `CombatUiController` owns only transient target, attack-mode,
+called-location, preview, and feedback state over the established M8A-M8H authority. `CombatStateService.PreviewAttack`
+projects the same structural/resource preflight and M8G modifier builders without RNG or mutation. The production
+presenter exposes combat mode, turn actor/AP or real-time READY/BUSY state, stable-ID target selection, melee, Bow,
+Torso/Head/Arm/Leg, authoritative ledger effectiveness/chance, ammo, outcomes, and End Turn. All attack execution,
+costs, timing, results, vitality, consequences, and turn progression remain combat-owned.
+
+Computer Use physical Play Mode validation used the production PC, authentic Polar Bear Cub, authentic Bow/arrows,
+production navigation, and production combat service. Turn-based actor/AP, target selection, melee Hit, Bow Arm-shot
+ledger and Miss, exact AP/ammo changes, End Turn, Original -> Enhanced -> Original rebuild independence, clean
+teardown, real-time READY/BUSY and busy rejection, scheduled resolution, and Save V1 transient normalization passed.
+The accepted run recorded 0 warnings and 0 errors.
+
+Final Unity compilation was clean. Focused M8I was **17/17**; M8A-M8H combat regressions were **168/168**; and the
+complete EditMode suite was **842/842**, all with 0 failed, 0 skipped, and 0 inconclusive. The full suite emitted the
+same five intentional fail-closed dialogue warnings and 0 errors; the final cleared Unity Console was 0 logs,
+0 warnings, and 0 errors. Save format remains V1 and no target, preview, result, pending action, attack, or critical
+UI transient is restored.
+
+See [`documentation_unity/m8i-combat-ui-audit.md`](documentation_unity/m8i-combat-ui-audit.md).
+
 ## Next Recommended Milestone
 
-M8H's first bounded real-time-combat vertical slice is complete. A next bounded M8H phase is required for the
-production wall-clock adapter, progressive movement/interruption, source-safe command replacement, active mode
-transfer, broader weapon timing, presentation observation, and deterministic NPC command policy. That work must be
-selected and authorized separately. M8I, combat UI, followers, magic, technology, and other later systems have not
-started.
+M8I's bounded command/projection vertical slice is complete. If further M8I work is authorized, the next narrow phase
+should replace the temporary IMGUI with source-art-backed combat-bar/cursor presentation and improve visual AP/target
+feedback without changing the established non-authoritative controller boundary. M8H follow-up scheduling work,
+M9A, autonomous AI, followers, magic, technology, and other later systems must be selected and authorized separately
+and have not started.
