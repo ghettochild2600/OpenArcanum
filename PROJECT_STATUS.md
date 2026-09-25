@@ -23,9 +23,10 @@ player-facing manual save/load presentation, M7A bounded passive local map trans
   ledger, M8G Phase 3 numeric cover/hard line-of-fire/Bow Master range exemption, M8G Phase 4 Expert/Master Bow
   multi-impact plus Critical-Dodge reclassification, the bounded M8H authoritative real-time scheduler vertical
   slice, and the bounded M8I combat-UI command/projection vertical slice are complete. All bounded post-M8F M8G
-  audit items are closed. The bounded M9A Phase 1 NPC-combat-AI vertical slice is also complete: hostile unarmed and
-  Bow actors select stable authoritative targets and submit attack, approach, or yield intents through the existing
-  M8 authority in both turn-based and real-time combat.
+  audit items are closed. The bounded M9A NPC-combat-AI kernel is also complete across Phases 1 and 2: hostile
+  unarmed, Bow, and supported melee-weapon actors select stable authoritative targets, submit attack, approach, or
+  yield intents through the existing M8 authority, select authoritative inventory weapons/ammunition with
+  source-supported fallback, and react to representable danger sources in both turn-based and real-time combat.
 `WorldMapSessionCoordinator` owns typed `World`, `Contained(parent)`, and `Equipped(parent, wornLocation)` placement,
 atomic raw item transfers/equipment replacement/stack merge and split, deterministic session-created item identities,
 source-faithful pickup/drop/owner-transfer policy, and pre-mutation weight/grid-capacity guards independently of Unity
@@ -108,7 +109,8 @@ unsupported secondary effects remain fail-closed. Save V1 remains unchanged and 
 transient.
 Travel time, encounters, follower relocation, mid-route cancellation, route animation, clock/day-night behavior,
 autosave, quicksave, cloud sync, original Arcanum save compatibility, unsupported critical-table effects, broader death
-scripts/consequences, broader NPC AI beyond M9A Phase 1, spells, technology, followers, and barter remain deferred.
+scripts/consequences, broader NPC AI beyond the bounded M9A kernel, spells, technology, followers, and barter remain
+deferred.
 
 ## Current Branch
 
@@ -1955,10 +1957,39 @@ emitted the same five intentional fail-closed dialogue warnings and 0 errors; th
 
 See [`documentation_unity/m9a-phase1-combat-ai-audit.md`](documentation_unity/m9a-phase1-combat-ai-audit.md).
 
+## M9A Phase 2 Weapon Selection and Target Scoring Validation Baseline (2026-09-25)
+
+M9A Phase 2 completes the bounded NPC-combat-AI kernel. `CombatAiController` now performs the source pre-action
+weapon check over authoritative equipped/inventory items, prefers a supported reachable weapon, requires compatible
+Bow ammunition, uses stable ObjectID ties, and falls back through supported melee to unarmed without inventing AP or
+time cost. Equipment mutation remains coordinator-owned. `CombatStateService` accepts supported range-one,
+no-ammunition, normal/fatigue melee weapon data through the existing structured attack, modifier-ledger, resistance,
+M4B vitality, M8D defeat, and M8E consequence paths.
+
+Initial target discovery remains nearest and valid combat focus remains sticky. Only a successfully committed attack
+against an NPC creates the bounded representable danger event. The production combat RNG selects the source
+negative-distance or level-minus-distance comparison and equal scores retain the current focus. Polling, rejected
+attacks, presentation rebuild, and Save V1 normalization cannot replay that reaction.
+
+Computer Use physical Play Mode validation used the production PC, authentic Greater Skeleton and equipped Sword,
+authentic Bow/arrow objects, authentic Polar Bear Cub, production inventory/equipment and combat services, and both
+combat schedulers. Supported Sword attacks, source melee ART/weapon-speed timing, authoritative Bow selection with
+one compatible arrow, zero-cost switching, arrow consumption, depletion-to-unarmed fallback before retry, and
+real-time READY/BUSY/recovery all passed. The Bear-with-Bow authored timing limitation remains documented and used
+only the bounded deterministic timing provider while all gameplay authority stayed production. The accepted run
+recorded 0 warnings and 0 errors.
+
+Final Unity compilation was clean. Focused M9A Phase 2 was **12/12**; M9A Phase 1 was **15/15**; M8A-M8I combat
+regressions were **185/185**; the requested Phase 1 plus M8 regression total was **200/200**; and the complete EditMode
+suite was **869/869**, all with 0 failed, 0 skipped, and 0 inconclusive. The full suite emitted the same five
+intentional fail-closed dialogue warnings and 0 errors; the final cleared Unity Console was 0 logs, 0 warnings, and
+0 errors. `git diff --check` was clean. Save format remains V1.
+
+See [`documentation_unity/m9a-phase2-weapon-targeting-audit.md`](documentation_unity/m9a-phase2-weapon-targeting-audit.md).
+
 ## Next Recommended Milestone
 
-M9A Phase 1's basic hostile combat loop is complete, but the full M9A NPC-AI milestone is not. A separately authorized
-M9A Phase 2 should audit and implement the next bounded source subset: supported melee-weapon use,
-weapon/ammunition selection and fallback, and representable combat-focus/target-scoring inputs. Source-random
-reactive scoring must use injected combat randomness. Backoff, grenades, fleeing/surrender, spells, technology,
-followers/party, general simulation, M9B, and other later systems remain deferred and have not started.
+The bounded M9A NPC-combat-AI kernel is complete. A future milestone requires separate authorization and audit.
+World-item scavenging, backoff, grenades, fleeing/surrender, spells, technology, followers/party/leader behavior,
+decoys, concealment/perception contests, social guard/protection behavior, schedules, dialogue AI, general simulation,
+M9B, and other later systems remain deferred and have not started.
