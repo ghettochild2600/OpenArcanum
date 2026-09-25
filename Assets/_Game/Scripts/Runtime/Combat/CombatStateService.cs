@@ -72,8 +72,9 @@ namespace Arcanum.Runtime.Combat
 
     public enum CombatAttackMode
     {
-        BasicMelee,
-        BasicRanged,
+        None = -1,
+        BasicMelee = 0,
+        BasicRanged = 1,
     }
 
     /// <summary>Source hit-location ids. None preserves the bounded ordinary-attack path.</summary>

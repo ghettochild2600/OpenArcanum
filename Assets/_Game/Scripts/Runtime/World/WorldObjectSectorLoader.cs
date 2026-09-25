@@ -145,6 +145,8 @@ namespace Arcanum.Runtime.World
                 gameObject.AddComponent<ProductionWorldMapDestinationPresenter>();
             if (GetComponent<ProductionCombatPresenter>() == null)
                 gameObject.AddComponent<ProductionCombatPresenter>();
+            if (GetComponent<ProductionCombatAiDriver>() == null)
+                gameObject.AddComponent<ProductionCombatAiDriver>();
         }
 
         /// <summary>Idempotently binds this presentation owner to session authority.</summary>
