@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Arcanum.Formats.Objects;
+using Arcanum.Runtime.Character;
 using Arcanum.Runtime.World;
 using UnityEngine;
 using CombatActionFailure = Arcanum.Runtime.Combat.CombatFailure;
@@ -17,6 +18,76 @@ namespace Arcanum.Runtime.Combat
         Yield,
         Busy,
         NoTarget
+    }
+
+    public enum CombatAiTargetSelectionReason
+    {
+        None,
+        NearestEligible,
+        RetainedFocus,
+        NewDangerSource,
+        DangerDistance,
+        DangerLevelDistance
+    }
+
+    public readonly struct CombatAiTargetSelection
+    {
+        public CombatAiTargetSelection(PersistentObjectId current, PersistentObjectId candidate,
+            PersistentObjectId selected, CombatAiTargetSelectionReason reason, int roll = 0,
+            int currentDistance = 0, int candidateDistance = 0,
+            int currentScore = 0, int candidateScore = 0)
+        {
+            Current = current;
+            Candidate = candidate;
+            Selected = selected;
+            Reason = reason;
+            Roll = roll;
+            CurrentDistance = currentDistance;
+            CandidateDistance = candidateDistance;
+            CurrentScore = currentScore;
+            CandidateScore = candidateScore;
+        }
+
+        public PersistentObjectId Current { get; }
+        public PersistentObjectId Candidate { get; }
+        public PersistentObjectId Selected { get; }
+        public CombatAiTargetSelectionReason Reason { get; }
+        public int Roll { get; }
+        public int CurrentDistance { get; }
+        public int CandidateDistance { get; }
+        public int CurrentScore { get; }
+        public int CandidateScore { get; }
+    }
+
+    public readonly struct CombatAiWeaponSelection
+    {
+        public CombatAiWeaponSelection(CombatActionFailure failure,
+            PersistentObjectId selectedWeapon, CombatAttackMode attackMode,
+            int effectiveDamageScore, bool reachesTarget, int candidateCount,
+            bool changed = false)
+        {
+            Failure = failure;
+            SelectedWeapon = selectedWeapon;
+            AttackMode = attackMode;
+            EffectiveDamageScore = effectiveDamageScore;
+            ReachesTarget = reachesTarget;
+            CandidateCount = candidateCount;
+            Changed = changed;
+        }
+
+        public bool Succeeded => Failure == CombatActionFailure.None;
+        public CombatActionFailure Failure { get; }
+        public PersistentObjectId SelectedWeapon { get; }
+        public CombatAttackMode AttackMode { get; }
+        public int EffectiveDamageScore { get; }
+        public bool ReachesTarget { get; }
+        public int CandidateCount { get; }
+        public bool Changed { get; }
+        public bool UsesUnarmedFallback => Succeeded && SelectedWeapon.IsNull;
+
+        internal CombatAiWeaponSelection WithChange(bool changed)
+            => new(Failure, SelectedWeapon, AttackMode, EffectiveDamageScore,
+                ReachesTarget, CandidateCount, changed);
     }
 
     public readonly struct CombatAiApproachPreview
@@ -116,6 +187,9 @@ namespace Arcanum.Runtime.Combat
         private sealed class ActorState
         {
             public PersistentObjectId Target;
+            public bool WeaponSelectionRequired = true;
+            public bool WeaponSelectionBlocked;
+            public long ProcessedAttackResolutionSequence;
         }
 
         private readonly WorldMapSessionCoordinator _world;
@@ -129,6 +203,8 @@ namespace Arcanum.Runtime.Combat
 
         public int TrackedActorCount => _actors.Count;
         public CombatAiDecision LastDecision { get; private set; }
+        public CombatAiWeaponSelection LastWeaponSelection { get; private set; }
+        public CombatAiTargetSelection LastTargetSelection { get; private set; }
 
         public bool TryGetTarget(PersistentObjectId actor, out PersistentObjectId target)
         {
@@ -146,6 +222,8 @@ namespace Arcanum.Runtime.Combat
         {
             _actors.Clear();
             LastDecision = default;
+            LastWeaponSelection = default;
+            LastTargetSelection = default;
         }
 
         public void Refresh()
@@ -278,8 +356,12 @@ namespace Arcanum.Runtime.Combat
             }
 
             var state = GetOrCreate(actor);
+            ProcessLatestDangerSource(actor, state);
             if (!IsValidTarget(actor, state.Target))
                 state.Target = ChooseTarget(actor);
+            else if (LastTargetSelection.Selected != state.Target)
+                LastTargetSelection = new CombatAiTargetSelection(state.Target, state.Target,
+                    state.Target, CombatAiTargetSelectionReason.RetainedFocus);
 
             if (state.Target.IsNull)
             {
@@ -287,6 +369,25 @@ namespace Arcanum.Runtime.Combat
                 return SetDecision(new CombatAiDecision(CombatAiActionKind.NoTarget,
                     CombatActionFailure.ParticipantUnavailable, actor, default, CombatAttackMode.None,
                     null, null, false));
+            }
+
+            if (state.WeaponSelectionBlocked)
+                return SetDecision(new CombatAiDecision(CombatAiActionKind.Yield,
+                    CombatActionFailure.UnsupportedWeapon, actor, state.Target, CombatAttackMode.None,
+                    null, null, false));
+
+            if (state.WeaponSelectionRequired || !combat.IsAiEquippedWeaponUsable(actor))
+            {
+                CombatAiWeaponSelection selection = combat.SelectAiWeapon(actor, state.Target);
+                if (!selection.Succeeded)
+                {
+                    state.WeaponSelectionRequired = false;
+                    state.WeaponSelectionBlocked = true;
+                    return SetDecision(new CombatAiDecision(CombatAiActionKind.Yield, selection.Failure,
+                        actor, state.Target, CombatAttackMode.None, null, null, false));
+                }
+                LastWeaponSelection = selection;
+                state.WeaponSelectionRequired = false;
             }
 
             var attackMode = DetermineAttackMode(actor);
@@ -354,6 +455,38 @@ namespace Arcanum.Runtime.Combat
             return state;
         }
 
+        private void ProcessLatestDangerSource(PersistentObjectId actor, ActorState state)
+        {
+            var combat = _world.Combat;
+            long sequence = combat.AttackResolutionSequence;
+            if (sequence <= state.ProcessedAttackResolutionSequence)
+                return;
+            state.ProcessedAttackResolutionSequence = sequence;
+            if (!combat.LastAttackResult.HasValue)
+                return;
+            CombatAttackResult result = combat.LastAttackResult.Value;
+            PersistentObjectId candidate = result.Request.Attacker;
+            if (!result.Succeeded || result.Request.Target != actor
+                || !IsValidTarget(actor, candidate))
+                return;
+            if (!IsValidTarget(actor, state.Target))
+            {
+                state.Target = candidate;
+                LastTargetSelection = new CombatAiTargetSelection(default, candidate, candidate,
+                    CombatAiTargetSelectionReason.NewDangerSource);
+                return;
+            }
+            if (state.Target == candidate)
+            {
+                LastTargetSelection = new CombatAiTargetSelection(state.Target, candidate, candidate,
+                    CombatAiTargetSelectionReason.RetainedFocus);
+                return;
+            }
+
+            LastTargetSelection = combat.CompareAiDangerTargets(actor, state.Target, candidate);
+            state.Target = LastTargetSelection.Selected;
+        }
+
         private bool IsValidTarget(PersistentObjectId actor, PersistentObjectId target)
         {
             if (target.IsNull || !_world.Combat.TryGetParticipant(target, out var participant) ||
@@ -384,11 +517,17 @@ namespace Arcanum.Runtime.Combat
                     candidates.Add((candidate.Identity, distance, candidate.SourceOrder));
             }
 
-            return candidates.OrderBy(candidate => candidate.Distance)
+            var selected = candidates.OrderBy(candidate => candidate.Distance)
                 .ThenBy(candidate => candidate.SourceOrder)
                 .ThenBy(candidate => candidate.Identity.ToString(), StringComparer.Ordinal)
-                .Select(candidate => candidate.Identity)
                 .FirstOrDefault();
+            if (selected.Identity.IsNull)
+                return default;
+            LastTargetSelection = new CombatAiTargetSelection(default, selected.Identity,
+                selected.Identity, CombatAiTargetSelectionReason.NearestEligible,
+                currentDistance: 0, candidateDistance: selected.Distance,
+                currentScore: 0, candidateScore: -selected.Distance);
+            return selected.Identity;
         }
 
         private CombatAttackMode DetermineAttackMode(PersistentObjectId actor)
@@ -397,9 +536,13 @@ namespace Arcanum.Runtime.Combat
                 return CombatAttackMode.BasicMelee;
             if (equipped.Type != ObjectType.Weapon || equipped.WeaponData == null)
                 return CombatAttackMode.None;
-            return equipped.WeaponData.Skill == WeaponSkill.Bow
-                ? CombatAttackMode.BasicRanged
-                : CombatAttackMode.None;
+            return equipped.WeaponData.Skill switch
+            {
+                WeaponSkill.Melee when equipped.WeaponData.Range == 1
+                    && !equipped.WeaponData.UsesAmmo => CombatAttackMode.BasicMelee,
+                WeaponSkill.Bow => CombatAttackMode.BasicRanged,
+                _ => CombatAttackMode.None,
+            };
         }
 
         private static int TileDistance(Vector2Int left, Vector2Int right)
@@ -450,6 +593,259 @@ namespace Arcanum.Runtime.Combat
         {
             return _sources.TryGetValue(identity, out var source) && source.ObjectType == ObjectType.Npc &&
                    IsSourceHostile(source);
+        }
+
+        public CombatAiTargetSelection CompareAiDangerTargets(PersistentObjectId actor,
+            PersistentObjectId current, PersistentObjectId candidate)
+        {
+            if (!TryGetCombatPosition(actor, out Vector2Int actorPosition)
+                || !TryGetCombatPosition(current, out Vector2Int currentPosition)
+                || !TryGetCombatPosition(candidate, out Vector2Int candidatePosition))
+                return new CombatAiTargetSelection(current, candidate, current,
+                    CombatAiTargetSelectionReason.RetainedFocus);
+
+            int currentDistance = Math.Max(Math.Abs(actorPosition.x - currentPosition.x),
+                Math.Abs(actorPosition.y - currentPosition.y));
+            int candidateDistance = Math.Max(Math.Abs(actorPosition.x - candidatePosition.x),
+                Math.Abs(actorPosition.y - candidatePosition.y));
+            if (candidateDistance > CombatAiController.SourceFocusTileLimit)
+                return new CombatAiTargetSelection(current, candidate, current,
+                    CombatAiTargetSelectionReason.RetainedFocus, currentDistance: currentDistance,
+                    candidateDistance: candidateDistance);
+            if (currentDistance > CombatAiController.SourceFocusTileLimit)
+                return new CombatAiTargetSelection(current, candidate, candidate,
+                    CombatAiTargetSelectionReason.NewDangerSource, currentDistance: currentDistance,
+                    candidateDistance: candidateDistance);
+
+            int roll = _random.NextInclusive(1, 100);
+            bool useLevel = roll <= 50;
+            int currentScore = useLevel
+                ? _world.Progression.GetLevel(current) - currentDistance
+                : -currentDistance;
+            int candidateScore = useLevel
+                ? _world.Progression.GetLevel(candidate) - candidateDistance
+                : -candidateDistance;
+            PersistentObjectId selected = candidateScore > currentScore ? candidate : current;
+            return new CombatAiTargetSelection(current, candidate, selected,
+                useLevel ? CombatAiTargetSelectionReason.DangerLevelDistance
+                    : CombatAiTargetSelectionReason.DangerDistance,
+                roll, currentDistance, candidateDistance, currentScore, candidateScore);
+        }
+
+        public CombatAiWeaponSelection PreviewAiWeaponSelection(PersistentObjectId actor,
+            PersistentObjectId target)
+        {
+            List<AiWeaponCandidate> candidates = BuildAiWeaponCandidates(actor, target,
+                out CombatFailure failure, out int distance);
+            if (failure != CombatFailure.None)
+                return new CombatAiWeaponSelection(CombatActionFailure.ParticipantUnavailable,
+                    default, CombatAttackMode.None, 0, false, 0);
+            if (candidates.Count == 0)
+                return new CombatAiWeaponSelection(CombatActionFailure.None, default,
+                    CombatAttackMode.BasicMelee, 0, distance <= 1, 0);
+            AiWeaponCandidate selected = OrderedAiWeaponCandidates(candidates).First();
+            return new CombatAiWeaponSelection(CombatActionFailure.None, selected.Identity,
+                selected.AttackMode, selected.EffectiveDamageScore, selected.ReachesTarget,
+                candidates.Count);
+        }
+
+        public CombatAiWeaponSelection SelectAiWeapon(PersistentObjectId actor,
+            PersistentObjectId target)
+        {
+            List<AiWeaponCandidate> candidates = BuildAiWeaponCandidates(actor, target,
+                out CombatFailure failure, out int distance);
+            if (failure != CombatFailure.None)
+                return new CombatAiWeaponSelection(failure, default, CombatAttackMode.None,
+                    0, false, 0);
+            bool hadEquipped = TryGetEquippedWeaponIdentity(actor, out PersistentObjectId equippedBefore);
+            foreach (AiWeaponCandidate candidate in OrderedAiWeaponCandidates(candidates))
+            {
+                CombatResult applied = ApplyAiWeaponSelection(actor, candidate.Identity);
+                if (!applied.Succeeded) continue;
+                bool changed = hadEquipped
+                    ? equippedBefore != candidate.Identity
+                    : !candidate.Identity.IsNull;
+                return new CombatAiWeaponSelection(CombatFailure.None, candidate.Identity,
+                    candidate.AttackMode, candidate.EffectiveDamageScore, candidate.ReachesTarget,
+                    candidates.Count, changed);
+            }
+
+            CombatResult fallback = ApplyAiWeaponSelection(actor, default);
+            bool fallbackChanged = fallback.Succeeded && hadEquipped;
+            return new CombatAiWeaponSelection(fallback.Failure, default,
+                CombatAttackMode.BasicMelee, 0, distance <= 1, candidates.Count, fallbackChanged);
+        }
+
+        public bool IsAiEquippedWeaponUsable(PersistentObjectId actor)
+        {
+            if (!_world.TryGetEquippedItem(actor, WornLocation.Weapon, out PersistentObjectState equipped))
+                return true;
+            return TryEvaluateAiWeapon(actor, equipped, 1, out _);
+        }
+
+        public bool TryGetEquippedWeaponIdentity(PersistentObjectId actor,
+            out PersistentObjectId identity)
+        {
+            if (_world.TryGetEquippedItem(actor, WornLocation.Weapon, out PersistentObjectState equipped))
+            {
+                identity = equipped.Identity;
+                return true;
+            }
+            identity = default;
+            return false;
+        }
+
+        public CombatResult ApplyAiWeaponSelection(PersistentObjectId actor,
+            PersistentObjectId selectedWeapon)
+        {
+            CombatFailure validation = ValidateAiWeaponChangeActor(actor);
+            if (validation != CombatFailure.None)
+                return new CombatResult(validation);
+
+            bool hasEquipped = _world.TryGetEquippedItem(actor, WornLocation.Weapon,
+                out PersistentObjectState equipped);
+            if (selectedWeapon.IsNull)
+            {
+                if (!hasEquipped) return new CombatResult(CombatFailure.None);
+                EquipmentTransactionResult unequip = _world.UnequipItem(actor, WornLocation.Weapon);
+                return new CombatResult(unequip.Succeeded
+                    ? CombatFailure.None : CombatFailure.UnsupportedWeapon);
+            }
+            if (hasEquipped && equipped.Identity == selectedWeapon)
+                return new CombatResult(CombatFailure.None);
+            if (!_world.TryGetObjectState(selectedWeapon, out PersistentObjectState selected)
+                || !TryEvaluateAiWeapon(actor, selected, 1, out _))
+                return new CombatResult(CombatFailure.UnsupportedWeapon);
+            EquipmentTransactionResult equip = _world.EquipItem(actor, selectedWeapon,
+                WornLocation.Weapon);
+            return new CombatResult(equip.Succeeded
+                ? CombatFailure.None : CombatFailure.UnsupportedWeapon);
+        }
+
+        private CombatFailure ValidateAiWeaponChangeActor(PersistentObjectId actor)
+        {
+            if (!IsActive) return CombatFailure.Inactive;
+            if (!IsAutonomousHostileNpc(actor) || !IsParticipantEligible(actor))
+                return CombatFailure.ParticipantUnavailable;
+            if (Mode == CombatMode.TurnBased)
+                return CurrentParticipant == actor
+                    ? CombatFailure.None : CombatFailure.NotCurrentParticipant;
+            if (!TryGetRealTimeActorState(actor, out CombatRealTimeActorState timing))
+                return CombatFailure.ParticipantUnavailable;
+            if (timing.HasPendingAction) return CombatFailure.ActorBusy;
+            return timing.IsReady ? CombatFailure.None : CombatFailure.ActorNotReady;
+        }
+
+        private void AddAiWeaponCandidate(PersistentObjectId actor, PersistentObjectState item,
+            int distance, List<AiWeaponCandidate> candidates)
+        {
+            if (TryEvaluateAiWeapon(actor, item, distance, out AiWeaponCandidate candidate))
+                candidates.Add(candidate);
+        }
+
+        private List<AiWeaponCandidate> BuildAiWeaponCandidates(PersistentObjectId actor,
+            PersistentObjectId target, out CombatFailure failure, out int distance)
+        {
+            distance = 0;
+            if (!IsActive || !IsAutonomousHostileNpc(actor) || !IsParticipantEligible(actor)
+                || !IsParticipantEligible(target)
+                || !TryGetCombatPosition(actor, out Vector2Int actorPosition)
+                || !TryGetCombatPosition(target, out Vector2Int targetPosition))
+            {
+                failure = CombatFailure.ParticipantUnavailable;
+                return new List<AiWeaponCandidate>();
+            }
+
+            failure = CombatFailure.None;
+            distance = InteractionRangeRules.Distance(actorPosition, targetPosition);
+            var candidates = new List<AiWeaponCandidate>();
+            var seen = new HashSet<PersistentObjectId>();
+            if (_world.TryGetEquippedItem(actor, WornLocation.Weapon, out PersistentObjectState equipped))
+            {
+                seen.Add(equipped.Identity);
+                AddAiWeaponCandidate(actor, equipped, distance, candidates);
+            }
+            foreach (PersistentObjectId identity in _world.ChildrenOf(actor))
+            {
+                if (!seen.Add(identity) || !_world.TryGetObjectState(identity, out PersistentObjectState item))
+                    continue;
+                AddAiWeaponCandidate(actor, item, distance, candidates);
+            }
+            return candidates;
+        }
+
+        private static IEnumerable<AiWeaponCandidate> OrderedAiWeaponCandidates(
+            List<AiWeaponCandidate> candidates)
+        {
+            IEnumerable<AiWeaponCandidate> pool = candidates.Any(value => value.ReachesTarget)
+                ? candidates.Where(value => value.ReachesTarget)
+                : candidates;
+            return pool.OrderByDescending(value => value.EffectiveDamageScore)
+                .ThenByDescending(value => value.Identity.Key, StringComparer.Ordinal);
+        }
+
+        private bool TryEvaluateAiWeapon(PersistentObjectId actor, PersistentObjectState item,
+            int distance, out AiWeaponCandidate candidate)
+        {
+            candidate = default;
+            if (item == null || item.Type != ObjectType.Weapon || item.WeaponData == null
+                || (item.ArtId & 0x400u) != 0)
+                return false;
+            Weapon weapon = item.WeaponData;
+            CombatAttackMode mode;
+            CharacterSkill skill;
+            if (weapon.Skill == WeaponSkill.Melee && weapon.Range == 1 && !weapon.UsesAmmo)
+            {
+                mode = CombatAttackMode.BasicMelee;
+                skill = CharacterSkill.Melee;
+            }
+            else if (weapon.Skill == WeaponSkill.Bow && weapon.UsesAmmo
+                     && weapon.AmmoConsumption > 0
+                     && _world.TryGetAmmo(actor, weapon.AmmoType, weapon.AmmoConsumption, out _))
+            {
+                mode = CombatAttackMode.BasicRanged;
+                skill = CharacterSkill.Bow;
+            }
+            else
+            {
+                return false;
+            }
+            if (!TryGetWeaponDamageRange(weapon, DamageType.Normal, out _, out _)
+                || !TryGetWeaponDamageRange(weapon, DamageType.Fatigue, out _, out _)
+                || weapon.DamageMax[(int)DamageType.Poison] != 0
+                || weapon.DamageMax[(int)DamageType.Electrical] != 0
+                || weapon.DamageMax[(int)DamageType.Fire] != 0)
+                return false;
+
+            int averageDamage = 0;
+            for (int index = 0; index < Weapon.DamageTypeCount; index++)
+                averageDamage = (weapon.DamageMin[index] + weapon.DamageMax[index]) / 2;
+            int skillRank = _world.Progression.GetEffectiveSkillRank(actor, skill);
+            int effectiveness = skill == CharacterSkill.Bow && skillRank == 0
+                ? -1 : checked(5 * skillRank + 25);
+            if (_world.Characters.GetEffectiveAttribute(actor, CharacterAttribute.Intelligence) >= 20)
+                effectiveness += 10;
+            if (effectiveness == 0) effectiveness = -1;
+            int score = averageDamage * effectiveness / 100;
+            candidate = new AiWeaponCandidate(item.Identity, mode, score, weapon.Range >= distance);
+            return true;
+        }
+
+        private readonly struct AiWeaponCandidate
+        {
+            public AiWeaponCandidate(PersistentObjectId identity, CombatAttackMode attackMode,
+                int effectiveDamageScore, bool reachesTarget)
+            {
+                Identity = identity;
+                AttackMode = attackMode;
+                EffectiveDamageScore = effectiveDamageScore;
+                ReachesTarget = reachesTarget;
+            }
+
+            public PersistentObjectId Identity { get; }
+            public CombatAttackMode AttackMode { get; }
+            public int EffectiveDamageScore { get; }
+            public bool ReachesTarget { get; }
         }
 
         public bool ResolveIfNoOpposition()

@@ -174,21 +174,23 @@ namespace Arcanum.Formats.Tests
         }
 
         [Test]
-        public void BowWithoutAmmoYieldsWithoutAnyCombatMutation()
+        public void BowWithoutAmmoFallsBackWithoutMutatingAmmoAuthority()
         {
             EquipBow(_actor, 0);
             Start(CombatMode.TurnBased);
             int ap = _session.Combat.CurrentActionPoints;
             int hp = _session.Vitality.GetCurrentHitPoints(_pc.Identity);
-            ArcanumObjectId turn = _session.Combat.CurrentParticipant;
+            _session.Combat.SetRandomSource(new SequenceRandom(100, 100));
 
             CombatAiDecision decision = _controller.DecideAndSubmit(_actor);
 
-            Assert.That(decision.Action, Is.EqualTo(CombatAiActionKind.Yield));
-            Assert.That(decision.Failure, Is.EqualTo(CombatFailure.NoAmmo));
-            Assert.That(_session.Combat.CurrentActionPoints, Is.EqualTo(ap));
+            Assert.That(decision.Action, Is.EqualTo(CombatAiActionKind.Attack));
+            Assert.That(decision.Failure, Is.EqualTo(CombatFailure.None));
+            Assert.That(decision.AttackMode, Is.EqualTo(CombatAttackMode.BasicMelee));
+            Assert.That(decision.AttackResult?.WeaponIdentity.IsNull, Is.True);
+            Assert.That(_session.Combat.CurrentActionPoints,
+                Is.EqualTo(ap - CombatStateService.UnarmedAttackActionPointCost));
             Assert.That(_session.Vitality.GetCurrentHitPoints(_pc.Identity), Is.EqualTo(hp));
-            Assert.That(_session.Combat.CurrentParticipant, Is.EqualTo(turn));
         }
 
         [Test]

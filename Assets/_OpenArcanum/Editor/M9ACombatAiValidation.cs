@@ -12,12 +12,15 @@ internal static class M9ACombatAiValidation
 {
     private const string EquipmentSector = "maps/arcanum1-024-fixed/101602821844.sec";
     private const string CombatSector = "maps/arcanum1-024-fixed/47781512457.sec";
+    private const string SkeletonSector = "maps/arcanum1-024-fixed/59726889458.sec";
     private const string BowKey = "G_1575DBCA_4990_C243_8184_524D51F7D533";
     private const string ArrowKey = "G_FBFA4631_D97D_D740_9636_F131B2FD9F7B";
     private const string BearKey = "G_9B807B01_A142_4949_80CE_5A085F3BEEB1";
     private static readonly ArcanumObjectId Bow = Parse(BowKey);
     private static readonly ArcanumObjectId Arrows = Parse(ArrowKey);
     private static readonly ArcanumObjectId Bear = Parse(BearKey);
+    private static readonly ArcanumObjectId Skeleton = Parse("G_5ADE34A3_86FB_7A40_98C0_DDEB6335E848");
+    private static readonly ArcanumObjectId Sword = Parse("G_2EB46E07_6D15_AD4C_87A1_B8543AA54F91");
     private static bool _running;
     private static int _warnings;
     private static int _errors;
@@ -30,6 +33,172 @@ internal static class M9ACombatAiValidation
         WorldObjectSectorLoader loader = Object.FindFirstObjectByType<WorldObjectSectorLoader>()
                                          ?? throw new InvalidOperationException("TestTerrain has no world-object loader.");
         loader.StartCoroutine(Validate(loader));
+    }
+
+    [MenuItem("OpenArcanum/M9A Phase 2/Run Physical PlayMode Validation")]
+    private static void RunPhase2()
+    {
+        if (!Application.isPlaying || _running)
+            throw new InvalidOperationException("Enter TestTerrain Play mode; run only one M9A harness.");
+        WorldObjectSectorLoader loader = Object.FindFirstObjectByType<WorldObjectSectorLoader>()
+                                         ?? throw new InvalidOperationException("TestTerrain has no world-object loader.");
+        loader.StartCoroutine(ValidatePhase2(loader));
+    }
+
+    private static IEnumerator ValidatePhase2(WorldObjectSectorLoader loader)
+    {
+        _running = true;
+        _warnings = _errors = 0;
+        WorldMapSessionCoordinator session = loader.Session;
+        Application.logMessageReceived += Track;
+        try
+        {
+            session.ResetAuthoritativeSession();
+            yield return null;
+            Check(session.SelectSector(SkeletonSector), "authentic Greater Skeleton sector loads");
+            yield return null;
+            Refresh(out loader, out ProductionPlayerLifecycle lifecycle, out ProductionCombatAiDriver driver);
+            if (lifecycle.Presentation == null)
+                Check(lifecycle.SpawnAndBind(), "production PC binds in the skeleton sector");
+            PersistentObjectState skeleton = Require(session, Skeleton, ObjectType.Npc, 28460);
+            PersistentObjectState sword = Require(session, Sword, ObjectType.Weapon, 6050);
+            Check(skeleton.Off, "authentic Greater Skeleton begins behind its source encounter gate");
+            typeof(PersistentObjectState).GetProperty(nameof(PersistentObjectState.Off))?.SetValue(skeleton, false);
+            session.ClearSelectedSector();
+            yield return null;
+            Check(session.SelectSector(SkeletonSector), "activated Greater Skeleton sector reloads");
+            yield return null;
+            Refresh(out loader, out lifecycle, out driver);
+            if (lifecycle.Presentation == null)
+                Check(lifecycle.SpawnAndBind(), "production PC rebinds in the skeleton sector");
+            driver.enabled = false;
+            ArcanumObjectId pc = session.PlayerState.Identity;
+            WorldObject pcRuntime = lifecycle.Presentation;
+            Check(session.TryGetLoadedObject(Skeleton, out WorldObject skeletonRuntime),
+                "authentic Greater Skeleton presentation resolves");
+            Check(sword.Placement == ObjectPlacement.EquippedBy(Skeleton, WornLocation.Weapon)
+                  && sword.WeaponData?.Skill == WeaponSkill.Melee,
+                "authentic sword is source-equipped and belongs to the supported melee family");
+
+            MoveActor(session, loader, pc, pcRuntime,
+                FindMeleeTile(loader.NavigationMap, skeletonRuntime.Tile), true);
+            Check(session.Combat.StartCombat(pc, Skeleton, CombatMode.TurnBased).Succeeded,
+                "authentic sword encounter starts in turn-based mode");
+            PrepareActorTurn(session, Skeleton);
+            int apBefore = session.Combat.CurrentActionPoints;
+            int pcHp = session.Vitality.GetCurrentHitPoints(pc);
+            session.Combat.SetRandomSource(new SequenceRandom(100, 100,
+                sword.WeaponData.DamageMin[(int)DamageType.Normal],
+                sword.WeaponData.DamageMin[(int)DamageType.Fatigue]));
+            CombatAiDecision swordAttack = driver.Controller.DecideAndSubmit(Skeleton);
+            Check(swordAttack.AttackResult?.Succeeded == true
+                  && swordAttack.AttackResult.Value.WeaponIdentity == Sword
+                  && swordAttack.AttackResult.Value.Request.Mode == CombatAttackMode.BasicMelee
+                  && swordAttack.AttackResult.Value.ActionPointsSpent == sword.WeaponData.AttackActionPointCost
+                  && session.Combat.CurrentActionPoints
+                     == apBefore - sword.WeaponData.AttackActionPointCost
+                  && session.Vitality.GetCurrentHitPoints(pc)
+                     == pcHp - swordAttack.AttackResult.Value.MitigatedHitPointDamage,
+                "Greater Skeleton autonomously uses its authentic sword through M8 AP/damage authority");
+            Check(!driver.Controller.LastWeaponSelection.Changed
+                  && driver.Controller.LastWeaponSelection.SelectedWeapon == Sword,
+                "combat-entry source selection retains the already-best authentic sword");
+            EndCombat(session, pc);
+
+            Check(session.Combat.StartCombat(pc, Skeleton, CombatMode.RealTime).Succeeded,
+                "authentic sword encounter starts in real-time mode");
+            session.Combat.SetRandomSource(new SequenceRandom(100, 100,
+                sword.WeaponData.DamageMin[(int)DamageType.Normal],
+                sword.WeaponData.DamageMin[(int)DamageType.Fatigue]));
+            CombatAiDecision readySword = driver.Controller.DecideAndSubmit(Skeleton);
+            CombatAiDecision busySword = driver.Controller.DecideAndSubmit(Skeleton);
+            Check(readySword.Scheduled && busySword.Action == CombatAiActionKind.Busy,
+                "authentic sword schedules only while READY and remains BUSY through source ART timing");
+            Check(session.Combat.TryGetRealTimeActorState(Skeleton, out CombatRealTimeActorState swordTiming),
+                "M8H exposes the authentic sword pending action");
+            int swordEffect = (int)(swordTiming.PendingAction.EffectAtMilliseconds
+                                    - session.Combat.ElapsedCombatTimeMilliseconds);
+            Check(swordEffect >= 0 && session.Combat.AdvanceRealTime(swordEffect).Succeeded,
+                "authentic sword reaches its authored action frame");
+            CombatAttackResult swordResolved = session.Combat.LastAttackResult.GetValueOrDefault();
+            Check(swordResolved.Succeeded && swordResolved.WeaponIdentity == Sword,
+                "real-time sword effect resolves through the production melee transaction");
+            Check(session.Combat.TryGetRealTimeActorState(Skeleton, out swordTiming),
+                "sword actor remains scheduler-owned after its effect");
+            int swordReady = (int)(swordTiming.PendingAction.ReadyAtMilliseconds
+                                   - session.Combat.ElapsedCombatTimeMilliseconds);
+            Check(swordReady >= 0 && session.Combat.AdvanceRealTime(swordReady).Succeeded,
+                "authentic sword reaches its authored recovery boundary");
+            EndCombat(session, pc);
+
+            Check(session.SelectSector(EquipmentSector), "authentic Bow/ammo sector loads for fallback proof");
+            yield return null;
+            Refresh(out loader, out lifecycle, out driver);
+            if (lifecycle.Presentation == null)
+                Check(lifecycle.SpawnAndBind(), "production PC binds in the equipment sector");
+            PersistentObjectState bow = Require(session, Bow, ObjectType.Weapon, 6055);
+            PersistentObjectState arrows = Require(session, Arrows, ObjectType.Ammo, 7058);
+            StackSplitResult split = session.SplitStack(Arrows, 1);
+            Check(split.Succeeded && split.CreatedState?.StackQuantity == 1,
+                "inventory authority splits one authentic arrow for exact depletion");
+
+            Check(session.SelectSector(CombatSector), "authentic Polar Bear Cub sector loads for Bow fallback");
+            yield return null;
+            Refresh(out loader, out lifecycle, out driver);
+            if (lifecycle.Presentation == null)
+                Check(lifecycle.SpawnAndBind(), "production PC binds in the bear sector");
+            driver.enabled = false;
+            pc = session.PlayerState.Identity;
+            pcRuntime = lifecycle.Presentation;
+            Check(session.TryGetLoadedObject(Bear, out WorldObject bearRuntime),
+                "authentic Polar Bear Cub production instance resolves");
+            MoveOwnedItem(session, bow, Bear);
+            MoveOwnedItem(session, split.CreatedState, Bear);
+            Vector2Int rangedTile = FindClearRangedTile(loader.NavigationMap, bearRuntime.Tile, 3, 8);
+            MoveActor(session, loader, pc, pcRuntime, bearRuntime.Tile, true);
+            MoveActor(session, loader, Bear, bearRuntime, rangedTile, false);
+            session.Combat.BindRealTimeTimingSource(new DeterministicBowTiming());
+            Check(session.Combat.StartCombat(pc, Bear, CombatMode.RealTime).Succeeded,
+                "one-arrow ranged selection encounter starts");
+            session.Combat.SetRandomSource(new SequenceRandom(100, 100));
+            CombatAiDecision selectedBow = driver.Controller.DecideAndSubmit(Bear);
+            CombatAiDecision bowBusy = driver.Controller.DecideAndSubmit(Bear);
+            Check(selectedBow.Scheduled && selectedBow.AttackMode == CombatAttackMode.BasicRanged
+                  && bowBusy.Action == CombatAiActionKind.Busy
+                  && session.TryGetEquippedItem(Bear, WornLocation.Weapon, out PersistentObjectState equippedBow)
+                  && equippedBow.Identity == Bow,
+                "usable authentic Bow+arrow is selected through equipment authority without bypassing BUSY");
+            Check(session.Combat.AdvanceRealTime(50).Succeeded,
+                "selected Bow reaches deterministic source-shaped effect timing");
+            CombatAttackResult bowResolved = session.Combat.LastAttackResult.GetValueOrDefault();
+            Check(bowResolved.Succeeded && bowResolved.WeaponIdentity == Bow
+                  && bowResolved.AmmoQuantityBefore == 1 && bowResolved.AmmoQuantityAfter == 0,
+                "production ranged transaction consumes the final compatible arrow exactly once");
+            Check(session.Combat.AdvanceRealTime(50).Succeeded,
+                "Bow actor returns to READY before fallback selection");
+            CombatAiDecision fallback = driver.Controller.DecideAndSubmit(Bear);
+            Check(fallback.Failure != CombatFailure.NoAmmo
+                  && fallback.Action == CombatAiActionKind.Move
+                  && !session.TryGetEquippedItem(Bear, WornLocation.Weapon, out _)
+                  && driver.Controller.LastWeaponSelection.UsesUnarmedFallback
+                  && driver.Controller.LastWeaponSelection.Changed,
+                "depleted Bow falls back to unarmed before another shot and submits ordinary approach movement");
+            EndCombat(session, pc);
+            session.Combat.BindRealTimeTimingSource(loader);
+
+            Application.logMessageReceived -= Track;
+            Check(_warnings == 0 && _errors == 0, $"warnings={_warnings}; errors={_errors}");
+            Debug.Log("M9A PHASE 2 PLAYMODE VALIDATION PASS: authenticMelee=GreaterSkeleton+sword+productionAP+sourceART; "
+                      + "rangedSelection=authenticBow+oneArrow+equipmentAuthority; fallback=depletion->unarmed+noNoAmmoRetry; "
+                      + "realTime=READY+BUSY+effect+recovery; targetScoring=deterministicProductionServiceFixture; "
+                      + "knownFixtureLimit=PolarBearUsesDeterministicBowTiming; warnings=0; errors=0.");
+        }
+        finally
+        {
+            session.Combat.ResetRandomSource();
+            Application.logMessageReceived -= Track;
+            _running = false;
+        }
     }
 
     private static IEnumerator Validate(WorldObjectSectorLoader loader)
@@ -266,6 +435,20 @@ internal static class M9ACombatAiValidation
         while (session.Combat.CurrentParticipant != Bear)
             Check(session.Combat.EndCurrentTurn(session.Combat.CurrentParticipant).Succeeded,
                 "authoritative turn progression reaches the bear fixture");
+    }
+
+    private static void PrepareActorTurn(WorldMapSessionCoordinator session, ArcanumObjectId actor)
+    {
+        ArcanumObjectId[] otherHostiles = session.Combat.Participants
+            .Where(value => value.ObjectType == ObjectType.Npc && value.Identity != actor)
+            .Select(value => value.Identity)
+            .ToArray();
+        foreach (ArcanumObjectId hostile in otherHostiles)
+            Check(session.Combat.RemoveParticipant(hostile).Succeeded,
+                "unrelated authentic hostile leaves the bounded proof roster");
+        while (session.Combat.CurrentParticipant != actor)
+            Check(session.Combat.EndCurrentTurn(session.Combat.CurrentParticipant).Succeeded,
+                "authoritative turn progression reaches the selected NPC fixture");
     }
 
     private static Vector2Int FindMeleeTile(SectorNavigationMap map, Vector2Int target)

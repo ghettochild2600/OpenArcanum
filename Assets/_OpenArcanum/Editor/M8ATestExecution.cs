@@ -196,6 +196,38 @@ internal sealed class M8ATestExecution : ScriptableObject, ICallbacks
     private static void RunM9APhase1All()
         => Run(new Filter { testMode = TestMode.EditMode }, "M9A Phase 1 complete EditMode");
 
+    [MenuItem("OpenArcanum/M9A Phase 2/Run Focused EditMode Tests")]
+    private static void RunM9APhase2Focused()
+        => Run(Category("M9APhase2WeaponTargeting"), "M9A Phase 2 focused EditMode");
+
+    [MenuItem("OpenArcanum/M9A Phase 2/Run Phase 1 and M8A-M8I Regression Tests")]
+    private static void RunM9APhase2CombatRegression()
+    {
+        RunMany(
+            new[]
+            {
+                Category("M9APhase1CombatAI"), Category("M8ICombatUI"),
+                Category("M8HRealTimeCombat"), Category("M8GBowCriticalDodgePhase4"),
+                Category("M8GCoverMasterPhase3"), Category("M8GStructuredAttackPhase2"),
+                Category("M8GCombatLoopPhase1"), Category("M8FCriticalResolution"),
+                Category("M8EDeathConsequences"), Category("M8DDefeatState"),
+                Category("M8CRangedCombat"), Category("M8BTurnBasedCombat"),
+                Category("M8ACoreCombatState"),
+            },
+            new[]
+            {
+                "M9A Phase 1 combat AI", "M8I combat UI", "M8H real-time combat",
+                "M8G Phase 4 Bow/Critical Dodge", "M8G Phase 3 cover/Bow Master",
+                "M8G Phase 2 structured attacks", "M8G Phase 1 combat loop",
+                "M8F critical resolution", "M8E death consequences", "M8D defeat state",
+                "M8C ranged combat", "M8B turn-based combat", "M8A core combat",
+            });
+    }
+
+    [MenuItem("OpenArcanum/M9A Phase 2/Run Complete EditMode Tests")]
+    private static void RunM9APhase2All()
+        => Run(new Filter { testMode = TestMode.EditMode }, "M9A Phase 2 complete EditMode");
+
     [MenuItem("OpenArcanum/M8G Phase 2/Run M8A-M8G Phase 1 Combat Regression Tests")]
     private static void RunM8GPhase2CombatRegression()
     {

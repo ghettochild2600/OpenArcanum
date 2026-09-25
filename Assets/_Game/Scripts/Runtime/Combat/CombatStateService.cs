@@ -603,6 +603,7 @@ namespace Arcanum.Runtime.Combat
         public int CurrentActionPoints { get; private set; }
         public int MaximumActionPoints { get; private set; }
         public CombatAttackResult? LastAttackResult { get; private set; }
+        public long AttackResolutionSequence { get; private set; }
         public event Action<CombatRoundBoundary> RoundCompleted;
 
         public CombatStateService(WorldMapSessionCoordinator world)
@@ -838,7 +839,10 @@ namespace Arcanum.Runtime.Combat
         }
 
         public CombatHitChance GetBasicMeleeHitChance(ArcanumObjectId actor, ArcanumObjectId target)
-            => BuildMeleeHitChance(actor, target, CombatCalledLocation.None, out _);
+        {
+            TryResolveSupportedMeleeWeapon(actor, out _, out Weapon weapon);
+            return BuildMeleeHitChance(actor, target, weapon, CombatCalledLocation.None, out _);
+        }
 
         /// <summary>
         /// Performs the source-shaped structural and resource preflight used by the combat UI without
@@ -873,19 +877,22 @@ namespace Arcanum.Runtime.Combat
 
             if (request.Mode == CombatAttackMode.BasicMelee)
             {
-                if (_world.TryGetEquippedItem(actor, WornLocation.Weapon, out _))
-                    return PreviewFailure(CombatFailure.UnsupportedWeapon, request);
+                CombatFailure weaponFailure = TryResolveSupportedMeleeWeapon(actor,
+                    out _, out Weapon meleeWeapon);
+                if (weaponFailure != CombatFailure.None)
+                    return PreviewFailure(weaponFailure, request);
                 if (InteractionRangeRules.Distance(actorPosition, targetPosition) > 1)
                     return PreviewFailure(CombatFailure.OutOfRange, request);
-                if (Mode == CombatMode.TurnBased && CurrentActionPoints < UnarmedAttackActionPointCost
+                int actionPointCost = meleeWeapon?.AttackActionPointCost ?? UnarmedAttackActionPointCost;
+                if (Mode == CombatMode.TurnBased && CurrentActionPoints < actionPointCost
                     && (source.ObjectType != ObjectType.Pc || CurrentActionPoints <= 0
                         || _world.Vitality.GetCurrentFatigue(actor) <= 1))
                     return PreviewFailure(CombatFailure.InsufficientActionPoints, request);
-                if (!TryGetUnarmedDamageRange(source, DamageType.Normal, out _, out _)
-                    || !TryGetUnarmedDamageRange(source, DamageType.Fatigue, out _, out _)
-                    || HasUnsupportedNaturalDamage(source))
+                if (!TryGetMeleeDamageRange(source, meleeWeapon, DamageType.Normal, out _, out _)
+                    || !TryGetMeleeDamageRange(source, meleeWeapon, DamageType.Fatigue, out _, out _)
+                    || HasUnsupportedMeleeDamage(source, meleeWeapon))
                     return PreviewFailure(CombatFailure.UnsupportedDamageProfile, request);
-                CombatHitChance chance = BuildMeleeHitChance(actor, target, request.CalledLocation,
+                CombatHitChance chance = BuildMeleeHitChance(actor, target, meleeWeapon, request.CalledLocation,
                     out CombatAttackModifierLedger ledger);
                 return new CombatAttackPreview(CombatFailure.None, request, chance, ledger);
             }
@@ -928,7 +935,7 @@ namespace Arcanum.Runtime.Combat
         }
 
         private CombatHitChance BuildMeleeHitChance(ArcanumObjectId actor, ArcanumObjectId target,
-            CombatCalledLocation calledLocation, out CombatAttackModifierLedger ledger)
+            Weapon weapon, CombatCalledLocation calledLocation, out CombatAttackModifierLedger ledger)
         {
             int melee = _world.Progression.GetEffectiveSkillRank(actor, CharacterSkill.Melee);
             int effectiveness = checked(5 * melee + 25);
@@ -936,7 +943,12 @@ namespace Arcanum.Runtime.Combat
                 CharacterAttribute.Intelligence) >= 20;
             if (intelligenceBonus) effectiveness += 10;
             int armorClass = _world.DerivedStats.GetArmorClass(target);
-            int difficulty = effectiveness * (armorClass / 2) / 100;
+            int armorDifficulty = effectiveness * (armorClass / 2) / 100;
+            int strength = _world.Characters.GetEffectiveAttribute(actor, CharacterAttribute.Strength);
+            int strengthPenalty = weapon != null && strength < weapon.MinStrength
+                ? checked(5 * (weapon.MinStrength - strength)) : 0;
+            int weaponBonus = weapon?.BonusToHit ?? 0;
+            int difficulty = armorDifficulty + strengthPenalty - weaponBonus;
             int calledPenalty = GetCalledLocationPenalty(calledLocation);
             var modifiers = new[]
             {
@@ -949,14 +961,16 @@ namespace Arcanum.Runtime.Combat
                     sourceValue: _world.Characters.GetEffectiveAttribute(actor,
                         CharacterAttribute.Intelligence)),
                 new CombatAttackModifier(CombatAttackModifierStage.TargetDefense,
-                    CombatAttackModifierReason.ArmorClass, -difficulty, true,
+                    CombatAttackModifierReason.ArmorClass, -armorDifficulty, true,
                     sourceValue: armorClass),
                 new CombatAttackModifier(CombatAttackModifierStage.WeaponRequirement,
-                    CombatAttackModifierReason.MinimumStrength, 0, false),
+                    CombatAttackModifierReason.MinimumStrength, -strengthPenalty,
+                    strengthPenalty > 0, sourceValue: weapon?.MinStrength ?? 0),
                 new CombatAttackModifier(CombatAttackModifierStage.Distance,
                     CombatAttackModifierReason.PerceptionRange, 0, false),
                 new CombatAttackModifier(CombatAttackModifierStage.Weapon,
-                    CombatAttackModifierReason.WeaponToHit, 0, false),
+                    CombatAttackModifierReason.WeaponToHit, weaponBonus,
+                    weaponBonus != 0, sourceValue: weaponBonus),
                 new CombatAttackModifier(CombatAttackModifierStage.CalledLocation,
                     CombatAttackModifierReason.CalledLocation, calledPenalty,
                     IsCalledLocation(calledLocation), sourceValue: (int)calledLocation),
@@ -978,6 +992,7 @@ namespace Arcanum.Runtime.Combat
         {
             CombatAttackResult result = ResolveAttack(request);
             LastAttackResult = result;
+            if (result.Succeeded) AttackResolutionSequence = checked(AttackResolutionSequence + 1);
             return result;
         }
 
@@ -1003,24 +1018,27 @@ namespace Arcanum.Runtime.Combat
                 return AttackFailure(CombatFailure.PresentationUnavailable, request);
             if (mode == CombatAttackMode.BasicRanged)
                 return AttackRanged(request, source, targetSource, actorPosition, targetPosition);
-            if (_world.TryGetEquippedItem(actor, WornLocation.Weapon, out _))
-                return AttackFailure(CombatFailure.UnsupportedWeapon, request);
+            CombatFailure weaponFailure = TryResolveSupportedMeleeWeapon(actor,
+                out PersistentObjectState equipped, out Weapon weapon);
+            if (weaponFailure != CombatFailure.None)
+                return AttackFailure(weaponFailure, request);
             if (InteractionRangeRules.Distance(actorPosition, targetPosition) > 1)
                 return AttackFailure(CombatFailure.OutOfRange, request);
 
             bool turnBased = Mode == CombatMode.TurnBased;
-            bool overdraw = turnBased && CurrentActionPoints < UnarmedAttackActionPointCost;
+            int actionPointCost = weapon?.AttackActionPointCost ?? UnarmedAttackActionPointCost;
+            bool overdraw = turnBased && CurrentActionPoints < actionPointCost;
             if (overdraw && (source.ObjectType != ObjectType.Pc || CurrentActionPoints <= 0
                              || _world.Vitality.GetCurrentFatigue(actor) <= 1))
                 return AttackFailure(CombatFailure.InsufficientActionPoints, request);
-            if (!TryGetUnarmedDamageRange(source, DamageType.Normal, out int normalMinimum,
+            if (!TryGetMeleeDamageRange(source, weapon, DamageType.Normal, out int normalMinimum,
                     out int normalMaximum)
-                || !TryGetUnarmedDamageRange(source, DamageType.Fatigue, out int fatigueMinimum,
+                || !TryGetMeleeDamageRange(source, weapon, DamageType.Fatigue, out int fatigueMinimum,
                     out int fatigueMaximum)
-                || HasUnsupportedNaturalDamage(source))
+                || HasUnsupportedMeleeDamage(source, weapon))
                 return AttackFailure(CombatFailure.UnsupportedDamageProfile, request);
 
-            CombatHitChance chance = BuildMeleeHitChance(actor, target, request.CalledLocation,
+            CombatHitChance chance = BuildMeleeHitChance(actor, target, weapon, request.CalledLocation,
                 out CombatAttackModifierLedger modifiers);
             int attackRoll = _random.NextInclusive(1, 100);
             bool ordinaryHit = attackRoll <= chance.AttackChance;
@@ -1085,7 +1103,7 @@ namespace Arcanum.Runtime.Combat
             if (resolvesDamage && mitigatedNormal >= hitPointsBefore && effectTargetSource.DyingScriptNum != 0)
                 return AttackFailure(CombatFailure.UnresolvedDeathScript, request);
 
-            int spent = turnBased ? Math.Min(CurrentActionPoints, UnarmedAttackActionPointCost) : 0;
+            int spent = turnBased ? Math.Min(CurrentActionPoints, actionPointCost) : 0;
             int overdrawFatigue = overdraw ? 2 : 0;
             if (turnBased) CurrentActionPoints -= spent;
             if (overdrawFatigue > 0) _world.Vitality.ApplyFatigueDamage(actor, overdrawFatigue);
@@ -1101,7 +1119,8 @@ namespace Arcanum.Runtime.Combat
             return new CombatAttackResult(CombatFailure.None, chance, hit, dodge.Succeeded,
                 attackRoll, dodge.SuccessRoll,
                 rawNormal, mitigatedNormal, rawFatigue, mitigatedFatigue,
-                resultingHitPoints, resultingFatigue, UnarmedAttackActionPointCost, spent, overdrawFatigue,
+                resultingHitPoints, resultingFatigue, actionPointCost, spent, overdrawFatigue,
+                weaponIdentity: equipped?.Identity ?? default,
                 outcome: outcome, criticalRoll: criticalRoll, criticalChance: criticalChance,
                 criticalEffect: criticalEffect, criticalEffectRoll: criticalEffectRoll,
                 secondaryCriticalEffectRoll: secondaryCriticalEffectRoll,
@@ -1436,6 +1455,35 @@ namespace Arcanum.Runtime.Combat
             position = Vector2Int.RoundToInt(tile);
             return true;
         }
+
+        private CombatFailure TryResolveSupportedMeleeWeapon(ArcanumObjectId actor,
+            out PersistentObjectState equipped, out Weapon weapon)
+        {
+            equipped = null;
+            weapon = null;
+            if (!_world.TryGetEquippedItem(actor, WornLocation.Weapon, out equipped))
+                return CombatFailure.None;
+            if (equipped.Type != ObjectType.Weapon || equipped.WeaponData == null
+                || (equipped.ArtId & 0x400u) != 0)
+                return CombatFailure.UnsupportedWeapon;
+            weapon = equipped.WeaponData;
+            return weapon.Skill == WeaponSkill.Melee && weapon.Range == 1 && !weapon.UsesAmmo
+                ? CombatFailure.None
+                : CombatFailure.UnsupportedWeapon;
+        }
+
+        private bool TryGetMeleeDamageRange(CombatActorSource source, Weapon weapon,
+            DamageType type, out int minimum, out int maximum)
+            => weapon == null
+                ? TryGetUnarmedDamageRange(source, type, out minimum, out maximum)
+                : TryGetWeaponDamageRange(weapon, type, out minimum, out maximum);
+
+        private static bool HasUnsupportedMeleeDamage(CombatActorSource source, Weapon weapon)
+            => weapon == null
+                ? HasUnsupportedNaturalDamage(source)
+                : weapon.DamageMax[(int)DamageType.Poison] != 0
+                  || weapon.DamageMax[(int)DamageType.Electrical] != 0
+                  || weapon.DamageMax[(int)DamageType.Fire] != 0;
 
         private bool TryGetUnarmedDamageRange(CombatActorSource source, DamageType type,
             out int minimum, out int maximum)
@@ -1845,6 +1893,7 @@ namespace Arcanum.Runtime.Combat
             CurrentActionPoints = 0;
             MaximumActionPoints = 0;
             LastAttackResult = null;
+            AttackResolutionSequence = 0;
             Mode = CombatMode.TurnBased;
             Lifecycle = CombatLifecycle.Inactive;
         }

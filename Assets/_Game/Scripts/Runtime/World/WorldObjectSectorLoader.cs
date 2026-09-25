@@ -179,7 +179,15 @@ namespace Arcanum.Runtime.World
             uint artId = CritterArtResolver.WithAnimRotation(runtime.ArtId, animation,
                 CritterArtResolver.RotationOf(runtime.ArtId)) & ~(0x1Fu << 14);
             if (request.Kind == CombatRealTimeActionKind.MeleeAttack)
-                artId = (artId & ~0xFu) | unarmedWeaponArt;
+            {
+                int weaponArt = unarmedWeaponArt;
+                if (Session.TryGetEquippedItem(request.Actor, WornLocation.Weapon,
+                        out PersistentObjectState melee)
+                    && melee.WeaponData?.Skill == WeaponSkill.Melee
+                    && melee.WeaponData.Range == 1 && !melee.WeaponData.UsesAmmo)
+                    weaponArt = (int)(melee.ArtId >> 6) & 0xF;
+                artId = (artId & ~0xFu) | (uint)weaponArt;
+            }
             else if (request.Kind == CombatRealTimeActionKind.RangedAttack)
                 artId = (artId & ~0xFu) | bowWeaponArt;
 
@@ -223,7 +231,8 @@ namespace Arcanum.Runtime.World
             }
 
             int weaponSpeed = 10;
-            if (request.Kind == CombatRealTimeActionKind.RangedAttack
+            if ((request.Kind is CombatRealTimeActionKind.MeleeAttack
+                    or CombatRealTimeActionKind.RangedAttack)
                 && Session.TryGetEquippedItem(request.Actor, WornLocation.Weapon,
                     out PersistentObjectState equipped)
                 && equipped.WeaponData != null)
