@@ -23,7 +23,9 @@ player-facing manual save/load presentation, M7A bounded passive local map trans
   ledger, M8G Phase 3 numeric cover/hard line-of-fire/Bow Master range exemption, M8G Phase 4 Expert/Master Bow
   multi-impact plus Critical-Dodge reclassification, the bounded M8H authoritative real-time scheduler vertical
   slice, and the bounded M8I combat-UI command/projection vertical slice are complete. All bounded post-M8F M8G
-  audit items are closed.
+  audit items are closed. The bounded M9A Phase 1 NPC-combat-AI vertical slice is also complete: hostile unarmed and
+  Bow actors select stable authoritative targets and submit attack, approach, or yield intents through the existing
+  M8 authority in both turn-based and real-time combat.
 `WorldMapSessionCoordinator` owns typed `World`, `Contained(parent)`, and `Equipped(parent, wornLocation)` placement,
 atomic raw item transfers/equipment replacement/stack merge and split, deterministic session-created item identities,
 source-faithful pickup/drop/owner-transfer policy, and pre-mutation weight/grid-capacity guards independently of Unity
@@ -106,7 +108,7 @@ unsupported secondary effects remain fail-closed. Save V1 remains unchanged and 
 transient.
 Travel time, encounters, follower relocation, mid-route cancellation, route animation, clock/day-night behavior,
 autosave, quicksave, cloud sync, original Arcanum save compatibility, unsupported critical-table effects, broader death
-scripts/consequences, AI, spells, technology, followers, and barter remain deferred.
+scripts/consequences, broader NPC AI beyond M9A Phase 1, spells, technology, followers, and barter remain deferred.
 
 ## Current Branch
 
@@ -1925,10 +1927,38 @@ UI transient is restored.
 
 See [`documentation_unity/m8i-combat-ui-audit.md`](documentation_unity/m8i-combat-ui-audit.md).
 
+## M9A Phase 1 NPC Combat AI Validation Baseline (2026-09-24)
+
+The bounded M9A Phase 1 vertical slice is complete. `CombatAiController` owns only transient stable-ID target
+selection and attack/move/yield intent. Existing M8 authority continues to own roster and dynamic enrollment, turns,
+AP, real-time READY/BUSY state, navigation, attack legality, timing, line-of-fire, cover, ammo, damage, defeat,
+consequences, and termination. The production driver is an idempotent polling adapter and owns no gameplay timing.
+
+The source audit retained valid combat focus, otherwise chose the nearest eligible PC within the source 20-tile
+bound with deterministic source-order/ObjectID ties, approached on range or hard-obstruction failures, and
+reevaluated turn-based actions while AP remained. Real-time commands use the M8H scheduler with no AI cooldown.
+Dead/unconscious actors cannot act under existing M8D semantics; invalid/dead targets are reconsidered; no opposition
+ends combat; and Save V1 normalizes every AI decision transient.
+
+Computer Use physical Play Mode validation used the production PC, authentic Polar Bear Cub, authentic Bow/arrows,
+production loader/navigation, and production combat service. Autonomous unarmed turn-based attack, five-AP cost,
+turn advance, pursuit and reevaluation, hard-blocked Bow reposition with zero shot mutation, one clear Bow shot/arrow,
+real-time READY/BUSY/recovery, defeat suppression, target invalidation, termination, and Save V1 normalization all
+passed. The Bear's eight AP cannot pay the authentic Bow cost and its ART has no Bear-with-Bow timing profile; the
+bounded clear-shot proof therefore supplied deterministic M8H timing while retaining production combat authority.
+The accepted run recorded 0 warnings and 0 errors.
+
+Final Unity compilation was clean. Focused M9A Phase 1 was **15/15**; M8A-M8I combat regressions were **168/168**;
+and the complete EditMode suite was **857/857**, all with 0 failed, 0 skipped, and 0 inconclusive. The full suite
+emitted the same five intentional fail-closed dialogue warnings and 0 errors; the final cleared Unity Console was
+0 logs, 0 warnings, and 0 errors. `git diff --check` was clean. Save format remains V1.
+
+See [`documentation_unity/m9a-phase1-combat-ai-audit.md`](documentation_unity/m9a-phase1-combat-ai-audit.md).
+
 ## Next Recommended Milestone
 
-M8I's bounded command/projection vertical slice is complete. If further M8I work is authorized, the next narrow phase
-should replace the temporary IMGUI with source-art-backed combat-bar/cursor presentation and improve visual AP/target
-feedback without changing the established non-authoritative controller boundary. M8H follow-up scheduling work,
-M9A, autonomous AI, followers, magic, technology, and other later systems must be selected and authorized separately
-and have not started.
+M9A Phase 1's basic hostile combat loop is complete, but the full M9A NPC-AI milestone is not. A separately authorized
+M9A Phase 2 should audit and implement the next bounded source subset: supported melee-weapon use,
+weapon/ammunition selection and fallback, and representable combat-focus/target-scoring inputs. Source-random
+reactive scoring must use injected combat randomness. Backoff, grenades, fleeing/surrender, spells, technology,
+followers/party, general simulation, M9B, and other later systems remain deferred and have not started.
