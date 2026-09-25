@@ -27,6 +27,12 @@ namespace Arcanum.Runtime.World
                     || candidate.Type == ObjectType.Scenery && candidate.Session?.IsAreaEntranceTarget(candidate.Identity) == true,
                 out identity, out type);
 
+        public static bool TrySelectCombatTarget(IEnumerable<WorldObjectSpriteOwner> owners,
+            Vector2 worldPoint, out ArcanumObjectId identity)
+            => TrySelect(Collect(owners), worldPoint,
+                candidate => candidate.Type is ObjectType.Pc or ObjectType.Npc,
+                out identity, out _);
+
         public static bool TrySelectItem(IEnumerable<WorldObject> objects, Vector2 worldPoint,
             out ArcanumObjectId identity)
             => TrySelect(objects, worldPoint, candidate => IsItemType(candidate.Type), out identity, out _);

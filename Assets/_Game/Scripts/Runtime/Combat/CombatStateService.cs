@@ -104,6 +104,30 @@ namespace Arcanum.Runtime.Combat
         }
     }
 
+    /// <summary>
+    /// Immutable, non-mutating projection of the authoritative attack preflight and modifier ledger.
+    /// Presentation may inspect this value, but only <see cref="Attack(CombatAttackRequest)"/> or the
+    /// real-time scheduler may execute the transaction.
+    /// </summary>
+    public readonly struct CombatAttackPreview
+    {
+        public bool Succeeded => Failure == CombatFailure.None;
+        public CombatFailure Failure { get; }
+        public CombatAttackRequest Request { get; }
+        public CombatHitChance Chance { get; }
+        public CombatAttackModifierLedger ModifierLedger { get; }
+        public int FinalEffectiveAttackValue => ModifierLedger?.FinalEffectiveValue ?? 0;
+
+        internal CombatAttackPreview(CombatFailure failure, CombatAttackRequest request,
+            CombatHitChance chance = default, CombatAttackModifierLedger modifierLedger = null)
+        {
+            Failure = failure;
+            Request = request;
+            Chance = chance;
+            ModifierLedger = modifierLedger ?? CombatAttackModifierLedger.Empty;
+        }
+    }
+
     public enum CombatAttackModifierStage
     {
         BaseEffectiveness,
@@ -814,6 +838,93 @@ namespace Arcanum.Runtime.Combat
 
         public CombatHitChance GetBasicMeleeHitChance(ArcanumObjectId actor, ArcanumObjectId target)
             => BuildMeleeHitChance(actor, target, CombatCalledLocation.None, out _);
+
+        /// <summary>
+        /// Performs the source-shaped structural and resource preflight used by the combat UI without
+        /// consuming random values or mutating AP, ammo, vitality, turns, or scheduler state.
+        /// Real-time ready/busy state remains a scheduler concern and is projected separately.
+        /// </summary>
+        public CombatAttackPreview PreviewAttack(CombatAttackRequest request)
+        {
+            ArcanumObjectId actor = request.Attacker;
+            ArcanumObjectId target = request.Target;
+            if (!IsActive) return PreviewFailure(CombatFailure.Inactive, request);
+            if (!Enum.IsDefined(typeof(CombatAttackMode), request.Mode))
+                return PreviewFailure(CombatFailure.UnsupportedAttackMode, request);
+            if (!Enum.IsDefined(typeof(CombatCalledLocation), request.CalledLocation))
+                return PreviewFailure(CombatFailure.InvalidCalledLocation, request);
+            if (actor == target) return PreviewFailure(CombatFailure.SameParticipant, request);
+            if (!_participants.Any(value => value.Identity == actor)
+                || !_sources.TryGetValue(actor, out CombatActorSource source))
+                return PreviewFailure(CombatFailure.ParticipantNotRegistered, request);
+            if (!IsEligible(source)) return PreviewFailure(CombatFailure.ParticipantUnavailable, request);
+            if (Mode == CombatMode.TurnBased && CurrentParticipant != actor)
+                return PreviewFailure(CombatFailure.NotCurrentParticipant, request);
+            if (!_participants.Any(value => value.Identity == target))
+                return PreviewFailure(CombatFailure.ParticipantNotRegistered, request);
+            if (!_sources.TryGetValue(target, out CombatActorSource targetSource))
+                return PreviewFailure(CombatFailure.TargetNotFound, request);
+            if (!IsEligible(targetSource))
+                return PreviewFailure(CombatFailure.ParticipantUnavailable, request);
+            if (!TryGetCombatPosition(actor, out Vector2Int actorPosition)
+                || !TryGetCombatPosition(target, out Vector2Int targetPosition))
+                return PreviewFailure(CombatFailure.PresentationUnavailable, request);
+
+            if (request.Mode == CombatAttackMode.BasicMelee)
+            {
+                if (_world.TryGetEquippedItem(actor, WornLocation.Weapon, out _))
+                    return PreviewFailure(CombatFailure.UnsupportedWeapon, request);
+                if (InteractionRangeRules.Distance(actorPosition, targetPosition) > 1)
+                    return PreviewFailure(CombatFailure.OutOfRange, request);
+                if (Mode == CombatMode.TurnBased && CurrentActionPoints < UnarmedAttackActionPointCost
+                    && (source.ObjectType != ObjectType.Pc || CurrentActionPoints <= 0
+                        || _world.Vitality.GetCurrentFatigue(actor) <= 1))
+                    return PreviewFailure(CombatFailure.InsufficientActionPoints, request);
+                if (!TryGetUnarmedDamageRange(source, DamageType.Normal, out _, out _)
+                    || !TryGetUnarmedDamageRange(source, DamageType.Fatigue, out _, out _)
+                    || HasUnsupportedNaturalDamage(source))
+                    return PreviewFailure(CombatFailure.UnsupportedDamageProfile, request);
+                CombatHitChance chance = BuildMeleeHitChance(actor, target, request.CalledLocation,
+                    out CombatAttackModifierLedger ledger);
+                return new CombatAttackPreview(CombatFailure.None, request, chance, ledger);
+            }
+
+            if (!_world.TryGetEquippedItem(actor, WornLocation.Weapon, out PersistentObjectState equipped)
+                || equipped.Type != ObjectType.Weapon || equipped.WeaponData == null)
+                return PreviewFailure(CombatFailure.UnsupportedWeapon, request);
+            Weapon weapon = equipped.WeaponData;
+            if (weapon.Skill != WeaponSkill.Bow || !weapon.UsesAmmo || weapon.AmmoConsumption < 1)
+                return PreviewFailure(CombatFailure.UnsupportedWeapon, request);
+            int distance = InteractionRangeRules.Distance(actorPosition, targetPosition);
+            if (distance > weapon.Range) return PreviewFailure(CombatFailure.OutOfRange, request);
+            if (_navigationMap == null)
+                return PreviewFailure(CombatFailure.NavigationUnavailable, request);
+            ProjectileTraversalResult traversal = _navigationMap.GetProjectileTraversal(actorPosition,
+                targetPosition);
+            if (traversal.IsBlocked)
+                return PreviewFailure(CombatFailure.LineOfFireBlocked, request);
+            if (!_world.TryGetAmmo(actor, weapon.AmmoType, weapon.AmmoConsumption, out _))
+            {
+                bool hasOtherAmmo = _world.ChildrenOf(actor).Any(identity =>
+                    _world.TryGetObjectState(identity, out PersistentObjectState item)
+                    && item.Type == ObjectType.Ammo && item.StackQuantity.GetValueOrDefault() > 0);
+                return PreviewFailure(hasOtherAmmo ? CombatFailure.IncompatibleAmmo : CombatFailure.NoAmmo,
+                    request);
+            }
+            if (Mode == CombatMode.TurnBased && CurrentActionPoints < weapon.AttackActionPointCost
+                && (source.ObjectType != ObjectType.Pc || CurrentActionPoints <= 0
+                    || _world.Vitality.GetCurrentFatigue(actor) <= 1))
+                return PreviewFailure(CombatFailure.InsufficientActionPoints, request);
+            if (!TryGetWeaponDamageRange(weapon, DamageType.Normal, out _, out _)
+                || !TryGetWeaponDamageRange(weapon, DamageType.Fatigue, out _, out _)
+                || weapon.DamageMax[(int)DamageType.Poison] != 0
+                || weapon.DamageMax[(int)DamageType.Electrical] != 0
+                || weapon.DamageMax[(int)DamageType.Fire] != 0)
+                return PreviewFailure(CombatFailure.UnsupportedDamageProfile, request);
+            CombatHitChance rangedChance = BuildRangedHitChance(actor, target, weapon, distance,
+                traversal.CoverPenalty, request.CalledLocation, out CombatAttackModifierLedger rangedLedger);
+            return new CombatAttackPreview(CombatFailure.None, request, rangedChance, rangedLedger);
+        }
 
         private CombatHitChance BuildMeleeHitChance(ArcanumObjectId actor, ArcanumObjectId target,
             CombatCalledLocation calledLocation, out CombatAttackModifierLedger ledger)
@@ -1762,6 +1873,10 @@ namespace Arcanum.Runtime.Combat
         private static CombatAttackResult AttackFailure(CombatFailure failure,
             CombatAttackRequest request = default)
             => new(failure, request: request);
+
+        private static CombatAttackPreview PreviewFailure(CombatFailure failure,
+            CombatAttackRequest request)
+            => new(failure, request);
 
         private static int ClampPercent(int value) => Math.Max(0, Math.Min(100, value));
 

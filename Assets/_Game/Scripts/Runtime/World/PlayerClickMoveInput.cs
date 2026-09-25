@@ -1,4 +1,5 @@
 using Arcanum.Formats.Objects;
+using Arcanum.Runtime.Combat;
 using UnityEngine;
 
 namespace Arcanum.Runtime.World
@@ -14,6 +15,7 @@ namespace Arcanum.Runtime.World
         private PlayerInteractionController _interaction;
         private WorldObjectSectorLoader _loader;
         private PlayerInputGate _inputGate;
+        private ProductionCombatPresenter _combatPresenter;
         private Vector3 _pressPosition;
 
         public Vector2Int? LastClickedTile { get; private set; }
@@ -28,6 +30,7 @@ namespace Arcanum.Runtime.World
             _interaction = GetComponent<PlayerInteractionController>()
                 ?? gameObject.AddComponent<PlayerInteractionController>();
             _inputGate = GetComponent<PlayerInputGate>();
+            _combatPresenter = GetComponent<ProductionCombatPresenter>();
         }
 
         private void Update()
@@ -43,6 +46,15 @@ namespace Arcanum.Runtime.World
             Vector3 screen = Input.mousePosition;
             screen.z = Mathf.Abs(cam.transform.position.z - _loader.transform.position.z);
             Vector3 world = cam.ScreenToWorldPoint(screen);
+            _combatPresenter ??= GetComponent<ProductionCombatPresenter>();
+            if (_combatPresenter != null && _combatPresenter.TryHandleWorldClick(world))
+            {
+                LastClickedTile = null;
+                LastClickedObject = _combatPresenter.Controller.SelectedTarget;
+                LastInteractionResult = null;
+                LastClickAccepted = _combatPresenter.Controller.LastFailure == CombatFailure.None;
+                return;
+            }
             if (WorldObjectTargetSelector.TrySelectInteractionTarget(_loader.SpriteOwners, world,
                     out ArcanumObjectId target, out ObjectType targetType))
             {

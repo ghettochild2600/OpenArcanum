@@ -143,6 +143,8 @@ namespace Arcanum.Runtime.World
                 gameObject.AddComponent<ProductionSaveLoadPresenter>();
             if (GetComponent<ProductionWorldMapDestinationPresenter>() == null)
                 gameObject.AddComponent<ProductionWorldMapDestinationPresenter>();
+            if (GetComponent<ProductionCombatPresenter>() == null)
+                gameObject.AddComponent<ProductionCombatPresenter>();
         }
 
         /// <summary>Idempotently binds this presentation owner to session authority.</summary>
