@@ -37,6 +37,9 @@ player-facing manual save/load presentation, M7A bounded passive local map trans
   integration, maintained modifiers, optional V1 persistence, and authentic Strength of Earth, Harm, and Minor
   Healing vertical slices. Phase 2 closes M10A with one authoritative source-time axis spanning noncombat and both
   combat modes, authentic finite-duration Flash, exact source deadlines, and typed cancellation/dispel termination.
+  M10B is now complete with coordinator-owned source discipline ranks/schematic eligibility, exact M4 aptitude
+  integration, typed transactional technological item use, M3 consumption, M8/M8H timing, optional V1 persistence,
+  and authentic Healing Salve and Power Axe malfunction vertical slices.
 `WorldMapSessionCoordinator` owns typed `World`, `Contained(parent)`, and `Equipped(parent, wornLocation)` placement,
 atomic raw item transfers/equipment replacement/stack merge and split, deterministic session-created item identities,
 source-faithful pickup/drop/owner-transfer policy, and pre-mutation weight/grid-capacity guards independently of Unity
@@ -121,7 +124,7 @@ Travel time, encounters, advanced follower catch-up/formation, mid-route cancell
 clock/day-night behavior,
 autosave, quicksave, cloud sync, original Arcanum save compatibility, unsupported critical-table effects, broader death
 scripts/consequences, broader NPC AI beyond the bounded M9A kernel, follower loyalty/leveling/campaign behavior,
-spells, technology, and barter remain deferred.
+additional spell/technology content, crafting/schematics, and barter remain deferred.
 
 ## Current Branch
 
@@ -2120,8 +2123,34 @@ broader status/world-object contract.
 
 See [`documentation_unity/m10a-phase2-magic-time-closure-audit.md`](documentation_unity/m10a-phase2-magic-time-closure-audit.md).
 
+## M10B Phase 1 Technology Runtime Validation Baseline (2026-09-27)
+
+M10B is complete as a bounded technology runtime. `WorldMapSessionCoordinator` owns source-faithful discipline
+ranks, effective-degree and built-in-schematic eligibility, exact M4 Magick/Technology aptitude integration, typed
+transactional technological-item use, M3 consumption, M8/M8H timing, and optional Save V1 persistence. The authentic
+vertical slice uses retail Healing Salve prototype 10079 for beneficial item use and retail Power Axe prototype 6088
+for the source technological-weapon malfunction rule through the existing M8F critical-failure path.
+
+Computer Use physical Play Mode validation used the production PC, authentic Polar Bear Cub, retail prototypes,
+production ART timing, inventory/vitality/combat/save services, and the existing graphics rebuild. It proved exact
+rank learning and aptitude mutation; fail-before-mutation item validation; Healing Salve's 20 HP, four-AP,
+one-charge transaction; M8H BUSY/READY and exactly-once real-time resolution; Power Axe self-hit malfunction;
+Original -> Enhanced -> Original presentation independence; and Save V1 restoration with transient action/combat
+normalization. The accepted run reported **0 warnings and 0 errors**.
+
+Focused M10B was **12/12**. Directly affected M3A/M3C, M4B/M4C/M4D, M6A/M6B, M8B/M8F/M8H regressions were
+**206/206**. Complete EditMode was **932/932**, with **0 failed, 0 skipped, and 0 inconclusive**. Unity compilation
+was clean, the final cleared Console was **0 logs, 0 warnings, and 0 errors**, and `git diff --check` was clean.
+
+Crafting, found schematic acquisition, recipe/product alias resolution, explosives/AoE, unsupported object-use and
+status semantics, broader compatible technology content, final technology UI, NPC/follower selection, and campaign
+integration remain deferred. The source audit records each dependency and ambiguity without approximating it.
+
+See [`documentation_unity/m10b-phase1-technology-runtime-audit.md`](documentation_unity/m10b-phase1-technology-runtime-audit.md).
+
 ## Next Recommended Milestone
 
-M9A, M9B, and M10A are formally closed. Do not treat compatible spell-content expansion as unfinished M10A core.
-The next milestone must be selected from the audited roadmap before implementation; this closure does not authorize
-M10B or any broader technology, UI, AI, follower, resurrection, campaign, or general-simulation work.
+M9A, M9B, M10A, and M10B are formally closed. Do not treat compatible spell or technological-item content as
+unfinished core runtime. The next milestone must be selected from the audited roadmap before implementation; this
+closure does not authorize M11, M11C crafting, broader UI, AI/follower behavior, resurrection, campaign, or general-
+simulation work.
