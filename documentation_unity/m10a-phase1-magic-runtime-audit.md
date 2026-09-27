@@ -15,7 +15,7 @@ The vertical slice implements three named retail spells from different effect fa
 
 | ID | Spell | College / rank | Target | Cost | AP | Range | Duration | Implemented source effect |
 |---:|---|---|---|---:|---:|---:|---|---|
-| 15 | Strength of Earth | Earth 1 | living, non-dead critter; self allowed | 5 fatigue | 4 | 99 | maintained; 1 fatigue / 10,000 ms | four source effect-161 applications represented as one inspectable +4 Strength modifier; `No_Stack:0` |
+| 15 | Strength of Earth | Earth 1 | living, non-dead critter; self allowed | 5 fatigue | 4 | 99 | maintained; 1 fatigue / 80,000 source-game ms | four source effect-161 applications represented as one inspectable +4 Strength modifier; `No_Stack:0` |
 | 55 | Harm | Necromantic Black 1 | living, non-dead critter; self rejected | 5 fatigue | 4 | 99 | instantaneous | aptitude-scaled 3-40 normal damage, magic resistance, M4 vitality, M8D/M8E death |
 | 60 | Minor Healing | Necromantic White 1 | damaged living, non-dead, non-mechanical critter; self allowed | 5 fatigue | 4 | 99 | instantaneous | aptitude-scaled 5-30 hit-point restoration capped by M4 vitality |
 
@@ -110,13 +110,17 @@ derived values compose from it without overwriting source/base state. Its source
 copy before cost or effect mutation. `EndEffect` removes the modifier exactly once.
 
 `MagicStateService.AdvanceTime` is the source-time boundary. The M8 1,000 ms completed-round hook advances it once per
-combat boundary, and explicit source-time advances process every crossed 10,000 ms upkeep boundary in deterministic
+combat boundary, and explicit source-time advances process every crossed 80,000 source-game-ms upkeep boundary in deterministic
 effect-ID order. An unavailable caster or inability to maintain the effect ends and cleanly reverses it. Unity frame
 time is not magic authority.
 
 The project still has no general authoritative noncombat world clock. Bridging this boundary to a future world-time
 service, plus proving finite-duration expiration with one authentic timed spell, is the precise remaining core item
 listed under closure assessment; Phase 1 does not pretend that the combat round clock is universal.
+
+Phase 2 subsequently established that source `magictech.c` multiplies configured real-time seconds by eight before
+scheduling against game time. It therefore corrected the Phase 1 10,000-ms placeholder to an 80,000-source-ms
+upkeep interval and moved elapsed authority to the shared source-time service.
 
 ## Save V1
 
