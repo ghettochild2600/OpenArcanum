@@ -13,6 +13,7 @@ using Arcanum.Script;
 using Arcanum.World;
 using Arcanum.Runtime.Save;
 using Arcanum.Runtime.Combat;
+using Arcanum.Runtime.Party;
 using UnityEngine;
 
 namespace Arcanum.Runtime.World
@@ -56,6 +57,7 @@ namespace Arcanum.Runtime.World
         private WorldMapTravelService _worldMapTravel;
         private CombatStateService _combat;
         private DeathConsequenceService _deathConsequences;
+        private PartyStateService _party;
         private bool _mapTransitionActive;
         private ulong _nextDynamicIdentity = 1;
 
@@ -90,6 +92,7 @@ namespace Arcanum.Runtime.World
         public CombatStateService Combat => _combat ??= new CombatStateService(this);
         public DeathConsequenceService DeathConsequences
             => _deathConsequences ??= new DeathConsequenceService(this);
+        public PartyStateService Party => _party ??= new PartyStateService(this);
         public bool IsMapTransitionActive => _mapTransitionActive;
         public MapTransitionResult LastMapTransitionResult { get; private set; }
         public AreaEntranceResult LastAreaEntranceResult { get; private set; }
@@ -1741,6 +1744,7 @@ namespace Arcanum.Runtime.World
             string previousMap = selected.MapPath;
             Vector2 previousPosition = PlayerState.MapPosition;
             uint previousArt = PlayerState.ArtId;
+            PartyTransitionSnapshot partySnapshot = Party.CaptureTransition();
             int facing = destination.Facing ?? CritterArtResolver.RotationOf(previousArt);
             uint arrivalArt = CritterArtResolver.WithAnimRotation(previousArt, 0, facing) & ~(0x1Fu << 14);
 
@@ -1751,12 +1755,18 @@ namespace Arcanum.Runtime.World
                 ClearSelectedSector();
                 PlayerState.RestoreMapPosition(destination.MapPath, destination.GlobalTile, arrivalArt);
                 if (SelectSector(destination.Sector.Path))
+                {
+                    Party.RelocateEligibleFollowers(destination.Sector.Path, destination.LocalTile);
                     return Remember(new MapTransitionResult(MapTransitionFailure.None, destination));
+                }
 
                 PlayerState.RestoreMapPosition(previousMap, previousPosition, previousArt);
                 if (SelectSector(previousSector))
+                {
+                    Party.RestoreTransition(partySnapshot);
                     return Remember(new MapTransitionResult(MapTransitionFailure.PresentationFailed, destination,
                         $"Destination '{destination.Sector.Path}' could not be presented; the source map was restored."));
+                }
                 return Remember(new MapTransitionResult(MapTransitionFailure.RollbackFailed, destination,
                     $"Destination '{destination.Sector.Path}' and source rollback '{previousSector}' both failed."));
             }
@@ -1785,13 +1795,34 @@ namespace Arcanum.Runtime.World
             string previousSector = SelectedSector;
             Vector2 previousMapPosition = PlayerState.MapPosition;
             uint previousArtId = PlayerState.ArtId;
+            PartyTransitionSnapshot partySnapshot = Party.CaptureTransition();
             ClearSelectedSector();
             PlayerState.Relocate(target, entryTile, artId);
-            if (SelectSector(target)) return true;
+            if (SelectSector(target))
+            {
+                Party.RelocateEligibleFollowers(target, entryTile);
+                return true;
+            }
 
             PlayerState.RestoreMapPosition(currentCoordinate.MapPath, previousMapPosition, previousArtId);
             SelectSector(previousSector);
+            Party.RestoreTransition(partySnapshot);
             return false;
+        }
+
+        /// <summary>Moves one persistent world object through session placement authority.</summary>
+        internal bool RelocateWorldObject(ArcanumObjectId identity, string sector, Vector2 tile)
+        {
+            string normalized = NormalizeSector(sector);
+            if (normalized == null || !_states.TryGetValue(identity, out PersistentObjectState state)
+                || state.Placement.Kind != ObjectPlacementKind.World) return false;
+            ObjectPlacement previous = state.Placement;
+            ObjectPlacement destination = ObjectPlacement.InWorld(normalized, tile);
+            if (previous == destination) return true;
+            state.Placement = destination;
+            state.TilePosition = tile;
+            ObjectPlacementChanged?.Invoke(state, previous, destination);
+            return true;
         }
 
         public void UnloadSector(string sector)
@@ -1849,6 +1880,7 @@ namespace Arcanum.Runtime.World
             _worldMapTravel = null;
             _combat = null;
             _deathConsequences = null;
+            _party = null;
             _portals = null;
             _dialogue = null;
             _journal = null;
@@ -1878,6 +1910,10 @@ namespace Arcanum.Runtime.World
             _inventoryCapacity = plan.InventoryCapacity;
             _derivedStats = plan.DerivedStats;
             _campaign = plan.Campaign;
+            _party = new PartyStateService(this);
+            foreach (PartyMember member in plan.PartyMembers)
+                if (!_party.TryAddRestored(member, out string partyError))
+                    throw new InvalidOperationException(partyError);
             if (_areaSource != null) _campaign.BindAreaSource(_areaSource);
             _worldMapDestinations = null;
             _worldMapTravel = null;

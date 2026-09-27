@@ -82,7 +82,8 @@ namespace Arcanum.Runtime.Combat
                 return Fail(DeathConsequenceFailure.VictimNotNpc, killer, victim);
             if (!_world.Vitality.IsDead(victim))
                 return Fail(DeathConsequenceFailure.VictimNotDead, killer, victim);
-            if (_world.PlayerState == null || killer != _world.PlayerState.Identity)
+            if (_world.PlayerState == null
+                || killer != _world.PlayerState.Identity && !_world.Party.IsMember(killer))
                 return Fail(DeathConsequenceFailure.InvalidKiller, killer, victim);
             if (victimState.DeathConsequencesProcessed)
                 return Fail(DeathConsequenceFailure.AlreadyProcessed, killer, victim);
@@ -96,10 +97,11 @@ namespace Arcanum.Runtime.Combat
             CharacterProgressionService.Snapshot progressionSnapshot = _world.Progression.CaptureSnapshot();
             try
             {
-                if (_world.PlayerState != null && killer == _world.PlayerState.Identity)
+                if (_world.PlayerState != null
+                    && (killer == _world.PlayerState.Identity || _world.Party.IsMember(killer)))
                 {
                     award = checked((int)(20L * victimSource.ExperienceWorth / 100L));
-                    if (award > 0) _world.Progression.AwardExperience(killer, award);
+                    if (award > 0) _world.Progression.AwardExperience(_world.PlayerState.Identity, award);
                 }
                 victimState.DeathConsequencesProcessed = true;
             }

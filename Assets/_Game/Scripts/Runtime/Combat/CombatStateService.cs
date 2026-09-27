@@ -711,7 +711,8 @@ namespace Arcanum.Runtime.Combat
             if (!_sources.TryGetValue(identity, out CombatActorSource source))
                 return Fail(CombatFailure.TargetNotFound);
             if (source.ObjectType != ObjectType.Npc) return Fail(CombatFailure.InvalidTarget);
-            if (!IsSourceHostile(source)) return Fail(CombatFailure.TargetNotHostile);
+            if (!IsSourceHostile(source) && !_world.Party.IsMember(identity))
+                return Fail(CombatFailure.TargetNotHostile);
             if (!IsEligible(source)) return Fail(CombatFailure.ParticipantUnavailable);
             if (_engaged.Contains(identity)) return Fail(CombatFailure.AlreadyRegistered);
             _engaged.Add(identity);
@@ -871,6 +872,8 @@ namespace Arcanum.Runtime.Combat
                 return PreviewFailure(CombatFailure.TargetNotFound, request);
             if (!IsEligible(targetSource))
                 return PreviewFailure(CombatFailure.ParticipantUnavailable, request);
+            if (!AreOpponents(actor, target))
+                return PreviewFailure(CombatFailure.TargetNotHostile, request);
             if (!TryGetCombatPosition(actor, out Vector2Int actorPosition)
                 || !TryGetCombatPosition(target, out Vector2Int targetPosition))
                 return PreviewFailure(CombatFailure.PresentationUnavailable, request);
@@ -1013,6 +1016,7 @@ namespace Arcanum.Runtime.Combat
             if (!_sources.TryGetValue(target, out CombatActorSource targetSource))
                 return AttackFailure(CombatFailure.TargetNotFound, request);
             if (!IsEligible(targetSource)) return AttackFailure(CombatFailure.ParticipantUnavailable, request);
+            if (!AreOpponents(actor, target)) return AttackFailure(CombatFailure.TargetNotHostile, request);
             if (!TryGetCombatPosition(actor, out Vector2Int actorPosition)
                 || !TryGetCombatPosition(target, out Vector2Int targetPosition))
                 return AttackFailure(CombatFailure.PresentationUnavailable, request);
@@ -1858,10 +1862,12 @@ namespace Arcanum.Runtime.Combat
             int range = Math.Max(10, perception / 2 + 5);
             foreach (CombatActorSource source in _sources.Values)
             {
-                if (source.ObjectType != ObjectType.Npc || !IsSourceHostile(source) || !IsEligible(source)
+                bool follower = _world.Party.IsMember(source.Identity);
+                if (source.ObjectType != ObjectType.Npc || !IsEligible(source)
                     || !TryGetCombatPosition(source.Identity, out Vector2Int position)
-                    || Math.Abs(position.x - pcPosition.x) > range
-                    || Math.Abs(position.y - pcPosition.y) > range)
+                    || !follower && !IsSourceHostile(source)
+                    || !follower && (Math.Abs(position.x - pcPosition.x) > range
+                                     || Math.Abs(position.y - pcPosition.y) > range))
                     continue;
                 engaged.Add(source.Identity);
                 if (participants.All(value => value.Identity != source.Identity))
@@ -1898,12 +1904,21 @@ namespace Arcanum.Runtime.Combat
             Lifecycle = CombatLifecycle.Inactive;
         }
 
-        private static void SortSourceOrder(List<CombatParticipant> participants)
+        private void SortSourceOrder(List<CombatParticipant> participants)
             => participants.Sort((left, right) =>
             {
-                int pcOrder = (left.ObjectType == ObjectType.Pc ? 1 : 0)
-                    .CompareTo(right.ObjectType == ObjectType.Pc ? 1 : 0);
-                if (pcOrder != 0) return pcOrder;
+                int leftGroup = left.ObjectType == ObjectType.Pc ? 2
+                    : _world.Party.IsMember(left.Identity) ? 1 : 0;
+                int rightGroup = right.ObjectType == ObjectType.Pc ? 2
+                    : _world.Party.IsMember(right.Identity) ? 1 : 0;
+                int group = leftGroup.CompareTo(rightGroup);
+                if (group != 0) return group;
+                if (leftGroup == 1)
+                {
+                    int partyOrder = _world.Party.IndexOf(left.Identity)
+                        .CompareTo(_world.Party.IndexOf(right.Identity));
+                    if (partyOrder != 0) return partyOrder;
+                }
                 int sourceOrder = left.SourceOrder.CompareTo(right.SourceOrder);
                 return sourceOrder != 0 ? sourceOrder
                     : string.CompareOrdinal(left.Identity.Key, right.Identity.Key);

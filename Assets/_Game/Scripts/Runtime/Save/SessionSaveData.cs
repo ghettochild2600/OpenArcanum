@@ -10,6 +10,19 @@ namespace Arcanum.Runtime.Save
         public List<ObjectSaveData> Objects { get; set; }
         public List<CharacterSaveData> Characters { get; set; }
         public CampaignSaveData Campaign { get; set; }
+        public PartySaveData Party { get; set; }
+    }
+
+    public sealed class PartySaveData
+    {
+        public string LeaderIdentity { get; set; }
+        public List<PartyMemberSaveData> Members { get; set; }
+    }
+
+    public sealed class PartyMemberSaveData
+    {
+        public string Identity { get; set; }
+        public bool Forced { get; set; }
     }
 
     public sealed class WorldSaveData

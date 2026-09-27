@@ -12,6 +12,7 @@ using Arcanum.Formats.Tiles;
 using Arcanum.Formats.World;
 using Arcanum.Runtime.Character;
 using Arcanum.Runtime.Combat;
+using Arcanum.Runtime.Party;
 using Arcanum.Runtime.Dialogue;
 using Arcanum.Runtime.Save;
 using Arcanum.World;
@@ -147,6 +148,8 @@ namespace Arcanum.Runtime.World
                 gameObject.AddComponent<ProductionCombatPresenter>();
             if (GetComponent<ProductionCombatAiDriver>() == null)
                 gameObject.AddComponent<ProductionCombatAiDriver>();
+            if (GetComponent<ProductionPartyFollowerDriver>() == null)
+                gameObject.AddComponent<ProductionPartyFollowerDriver>();
         }
 
         /// <summary>Idempotently binds this presentation owner to session authority.</summary>
@@ -798,6 +801,21 @@ namespace Arcanum.Runtime.World
                 Debug.LogError($"WorldObjectSectorLoader: sprite build failed while projecting {state.Identity} " +
                                $"from '{artPath}'.", this);
                 return false;
+            }
+            if (state.Type is ObjectType.Pc or ObjectType.Npc)
+            {
+                Session.Combat.RegisterActorSource(new CombatActorSource(state.Identity, state.Type,
+                    state.PrototypeNumber, state.SourceSector, int.MaxValue - 1,
+                    instance.NpcFlags ?? proto?.NpcFlags ?? 0,
+                    instance.CritterFlags ?? proto?.CritterFlags ?? 0,
+                    instance.WillKosScriptNum != 0
+                        ? instance.WillKosScriptNum
+                        : proto?.WillKosScriptNum ?? 0,
+                    instance.NpcDamage ?? proto?.NpcDamage,
+                    instance.DyingScriptNum != 0
+                        ? instance.DyingScriptNum
+                        : proto?.DyingScriptNum ?? 0,
+                    instance.ExperienceWorth ?? proto?.ExperienceWorth ?? 0));
             }
             int flags = instance.Flags ?? proto?.Flags ?? 0;
             runtime.SourceFlags = flags & ~ObjectFlagInventory;

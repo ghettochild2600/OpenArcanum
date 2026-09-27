@@ -63,7 +63,7 @@ namespace Arcanum.Runtime.Combat
             if (_session.Combat.Mode == CombatMode.TurnBased)
             {
                 var current = _session.Combat.CurrentParticipant;
-                if (!current.IsNull && _session.Combat.IsAutonomousHostileNpc(current))
+                if (!current.IsNull && _session.Combat.IsAutonomousCombatNpc(current))
                     controller.RunCurrentTurn();
                 return;
             }

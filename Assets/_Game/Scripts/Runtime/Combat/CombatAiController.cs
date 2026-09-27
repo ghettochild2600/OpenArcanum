@@ -237,7 +237,7 @@ namespace Arcanum.Runtime.Combat
 
             var retained = new HashSet<PersistentObjectId>(
                 combat.Participants
-                    .Where(combat.IsAutonomousHostileNpc)
+                    .Where(combat.IsAutonomousCombatNpc)
                     .Select(participant => participant.Identity));
 
             var stale = _actors.Keys.Where(actor => !retained.Contains(actor)).ToArray();
@@ -258,7 +258,7 @@ namespace Arcanum.Runtime.Combat
                 return default;
 
             var actor = combat.CurrentParticipant;
-            if (!combat.IsAutonomousHostileNpc(combat.CurrentParticipant))
+            if (!combat.IsAutonomousCombatNpc(combat.CurrentParticipant))
                 return default;
 
             var attacks = 0;
@@ -309,7 +309,7 @@ namespace Arcanum.Runtime.Combat
                 return 0;
 
             var actors = combat.Participants
-                .Where(combat.IsAutonomousHostileNpc)
+                .Where(combat.IsAutonomousCombatNpc)
                 .Select(participant => participant.Identity)
                 .ToArray();
             var submitted = 0;
@@ -328,7 +328,7 @@ namespace Arcanum.Runtime.Combat
             Refresh();
             var combat = _world.Combat;
             if (!combat.IsActive || !combat.TryGetParticipant(actor, out var participant) ||
-                !combat.IsAutonomousHostileNpc(participant) || !combat.IsParticipantEligible(actor))
+                !combat.IsAutonomousCombatNpc(participant) || !combat.IsParticipantEligible(actor))
                 return SetDecision(new CombatAiDecision(CombatAiActionKind.Yield,
                     CombatActionFailure.ParticipantUnavailable, actor, default, CombatAttackMode.None,
                     null, null, false));
@@ -489,8 +489,8 @@ namespace Arcanum.Runtime.Combat
 
         private bool IsValidTarget(PersistentObjectId actor, PersistentObjectId target)
         {
-            if (target.IsNull || !_world.Combat.TryGetParticipant(target, out var participant) ||
-                participant.ObjectType != ObjectType.Pc || !_world.Combat.IsParticipantEligible(target) ||
+            if (target.IsNull || !_world.Combat.TryGetParticipant(target, out _) ||
+                !_world.Combat.AreOpponents(actor, target) || !_world.Combat.IsParticipantEligible(target) ||
                 !_world.Combat.TryGetParticipantPosition(actor, out var actorPosition) ||
                 !_world.Combat.TryGetParticipantPosition(target, out var targetPosition))
                 return false;
@@ -508,7 +508,8 @@ namespace Arcanum.Runtime.Combat
             for (var i = 0; i < participants.Count; i++)
             {
                 var candidate = participants[i];
-                if (candidate.ObjectType != ObjectType.Pc || !_world.Combat.IsParticipantEligible(candidate.Identity) ||
+                if (!_world.Combat.AreOpponents(actor, candidate.Identity)
+                    || !_world.Combat.IsParticipantEligible(candidate.Identity) ||
                     !_world.Combat.TryGetParticipantPosition(candidate.Identity, out var position))
                     continue;
 
@@ -594,6 +595,37 @@ namespace Arcanum.Runtime.Combat
             return _sources.TryGetValue(identity, out var source) && source.ObjectType == ObjectType.Npc &&
                    IsSourceHostile(source);
         }
+
+        public bool IsAutonomousCombatNpc(CombatParticipant participant)
+            => IsAutonomousCombatNpc(participant.Identity);
+
+        public bool IsAutonomousCombatNpc(PersistentObjectId identity)
+            => _sources.TryGetValue(identity, out var source) && source.ObjectType == ObjectType.Npc
+               && (IsSourceHostile(source) || _world.Party.IsMember(identity));
+
+        public bool AreAllies(PersistentObjectId left, PersistentObjectId right)
+        {
+            bool leftParty = IsPlayerSide(left);
+            bool rightParty = IsPlayerSide(right);
+            if (leftParty || rightParty) return leftParty && rightParty;
+            return left == right;
+        }
+
+        public bool AreOpponents(PersistentObjectId left, PersistentObjectId right)
+        {
+            if (left.IsNull || right.IsNull || left == right) return false;
+            bool leftParty = IsPlayerSide(left);
+            bool rightParty = IsPlayerSide(right);
+            if (leftParty && rightParty) return false;
+            if (!leftParty && !rightParty) return true;
+            PersistentObjectId npc = leftParty ? right : left;
+            return _sources.TryGetValue(npc, out CombatActorSource source) && IsSourceHostile(source);
+        }
+
+        private bool IsPlayerSide(PersistentObjectId identity)
+            => _world.Party.IsMember(identity)
+               || _sources.TryGetValue(identity, out CombatActorSource source)
+               && source.ObjectType == ObjectType.Pc;
 
         public CombatAiTargetSelection CompareAiDangerTargets(PersistentObjectId actor,
             PersistentObjectId current, PersistentObjectId candidate)
@@ -725,7 +757,7 @@ namespace Arcanum.Runtime.Combat
         private CombatFailure ValidateAiWeaponChangeActor(PersistentObjectId actor)
         {
             if (!IsActive) return CombatFailure.Inactive;
-            if (!IsAutonomousHostileNpc(actor) || !IsParticipantEligible(actor))
+            if (!IsAutonomousCombatNpc(actor) || !IsParticipantEligible(actor))
                 return CombatFailure.ParticipantUnavailable;
             if (Mode == CombatMode.TurnBased)
                 return CurrentParticipant == actor
@@ -747,7 +779,7 @@ namespace Arcanum.Runtime.Combat
             PersistentObjectId target, out CombatFailure failure, out int distance)
         {
             distance = 0;
-            if (!IsActive || !IsAutonomousHostileNpc(actor) || !IsParticipantEligible(actor)
+            if (!IsActive || !IsAutonomousCombatNpc(actor) || !IsParticipantEligible(actor)
                 || !IsParticipantEligible(target)
                 || !TryGetCombatPosition(actor, out Vector2Int actorPosition)
                 || !TryGetCombatPosition(target, out Vector2Int targetPosition))
@@ -853,7 +885,7 @@ namespace Arcanum.Runtime.Combat
             if (!IsActive)
                 return false;
             var hasPlayer = _participants.Any(participant =>
-                participant.ObjectType == ObjectType.Pc && IsParticipantEligible(participant.Identity));
+                _world.Party.IsPartyAlly(participant.Identity) && IsParticipantEligible(participant.Identity));
             var hasHostile = _participants.Any(participant =>
                 IsAutonomousHostileNpc(participant) && IsParticipantEligible(participant.Identity));
             if (hasPlayer && hasHostile)
@@ -868,10 +900,10 @@ namespace Arcanum.Runtime.Combat
             CombatAttackMode attackMode)
         {
             if (!IsActive || !_sources.TryGetValue(actor, out var actorSource) ||
-                actorSource.ObjectType != ObjectType.Npc || !IsSourceHostile(actorSource) ||
+                actorSource.ObjectType != ObjectType.Npc || !IsAutonomousCombatNpc(actor) ||
                 !TryGetParticipant(actor, out _) || !IsEligible(actorSource) ||
                 !TryGetParticipant(target, out _) || !_sources.TryGetValue(target, out var targetSource) ||
-                !IsEligible(targetSource))
+                !IsEligible(targetSource) || !AreOpponents(actor, target))
                 return FailedApproach(CombatActionFailure.ParticipantUnavailable, actor, target, attackMode);
 
             if (Mode == CombatMode.TurnBased)

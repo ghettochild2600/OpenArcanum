@@ -9,6 +9,7 @@ using Arcanum.Formats.Quest;
 using Arcanum.Runtime.Campaign;
 using Arcanum.Runtime.Character;
 using Arcanum.Runtime.World;
+using Arcanum.Runtime.Party;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Serialization;
 using UnityEngine;
@@ -43,6 +44,7 @@ namespace Arcanum.Runtime.Save
         InvalidStack,
         InvalidCharacter,
         InvalidCampaign,
+        InvalidParty,
         PresentationRebuildFailed,
         RestoreFailed,
     }
@@ -86,6 +88,7 @@ namespace Arcanum.Runtime.Save
         internal InventoryCapacityService InventoryCapacity;
         internal CharacterDerivedStatService DerivedStats;
         internal CampaignStateService Campaign;
+        internal List<PartyMember> PartyMembers;
     }
 
     /// <summary>Versioned, presentation-independent persistence for the bounded M1-M5 session state.</summary>
@@ -271,6 +274,15 @@ namespace Arcanum.Runtime.Save
                 Characters = _session.Characters.States.Values
                     .OrderBy(state => state.Identity.Key, StringComparer.Ordinal).Select(CaptureCharacter).ToList(),
                 Campaign = _session.Campaign.ExportSaveData(),
+                Party = new PartySaveData
+                {
+                    LeaderIdentity = _session.Party.Leader.Key,
+                    Members = _session.Party.Members.Select(member => new PartyMemberSaveData
+                    {
+                        Identity = member.Identity.Key,
+                        Forced = member.Forced,
+                    }).ToList(),
+                },
             };
             data.Campaign.Reactions = _session.DerivedStats.ExportReactionAdjustments()
                 .Select(value => new ReactionSaveData
@@ -422,6 +434,44 @@ namespace Arcanum.Runtime.Save
             if (!result.Succeeded) { plan = null; return result; }
             result = BuildCampaign(data.Campaign, plan);
             if (!result.Succeeded) { plan = null; return result; }
+            result = BuildParty(data.Party, plan);
+            if (!result.Succeeded) { plan = null; return result; }
+            return new SessionLoadResult(SessionLoadFailure.None);
+        }
+
+        private SessionLoadResult BuildParty(PartySaveData data, SessionRestorePlan plan)
+        {
+            if (data == null)
+            {
+                plan.PartyMembers = new List<PartyMember>();
+                return new SessionLoadResult(SessionLoadFailure.None);
+            }
+            if (!TryIdentity(data.LeaderIdentity, out ArcanumObjectId leader)
+                || leader != plan.Player.Identity || data.Members == null)
+                return Failure(SessionLoadFailure.InvalidParty, "The party leader or member list is invalid.");
+
+            // Validation must use the restored roots without mutating the active session.
+            var members = new List<PartyMember>();
+            var seen = new HashSet<ArcanumObjectId>();
+            int ordinaryCount = 0;
+            foreach (PartyMemberSaveData value in data.Members)
+            {
+                if (value == null || !TryIdentity(value.Identity, out ArcanumObjectId identity)
+                    || !plan.Objects.TryGetValue(identity, out PersistentObjectState state)
+                    || state.Type != ObjectType.Npc || state.Off
+                    || !plan.Characters.TryGet(identity, out _) || !plan.Vitality.TryGet(identity, out _)
+                    || !seen.Add(identity))
+                    return Failure(SessionLoadFailure.InvalidParty,
+                        $"Party member '{value?.Identity}' is not a valid persistent NPC.");
+                members.Add(new PartyMember(identity, value.Forced));
+                if (!value.Forced) ordinaryCount++;
+            }
+            int capacity = plan.DerivedStats.GetDerivedStat(plan.Player.Identity,
+                CharacterDerivedStat.MaximumFollowers);
+            if (ordinaryCount > capacity)
+                return Failure(SessionLoadFailure.InvalidParty,
+                    $"The saved party has {ordinaryCount} ordinary followers but capacity is {capacity}.");
+            plan.PartyMembers = members;
             return new SessionLoadResult(SessionLoadFailure.None);
         }
 
