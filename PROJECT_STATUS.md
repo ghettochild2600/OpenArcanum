@@ -32,7 +32,11 @@ player-facing manual save/load presentation, M7A bounded passive local map trans
   M8/M9A ally and autonomous-combat integration, source-authentic follower-kill XP, defeat retention, and optional
   Save V1 party persistence. Phase 2 closes the required production dialogue bridge for source `fo`/`jo`/`lv`,
   transactional membership rollback, and SAP_DIALOG follower routing. The authentic Virgil vertical slice and retail
-  dialogue rows 72/514/524 are validated; M9B is formally complete.
+  dialogue rows 72/514/524 are validated; M9B is formally complete. M10A Phase 1 now adds the coordinator-owned
+  magic runtime, source knowledge/mastery, typed casting, exact fatigue/AP validation, M8H scheduling, M4/M8 effect
+  integration, maintained modifiers, optional V1 persistence, and authentic Strength of Earth, Harm, and Minor
+  Healing vertical slices. Phase 1 is complete; M10A closure is bounded to a future noncombat source-time bridge,
+  one authentic finite-duration proof, and audited dispel/cancellation semantics.
 `WorldMapSessionCoordinator` owns typed `World`, `Contained(parent)`, and `Equipped(parent, wornLocation)` placement,
 atomic raw item transfers/equipment replacement/stack merge and split, deterministic session-created item identities,
 source-faithful pickup/drop/owner-transfer policy, and pre-mutation weight/grid-capacity guards independently of Unity
@@ -2054,8 +2058,40 @@ meaning for extra `jo` operands was invented.
 
 See [`documentation_unity/m9b-phase2-dialogue-party-audit.md`](documentation_unity/m9b-phase2-dialogue-party-audit.md).
 
+## M10A Phase 1 Magic Runtime Validation Baseline (2026-09-27)
+
+M10A Phase 1 introduces coordinator-owned `MagicStateService`, typed immutable definitions/requests/results/effects,
+source college-rank/mastery state, fail-before-mutation cast validation, exact source fatigue and four-AP semantics,
+M8H real-time scheduling, M4 attribute/vitality/derived-stat composition, and M8D/M8E lethal integration. The
+authentic vertical slice is Strength of Earth (ID 15), Harm (ID 55), and Minor Healing (ID 60). Strength of Earth is
+one keyed +4 Strength modifier with source No_Stack and 1-fatigue/10,000 ms upkeep; Harm is aptitude-scaled 3-40
+normal damage with magic resistance; Minor Healing is aptitude-scaled 5-30 healing and rejects mechanical critters.
+
+Save V1 now has an optional, transactionally validated magic domain for college knowledge/mastery, authoritative
+magic time, and maintained effects. Old V1 documents remain valid. Load rebuilds maintained modifiers but never
+restores a pending request, cast animation, M8H action, combat transaction, preview, or diagnostics.
+
+Computer Use physical Play Mode validation used the production PC, authentic Polar Bear Cub, retail critter ART,
+production navigation/combat/M4/M8D/M8E, graphics rebuild, and V1 save/load. Invalid, turn-based, beneficial,
+real-time BUSY/READY, hostile/lethal, maintained/No_Stack/expiry, Original -> Enhanced -> Original, and
+persistent-versus-transient save behavior all passed. The production proof found and fixed missing unarmed art
+selection for the throw-spell timing path. The accepted run recorded **0 warnings and 0 errors**.
+
+Focused M10A was **21/21**. Directly affected M4A/M4B/M4D, M6A/M6B, M8B/M8D/M8E/M8H regressions were **178/178**.
+Complete EditMode was **910/910**. Failed/skipped/inconclusive were **0/0/0**. Compilation was clean.
+
+Phase 1 is complete. A small M10A Phase 2 remains required for closure because the project has no general
+authoritative noncombat world clock: bind that clock to magic, prove one authentic finite-duration spell, and audit
+dispel/cancellation end semantics. Broader compatible spell data is content, not core closure. Teleportation waits on
+an arbitrary-location M7 boundary; M10B technology, final spell UI, spellcasting AI, followers, social/control,
+summons, resurrection, and campaign-specific effects remain deferred.
+
+See [`documentation_unity/m10a-phase1-magic-runtime-audit.md`](documentation_unity/m10a-phase1-magic-runtime-audit.md).
+
 ## Next Recommended Milestone
 
-M9A and M9B are formally closed. M10A is the next roadmap boundary but has not started. Advanced catch-up/formation,
-follower leveling, loyalty, UI, inventory control, resurrection, magic, technology, campaign quests, and unrelated
-general simulation remain deferred to their owning milestones or audits.
+M9A and M9B are formally closed. M10A Phase 1 is complete. The next bounded task is M10A Phase 2 closure: bind an
+authoritative noncombat source-time service, add explicit finite-duration expiration, and prove audited
+dispel/cancellation semantics with one authentic timed spell. Do not expand that work into every retail spell or
+begin M10B. Advanced catch-up/formation, follower leveling, loyalty, UI, inventory control, resurrection,
+technology, campaign quests, and unrelated general simulation remain deferred to their owning milestones or audits.
