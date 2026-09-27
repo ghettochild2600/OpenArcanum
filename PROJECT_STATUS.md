@@ -23,7 +23,7 @@ player-facing manual save/load presentation, M7A bounded passive local map trans
   ledger, M8G Phase 3 numeric cover/hard line-of-fire/Bow Master range exemption, M8G Phase 4 Expert/Master Bow
   multi-impact plus Critical-Dodge reclassification, the bounded M8H authoritative real-time scheduler vertical
   slice, and the bounded M8I combat-UI command/projection vertical slice are complete. All bounded post-M8F M8G
-  audit items are closed. The bounded M9A NPC-combat-AI kernel is also complete across Phases 1 and 2: hostile
+  audit items are closed. The bounded M9A NPC-combat-AI kernel is formally closed across Phases 1 and 2: hostile
   unarmed, Bow, and supported melee-weapon actors select stable authoritative targets, submit attack, approach, or
   yield intents through the existing M8 authority, select authoritative inventory weapons/ammunition with
   source-supported fallback, and react to representable danger sources in both turn-based and real-time combat.
@@ -1987,9 +1987,24 @@ intentional fail-closed dialogue warnings and 0 errors; the final cleared Unity 
 
 See [`documentation_unity/m9a-phase2-weapon-targeting-audit.md`](documentation_unity/m9a-phase2-weapon-targeting-audit.md).
 
+## M9A Closure Audit (2026-09-27)
+
+The post-Phase-2 source review found no genuine gap in the bounded NPC-combat-AI kernel. Stable targeting,
+approach/attack/yield intent, supported weapon/ammunition selection and fallback, representable danger reaction,
+turn-based continuation, and real-time scheduling are complete and remain subordinate to existing M8 authority.
+
+Follower/leader/ally/protection behavior is assigned to M9B. Magic, technology, healing, grenades, fleeing,
+surrender, backoff, scavenging, schedules, stealth/concealment, decoys, social guards, and campaign-specific
+protection require later independent authority or audit. Ambiguous source party-tail ordering and unrepresented
+perception/social inputs were not approximated. The accepted M9A validation baseline remains **12/12** Phase 2,
+**15/15** Phase 1, **185/185** M8A-M8I regressions, and **869/869** complete EditMode, with clean compilation,
+0 final Console logs/warnings/errors, and clean `git diff --check`.
+
+See [`documentation_unity/m9a-closure-audit.md`](documentation_unity/m9a-closure-audit.md).
+
 ## Next Recommended Milestone
 
-The bounded M9A NPC-combat-AI kernel is complete. A future milestone requires separate authorization and audit.
-World-item scavenging, backoff, grenades, fleeing/surrender, spells, technology, followers/party/leader behavior,
-decoys, concealment/perception contests, social guard/protection behavior, schedules, dialogue AI, general simulation,
-M9B, and other later systems remain deferred and have not started.
+The bounded M9A NPC-combat-AI kernel is formally closed. The authorized next milestone is M9B, beginning with a
+source-audited authoritative follower/party foundation. M9B has not yet changed production runtime. World-item
+scavenging, backoff, grenades, fleeing/surrender, spells, technology, decoys, concealment/perception contests,
+social guard/protection behavior, schedules, dialogue AI, general simulation, and later systems remain deferred.
