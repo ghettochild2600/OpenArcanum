@@ -91,6 +91,8 @@ namespace Arcanum.Runtime.Character
         public int GetLevel(ArcanumObjectId identity) => Get(identity).Level;
         public int GetUnspentCharacterPoints(ArcanumObjectId identity) => Get(identity).UnspentCharacterPoints;
 
+        internal void SpendCharacterPoint(ArcanumObjectId identity) => Get(identity).SpendCharacterPoint();
+
         public static int GetExperienceForLevel(int level)
         {
             if (level < 1 || level > MaximumPlayableLevel)

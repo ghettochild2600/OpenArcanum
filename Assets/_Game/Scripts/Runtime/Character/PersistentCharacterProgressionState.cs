@@ -67,6 +67,13 @@ namespace Arcanum.Runtime.Character
             UnspentCharacterPoints--;
         }
 
+        internal void SpendCharacterPoint()
+        {
+            if (UnspentCharacterPoints < 1)
+                throw new InvalidOperationException("No character point is available.");
+            UnspentCharacterPoints--;
+        }
+
         internal void SetTraining(CharacterSkill skill, SkillTrainingLevel training)
             => _training[(int)skill] = training;
 

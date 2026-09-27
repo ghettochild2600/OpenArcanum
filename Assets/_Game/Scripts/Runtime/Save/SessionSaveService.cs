@@ -11,6 +11,7 @@ using Arcanum.Runtime.Character;
 using Arcanum.Runtime.World;
 using Arcanum.Runtime.Party;
 using Arcanum.Runtime.Magic;
+using Arcanum.Runtime.Technology;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Serialization;
 using UnityEngine;
@@ -91,6 +92,7 @@ namespace Arcanum.Runtime.Save
         internal CampaignStateService Campaign;
         internal List<PartyMember> PartyMembers;
         internal MagicSaveData Magic;
+        internal TechnologySaveData Technology;
     }
 
     /// <summary>Versioned, presentation-independent persistence for the bounded M1-M5 session state.</summary>
@@ -277,6 +279,7 @@ namespace Arcanum.Runtime.Save
                     .OrderBy(state => state.Identity.Key, StringComparer.Ordinal).Select(CaptureCharacter).ToList(),
                 Campaign = _session.Campaign.ExportSaveData(),
                 Magic = _session.Magic.ExportSaveData(),
+                Technology = _session.Technology.ExportSaveData(),
                 Party = new PartySaveData
                 {
                     LeaderIdentity = _session.Party.Leader.Key,
@@ -411,6 +414,7 @@ namespace Arcanum.Runtime.Save
                     Alignment = derived.Alignment,
                     MagickPoints = derived.Source.MagickPoints,
                     TechPoints = derived.Source.TechPoints,
+                    TechnologyPointAdjustment = derived.TechnologyPointAdjustment,
                     ReactionBase = derived.Source.ReactionBase,
                     IsAloof = derived.Source.IsAloof,
                     IsMonstrous = derived.Source.IsMonstrous,
@@ -436,6 +440,8 @@ namespace Arcanum.Runtime.Save
             result = BuildCharacters(data.Characters, plan);
             if (!result.Succeeded) { plan = null; return result; }
             result = BuildMagic(data.Magic, plan);
+            if (!result.Succeeded) { plan = null; return result; }
+            result = BuildTechnology(data.Technology, plan);
             if (!result.Succeeded) { plan = null; return result; }
             result = BuildCampaign(data.Campaign, plan);
             if (!result.Succeeded) { plan = null; return result; }
@@ -493,6 +499,24 @@ namespace Arcanum.Runtime.Save
                         $"Active magic effect '{value?.Id}' is invalid.");
             }
             plan.Magic = data;
+            return new SessionLoadResult(SessionLoadFailure.None);
+        }
+
+        private SessionLoadResult BuildTechnology(TechnologySaveData data, SessionRestorePlan plan)
+        {
+            // Earlier V1 saves legitimately have no technology domain.
+            if (data == null) { plan.Technology = null; return new SessionLoadResult(SessionLoadFailure.None); }
+            if (data.Characters == null)
+                return Failure(SessionLoadFailure.InvalidCharacter, "The technology state is incomplete.");
+            var characters = new HashSet<ArcanumObjectId>();
+            foreach (TechnologyCharacterSaveData value in data.Characters)
+                if (value == null || !TryIdentity(value.Identity, out ArcanumObjectId identity)
+                    || !plan.Characters.TryGet(identity, out _) || !characters.Add(identity)
+                    || value.DisciplineRanks?.Length != 8
+                    || value.DisciplineRanks.Any(rank => rank < 0 || rank > 7))
+                    return Failure(SessionLoadFailure.InvalidCharacter,
+                        $"Technology knowledge for '{value?.Identity}' is invalid.");
+            plan.Technology = data;
             return new SessionLoadResult(SessionLoadFailure.None);
         }
 
@@ -831,6 +855,10 @@ namespace Arcanum.Runtime.Save
                     PersistentCharacterDerivedState state = derived.GetOrCreateRestored(identity,
                         (ObjectType)value.ObjectType, value.PrototypeNumber, derivedSource);
                     state.SetAlignment(source.Alignment);
+                    if (source.TechnologyPointAdjustment < 0)
+                        return Failure(SessionLoadFailure.InvalidCharacter,
+                            $"Character {identity} technology point adjustment is invalid.");
+                    state.SetTechnologyPointAdjustment(source.TechnologyPointAdjustment);
                 }
                 plan.Characters = characters;
                 plan.Progression = progression;

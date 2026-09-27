@@ -12,6 +12,18 @@ namespace Arcanum.Runtime.Save
         public CampaignSaveData Campaign { get; set; }
         public PartySaveData Party { get; set; }
         public MagicSaveData Magic { get; set; }
+        public TechnologySaveData Technology { get; set; }
+    }
+
+    public sealed class TechnologySaveData
+    {
+        public List<TechnologyCharacterSaveData> Characters { get; set; }
+    }
+
+    public sealed class TechnologyCharacterSaveData
+    {
+        public string Identity { get; set; }
+        public int[] DisciplineRanks { get; set; }
     }
 
     public sealed class MagicSaveData
@@ -173,6 +185,7 @@ namespace Arcanum.Runtime.Save
         public int Alignment { get; set; }
         public int MagickPoints { get; set; }
         public int TechPoints { get; set; }
+        public int TechnologyPointAdjustment { get; set; }
         public int ReactionBase { get; set; }
         public bool IsAloof { get; set; }
         public bool IsMonstrous { get; set; }

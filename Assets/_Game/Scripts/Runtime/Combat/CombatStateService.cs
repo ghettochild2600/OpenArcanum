@@ -634,11 +634,24 @@ namespace Arcanum.Runtime.Combat
             return CombatFailure.None;
         }
 
+        /// <summary>M10B reuses combat ownership/AP without transferring technology authority to combat.</summary>
+        public CombatFailure PreviewTechnologyAction(ArcanumObjectId actor, int actionPointCost)
+            => PreviewSpellAction(actor, actionPointCost);
+
         public void CommitTurnBasedSpellAction(ArcanumObjectId actor, int actionPointCost)
         {
             if (!IsActive || Mode != CombatMode.TurnBased || CurrentParticipant != actor
                 || actionPointCost <= 0 || CurrentActionPoints < actionPointCost)
                 throw new InvalidOperationException("Spell action was not preflighted against current combat authority.");
+            CurrentActionPoints -= actionPointCost;
+            if (CurrentActionPoints == 0) AdvanceToNextEligibleParticipant(actor);
+        }
+
+        public void CommitTurnBasedTechnologyAction(ArcanumObjectId actor, int actionPointCost)
+        {
+            if (!IsActive || Mode != CombatMode.TurnBased || CurrentParticipant != actor
+                || actionPointCost <= 0 || CurrentActionPoints < actionPointCost)
+                throw new InvalidOperationException("Technology action was not preflighted against current combat authority.");
             CurrentActionPoints -= actionPointCost;
             if (CurrentActionPoints == 0) AdvanceToNextEligibleParticipant(actor);
         }
@@ -1095,10 +1108,16 @@ namespace Arcanum.Runtime.Combat
                                == SkillTrainingLevel.Master;
             int criticalChance = GetCriticalChance(chance.MeleeEffectiveness, ordinaryHit, masterMelee,
                 GetCalledLocationCriticalBonus(request.CalledLocation));
-            CombatAttackOutcome outcome = ClassifyAttack(ordinaryHit, criticalRoll, criticalChance);
+            int aptitudeFailureChance = equipped == null ? 0
+                : _world.Technology.GetItemAptitudeCriticalFailureChance(equipped, actor);
+            bool aptitudeCriticalFailure = aptitudeFailureChance > 0
+                && _random.NextInclusive(1, 100) <= aptitudeFailureChance;
+            CombatAttackOutcome outcome = aptitudeCriticalFailure
+                ? CombatAttackOutcome.CriticalFailure
+                : ClassifyAttack(ordinaryHit, criticalRoll, criticalChance);
             bool hit = ordinaryHit;
             DodgeResolution dodge = default;
-            if (hit)
+            if (hit && !aptitudeCriticalFailure)
             {
                 dodge = ResolveDodge(target, chance.DodgeChance);
                 hit = !dodge.Succeeded;

@@ -197,7 +197,7 @@ namespace Arcanum.Runtime.World
             }
             else if (request.Kind == CombatRealTimeActionKind.RangedAttack)
                 artId = (artId & ~0xFu) | bowWeaponArt;
-            else if (request.Kind == CombatRealTimeActionKind.SpellCast)
+            else if (request.Kind is CombatRealTimeActionKind.SpellCast or CombatRealTimeActionKind.TechnologyUse)
                 artId = (artId & ~0xFu) | unarmedWeaponArt;
 
             string path = _art.Resolve(artId);
@@ -415,6 +415,7 @@ namespace Arcanum.Runtime.World
                     Session.Vitality.GetOrCreateSourceCharacter(identity, instance.Type, instance.PrototypeNumber,
                         vitalitySource);
                     Session.Magic.RegisterSourceCharacter(identity, instance.SpellTech, proto?.SpellTech);
+                    Session.Technology.RegisterSourceCharacter(identity, instance.SpellTech, proto?.SpellTech);
                 }
                 PersistentObjectState state = Session.GetOrCreate(instance, identity, sectorPath, artId,
                     (flags & ObjectFlagOff) != 0, (stateFlags & 1) != 0,

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Arcanum.Formats.Objects;
 using Arcanum.Runtime.Magic;
+using Arcanum.Runtime.Technology;
 using Arcanum.Runtime.World;
 using UnityEngine;
 
@@ -14,6 +15,7 @@ namespace Arcanum.Runtime.Combat
         MeleeAttack,
         RangedAttack,
         SpellCast,
+        TechnologyUse,
     }
 
     /// <summary>
@@ -28,10 +30,11 @@ namespace Arcanum.Runtime.Combat
         public bool Running { get; }
         public CombatAttackRequest Attack { get; }
         public SpellCastRequest Spell { get; }
+        public TechnologyUseRequest Technology { get; }
 
         public CombatRealTimeTimingRequest(ArcanumObjectId actor, CombatRealTimeActionKind kind,
             int routeSteps = 0, bool running = false, CombatAttackRequest attack = default,
-            SpellCastRequest spell = default)
+            SpellCastRequest spell = default, TechnologyUseRequest technology = default)
         {
             Actor = actor;
             Kind = kind;
@@ -39,6 +42,7 @@ namespace Arcanum.Runtime.Combat
             Running = running;
             Attack = attack;
             Spell = spell;
+            Technology = technology;
         }
     }
 
@@ -152,12 +156,13 @@ namespace Arcanum.Runtime.Combat
         public bool EffectResolved { get; }
         public CombatAttackRequest Attack { get; }
         public SpellCastRequest Spell { get; }
+        public TechnologyUseRequest Technology { get; }
         public Vector2Int Destination { get; }
         public bool Running { get; }
 
         internal CombatRealTimeActionState(ArcanumObjectId actor, CombatRealTimeActionKind kind,
             long startedAtMilliseconds, long effectAtMilliseconds, long readyAtMilliseconds,
-            bool effectResolved, CombatAttackRequest attack, SpellCastRequest spell,
+            bool effectResolved, CombatAttackRequest attack, SpellCastRequest spell, TechnologyUseRequest technology,
             Vector2Int destination, bool running)
         {
             Actor = actor;
@@ -168,6 +173,7 @@ namespace Arcanum.Runtime.Combat
             EffectResolved = effectResolved;
             Attack = attack;
             Spell = spell;
+            Technology = technology;
             Destination = destination;
             Running = running;
         }
@@ -203,16 +209,19 @@ namespace Arcanum.Runtime.Combat
         public CombatAttackResult? AttackResult { get; }
         public CombatMoveResult? MoveResult { get; }
         public SpellCastResult? SpellResult { get; }
+        public TechnologyUseResult? TechnologyResult { get; }
 
         internal CombatRealTimeActionResolution(CombatRealTimeActionState action,
             CombatFailure failure, CombatAttackResult? attackResult = null,
-            CombatMoveResult? moveResult = null, SpellCastResult? spellResult = null)
+            CombatMoveResult? moveResult = null, SpellCastResult? spellResult = null,
+            TechnologyUseResult? technologyResult = null)
         {
             Action = action;
             Failure = failure;
             AttackResult = attackResult;
             MoveResult = moveResult;
             SpellResult = spellResult;
+            TechnologyResult = technologyResult;
         }
     }
 
@@ -235,11 +244,12 @@ namespace Arcanum.Runtime.Combat
             public bool EffectResolved;
             public CombatAttackRequest Attack;
             public SpellCastRequest Spell;
+            public TechnologyUseRequest Technology;
             public Vector2Int Destination;
             public bool Running;
 
             public CombatRealTimeActionState Snapshot => new(Actor, Kind, StartedAt, EffectAt,
-                ReadyAt, EffectResolved, Attack, Spell, Destination, Running);
+                ReadyAt, EffectResolved, Attack, Spell, Technology, Destination, Running);
         }
 
         private readonly Dictionary<ArcanumObjectId, RealTimeActor> _realTimeActors = new();
@@ -340,6 +350,22 @@ namespace Arcanum.Runtime.Combat
                 return Fail(CombatFailure.TimingUnavailable);
             StartRealTimeAction(actor, request.Caster, CombatRealTimeActionKind.SpellCast,
                 timing, default, default, false, request);
+            return Success();
+        }
+
+        public CombatResult ScheduleRealTimeTechnology(TechnologyUseRequest request)
+        {
+            if (!TryPrepareRealTimeActor(request.Actor, out RealTimeActor actor,
+                    out CombatResult failure)) return failure;
+            TechnologyUseResult preview = _world.Technology.PreviewScheduledUse(request);
+            if (!preview.Succeeded) return Fail(CombatFailure.InvalidTarget);
+            var timingRequest = new CombatRealTimeTimingRequest(request.Actor,
+                CombatRealTimeActionKind.TechnologyUse, technology: request);
+            if (_realTimeTimingSource == null
+                || !_realTimeTimingSource.TryGetTiming(timingRequest, out CombatRealTimeTiming timing))
+                return Fail(CombatFailure.TimingUnavailable);
+            StartRealTimeAction(actor, request.Actor, CombatRealTimeActionKind.TechnologyUse,
+                timing, default, default, false, technology: request);
             return Success();
         }
 
@@ -460,7 +486,8 @@ namespace Arcanum.Runtime.Combat
 
         private void StartRealTimeAction(RealTimeActor actor, ArcanumObjectId identity,
             CombatRealTimeActionKind kind, CombatRealTimeTiming timing, CombatAttackRequest attack,
-            Vector2Int destination, bool running, SpellCastRequest spell = default)
+            Vector2Int destination, bool running, SpellCastRequest spell = default,
+            TechnologyUseRequest technology = default)
         {
             long effectAt = checked(ElapsedCombatTimeMilliseconds + timing.EffectDelayMilliseconds);
             long readyAt = checked(ElapsedCombatTimeMilliseconds + timing.ReadyDelayMilliseconds);
@@ -474,6 +501,7 @@ namespace Arcanum.Runtime.Combat
                 ReadyAt = readyAt,
                 Attack = attack,
                 Spell = spell,
+                Technology = technology,
                 Destination = destination,
                 Running = running,
             };
@@ -533,6 +561,7 @@ namespace Arcanum.Runtime.Combat
             CombatAttackResult? attackResult = null;
             CombatMoveResult? moveResult = null;
             SpellCastResult? spellResult = null;
+            TechnologyUseResult? technologyResult = null;
             if (!_sources.TryGetValue(pending.Actor, out CombatActorSource source) || !IsEligible(source))
             {
                 failure = CombatFailure.ParticipantUnavailable;
@@ -555,6 +584,12 @@ namespace Arcanum.Runtime.Combat
                         spellResult = result;
                         failure = result.Succeeded ? CombatFailure.None : CombatFailure.InvalidTarget;
                     }
+                    else if (pending.Kind == CombatRealTimeActionKind.TechnologyUse)
+                    {
+                        TechnologyUseResult result = _world.Technology.ResolveScheduledUse(pending.Technology);
+                        technologyResult = result;
+                        failure = result.Succeeded ? CombatFailure.None : CombatFailure.InvalidTarget;
+                    }
                     else
                     {
                         CombatAttackResult result = Attack(pending.Attack);
@@ -570,7 +605,7 @@ namespace Arcanum.Runtime.Combat
 
             CombatRealTimeActionState snapshot = pending.Snapshot;
             var resolution = new CombatRealTimeActionResolution(snapshot, failure,
-                attackResult, moveResult, spellResult);
+                attackResult, moveResult, spellResult, technologyResult);
             LastRealTimeActionResolution = resolution;
             RealTimeActionResolved?.Invoke(resolution);
             if (failure != CombatFailure.None

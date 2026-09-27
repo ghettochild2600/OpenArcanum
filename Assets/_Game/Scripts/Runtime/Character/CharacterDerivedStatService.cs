@@ -163,6 +163,12 @@ namespace Arcanum.Runtime.Character
         public int GetEffectiveMagickPoints(ArcanumObjectId identity) => GetEffectiveMagickPoints(Get(identity));
         public int GetEffectiveTechPoints(ArcanumObjectId identity) => GetEffectiveTechPoints(Get(identity));
 
+        internal void AddTechnologyPoint(ArcanumObjectId identity)
+        {
+            PersistentCharacterDerivedState state = Get(identity);
+            state.SetTechnologyPointAdjustment(checked(state.TechnologyPointAdjustment + 1));
+        }
+
         public CharacterReactionInputs GetReactionInputs(ArcanumObjectId npcIdentity, ArcanumObjectId pcIdentity)
         {
             PersistentCharacterDerivedState npc = Get(npcIdentity);
@@ -285,7 +291,8 @@ namespace Arcanum.Runtime.Character
                 _characters.Get(state.Identity).Race, true), 0, CharacterDerivedStatRules.MaximumAptitudePoints);
 
         private int GetEffectiveTechPoints(PersistentCharacterDerivedState state)
-            => Clamp(state.Source.TechPoints + CharacterDerivedStatRules.AptitudePointAdjustment(
+            => Clamp(state.Source.TechPoints + state.TechnologyPointAdjustment
+                + CharacterDerivedStatRules.AptitudePointAdjustment(
                 _characters.Get(state.Identity).Race, false), 0, CharacterDerivedStatRules.MaximumAptitudePoints);
 
         private static int Clamp(int value, int minimum, int maximum) => Math.Max(minimum, Math.Min(maximum, value));

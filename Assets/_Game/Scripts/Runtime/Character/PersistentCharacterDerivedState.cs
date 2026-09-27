@@ -11,6 +11,7 @@ namespace Arcanum.Runtime.Character
         public int? PrototypeNumber { get; }
         public CharacterDerivedSource Source { get; }
         public int Alignment { get; private set; }
+        public int TechnologyPointAdjustment { get; private set; }
 
         internal PersistentCharacterDerivedState(ArcanumObjectId identity, ObjectType objectType,
             int? prototypeNumber, CharacterDerivedSource source)
@@ -30,5 +31,6 @@ namespace Arcanum.Runtime.Character
             => ObjectType == objectType && PrototypeNumber == prototypeNumber && Source.Equals(source);
 
         internal void SetAlignment(int alignment) => Alignment = alignment;
+        internal void SetTechnologyPointAdjustment(int value) => TechnologyPointAdjustment = value;
     }
 }

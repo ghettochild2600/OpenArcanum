@@ -15,6 +15,7 @@ using Arcanum.Runtime.Save;
 using Arcanum.Runtime.Combat;
 using Arcanum.Runtime.Party;
 using Arcanum.Runtime.Magic;
+using Arcanum.Runtime.Technology;
 using UnityEngine;
 
 namespace Arcanum.Runtime.World
@@ -60,6 +61,7 @@ namespace Arcanum.Runtime.World
         private DeathConsequenceService _deathConsequences;
         private PartyStateService _party;
         private MagicStateService _magic;
+        private TechnologyStateService _technology;
         private SourceTimeService _sourceTime;
         private bool _mapTransitionActive;
         private ulong _nextDynamicIdentity = 1;
@@ -98,6 +100,7 @@ namespace Arcanum.Runtime.World
         public PartyStateService Party => _party ??= new PartyStateService(this);
         public SourceTimeService SourceTime => _sourceTime ??= new SourceTimeService();
         public MagicStateService Magic => _magic ??= new MagicStateService(this);
+        public TechnologyStateService Technology => _technology ??= new TechnologyStateService(this);
         internal bool HasMagicCritterFlag(ArcanumObjectId identity, int flag)
             => _magic?.HasActiveCritterFlag(identity, flag) == true;
         public bool IsMapTransitionActive => _mapTransitionActive;
@@ -572,6 +575,7 @@ namespace Arcanum.Runtime.World
             DerivedStats.GetOrCreateDevelopmentPlayer(identity);
             Vitality.GetOrCreateDevelopmentPlayer(identity);
             Magic.RegisterSourceCharacter(identity, new int[17], null);
+            Technology.RegisterSourceCharacter(identity, new int[25], null);
             Combat.RegisterActorSource(new CombatActorSource(identity, ObjectType.Pc, null, normalized,
                 int.MaxValue, 0, 0, 0));
             if (PlayerState == null)
@@ -682,6 +686,21 @@ namespace Arcanum.Runtime.World
                 ammo.StackQuantity = remaining;
                 ObjectQuantityChanged?.Invoke(ammo, previous, remaining);
             }
+            return true;
+        }
+
+        /// <summary>Consumes one preflighted singular inventory item and records its persistent tombstone.</summary>
+        internal bool ConsumeSingularItem(ArcanumObjectId identity, ArcanumObjectId owner)
+        {
+            if (!_states.TryGetValue(identity, out PersistentObjectState item)
+                || item.StackQuantity.HasValue
+                || item.Placement.Kind is not (ObjectPlacementKind.Contained or ObjectPlacementKind.Equipped)
+                || item.ParentIdentity != owner)
+                return false;
+            ObjectPlacement placement = item.Placement;
+            _states.Remove(identity);
+            _removedObjectIdentities.Add(identity);
+            ObjectStateRemoved?.Invoke(item, placement);
             return true;
         }
 
@@ -1891,6 +1910,7 @@ namespace Arcanum.Runtime.World
             _deathConsequences = null;
             _party = null;
             _magic = null;
+            _technology = null;
             _sourceTime = null;
             _portals = null;
             _dialogue = null;
@@ -1923,6 +1943,7 @@ namespace Arcanum.Runtime.World
             _campaign = plan.Campaign;
             _party = new PartyStateService(this);
             _magic = null;
+            _technology = null;
             _sourceTime = new SourceTimeService();
             _sourceTime.Restore(plan.Magic?.ElapsedMilliseconds ?? 0);
             foreach (PartyMember member in plan.PartyMembers)
@@ -1944,6 +1965,8 @@ namespace Arcanum.Runtime.World
                 PlayerState.Sector, int.MaxValue, 0, 0, 0));
             _magic = new MagicStateService(this);
             _magic.RestoreSaveData(plan.Magic);
+            _technology = new TechnologyStateService(this);
+            _technology.RestoreSaveData(plan.Technology);
             return SelectSector(plan.SelectedSector);
         }
 

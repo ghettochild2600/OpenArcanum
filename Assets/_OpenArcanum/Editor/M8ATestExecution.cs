@@ -326,6 +326,34 @@ internal sealed class M8ATestExecution : ScriptableObject, ICallbacks
     private static void RunM10AAll()
         => Run(new Filter { testMode = TestMode.EditMode }, "M10A complete EditMode");
 
+    [MenuItem("OpenArcanum/M10B/Run Focused EditMode Tests", false, 0)]
+    private static void RunM10BFocused()
+        => Run(Category("M10BTechnologyRuntime"), "M10B focused EditMode");
+
+    [MenuItem("OpenArcanum/M10B/Run Targeted Regression Tests", false, 0)]
+    private static void RunM10BTargeted()
+    {
+        RunMany(
+            new[]
+            {
+                Test("Arcanum.Formats.Tests.M3AInventoryStateTests"), Category("M3C"),
+                Category("M4BCharacterVitality"), Category("M4CCharacterProgression"),
+                Category("M4DDerivedCharacterStats"), Category("M6A"), Category("M6B"),
+                Category("M8BTurnBasedCombat"), Category("M8FCriticalResolution"),
+                Category("M8HRealTimeCombat"),
+            },
+            new[]
+            {
+                "M3A inventory state", "M3C equipment", "M4B vitality", "M4C progression",
+                "M4D derived stats", "M6A session save/load", "M6B migration/slots",
+                "M8B turn-based combat", "M8F critical resolution", "M8H real-time combat",
+            });
+    }
+
+    [MenuItem("OpenArcanum/M10B/Run Complete EditMode Tests", false, 0)]
+    private static void RunM10BAll()
+        => Run(new Filter { testMode = TestMode.EditMode }, "M10B complete EditMode");
+
     [MenuItem("OpenArcanum/M8G Phase 2/Run M8A-M8G Phase 1 Combat Regression Tests")]
     private static void RunM8GPhase2CombatRegression()
     {
