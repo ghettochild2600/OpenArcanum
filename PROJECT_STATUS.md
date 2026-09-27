@@ -27,6 +27,10 @@ player-facing manual save/load presentation, M7A bounded passive local map trans
   unarmed, Bow, and supported melee-weapon actors select stable authoritative targets, submit attack, approach, or
   yield intents through the existing M8 authority, select authoritative inventory weapons/ammunition with
   source-supported fallback, and react to representable danger sources in both turn-based and real-time combat.
+  M9B Phase 1 now adds the session-owned authoritative follower/party foundation: stable ordered membership, M4D
+  capacity, join/remove transactions, production-navigation following, sector/local-map/world-map accompaniment,
+  M8/M9A ally and autonomous-combat integration, source-authentic follower-kill XP, defeat retention, and optional
+  Save V1 party persistence. The authentic Virgil vertical slice is validated; a short M9B closure assessment remains.
 `WorldMapSessionCoordinator` owns typed `World`, `Contained(parent)`, and `Equipped(parent, wornLocation)` placement,
 atomic raw item transfers/equipment replacement/stack merge and split, deterministic session-created item identities,
 source-faithful pickup/drop/owner-transfer policy, and pre-mutation weight/grid-capacity guards independently of Unity
@@ -107,10 +111,11 @@ lethal first impact while M8D/M8E process death/corpse/XP exactly once. A defend
 the exact 0/10/50/100 training table and reclassifies the cleared hit through the existing critical-failure path;
 unsupported secondary effects remain fail-closed. Save V1 remains unchanged and impact/Dodge diagnostics are
 transient.
-Travel time, encounters, follower relocation, mid-route cancellation, route animation, clock/day-night behavior,
+Travel time, encounters, advanced follower catch-up/formation, mid-route cancellation, route animation,
+clock/day-night behavior,
 autosave, quicksave, cloud sync, original Arcanum save compatibility, unsupported critical-table effects, broader death
-scripts/consequences, broader NPC AI beyond the bounded M9A kernel, spells, technology, followers, and barter remain
-deferred.
+scripts/consequences, broader NPC AI beyond the bounded M9A kernel, follower dialogue recruitment/loyalty/leveling,
+spells, technology, and barter remain deferred.
 
 ## Current Branch
 
@@ -2002,9 +2007,31 @@ perception/social inputs were not approximated. The accepted M9A validation base
 
 See [`documentation_unity/m9a-closure-audit.md`](documentation_unity/m9a-closure-audit.md).
 
+## M9B Phase 1 Follower / Party Foundation Validation Baseline (2026-09-27)
+
+M9B Phase 1 introduces coordinator-owned `PartyStateService`, stable ordered ObjectID membership, exact M4D follower
+capacity, transactional join/remove, one-step production-navigation following, and eligible-follower relocation through
+the existing M1/M7 sector, area, and world-map transition pipeline. M8 projects the party ally relationship and
+deterministic follower order; M9A remains the autonomous turn-based/real-time decision authority. M8E credits the PC
+with the source 20% reward for a follower kill exactly once. Dead or unconscious followers retain membership, while
+unconscious followers wait behind and cannot act. Optional Save V1 party data persists only leader/member/forced
+authority and normalizes follow/combat presentation state.
+
+The authentic Virgil production proof covered authoritative join, local following, ordinary sector travel, Bates
+entrance/return, Bates-to-Tarant world travel, automatic turn-based enrollment, M9A ally targeting, M8H real-time
+action, unconscious retention, Save V1 restoration, and Original -> Enhanced -> Original rebuild. It exposed and
+closed a retained-NPC combat-source re-registration defect across sector unload.
+
+Final Unity compilation was clean. Focused M9B Phase 1 was **16/16**; M9A Phase 2 and Phase 1 were **12/12** and
+**15/15**; M8A-M8I regressions were **185/185**; the combined M9A/M8 matrix was **212/212**; complete EditMode was
+**885/885**. Failed/skipped/inconclusive were **0/0/0**. The accepted physical run had 0 warnings and 0 errors; the
+final cleared Console had **0 logs, 0 warnings, 0 errors**; `git diff --check` was clean.
+
+See [`documentation_unity/m9b-phase1-party-foundation-audit.md`](documentation_unity/m9b-phase1-party-foundation-audit.md).
+
 ## Next Recommended Milestone
 
-The bounded M9A NPC-combat-AI kernel is formally closed. The authorized next milestone is M9B, beginning with a
-source-audited authoritative follower/party foundation. M9B has not yet changed production runtime. World-item
-scavenging, backoff, grenades, fleeing/surrender, spells, technology, decoys, concealment/perception contests,
-social guard/protection behavior, schedules, dialogue AI, general simulation, and later systems remain deferred.
+M9A is formally closed and M9B Phase 1 is validated. Perform only the authorized short M9B closure assessment. The
+leading bounded Phase 2 candidate is the source `jo`/`lv` dialogue join/leave bridge into the new party authority.
+Advanced catch-up/formation, follower leveling, loyalty, UI, inventory control, resurrection, magic, technology,
+campaign quests, and unrelated general simulation remain deferred.
