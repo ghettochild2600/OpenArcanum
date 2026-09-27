@@ -8,6 +8,19 @@ namespace Arcanum.Runtime.Character
     public sealed class CharacterStatService
     {
         private readonly Dictionary<ArcanumObjectId, PersistentCharacterState> _states = new();
+        private readonly Dictionary<ArcanumObjectId, Dictionary<string, AttributeModifier>> _modifiers = new();
+
+        private readonly struct AttributeModifier
+        {
+            public CharacterAttribute Attribute { get; }
+            public int Amount { get; }
+
+            public AttributeModifier(CharacterAttribute attribute, int amount)
+            {
+                Attribute = attribute;
+                Amount = amount;
+            }
+        }
 
         public static IReadOnlyList<CharacterAttribute> AllAttributes { get; } = Array.AsReadOnly(new[]
             {
@@ -63,7 +76,39 @@ namespace Arcanum.Runtime.Character
             => Get(identity).GetBase(attribute);
 
         public int GetEffectiveAttribute(ArcanumObjectId identity, CharacterAttribute attribute)
-            => Get(identity).GetEffective(attribute);
+        {
+            int value = Get(identity).GetEffective(attribute);
+            if (_modifiers.TryGetValue(identity, out Dictionary<string, AttributeModifier> modifiers))
+                foreach (AttributeModifier modifier in modifiers.Values)
+                    if (modifier.Attribute == attribute) value = checked(value + modifier.Amount);
+            int maximum = CharacterAttributeRules.SourceMaximum(Get(identity).Race, attribute);
+            return Math.Max(CharacterAttributeSet.SourceMinimum, Math.Min(maximum, value));
+        }
+
+        /// <summary>Registers one inspectable non-base modifier, keyed by its owning runtime effect.</summary>
+        public void SetEffectModifier(ArcanumObjectId identity, string effectIdentity,
+            CharacterAttribute attribute, int amount)
+        {
+            _ = Get(identity);
+            CharacterAttributeRules.ValidateAttribute(attribute);
+            if (string.IsNullOrWhiteSpace(effectIdentity))
+                throw new ArgumentException("Effect identity is required.", nameof(effectIdentity));
+            if (!_modifiers.TryGetValue(identity, out Dictionary<string, AttributeModifier> modifiers))
+                _modifiers.Add(identity, modifiers = new Dictionary<string, AttributeModifier>(StringComparer.Ordinal));
+            if (modifiers.ContainsKey(effectIdentity))
+                throw new InvalidOperationException($"Character effect {effectIdentity} is already applied to {identity}.");
+            modifiers.Add(effectIdentity, new AttributeModifier(attribute, amount));
+            EffectiveAttributesChanged?.Invoke(identity);
+        }
+
+        public bool RemoveEffectModifier(ArcanumObjectId identity, string effectIdentity)
+        {
+            if (!_modifiers.TryGetValue(identity, out Dictionary<string, AttributeModifier> modifiers)
+                || !modifiers.Remove(effectIdentity)) return false;
+            if (modifiers.Count == 0) _modifiers.Remove(identity);
+            EffectiveAttributesChanged?.Invoke(identity);
+            return true;
+        }
 
         /// <summary>Mirrors source race replacement: remove the old Race-caused effect, then apply 64 + race.</summary>
         public void SetRace(ArcanumObjectId identity, CharacterRace race)

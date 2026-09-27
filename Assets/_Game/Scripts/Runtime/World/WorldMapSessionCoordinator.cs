@@ -14,6 +14,7 @@ using Arcanum.World;
 using Arcanum.Runtime.Save;
 using Arcanum.Runtime.Combat;
 using Arcanum.Runtime.Party;
+using Arcanum.Runtime.Magic;
 using UnityEngine;
 
 namespace Arcanum.Runtime.World
@@ -58,6 +59,7 @@ namespace Arcanum.Runtime.World
         private CombatStateService _combat;
         private DeathConsequenceService _deathConsequences;
         private PartyStateService _party;
+        private MagicStateService _magic;
         private bool _mapTransitionActive;
         private ulong _nextDynamicIdentity = 1;
 
@@ -93,6 +95,7 @@ namespace Arcanum.Runtime.World
         public DeathConsequenceService DeathConsequences
             => _deathConsequences ??= new DeathConsequenceService(this);
         public PartyStateService Party => _party ??= new PartyStateService(this);
+        public MagicStateService Magic => _magic ??= new MagicStateService(this);
         public bool IsMapTransitionActive => _mapTransitionActive;
         public MapTransitionResult LastMapTransitionResult { get; private set; }
         public AreaEntranceResult LastAreaEntranceResult { get; private set; }
@@ -563,6 +566,7 @@ namespace Arcanum.Runtime.World
             Progression.GetOrCreateDevelopmentPlayer(identity);
             DerivedStats.GetOrCreateDevelopmentPlayer(identity);
             Vitality.GetOrCreateDevelopmentPlayer(identity);
+            Magic.RegisterSourceCharacter(identity, new int[17], null);
             Combat.RegisterActorSource(new CombatActorSource(identity, ObjectType.Pc, null, normalized,
                 int.MaxValue, 0, 0, 0));
             if (PlayerState == null)
@@ -1881,6 +1885,7 @@ namespace Arcanum.Runtime.World
             _combat = null;
             _deathConsequences = null;
             _party = null;
+            _magic = null;
             _portals = null;
             _dialogue = null;
             _journal = null;
@@ -1911,6 +1916,7 @@ namespace Arcanum.Runtime.World
             _derivedStats = plan.DerivedStats;
             _campaign = plan.Campaign;
             _party = new PartyStateService(this);
+            _magic = null;
             foreach (PartyMember member in plan.PartyMembers)
                 if (!_party.TryAddRestored(member, out string partyError))
                     throw new InvalidOperationException(partyError);
@@ -1928,6 +1934,8 @@ namespace Arcanum.Runtime.World
             SelectedSector = null;
             Combat.RegisterActorSource(new CombatActorSource(PlayerState.Identity, ObjectType.Pc, null,
                 PlayerState.Sector, int.MaxValue, 0, 0, 0));
+            _magic = new MagicStateService(this);
+            _magic.RestoreSaveData(plan.Magic);
             return SelectSector(plan.SelectedSector);
         }
 

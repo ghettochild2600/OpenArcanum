@@ -615,6 +615,50 @@ namespace Arcanum.Runtime.Combat
 
         internal void BindNavigationMap(SectorNavigationMap map) => _navigationMap = map;
 
+        /// <summary>M10A reuses combat ownership/AP without transferring spell authority to combat.</summary>
+        public CombatFailure PreviewSpellAction(ArcanumObjectId actor, int actionPointCost)
+        {
+            if (actionPointCost <= 0) return CombatFailure.UnsupportedAttackMode;
+            if (!IsActive) return CombatFailure.None;
+            if (Mode == CombatMode.RealTime)
+            {
+                if (!_participants.Any(value => value.Identity == actor))
+                    return CombatFailure.ParticipantNotRegistered;
+                if (!_sources.TryGetValue(actor, out CombatActorSource source) || !IsEligible(source))
+                    return CombatFailure.ParticipantUnavailable;
+                return CombatFailure.None;
+            }
+            if (!TryValidateActionActor(actor, out _, out CombatFailure failure)) return failure;
+            if (Mode == CombatMode.TurnBased && CurrentActionPoints < actionPointCost)
+                return CombatFailure.InsufficientActionPoints;
+            return CombatFailure.None;
+        }
+
+        public void CommitTurnBasedSpellAction(ArcanumObjectId actor, int actionPointCost)
+        {
+            if (!IsActive || Mode != CombatMode.TurnBased || CurrentParticipant != actor
+                || actionPointCost <= 0 || CurrentActionPoints < actionPointCost)
+                throw new InvalidOperationException("Spell action was not preflighted against current combat authority.");
+            CurrentActionPoints -= actionPointCost;
+            if (CurrentActionPoints == 0) AdvanceToNextEligibleParticipant(actor);
+        }
+
+        public bool TryGetSpellTraversal(ArcanumObjectId caster, ArcanumObjectId target,
+            out int tileDistance, out bool lineOfSight)
+        {
+            tileDistance = 0;
+            lineOfSight = false;
+            if (!TryGetCombatPosition(caster, out Vector2Int source)
+                || !TryGetCombatPosition(target, out Vector2Int destination)) return false;
+            tileDistance = Math.Max(Math.Abs(source.x - destination.x), Math.Abs(source.y - destination.y));
+            lineOfSight = _navigationMap == null || _navigationMap.HasProjectileLineOfFire(source, destination);
+            return true;
+        }
+
+        public bool HasCritterFlag(ArcanumObjectId identity, int flag)
+            => _sources.TryGetValue(identity, out CombatActorSource source)
+               && (source.CritterFlags & flag) != 0;
+
         public void SetRandomSource(ICombatRandom random)
             => _random = random ?? throw new ArgumentNullException(nameof(random));
 

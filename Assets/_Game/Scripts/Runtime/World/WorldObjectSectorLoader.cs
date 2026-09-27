@@ -15,6 +15,7 @@ using Arcanum.Runtime.Combat;
 using Arcanum.Runtime.Party;
 using Arcanum.Runtime.Dialogue;
 using Arcanum.Runtime.Save;
+using Arcanum.Runtime.Magic;
 using Arcanum.World;
 using UnityEngine;
 
@@ -176,6 +177,9 @@ namespace Arcanum.Runtime.World
             const int attackAnimation = 20;
             const int unarmedWeaponArt = 1;
             const int bowWeaponArt = 8;
+            // The selected retail spells have CastingAnim=-1 and are dispatched through
+            // AG_THROW_SPELL. That source goal uses the generic attack action timing while
+            // spell eye-candy owns the visual effect.
             int animation = request.Kind == CombatRealTimeActionKind.Move
                 ? request.Running ? runAnimation : walkAnimation
                 : attackAnimation;
@@ -193,6 +197,8 @@ namespace Arcanum.Runtime.World
             }
             else if (request.Kind == CombatRealTimeActionKind.RangedAttack)
                 artId = (artId & ~0xFu) | bowWeaponArt;
+            else if (request.Kind == CombatRealTimeActionKind.SpellCast)
+                artId = (artId & ~0xFu) | unarmedWeaponArt;
 
             string path = _art.Resolve(artId);
             if (string.IsNullOrEmpty(path) || !_vfs.Exists(path)) return false;
@@ -408,6 +414,7 @@ namespace Arcanum.Runtime.World
                         instance.FatigueDamage, proto?.FatigueDamage);
                     Session.Vitality.GetOrCreateSourceCharacter(identity, instance.Type, instance.PrototypeNumber,
                         vitalitySource);
+                    Session.Magic.RegisterSourceCharacter(identity, instance.SpellTech, proto?.SpellTech);
                 }
                 PersistentObjectState state = Session.GetOrCreate(instance, identity, sectorPath, artId,
                     (flags & ObjectFlagOff) != 0, (stateFlags & 1) != 0,

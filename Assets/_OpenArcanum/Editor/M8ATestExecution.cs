@@ -294,6 +294,34 @@ internal sealed class M8ATestExecution : ScriptableObject, ICallbacks
     private static void RunM9BPhase2All()
         => Run(new Filter { testMode = TestMode.EditMode }, "M9B Phase 2 complete EditMode");
 
+    [MenuItem("OpenArcanum/M10A/Run Focused EditMode Tests", false, 0)]
+    private static void RunM10AFocused()
+        => Run(Category("M10AMagicRuntime"), "M10A focused EditMode");
+
+    [MenuItem("OpenArcanum/M10A/Run Targeted Regression Tests", false, 0)]
+    private static void RunM10ATargeted()
+    {
+        RunMany(
+            new[]
+            {
+                Category("M4ACharacterAttributes"), Category("M4BCharacterVitality"),
+                Category("M4DDerivedCharacterStats"), Category("M6A"),
+                Category("M6B"), Category("M8BTurnBasedCombat"),
+                Category("M8DDefeatState"), Category("M8EDeathConsequences"),
+                Category("M8HRealTimeCombat"),
+            },
+            new[]
+            {
+                "M4A attributes", "M4B vitality", "M4D derived stats",
+                "M6A session save/load", "M6B save migration/slots", "M8B turn-based combat",
+                "M8D defeat state", "M8E death consequences", "M8H real-time combat",
+            });
+    }
+
+    [MenuItem("OpenArcanum/M10A/Run Complete EditMode Tests", false, 0)]
+    private static void RunM10AAll()
+        => Run(new Filter { testMode = TestMode.EditMode }, "M10A complete EditMode");
+
     [MenuItem("OpenArcanum/M8G Phase 2/Run M8A-M8G Phase 1 Combat Regression Tests")]
     private static void RunM8GPhase2CombatRegression()
     {

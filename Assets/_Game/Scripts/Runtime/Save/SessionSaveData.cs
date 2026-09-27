@@ -11,6 +11,33 @@ namespace Arcanum.Runtime.Save
         public List<CharacterSaveData> Characters { get; set; }
         public CampaignSaveData Campaign { get; set; }
         public PartySaveData Party { get; set; }
+        public MagicSaveData Magic { get; set; }
+    }
+
+    public sealed class MagicSaveData
+    {
+        public long ElapsedMilliseconds { get; set; }
+        public long NextEffectId { get; set; }
+        public List<MagicCharacterSaveData> Characters { get; set; }
+        public List<ActiveSpellEffectSaveData> ActiveEffects { get; set; }
+    }
+
+    public sealed class MagicCharacterSaveData
+    {
+        public string Identity { get; set; }
+        public int[] CollegeRanks { get; set; }
+        public int MasteryCollege { get; set; }
+    }
+
+    public sealed class ActiveSpellEffectSaveData
+    {
+        public long Id { get; set; }
+        public int SpellId { get; set; }
+        public string CasterIdentity { get; set; }
+        public string TargetIdentity { get; set; }
+        public int Magnitude { get; set; }
+        public long StartedAtMilliseconds { get; set; }
+        public long NextUpkeepAtMilliseconds { get; set; }
     }
 
     public sealed class PartySaveData

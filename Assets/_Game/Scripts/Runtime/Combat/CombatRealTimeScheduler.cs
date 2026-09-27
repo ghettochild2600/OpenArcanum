@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Arcanum.Formats.Objects;
+using Arcanum.Runtime.Magic;
 using UnityEngine;
 
 namespace Arcanum.Runtime.Combat
@@ -11,6 +12,7 @@ namespace Arcanum.Runtime.Combat
         Move,
         MeleeAttack,
         RangedAttack,
+        SpellCast,
     }
 
     /// <summary>
@@ -24,15 +26,18 @@ namespace Arcanum.Runtime.Combat
         public int RouteSteps { get; }
         public bool Running { get; }
         public CombatAttackRequest Attack { get; }
+        public SpellCastRequest Spell { get; }
 
         public CombatRealTimeTimingRequest(ArcanumObjectId actor, CombatRealTimeActionKind kind,
-            int routeSteps = 0, bool running = false, CombatAttackRequest attack = default)
+            int routeSteps = 0, bool running = false, CombatAttackRequest attack = default,
+            SpellCastRequest spell = default)
         {
             Actor = actor;
             Kind = kind;
             RouteSteps = routeSteps;
             Running = running;
             Attack = attack;
+            Spell = spell;
         }
     }
 
@@ -145,12 +150,14 @@ namespace Arcanum.Runtime.Combat
         public long ReadyAtMilliseconds { get; }
         public bool EffectResolved { get; }
         public CombatAttackRequest Attack { get; }
+        public SpellCastRequest Spell { get; }
         public Vector2Int Destination { get; }
         public bool Running { get; }
 
         internal CombatRealTimeActionState(ArcanumObjectId actor, CombatRealTimeActionKind kind,
             long startedAtMilliseconds, long effectAtMilliseconds, long readyAtMilliseconds,
-            bool effectResolved, CombatAttackRequest attack, Vector2Int destination, bool running)
+            bool effectResolved, CombatAttackRequest attack, SpellCastRequest spell,
+            Vector2Int destination, bool running)
         {
             Actor = actor;
             Kind = kind;
@@ -159,6 +166,7 @@ namespace Arcanum.Runtime.Combat
             ReadyAtMilliseconds = readyAtMilliseconds;
             EffectResolved = effectResolved;
             Attack = attack;
+            Spell = spell;
             Destination = destination;
             Running = running;
         }
@@ -193,15 +201,17 @@ namespace Arcanum.Runtime.Combat
         public bool Succeeded => Failure == CombatFailure.None;
         public CombatAttackResult? AttackResult { get; }
         public CombatMoveResult? MoveResult { get; }
+        public SpellCastResult? SpellResult { get; }
 
         internal CombatRealTimeActionResolution(CombatRealTimeActionState action,
             CombatFailure failure, CombatAttackResult? attackResult = null,
-            CombatMoveResult? moveResult = null)
+            CombatMoveResult? moveResult = null, SpellCastResult? spellResult = null)
         {
             Action = action;
             Failure = failure;
             AttackResult = attackResult;
             MoveResult = moveResult;
+            SpellResult = spellResult;
         }
     }
 
@@ -223,11 +233,12 @@ namespace Arcanum.Runtime.Combat
             public long ReadyAt;
             public bool EffectResolved;
             public CombatAttackRequest Attack;
+            public SpellCastRequest Spell;
             public Vector2Int Destination;
             public bool Running;
 
             public CombatRealTimeActionState Snapshot => new(Actor, Kind, StartedAt, EffectAt,
-                ReadyAt, EffectResolved, Attack, Destination, Running);
+                ReadyAt, EffectResolved, Attack, Spell, Destination, Running);
         }
 
         private readonly Dictionary<ArcanumObjectId, RealTimeActor> _realTimeActors = new();
@@ -312,6 +323,22 @@ namespace Arcanum.Runtime.Combat
                 return Fail(CombatFailure.TimingUnavailable);
             StartRealTimeAction(actor, actorIdentity, CombatRealTimeActionKind.Move, timing,
                 default, destination, pcAlwaysRun);
+            return Success();
+        }
+
+        public CombatResult ScheduleRealTimeSpell(SpellCastRequest request)
+        {
+            if (!TryPrepareRealTimeActor(request.Caster, out RealTimeActor actor,
+                    out CombatResult failure)) return failure;
+            SpellCastResult preview = _world.Magic.PreviewScheduledCast(request);
+            if (!preview.Succeeded) return Fail(CombatFailure.InvalidTarget);
+            var timingRequest = new CombatRealTimeTimingRequest(request.Caster,
+                CombatRealTimeActionKind.SpellCast, spell: request);
+            if (_realTimeTimingSource == null
+                || !_realTimeTimingSource.TryGetTiming(timingRequest, out CombatRealTimeTiming timing))
+                return Fail(CombatFailure.TimingUnavailable);
+            StartRealTimeAction(actor, request.Caster, CombatRealTimeActionKind.SpellCast,
+                timing, default, default, false, request);
             return Success();
         }
 
@@ -417,7 +444,7 @@ namespace Arcanum.Runtime.Combat
 
         private void StartRealTimeAction(RealTimeActor actor, ArcanumObjectId identity,
             CombatRealTimeActionKind kind, CombatRealTimeTiming timing, CombatAttackRequest attack,
-            Vector2Int destination, bool running)
+            Vector2Int destination, bool running, SpellCastRequest spell = default)
         {
             long effectAt = checked(ElapsedCombatTimeMilliseconds + timing.EffectDelayMilliseconds);
             long readyAt = checked(ElapsedCombatTimeMilliseconds + timing.ReadyDelayMilliseconds);
@@ -430,6 +457,7 @@ namespace Arcanum.Runtime.Combat
                 EffectAt = effectAt,
                 ReadyAt = readyAt,
                 Attack = attack,
+                Spell = spell,
                 Destination = destination,
                 Running = running,
             };
@@ -488,6 +516,7 @@ namespace Arcanum.Runtime.Combat
             CombatFailure failure;
             CombatAttackResult? attackResult = null;
             CombatMoveResult? moveResult = null;
+            SpellCastResult? spellResult = null;
             if (!_sources.TryGetValue(pending.Actor, out CombatActorSource source) || !IsEligible(source))
             {
                 failure = CombatFailure.ParticipantUnavailable;
@@ -504,6 +533,12 @@ namespace Arcanum.Runtime.Combat
                         moveResult = result;
                         failure = result.Failure;
                     }
+                    else if (pending.Kind == CombatRealTimeActionKind.SpellCast)
+                    {
+                        SpellCastResult result = _world.Magic.ResolveScheduledCast(pending.Spell);
+                        spellResult = result;
+                        failure = result.Succeeded ? CombatFailure.None : CombatFailure.InvalidTarget;
+                    }
                     else
                     {
                         CombatAttackResult result = Attack(pending.Attack);
@@ -519,7 +554,7 @@ namespace Arcanum.Runtime.Combat
 
             CombatRealTimeActionState snapshot = pending.Snapshot;
             var resolution = new CombatRealTimeActionResolution(snapshot, failure,
-                attackResult, moveResult);
+                attackResult, moveResult, spellResult);
             LastRealTimeActionResolution = resolution;
             RealTimeActionResolved?.Invoke(resolution);
             if (failure != CombatFailure.None

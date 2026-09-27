@@ -10,6 +10,7 @@ using Arcanum.Runtime.Campaign;
 using Arcanum.Runtime.Character;
 using Arcanum.Runtime.World;
 using Arcanum.Runtime.Party;
+using Arcanum.Runtime.Magic;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Serialization;
 using UnityEngine;
@@ -89,6 +90,7 @@ namespace Arcanum.Runtime.Save
         internal CharacterDerivedStatService DerivedStats;
         internal CampaignStateService Campaign;
         internal List<PartyMember> PartyMembers;
+        internal MagicSaveData Magic;
     }
 
     /// <summary>Versioned, presentation-independent persistence for the bounded M1-M5 session state.</summary>
@@ -274,6 +276,7 @@ namespace Arcanum.Runtime.Save
                 Characters = _session.Characters.States.Values
                     .OrderBy(state => state.Identity.Key, StringComparer.Ordinal).Select(CaptureCharacter).ToList(),
                 Campaign = _session.Campaign.ExportSaveData(),
+                Magic = _session.Magic.ExportSaveData(),
                 Party = new PartySaveData
                 {
                     LeaderIdentity = _session.Party.Leader.Key,
@@ -432,10 +435,57 @@ namespace Arcanum.Runtime.Save
             if (!result.Succeeded) return result;
             result = BuildCharacters(data.Characters, plan);
             if (!result.Succeeded) { plan = null; return result; }
+            result = BuildMagic(data.Magic, plan);
+            if (!result.Succeeded) { plan = null; return result; }
             result = BuildCampaign(data.Campaign, plan);
             if (!result.Succeeded) { plan = null; return result; }
             result = BuildParty(data.Party, plan);
             if (!result.Succeeded) { plan = null; return result; }
+            return new SessionLoadResult(SessionLoadFailure.None);
+        }
+
+        private SessionLoadResult BuildMagic(MagicSaveData data, SessionRestorePlan plan)
+        {
+            // V1 saves written before M10A legitimately have no magic domain.
+            if (data == null)
+            {
+                plan.Magic = null;
+                return new SessionLoadResult(SessionLoadFailure.None);
+            }
+            if (data.ElapsedMilliseconds < 0 || data.NextEffectId < 1
+                || data.Characters == null || data.ActiveEffects == null)
+                return Failure(SessionLoadFailure.InvalidCharacter, "The magic state is incomplete or invalid.");
+
+            var characters = new HashSet<ArcanumObjectId>();
+            foreach (MagicCharacterSaveData value in data.Characters)
+            {
+                if (value == null || !TryIdentity(value.Identity, out ArcanumObjectId identity)
+                    || !plan.Characters.TryGet(identity, out _) || !characters.Add(identity)
+                    || value.CollegeRanks?.Length != 16 || value.CollegeRanks.Any(rank => rank < 0 || rank > 5)
+                    || value.MasteryCollege < -1 || value.MasteryCollege >= 16)
+                    return Failure(SessionLoadFailure.InvalidCharacter,
+                        $"Magic knowledge for '{value?.Identity}' is invalid.");
+            }
+
+            var effectIds = new HashSet<long>();
+            var spellTargets = new HashSet<string>(StringComparer.Ordinal);
+            foreach (ActiveSpellEffectSaveData value in data.ActiveEffects)
+            {
+                if (value == null || value.Id < 1 || value.Id >= data.NextEffectId || !effectIds.Add(value.Id)
+                    || !PhaseOneSpellCatalog.TryGet(value.SpellId, out SpellDefinition spell)
+                    || !spell.Maintained || spell.EffectFamily != SpellEffectFamily.AttributeModifier
+                    || !TryIdentity(value.CasterIdentity, out ArcanumObjectId caster)
+                    || !TryIdentity(value.TargetIdentity, out ArcanumObjectId target)
+                    || !plan.Characters.TryGet(caster, out _) || !plan.Characters.TryGet(target, out _)
+                    || !plan.Vitality.TryGet(caster, out _) || !plan.Vitality.TryGet(target, out _)
+                    || value.Magnitude != spell.AttributeMagnitude || value.StartedAtMilliseconds < 0
+                    || value.StartedAtMilliseconds > data.ElapsedMilliseconds
+                    || value.NextUpkeepAtMilliseconds <= value.StartedAtMilliseconds
+                    || !spellTargets.Add(value.SpellId + ":" + target.Key))
+                    return Failure(SessionLoadFailure.InvalidCharacter,
+                        $"Active magic effect '{value?.Id}' is invalid.");
+            }
+            plan.Magic = data;
             return new SessionLoadResult(SessionLoadFailure.None);
         }
 
