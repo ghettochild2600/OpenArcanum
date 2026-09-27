@@ -86,8 +86,8 @@ zero warnings and zero errors.
 
 ## Deferred / Ambiguous Boundary
 
-- The dialogue parser recognizes source `jo`/`lv` follower opcodes, but the production M5 execution context does not
-  yet route those opcodes to `PartyStateService`. This is the leading bounded Phase 2 closure candidate.
+- The dialogue parser recognized source `fo`/`jo`/`lv` follower operations, but the Phase-1 production M5 execution
+  context did not yet route them to `PartyStateService`. The bounded Phase-2 closure has now completed that bridge.
 - Source distance-30 catch-up teleport is deferred unless closure review proves it essential; ordinary following and
   every authoritative transition already work without inventing formation behavior.
 - Follower leveling schemes, loyalty/alignment departures, resurrection, full orders/stances, portraits/HUD,
@@ -95,5 +95,6 @@ zero warnings and zero errors.
 - The available port does not justify a more specific party-tail turn order or leader-target preference, so neither
   was invented.
 
-Phase 1 is committed before any Phase 2 work. M9B is not marked complete until the bounded closure assessment decides
-whether the authoritative dialogue join/leave bridge is required.
+Phase 1 was committed before Phase 2 work. The closure assessment found the authoritative dialogue join/leave bridge
+required and sufficient; it is now implemented and M9B is complete. See
+[`m9b-phase2-dialogue-party-audit.md`](m9b-phase2-dialogue-party-audit.md).

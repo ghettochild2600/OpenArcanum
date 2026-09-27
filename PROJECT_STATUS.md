@@ -27,10 +27,12 @@ player-facing manual save/load presentation, M7A bounded passive local map trans
   unarmed, Bow, and supported melee-weapon actors select stable authoritative targets, submit attack, approach, or
   yield intents through the existing M8 authority, select authoritative inventory weapons/ammunition with
   source-supported fallback, and react to representable danger sources in both turn-based and real-time combat.
-  M9B Phase 1 now adds the session-owned authoritative follower/party foundation: stable ordered membership, M4D
+  M9B now adds the complete bounded session-owned authoritative follower/party kernel: stable ordered membership, M4D
   capacity, join/remove transactions, production-navigation following, sector/local-map/world-map accompaniment,
   M8/M9A ally and autonomous-combat integration, source-authentic follower-kill XP, defeat retention, and optional
-  Save V1 party persistence. The authentic Virgil vertical slice is validated; a short M9B closure assessment remains.
+  Save V1 party persistence. Phase 2 closes the required production dialogue bridge for source `fo`/`jo`/`lv`,
+  transactional membership rollback, and SAP_DIALOG follower routing. The authentic Virgil vertical slice and retail
+  dialogue rows 72/514/524 are validated; M9B is formally complete.
 `WorldMapSessionCoordinator` owns typed `World`, `Contained(parent)`, and `Equipped(parent, wornLocation)` placement,
 atomic raw item transfers/equipment replacement/stack merge and split, deterministic session-created item identities,
 source-faithful pickup/drop/owner-transfer policy, and pre-mutation weight/grid-capacity guards independently of Unity
@@ -114,7 +116,7 @@ transient.
 Travel time, encounters, advanced follower catch-up/formation, mid-route cancellation, route animation,
 clock/day-night behavior,
 autosave, quicksave, cloud sync, original Arcanum save compatibility, unsupported critical-table effects, broader death
-scripts/consequences, broader NPC AI beyond the bounded M9A kernel, follower dialogue recruitment/loyalty/leveling,
+scripts/consequences, broader NPC AI beyond the bounded M9A kernel, follower loyalty/leveling/campaign behavior,
 spells, technology, and barter remain deferred.
 
 ## Current Branch
@@ -2029,9 +2031,31 @@ final cleared Console had **0 logs, 0 warnings, 0 errors**; `git diff --check` w
 
 See [`documentation_unity/m9b-phase1-party-foundation-audit.md`](documentation_unity/m9b-phase1-party-foundation-audit.md).
 
+## M9B Phase 2 Dialogue / Party Closure Validation Baseline (2026-09-27)
+
+The bounded M9B closure assessment found one required core gap and closed it. `ProductionDialogueSession` now evaluates
+source `fo` against coordinator-owned party membership, preflights and commits `jo`/`lv` through
+`PartyStateService`, and includes ordered membership in its transaction snapshot. SAP_DIALOG
+`OBJ_FOLLOWING_PC` reads the same authority; the currently unrepresented `OBJ_JILTED` branch remains source-safe false
+instead of blocking strict Virgil execution. Save V1 and presentation ownership are unchanged.
+
+The physical production proof used authentic Virgil dialogue 1324 rows 72 (`jo 0 74`), 514 (`lv`), and 524
+(`lf31 1`). Join enrolled Virgil exactly once; leave removed him and committed the authored local flag; the same
+ObjectID and one presentation remained. The accepted Play Mode run reported **0 warnings and 0 errors**.
+
+Final Unity compilation was clean. Focused M9B Phase 2 was **4/4**. The M9B Phase 1, M5A-M5C, M9A, and M8A-M8I
+regression matrix was **283/283**. Complete EditMode was **889/889**. Failed/skipped/inconclusive were **0/0/0**;
+the final cleared Console had **0 logs, 0 warnings, 0 errors**; and `git diff --check` was clean.
+
+Follower leveling, loyalty/reaction/alignment departures, campaign-specific follower rules, resurrection, party UI,
+inventory/equipment control, orders/formations/waiting, distance-30 catch-up, magic, technology, healing, and barter
+remain outside this bounded kernel. No unsupported party-tail ordering, leader-target policy, loyalty threshold, or
+meaning for extra `jo` operands was invented.
+
+See [`documentation_unity/m9b-phase2-dialogue-party-audit.md`](documentation_unity/m9b-phase2-dialogue-party-audit.md).
+
 ## Next Recommended Milestone
 
-M9A is formally closed and M9B Phase 1 is validated. Perform only the authorized short M9B closure assessment. The
-leading bounded Phase 2 candidate is the source `jo`/`lv` dialogue join/leave bridge into the new party authority.
-Advanced catch-up/formation, follower leveling, loyalty, UI, inventory control, resurrection, magic, technology,
-campaign quests, and unrelated general simulation remain deferred.
+M9A and M9B are formally closed. M10A is the next roadmap boundary but has not started. Advanced catch-up/formation,
+follower leveling, loyalty, UI, inventory control, resurrection, magic, technology, campaign quests, and unrelated
+general simulation remain deferred to their owning milestones or audits.
