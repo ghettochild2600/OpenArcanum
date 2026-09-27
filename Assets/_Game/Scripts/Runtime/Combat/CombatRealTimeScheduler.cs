@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Arcanum.Formats.Objects;
 using Arcanum.Runtime.Magic;
+using Arcanum.Runtime.World;
 using UnityEngine;
 
 namespace Arcanum.Runtime.Combat
@@ -346,7 +347,8 @@ namespace Arcanum.Runtime.Combat
         {
             if (!IsActive) return Fail(CombatFailure.Inactive);
             if (Mode != CombatMode.RealTime) return Fail(CombatFailure.UnsupportedMode);
-            if (elapsedSourceMilliseconds < 0) return Fail(CombatFailure.InvalidTimeAdvance);
+            if (elapsedSourceMilliseconds < 0 || elapsedSourceMilliseconds > int.MaxValue / SourceTimeService.RealTimeScale)
+                return Fail(CombatFailure.InvalidTimeAdvance);
             long target;
             try
             {
@@ -357,10 +359,13 @@ namespace Arcanum.Runtime.Combat
                 return Fail(CombatFailure.InvalidTimeAdvance);
             }
 
+            long sourceCursor = ElapsedCombatTimeMilliseconds;
             while (IsActive && Mode == CombatMode.RealTime)
             {
                 long next = NextRealTimeEventAt(target);
                 if (next > target) break;
+                AdvanceSourceRealTime(sourceCursor, next);
+                sourceCursor = next;
                 ElapsedCombatTimeMilliseconds = next;
 
                 if (_nextRealTimeBoundaryMilliseconds == next)
@@ -372,8 +377,19 @@ namespace Arcanum.Runtime.Combat
                     break;
             }
             if (IsActive && Mode == CombatMode.RealTime)
+            {
+                AdvanceSourceRealTime(sourceCursor, target);
                 ElapsedCombatTimeMilliseconds = target;
+            }
             return Success();
+        }
+
+        private void AdvanceSourceRealTime(long from, long to)
+        {
+            long elapsed = to - from;
+            if (elapsed <= 0) return;
+            if (elapsed > int.MaxValue) throw new OverflowException("Real-time source advance exceeds the supported interval.");
+            _world.SourceTime.AdvanceRealTime((int)elapsed);
         }
 
         private void InitializeRealTimeCombat()

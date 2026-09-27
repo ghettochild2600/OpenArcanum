@@ -38,6 +38,7 @@ namespace Arcanum.Runtime.Save
         public int Magnitude { get; set; }
         public long StartedAtMilliseconds { get; set; }
         public long NextUpkeepAtMilliseconds { get; set; }
+        public long ExpiresAtMilliseconds { get; set; }
     }
 
     public sealed class PartySaveData

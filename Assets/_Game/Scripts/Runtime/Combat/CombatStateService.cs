@@ -656,8 +656,8 @@ namespace Arcanum.Runtime.Combat
         }
 
         public bool HasCritterFlag(ArcanumObjectId identity, int flag)
-            => _sources.TryGetValue(identity, out CombatActorSource source)
-               && (source.CritterFlags & flag) != 0;
+            => (_sources.TryGetValue(identity, out CombatActorSource source) && (source.CritterFlags & flag) != 0)
+               || _world.HasMagicCritterFlag(identity, flag);
 
         public void SetRandomSource(ICombatRandom random)
             => _random = random ?? throw new ArgumentNullException(nameof(random));
@@ -1873,6 +1873,7 @@ namespace Arcanum.Runtime.Combat
             int completedRound = RoundNumber;
             ElapsedCombatTimeMilliseconds = checked(ElapsedCombatTimeMilliseconds
                                                     + RoundBoundaryMilliseconds);
+            _world.SourceTime.AdvanceTurnBasedRound();
             RoundCompleted?.Invoke(new CombatRoundBoundary(completedRound,
                 RoundBoundaryMilliseconds, ElapsedCombatTimeMilliseconds));
             if (!IsActive) return;

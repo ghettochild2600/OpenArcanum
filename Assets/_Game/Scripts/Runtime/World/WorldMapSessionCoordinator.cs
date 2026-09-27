@@ -60,6 +60,7 @@ namespace Arcanum.Runtime.World
         private DeathConsequenceService _deathConsequences;
         private PartyStateService _party;
         private MagicStateService _magic;
+        private SourceTimeService _sourceTime;
         private bool _mapTransitionActive;
         private ulong _nextDynamicIdentity = 1;
 
@@ -95,7 +96,10 @@ namespace Arcanum.Runtime.World
         public DeathConsequenceService DeathConsequences
             => _deathConsequences ??= new DeathConsequenceService(this);
         public PartyStateService Party => _party ??= new PartyStateService(this);
+        public SourceTimeService SourceTime => _sourceTime ??= new SourceTimeService();
         public MagicStateService Magic => _magic ??= new MagicStateService(this);
+        internal bool HasMagicCritterFlag(ArcanumObjectId identity, int flag)
+            => _magic?.HasActiveCritterFlag(identity, flag) == true;
         public bool IsMapTransitionActive => _mapTransitionActive;
         public MapTransitionResult LastMapTransitionResult { get; private set; }
         public AreaEntranceResult LastAreaEntranceResult { get; private set; }
@@ -186,6 +190,7 @@ namespace Arcanum.Runtime.World
 
         private void Update()
         {
+            SourceTime.PollNonCombat(_combat?.IsActive == true);
             Portals.Tick(Time.deltaTime);
             _dialogue?.ValidateActiveTarget();
         }
@@ -1886,6 +1891,7 @@ namespace Arcanum.Runtime.World
             _deathConsequences = null;
             _party = null;
             _magic = null;
+            _sourceTime = null;
             _portals = null;
             _dialogue = null;
             _journal = null;
@@ -1917,6 +1923,8 @@ namespace Arcanum.Runtime.World
             _campaign = plan.Campaign;
             _party = new PartyStateService(this);
             _magic = null;
+            _sourceTime = new SourceTimeService();
+            _sourceTime.Restore(plan.Magic?.ElapsedMilliseconds ?? 0);
             foreach (PartyMember member in plan.PartyMembers)
                 if (!_party.TryAddRestored(member, out string partyError))
                     throw new InvalidOperationException(partyError);

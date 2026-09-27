@@ -48,6 +48,7 @@ namespace Arcanum.Formats.Tests
             _session.Magic.SetKnownCollegeRank(_pc.Identity, SpellCollege.Earth, 1);
             _session.Magic.SetKnownCollegeRank(_pc.Identity, SpellCollege.NecromanticBlack, 1);
             _session.Magic.SetKnownCollegeRank(_pc.Identity, SpellCollege.NecromanticWhite, 1);
+            _session.Magic.SetKnownCollegeRank(_pc.Identity, SpellCollege.Phantasm, 2);
             _session.Magic.SetRandomSource(new SequenceMagicRandom(99, 99, 99, 99));
         }
 
@@ -61,7 +62,7 @@ namespace Arcanum.Formats.Tests
             AssertDefinition(60, "Minor Healing", SpellCollege.NecromanticWhite, false, 5, 99);
             Assert.That(PhaseOneSpellCatalog.TryGet(15, out SpellDefinition earth), Is.True);
             Assert.That((earth.UpkeepFatigueCost, earth.UpkeepPeriodMilliseconds, earth.AttributeMagnitude),
-                Is.EqualTo((1, 10_000, 4)));
+                Is.EqualTo((1, 80_000, 4)));
             Assert.That(PhaseOneSpellCatalog.TryGet(55, out SpellDefinition harm), Is.True);
             Assert.That((harm.MinimumMagnitude, harm.MaximumMagnitude), Is.EqualTo((3, 40)));
             Assert.That(PhaseOneSpellCatalog.TryGet(60, out SpellDefinition heal), Is.True);
@@ -160,12 +161,12 @@ namespace Arcanum.Formats.Tests
         {
             SpellCastResult result = _session.Magic.Cast(new SpellCastRequest(_pc.Identity, 15, _pc.Identity));
             int fatigue = Fatigue(_pc.Identity);
-            _session.Magic.AdvanceTime(9_999);
+            _session.Magic.AdvanceTime(79_999);
             Assert.That(Fatigue(_pc.Identity), Is.EqualTo(fatigue));
             _session.Magic.AdvanceTime(1);
             Assert.That(Fatigue(_pc.Identity), Is.EqualTo(fatigue - 1));
             _session.Vitality.ApplyFatigueDamage(_pc.Identity, Fatigue(_pc.Identity) + 14);
-            _session.Magic.AdvanceTime(10_000);
+            _session.Magic.AdvanceTime(80_000);
             Assert.That(_session.Magic.ActiveEffects, Is.Empty);
             Assert.That(_session.Magic.EndEffect(result.ActiveEffectId.Value), Is.False);
         }
@@ -349,6 +350,185 @@ namespace Arcanum.Formats.Tests
             Assert.That(_session.Magic.KnowsSpell(_target, 55), Is.True);
             Assert.That(_session.Magic.KnowsSpell(_target, 56), Is.False);
         }
+
+        [Test, Category("M10APhase2")]
+        public void SourceClockUsesRetailScaleCapPauseAndTurnBoundary()
+        {
+            SourceTimeService clock = _session.SourceTime;
+            clock.PollNonCombat(1_000, false);
+            clock.PollNonCombat(1_004, false);
+            Assert.That(clock.ElapsedMilliseconds, Is.Zero);
+            clock.PollNonCombat(1_010, false);
+            Assert.That(clock.ElapsedMilliseconds, Is.EqualTo(80));
+            clock.PollNonCombat(2_000, false);
+            Assert.That(clock.ElapsedMilliseconds, Is.EqualTo(2_080));
+            clock.SetPaused(true);
+            clock.PollNonCombat(2_100, false);
+            Assert.That(clock.ElapsedMilliseconds, Is.EqualTo(2_080));
+            clock.SetPaused(false);
+            clock.AdvanceTurnBasedRound();
+            Assert.That(clock.ElapsedMilliseconds, Is.EqualTo(3_080));
+        }
+
+        [Test, Category("M10APhase2")]
+        public void FlashDefinitionMatchesAuditedFiniteRetailSpell()
+        {
+            Assert.That(PhaseOneSpellCatalog.TryGet(PhaseOneSpellCatalog.Flash, out SpellDefinition flash), Is.True);
+            Assert.That((flash.Name, flash.College, flash.Rank, flash.BaseFatigueCost,
+                    flash.DurationSourceMilliseconds, flash.RuntimeCritterFlag, flash.NoStack,
+                    flash.ResistanceAttribute, flash.ResistanceModifier),
+                Is.EqualTo(("Flash", SpellCollege.Phantasm, 2, 10, 80_000, 0x80, true,
+                    (CharacterAttribute?)CharacterAttribute.Constitution, -5)));
+        }
+
+        [Test, Category("M10APhase2")]
+        public void FlashAppliesBlindedFlagAndExpiresAtExactSourceDeadline()
+        {
+            PrepareFlashCaster();
+            _session.Magic.SetRandomSource(new SequenceMagicRandom(99, 20));
+            SpellCastResult result = _session.Magic.Cast(
+                new SpellCastRequest(_pc.Identity, PhaseOneSpellCatalog.Flash, _target));
+            Assert.That(result.Succeeded && result.ActiveEffectId.HasValue, Is.True);
+            Assert.That(_session.Combat.HasCritterFlag(_target, 0x80), Is.True);
+            _session.SourceTime.Advance(79_999);
+            Assert.That(_session.Combat.HasCritterFlag(_target, 0x80), Is.True);
+            _session.SourceTime.Advance(1);
+            Assert.That(_session.Combat.HasCritterFlag(_target, 0x80), Is.False);
+            Assert.That(_session.Magic.LastTermination?.Reason,
+                Is.EqualTo(SpellEffectTerminationReason.NaturalExpiration));
+        }
+
+        [Test, Category("M10APhase2")]
+        public void FlashSavingThrowConsumesCastButCreatesNoEffect()
+        {
+            PrepareFlashCaster();
+            _session.Magic.SetRandomSource(new SequenceMagicRandom(99, 1));
+            int fatigue = Fatigue(_pc.Identity);
+            SpellCastResult result = _session.Magic.Cast(
+                new SpellCastRequest(_pc.Identity, PhaseOneSpellCatalog.Flash, _target));
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(result.ResistancePercent, Is.EqualTo(100));
+            Assert.That(result.ActiveEffectId, Is.Null);
+            Assert.That(Fatigue(_pc.Identity), Is.EqualTo(fatigue - 10));
+            Assert.That(_session.Combat.HasCritterFlag(_target, 0x80), Is.False);
+        }
+
+        [Test, Category("M10APhase2")]
+        public void FlashDuplicateAndMechanicalTargetRejectBeforeMutation()
+        {
+            PrepareFlashCaster();
+            _session.Magic.SetRandomSource(new SequenceMagicRandom(99, 20));
+            Assert.That(_session.Magic.Cast(new SpellCastRequest(_pc.Identity,
+                PhaseOneSpellCatalog.Flash, _target)).Succeeded, Is.True);
+            int fatigue = Fatigue(_pc.Identity);
+            Assert.That(_session.Magic.Cast(new SpellCastRequest(_pc.Identity,
+                    PhaseOneSpellCatalog.Flash, _target)).Failure,
+                Is.EqualTo(SpellCastFailure.DuplicateEffect));
+            ArcanumObjectId mechanical = AddNpc("G_66666666_6666_6666_6666_666666666666",
+                new Vector2Int(3, 1), Stats(8, 8, 8, 1), 0, out _,
+                critterFlags: unchecked((int)0x20000000));
+            Assert.That(_session.Magic.Cast(new SpellCastRequest(_pc.Identity,
+                    PhaseOneSpellCatalog.Flash, mechanical)).Failure,
+                Is.EqualTo(SpellCastFailure.InvalidTarget));
+            Assert.That(Fatigue(_pc.Identity), Is.EqualTo(fatigue));
+        }
+
+        [Test, Category("M10APhase2")]
+        public void MaintainedCancellationIsOwnedValidatedAndExactlyOnce()
+        {
+            int strength = _session.Characters.GetEffectiveAttribute(_pc.Identity, CharacterAttribute.Strength);
+            SpellCastResult result = _session.Magic.Cast(new SpellCastRequest(_pc.Identity,
+                PhaseOneSpellCatalog.StrengthOfEarth, _pc.Identity));
+            Assert.That(_session.Magic.CancelMaintainedEffect(_target, result.ActiveEffectId.Value), Is.False);
+            Assert.That(_session.Characters.GetEffectiveAttribute(_pc.Identity, CharacterAttribute.Strength),
+                Is.EqualTo(strength + 4));
+            Assert.That(_session.Magic.CancelMaintainedEffect(_pc.Identity, result.ActiveEffectId.Value), Is.True);
+            Assert.That(_session.Magic.CancelMaintainedEffect(_pc.Identity, result.ActiveEffectId.Value), Is.False);
+            Assert.That(_session.Characters.GetEffectiveAttribute(_pc.Identity, CharacterAttribute.Strength),
+                Is.EqualTo(strength));
+            Assert.That(_session.Magic.LastTermination?.Reason,
+                Is.EqualTo(SpellEffectTerminationReason.CasterCancellation));
+        }
+
+        [Test, Category("M10APhase2")]
+        public void DispelEndsMatchingEffectsOnceAndStopsFutureUpkeep()
+        {
+            PrepareFlashCaster();
+            SpellCastResult earth = _session.Magic.Cast(new SpellCastRequest(_pc.Identity,
+                PhaseOneSpellCatalog.StrengthOfEarth, _pc.Identity));
+            _session.Magic.SetRandomSource(new SequenceMagicRandom(99, 20));
+            SpellCastResult flash = _session.Magic.Cast(new SpellCastRequest(_pc.Identity,
+                PhaseOneSpellCatalog.Flash, _target));
+            int fatigue = Fatigue(_pc.Identity);
+            Assert.That(earth.ActiveEffectId.HasValue && flash.ActiveEffectId.HasValue, Is.True);
+            Assert.That(_session.Magic.DispelEffects(_pc.Identity), Is.EqualTo(2));
+            Assert.That(_session.Magic.DispelEffects(_pc.Identity), Is.Zero);
+            _session.SourceTime.Advance(80_000);
+            Assert.That(Fatigue(_pc.Identity), Is.EqualTo(fatigue));
+            Assert.That(_session.Magic.ActiveEffects, Is.Empty);
+            Assert.That(_session.Magic.LastTermination?.Reason,
+                Is.EqualTo(SpellEffectTerminationReason.Dispelled));
+        }
+
+        [Test, Category("M10APhase2")]
+        public void TurnBasedAndRealTimeCombatAdvanceTheSameSourceClock()
+        {
+            long start = _session.SourceTime.ElapsedMilliseconds;
+            Assert.That(_session.Combat.StartCombat(_pc.Identity, _target).Succeeded, Is.True);
+            Assert.That(_session.Combat.EndCurrentTurn(_target).Succeeded, Is.True);
+            Assert.That(_session.Combat.EndCurrentTurn(_pc.Identity).Succeeded, Is.True);
+            Assert.That(_session.SourceTime.ElapsedMilliseconds, Is.EqualTo(start + 1_000));
+            Assert.That(_session.Combat.RemoveParticipant(_target).Succeeded, Is.True);
+            Assert.That(_session.Combat.EndCombat(_pc.Identity).Succeeded, Is.True);
+            _session.Combat.BindRealTimeTimingSource(new FixedTiming());
+            Assert.That(_session.Combat.StartCombat(_pc.Identity, _target, CombatMode.RealTime).Succeeded, Is.True);
+            Assert.That(_session.Combat.AdvanceRealTime(250).Succeeded, Is.True);
+            Assert.That(_session.SourceTime.ElapsedMilliseconds, Is.EqualTo(start + 3_000));
+        }
+
+        [Test, Category("M10APhase2")]
+        public void FiniteEffectAndClockRoundTripWithoutTransientCombat()
+        {
+            PrepareFlashCaster();
+            _session.Magic.SetRandomSource(new SequenceMagicRandom(99, 20));
+            SpellCastResult flash = _session.Magic.Cast(new SpellCastRequest(_pc.Identity,
+                PhaseOneSpellCatalog.Flash, _target));
+            _session.SourceTime.Advance(25_000);
+            string json = _session.SaveGames.SerializeCurrentSession();
+            Assert.That(_session.SaveGames.LoadJson(json).Succeeded, Is.True);
+            Assert.That(_session.SourceTime.ElapsedMilliseconds, Is.EqualTo(25_000));
+            Assert.That(_session.Magic.ActiveEffects.Single().Id, Is.EqualTo(flash.ActiveEffectId));
+            Assert.That(_session.Combat.HasCritterFlag(_target, 0x80), Is.True);
+            _session.SourceTime.Advance(54_999);
+            Assert.That(_session.Combat.HasCritterFlag(_target, 0x80), Is.True);
+            _session.SourceTime.Advance(1);
+            Assert.That(_session.Magic.ActiveEffects, Is.Empty);
+        }
+
+        [Test, Category("M10APhase2")]
+        public void InvalidParticipantTerminationRemovesFiniteAndMaintainedEffects()
+        {
+            PrepareFlashCaster();
+            SpellCastResult earth = _session.Magic.Cast(new SpellCastRequest(_pc.Identity,
+                PhaseOneSpellCatalog.StrengthOfEarth, _pc.Identity));
+            _session.Magic.SetRandomSource(new SequenceMagicRandom(99, 20));
+            SpellCastResult flash = _session.Magic.Cast(new SpellCastRequest(_pc.Identity,
+                PhaseOneSpellCatalog.Flash, _target));
+            Assert.That(earth.ActiveEffectId.HasValue && flash.ActiveEffectId.HasValue, Is.True);
+            _session.Vitality.ApplyHitPointDamage(_target, Hp(_target));
+            _session.SourceTime.Advance(1);
+            Assert.That(_session.Magic.ActiveEffects.Count, Is.EqualTo(1));
+            Assert.That(_session.Combat.HasCritterFlag(_target, 0x80), Is.False);
+            _session.Vitality.ApplyFatigueDamage(_pc.Identity, Fatigue(_pc.Identity));
+            _session.SourceTime.Advance(1);
+            Assert.That(_session.Magic.ActiveEffects, Is.Empty);
+            Assert.That(_session.Magic.LastTermination?.Reason,
+                Is.EqualTo(SpellEffectTerminationReason.InvalidParticipant));
+        }
+
+        private void PrepareFlashCaster()
+            => _session.Characters.SetEffectModifier(_pc.Identity, "test:m10a-phase2-willpower",
+                CharacterAttribute.Willpower, 1);
 
         private void AssertDefinition(int id, string name, SpellCollege college, bool maintained,
             int fatigue, int range)

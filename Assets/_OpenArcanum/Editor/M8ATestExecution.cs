@@ -298,6 +298,10 @@ internal sealed class M8ATestExecution : ScriptableObject, ICallbacks
     private static void RunM10AFocused()
         => Run(Category("M10AMagicRuntime"), "M10A focused EditMode");
 
+    [MenuItem("OpenArcanum/M10A/Run Phase 2 Focused EditMode Tests", false, 0)]
+    private static void RunM10APhase2Focused()
+        => Run(Category("M10APhase2"), "M10A Phase 2 focused EditMode");
+
     [MenuItem("OpenArcanum/M10A/Run Targeted Regression Tests", false, 0)]
     private static void RunM10ATargeted()
     {

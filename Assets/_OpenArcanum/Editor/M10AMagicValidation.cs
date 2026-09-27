@@ -57,6 +57,7 @@ internal static class M10AMagicValidation
             session.Magic.SetKnownCollegeRank(pc, SpellCollege.Earth, 1);
             session.Magic.SetKnownCollegeRank(pc, SpellCollege.NecromanticBlack, 1);
             session.Magic.SetKnownCollegeRank(pc, SpellCollege.NecromanticWhite, 1);
+            session.Magic.SetKnownCollegeRank(pc, SpellCollege.Phantasm, 2);
             session.Magic.SetRandomSource(new SequenceMagicRandom(99, 99, 99, 99, 99));
             baseline = session.SaveGames.SerializeCurrentSession();
 
@@ -186,6 +187,83 @@ internal static class M10AMagicValidation
                 "maintained effect expires once when its caster becomes unavailable and reverts cleanly");
 
             Check(session.SaveGames.LoadJson(baseline).Succeeded,
+                "living baseline restores for finite-duration proof");
+            yield return null;
+            session.SourceTime.SetPaused(true);
+            session.Magic.SetKnownCollegeRank(pc, SpellCollege.Earth, 1);
+            session.Magic.SetKnownCollegeRank(pc, SpellCollege.Phantasm, 2);
+            session.Characters.SetEffectModifier(pc, "validation:m10a-phase2-willpower",
+                CharacterAttribute.Willpower, Math.Max(0, 9 - session.Characters.GetEffectiveAttribute(
+                    pc, CharacterAttribute.Willpower)));
+            session.Magic.SetRandomSource(new SequenceMagicRandom(99, 20, 99, 20));
+            long phase2Start = session.SourceTime.ElapsedMilliseconds;
+            SpellCastResult finite = session.Magic.Cast(
+                new SpellCastRequest(pc, PhaseOneSpellCatalog.Flash, BearIdentity));
+            Check(finite.Succeeded && finite.ActiveEffectId.HasValue
+                  && session.Combat.HasCritterFlag(BearIdentity, 0x80),
+                "authentic Flash applies the production blinded critter flag");
+            session.SourceTime.Advance(10_000);
+            Check(session.Combat.StartCombat(pc, BearIdentity).Succeeded,
+                "finite effect survives noncombat-to-turn-based transition");
+            int finiteRound = session.Combat.RoundNumber;
+            while (session.Combat.IsActive && session.Combat.RoundNumber == finiteRound)
+                Check(session.Combat.EndCurrentTurn(session.Combat.CurrentParticipant).Succeeded,
+                    "one production turn-based round completes");
+            Check(session.SourceTime.ElapsedMilliseconds == phase2Start + 11_000
+                  && session.Combat.HasCritterFlag(BearIdentity, 0x80),
+                "turn-based boundary advances the shared source clock exactly 1,000 ms");
+            EndCombatCleanly(session.Combat, pc, "finite turn-based transition ends cleanly");
+            Check(session.Combat.StartCombat(pc, BearIdentity, CombatMode.RealTime).Succeeded,
+                "finite effect survives turn-based-to-real-time transition");
+            Check(session.Combat.AdvanceRealTime(250).Succeeded
+                  && session.SourceTime.ElapsedMilliseconds == phase2Start + 13_000,
+                "real-time combat advances the same source clock at retail 8x scale");
+            EndCombatCleanly(session.Combat, pc, "finite real-time transition ends cleanly");
+            session.SourceTime.Advance(66_999);
+            Check(session.Combat.HasCritterFlag(BearIdentity, 0x80),
+                "Flash remains active one source millisecond before its deadline");
+            session.SourceTime.Advance(1);
+            Check(!session.Combat.HasCritterFlag(BearIdentity, 0x80)
+                  && session.Magic.LastTermination?.Reason
+                  == SpellEffectTerminationReason.NaturalExpiration,
+                "Flash expires once at exactly 80,000 source milliseconds");
+
+            SpellCastResult maintainedPhase2 = session.Magic.Cast(
+                new SpellCastRequest(pc, PhaseOneSpellCatalog.StrengthOfEarth, pc));
+            SpellCastResult savedFinite = session.Magic.Cast(
+                new SpellCastRequest(pc, PhaseOneSpellCatalog.Flash, BearIdentity));
+            session.SourceTime.Advance(25_000);
+            string finiteSave = session.SaveGames.SerializeCurrentSession();
+            Check(session.SaveGames.LoadJson(finiteSave).Succeeded,
+                "finite effect save reload succeeds");
+            yield return null;
+            Check(session.Magic.ActiveEffects.Count == 2
+                  && session.Combat.HasCritterFlag(BearIdentity, 0x80),
+                "save/load preserves finite remaining duration without transient combat");
+            session.SourceTime.Advance(54_999);
+            Check(session.Combat.HasCritterFlag(BearIdentity, 0x80),
+                "reloaded finite effect preserves its absolute deadline");
+            session.SourceTime.Advance(1);
+            Check(!session.Combat.HasCritterFlag(BearIdentity, 0x80),
+                "reloaded finite effect expires without resurrection");
+            Check(session.Magic.CancelMaintainedEffect(pc, maintainedPhase2.ActiveEffectId.Value)
+                  && !session.Magic.CancelMaintainedEffect(pc, maintainedPhase2.ActiveEffectId.Value),
+                "explicit maintained cancellation ends exactly once");
+
+            session.Characters.SetEffectModifier(pc, "validation:m10a-phase2-dispel-willpower",
+                CharacterAttribute.Willpower, Math.Max(0, 9 - session.Characters.GetEffectiveAttribute(
+                    pc, CharacterAttribute.Willpower)));
+            session.Vitality.RestoreFatigue(pc,
+                session.Vitality.GetMaximumFatigue(pc) - session.Vitality.GetCurrentFatigue(pc));
+            session.Magic.SetRandomSource(new SequenceMagicRandom(99, 20));
+            SpellCastResult dispelled = session.Magic.Cast(
+                new SpellCastRequest(pc, PhaseOneSpellCatalog.Flash, BearIdentity));
+            Check(dispelled.ActiveEffectId.HasValue && session.Magic.DispelEffects(BearIdentity) == 1
+                  && session.Magic.DispelEffects(BearIdentity) == 0
+                  && session.Magic.LastTermination?.Reason == SpellEffectTerminationReason.Dispelled,
+                "explicit dispel ends the finite effect once and fails closed when repeated");
+
+            Check(session.SaveGames.LoadJson(baseline).Succeeded,
                 "living baseline restores for lethal hostile proof");
             yield return null;
             int remaining = session.Vitality.GetCurrentHitPoints(BearIdentity);
@@ -210,11 +288,12 @@ internal static class M10AMagicValidation
             yield return null;
             Application.logMessageReceived -= Track;
             Check(_warnings == 0 && _errors == 0, $"warnings={_warnings}; errors={_errors}");
-            Debug.Log("M10A PHYSICAL VALIDATION PASS: spells=15,55,60; invalid=transactional; "
+            Debug.Log("M10A PHYSICAL VALIDATION PASS: spells=15,55,60,66; invalid=transactional; "
                       + "turnBased=AP4+fatigue5; realTime=productionART+BUSY/READY+exactlyOnce; "
                       + "beneficial=M4; hostile=M4+M8D+M8E; maintained=+4+NoStack+expiry; "
                       + "presentation=Original->Enhanced->Original-independent; "
                       + "saveV1=knowledge+effect-restored+pending-cast-normalized; "
+                      + "phase2=shared-clock+Flash-exact-expiry+mode-transitions+save-remaining+cancellation+dispel; "
                       + $"warnings={_warnings}; errors={_errors}.");
         }
         finally

@@ -473,14 +473,21 @@ namespace Arcanum.Runtime.Save
             {
                 if (value == null || value.Id < 1 || value.Id >= data.NextEffectId || !effectIds.Add(value.Id)
                     || !PhaseOneSpellCatalog.TryGet(value.SpellId, out SpellDefinition spell)
-                    || !spell.Maintained || spell.EffectFamily != SpellEffectFamily.AttributeModifier
+                    || (!spell.Maintained && spell.DurationSourceMilliseconds <= 0)
+                    || spell.EffectFamily is not (SpellEffectFamily.AttributeModifier or SpellEffectFamily.CritterFlag)
                     || !TryIdentity(value.CasterIdentity, out ArcanumObjectId caster)
                     || !TryIdentity(value.TargetIdentity, out ArcanumObjectId target)
                     || !plan.Characters.TryGet(caster, out _) || !plan.Characters.TryGet(target, out _)
                     || !plan.Vitality.TryGet(caster, out _) || !plan.Vitality.TryGet(target, out _)
                     || value.Magnitude != spell.AttributeMagnitude || value.StartedAtMilliseconds < 0
                     || value.StartedAtMilliseconds > data.ElapsedMilliseconds
-                    || value.NextUpkeepAtMilliseconds <= value.StartedAtMilliseconds
+                    || spell.Maintained && value.NextUpkeepAtMilliseconds <= value.StartedAtMilliseconds
+                    || !spell.Maintained && value.NextUpkeepAtMilliseconds != 0
+                    || spell.DurationSourceMilliseconds > 0
+                       && (value.ExpiresAtMilliseconds <= value.StartedAtMilliseconds
+                           || value.ExpiresAtMilliseconds - value.StartedAtMilliseconds
+                           != spell.DurationSourceMilliseconds)
+                    || spell.DurationSourceMilliseconds == 0 && value.ExpiresAtMilliseconds != 0
                     || !spellTargets.Add(value.SpellId + ":" + target.Key))
                     return Failure(SessionLoadFailure.InvalidCharacter,
                         $"Active magic effect '{value?.Id}' is invalid.");

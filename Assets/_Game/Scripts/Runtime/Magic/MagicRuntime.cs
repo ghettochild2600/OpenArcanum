@@ -17,7 +17,7 @@ namespace Arcanum.Runtime.Magic
     }
 
     public enum SpellTargetClass { LivingCritter, DamagedLivingCritter }
-    public enum SpellEffectFamily { AttributeModifier, DirectDamage, Healing }
+    public enum SpellEffectFamily { AttributeModifier, DirectDamage, Healing, CritterFlag }
     public enum SpellDisposition { Friendly, Aggressive }
 
     public sealed class SpellDefinition
@@ -42,13 +42,20 @@ namespace Arcanum.Runtime.Magic
         public int MaximumMagnitude { get; }
         public CharacterAttribute? ModifiedAttribute { get; }
         public int AttributeMagnitude { get; }
+        public int RuntimeCritterFlag { get; }
+        public int DurationSourceMilliseconds { get; }
+        public bool NoStack { get; }
+        public CharacterAttribute? ResistanceAttribute { get; }
+        public int ResistanceModifier { get; }
 
         public SpellDefinition(int id, string name, SpellTargetClass targetClass,
             SpellEffectFamily effectFamily, SpellDisposition disposition, int baseFatigueCost,
             int actionPointCost, int range, bool allowsSelf, int minimumMagnitude = 0,
             int maximumMagnitude = 0, bool maintained = false, int upkeepFatigueCost = 0,
             int upkeepPeriodMilliseconds = 0, CharacterAttribute? modifiedAttribute = null,
-            int attributeMagnitude = 0)
+            int attributeMagnitude = 0, int runtimeCritterFlag = 0,
+            int durationSourceMilliseconds = 0, bool noStack = false,
+            CharacterAttribute? resistanceAttribute = null, int resistanceModifier = 0)
         {
             if (id < 0 || id >= 80) throw new ArgumentOutOfRangeException(nameof(id));
             Id = id;
@@ -71,6 +78,11 @@ namespace Arcanum.Runtime.Magic
             MaximumMagnitude = maximumMagnitude;
             ModifiedAttribute = modifiedAttribute;
             AttributeMagnitude = attributeMagnitude;
+            RuntimeCritterFlag = runtimeCritterFlag;
+            DurationSourceMilliseconds = durationSourceMilliseconds;
+            NoStack = noStack;
+            ResistanceAttribute = resistanceAttribute;
+            ResistanceModifier = resistanceModifier;
         }
     }
 
@@ -79,6 +91,7 @@ namespace Arcanum.Runtime.Magic
         public const int StrengthOfEarth = 15;
         public const int Harm = 55;
         public const int MinorHealing = 60;
+        public const int Flash = 66;
         public const int SourceDefaultRange = 99;
         // AG_THROW_SPELL consumes four action points before beginning the spell.
         public const int SourceSpellActionPointCost = 4;
@@ -89,7 +102,7 @@ namespace Arcanum.Runtime.Magic
                 [StrengthOfEarth] = new(StrengthOfEarth, "Strength of Earth",
                     SpellTargetClass.LivingCritter, SpellEffectFamily.AttributeModifier,
                     SpellDisposition.Friendly, 5, SourceSpellActionPointCost, SourceDefaultRange, true,
-                    maintained: true, upkeepFatigueCost: 1, upkeepPeriodMilliseconds: 10_000,
+                    maintained: true, upkeepFatigueCost: 1, upkeepPeriodMilliseconds: 80_000,
                     modifiedAttribute: CharacterAttribute.Strength, attributeMagnitude: 4),
                 [Harm] = new(Harm, "Harm", SpellTargetClass.LivingCritter,
                     SpellEffectFamily.DirectDamage, SpellDisposition.Aggressive, 5,
@@ -98,6 +111,12 @@ namespace Arcanum.Runtime.Magic
                     SpellTargetClass.DamagedLivingCritter, SpellEffectFamily.Healing,
                     SpellDisposition.Friendly, 5, SourceSpellActionPointCost,
                     SourceDefaultRange, true, 5, 30),
+                [Flash] = new(Flash, "Flash", SpellTargetClass.LivingCritter,
+                    SpellEffectFamily.CritterFlag, SpellDisposition.Aggressive, 10,
+                    SourceSpellActionPointCost, SourceDefaultRange, true,
+                    runtimeCritterFlag: 0x00000080, durationSourceMilliseconds: 80_000,
+                    noStack: true, resistanceAttribute: CharacterAttribute.Constitution,
+                    resistanceModifier: -5),
             };
 
         public static IEnumerable<SpellDefinition> All => Definitions.Values;
@@ -160,11 +179,12 @@ namespace Arcanum.Runtime.Magic
         public int Magnitude { get; }
         public long StartedAtMilliseconds { get; }
         public long NextUpkeepAtMilliseconds { get; internal set; }
+        public long ExpiresAtMilliseconds { get; }
         public string ModifierIdentity => $"magic:{Id}";
 
         internal ActiveSpellEffect(long id, int spellId, ArcanumObjectId caster,
             ArcanumObjectId target, int magnitude, long startedAtMilliseconds,
-            long nextUpkeepAtMilliseconds)
+            long nextUpkeepAtMilliseconds, long expiresAtMilliseconds = 0)
         {
             Id = id;
             SpellId = spellId;
@@ -173,6 +193,33 @@ namespace Arcanum.Runtime.Magic
             Magnitude = magnitude;
             StartedAtMilliseconds = startedAtMilliseconds;
             NextUpkeepAtMilliseconds = nextUpkeepAtMilliseconds;
+            ExpiresAtMilliseconds = expiresAtMilliseconds;
+        }
+    }
+
+    public enum SpellEffectTerminationReason
+    {
+        NaturalExpiration,
+        CasterCancellation,
+        Dispelled,
+        UpkeepFailure,
+        InvalidParticipant,
+    }
+
+    public readonly struct SpellEffectTermination
+    {
+        public long EffectId { get; }
+        public int SpellId { get; }
+        public SpellEffectTerminationReason Reason { get; }
+        public long EndedAtMilliseconds { get; }
+
+        internal SpellEffectTermination(long effectId, int spellId,
+            SpellEffectTerminationReason reason, long endedAtMilliseconds)
+        {
+            EffectId = effectId;
+            SpellId = spellId;
+            Reason = reason;
+            EndedAtMilliseconds = endedAtMilliseconds;
         }
     }
 
@@ -192,16 +239,16 @@ namespace Arcanum.Runtime.Magic
         private readonly HashSet<ArcanumObjectId> _restoredCharacters = new();
         private readonly List<ActiveSpellEffect> _activeEffects = new();
         private IMagicRandom _random = new SystemMagicRandom();
-        private long _elapsedMilliseconds;
         private long _nextEffectId = 1;
 
         public IReadOnlyList<ActiveSpellEffect> ActiveEffects => _activeEffects;
-        public long ElapsedMilliseconds => _elapsedMilliseconds;
+        public long ElapsedMilliseconds => _world.SourceTime.ElapsedMilliseconds;
+        public SpellEffectTermination? LastTermination { get; private set; }
 
         public MagicStateService(WorldMapSessionCoordinator world)
         {
             _world = world ?? throw new ArgumentNullException(nameof(world));
-            _world.Combat.RoundCompleted += boundary => AdvanceTime(boundary.ElapsedMilliseconds);
+            _world.SourceTime.Advanced += OnSourceTimeAdvanced;
         }
 
         public void SetRandomSource(IMagicRandom random) => _random = random ?? throw new ArgumentNullException(nameof(random));
@@ -224,7 +271,7 @@ namespace Arcanum.Runtime.Magic
         public MagicSaveData ExportSaveData()
             => new()
             {
-                ElapsedMilliseconds = _elapsedMilliseconds,
+                ElapsedMilliseconds = ElapsedMilliseconds,
                 NextEffectId = _nextEffectId,
                 Characters = _collegeRanks.OrderBy(value => value.Key.Key, StringComparer.Ordinal)
                     .Select(value => new MagicCharacterSaveData
@@ -243,13 +290,13 @@ namespace Arcanum.Runtime.Magic
                         Magnitude = value.Magnitude,
                         StartedAtMilliseconds = value.StartedAtMilliseconds,
                         NextUpkeepAtMilliseconds = value.NextUpkeepAtMilliseconds,
+                        ExpiresAtMilliseconds = value.ExpiresAtMilliseconds,
                     }).ToList(),
             };
 
         internal void RestoreSaveData(MagicSaveData data)
         {
             if (data == null) return;
-            _elapsedMilliseconds = data.ElapsedMilliseconds;
             _nextEffectId = data.NextEffectId;
             foreach (MagicCharacterSaveData value in data.Characters)
             {
@@ -263,10 +310,12 @@ namespace Arcanum.Runtime.Magic
                 ArcanumObjectId.TryParsePersistent(value.CasterIdentity, out ArcanumObjectId caster);
                 ArcanumObjectId.TryParsePersistent(value.TargetIdentity, out ArcanumObjectId target);
                 var effect = new ActiveSpellEffect(value.Id, value.SpellId, caster, target, value.Magnitude,
-                    value.StartedAtMilliseconds, value.NextUpkeepAtMilliseconds);
+                    value.StartedAtMilliseconds, value.NextUpkeepAtMilliseconds,
+                    value.ExpiresAtMilliseconds);
                 PhaseOneSpellCatalog.TryGet(value.SpellId, out SpellDefinition spell);
-                _world.Characters.SetEffectModifier(target, effect.ModifierIdentity,
-                    spell.ModifiedAttribute.Value, effect.Magnitude);
+                if (effect.ExpiresAtMilliseconds > 0 && effect.ExpiresAtMilliseconds <= ElapsedMilliseconds)
+                    continue;
+                ApplyEffect(effect, spell);
                 _activeEffects.Add(effect);
             }
         }
@@ -304,12 +353,18 @@ namespace Arcanum.Runtime.Magic
             int magnitude = ScaledMagnitude(spell, request.Caster);
             if (spell.EffectFamily == SpellEffectFamily.DirectDamage && resistance > 0)
                 magnitude = Math.Max(1, magnitude * (100 - resistance) / 100);
+            bool resisted = spell.ResistanceAttribute.HasValue
+                            && ResolveSavingThrow(spell, request.Caster, request.Target, resistance);
 
             _world.Vitality.ApplyFatigueDamage(request.Caster, preview.FatigueCost);
             if (_world.Combat.IsActive && _world.Combat.Mode == CombatMode.TurnBased)
                 _world.Combat.CommitTurnBasedSpellAction(request.Caster, spell.ActionPointCost);
 
             long? effectId = null;
+            if (resisted)
+                return new SpellCastResult(SpellCastFailure.None, request, preview.FatigueCost,
+                    _world.Combat.IsActive && _world.Combat.Mode == CombatMode.TurnBased ? spell.ActionPointCost : 0,
+                    0, 100);
             switch (spell.EffectFamily)
             {
                 case SpellEffectFamily.Healing:
@@ -321,11 +376,14 @@ namespace Arcanum.Runtime.Magic
                         _world.DeathConsequences.Process(request.Caster, request.Target);
                     break;
                 case SpellEffectFamily.AttributeModifier:
+                case SpellEffectFamily.CritterFlag:
+                    long startedAt = ElapsedMilliseconds;
                     var effect = new ActiveSpellEffect(_nextEffectId++, spell.Id, request.Caster,
-                        request.Target, spell.AttributeMagnitude, _elapsedMilliseconds,
-                        checked(_elapsedMilliseconds + spell.UpkeepPeriodMilliseconds));
-                    _world.Characters.SetEffectModifier(request.Target, effect.ModifierIdentity,
-                        spell.ModifiedAttribute.Value, effect.Magnitude);
+                        request.Target, spell.AttributeMagnitude, startedAt,
+                        spell.Maintained ? checked(startedAt + spell.UpkeepPeriodMilliseconds) : 0,
+                        spell.DurationSourceMilliseconds > 0
+                            ? checked(startedAt + spell.DurationSourceMilliseconds) : 0);
+                    ApplyEffect(effect, spell);
                     _activeEffects.Add(effect);
                     effectId = effect.Id;
                     break;
@@ -359,7 +417,8 @@ namespace Arcanum.Runtime.Magic
                 return Fail(SpellCastFailure.MaintainSlotUnavailable, request);
             SpellCastFailure targetFailure = ValidateTarget(spell, request);
             if (targetFailure != SpellCastFailure.None) return Fail(targetFailure, request);
-            if (spell.Maintained && _activeEffects.Any(value => value.SpellId == spell.Id && value.Target == request.Target))
+            if ((spell.NoStack || spell.Maintained)
+                && _activeEffects.Any(value => value.SpellId == spell.Id && value.Target == request.Target))
                 return Fail(SpellCastFailure.DuplicateEffect, request);
             CombatFailure combat = _world.Combat.PreviewSpellAction(request.Caster, spell.ActionPointCost);
             if (combat != CombatFailure.None) return Fail(SpellCastFailure.CombatRejected, request);
@@ -370,32 +429,66 @@ namespace Arcanum.Runtime.Magic
 
         public bool EndEffect(long effectId)
         {
+            ActiveSpellEffect effect = _activeEffects.FirstOrDefault(value => value.Id == effectId);
+            return effect != null
+                   && PhaseOneSpellCatalog.TryGet(effect.SpellId, out SpellDefinition spell)
+                   && spell.Maintained
+                   && CancelMaintainedEffect(effect.Caster, effectId);
+        }
+
+        public bool CancelMaintainedEffect(ArcanumObjectId caster, long effectId)
+        {
             int index = _activeEffects.FindIndex(value => value.Id == effectId);
             if (index < 0) return false;
             ActiveSpellEffect effect = _activeEffects[index];
-            _world.Characters.RemoveEffectModifier(effect.Target, effect.ModifierIdentity);
-            _activeEffects.RemoveAt(index);
-            return true;
+            if (effect.Caster != caster || !PhaseOneSpellCatalog.TryGet(effect.SpellId, out SpellDefinition spell)
+                                        || !spell.Maintained) return false;
+            return TerminateEffect(effectId, SpellEffectTerminationReason.CasterCancellation);
+        }
+
+        public int DispelEffects(ArcanumObjectId subject)
+        {
+            if (!subject.IsPersistent || !_world.Characters.TryGet(subject, out _)) return 0;
+            ActiveSpellEffect[] dispelled = _activeEffects
+                .Where(value => value.Caster == subject || value.Target == subject)
+                .OrderBy(value => value.Id).ToArray();
+            foreach (ActiveSpellEffect effect in dispelled)
+                TerminateEffect(effect.Id, SpellEffectTerminationReason.Dispelled);
+            return dispelled.Length;
         }
 
         public void AdvanceTime(int elapsedSourceMilliseconds)
+            => _world.SourceTime.Advance(elapsedSourceMilliseconds);
+
+        public bool HasActiveCritterFlag(ArcanumObjectId identity, int flag)
+            => _activeEffects.Any(value => value.Target == identity
+                && PhaseOneSpellCatalog.TryGet(value.SpellId, out SpellDefinition spell)
+                && spell.EffectFamily == SpellEffectFamily.CritterFlag
+                && (spell.RuntimeCritterFlag & flag) != 0);
+
+        private void OnSourceTimeAdvanced(SourceTimeAdvance advance)
         {
-            if (elapsedSourceMilliseconds < 0) throw new ArgumentOutOfRangeException(nameof(elapsedSourceMilliseconds));
-            _elapsedMilliseconds = checked(_elapsedMilliseconds + elapsedSourceMilliseconds);
             foreach (ActiveSpellEffect effect in _activeEffects.OrderBy(value => value.Id).ToArray())
             {
-                if (!_world.Vitality.TryGet(effect.Caster, out _) || !_world.Vitality.IsConscious(effect.Caster))
+                if (!_world.Vitality.TryGet(effect.Caster, out _) || !_world.Vitality.IsConscious(effect.Caster)
+                    || !_world.Vitality.TryGet(effect.Target, out _) || !_world.Vitality.IsAlive(effect.Target))
                 {
-                    EndEffect(effect.Id);
+                    TerminateEffect(effect.Id, SpellEffectTerminationReason.InvalidParticipant);
                     continue;
                 }
                 PhaseOneSpellCatalog.TryGet(effect.SpellId, out SpellDefinition spell);
-                while (_activeEffects.Contains(effect) && effect.NextUpkeepAtMilliseconds <= _elapsedMilliseconds)
+                if (effect.ExpiresAtMilliseconds > 0 && effect.ExpiresAtMilliseconds <= ElapsedMilliseconds)
+                {
+                    TerminateEffect(effect.Id, SpellEffectTerminationReason.NaturalExpiration);
+                    continue;
+                }
+                while (spell.Maintained && _activeEffects.Contains(effect)
+                       && effect.NextUpkeepAtMilliseconds <= ElapsedMilliseconds)
                 {
                     int cost = UpkeepCost(spell, effect.Caster);
                     if (_world.Vitality.GetCurrentFatigue(effect.Caster) - cost <= -15)
                     {
-                        EndEffect(effect.Id);
+                        TerminateEffect(effect.Id, SpellEffectTerminationReason.UpkeepFailure);
                         break;
                     }
                     _world.Vitality.ApplyFatigueDamage(effect.Caster, cost);
@@ -403,6 +496,31 @@ namespace Arcanum.Runtime.Magic
                                                               + spell.UpkeepPeriodMilliseconds);
                 }
             }
+        }
+
+        private bool TerminateEffect(long effectId, SpellEffectTerminationReason reason)
+        {
+            int index = _activeEffects.FindIndex(value => value.Id == effectId);
+            if (index < 0) return false;
+            ActiveSpellEffect effect = _activeEffects[index];
+            PhaseOneSpellCatalog.TryGet(effect.SpellId, out SpellDefinition spell);
+            RemoveEffect(effect, spell);
+            _activeEffects.RemoveAt(index);
+            LastTermination = new SpellEffectTermination(effect.Id, effect.SpellId, reason, ElapsedMilliseconds);
+            return true;
+        }
+
+        private void ApplyEffect(ActiveSpellEffect effect, SpellDefinition spell)
+        {
+            if (spell.EffectFamily == SpellEffectFamily.AttributeModifier)
+                _world.Characters.SetEffectModifier(effect.Target, effect.ModifierIdentity,
+                    spell.ModifiedAttribute.Value, effect.Magnitude);
+        }
+
+        private void RemoveEffect(ActiveSpellEffect effect, SpellDefinition spell)
+        {
+            if (spell.EffectFamily == SpellEffectFamily.AttributeModifier)
+                _world.Characters.RemoveEffectModifier(effect.Target, effect.ModifierIdentity);
         }
 
         private SpellCastFailure ValidateTarget(SpellDefinition spell, SpellCastRequest request)
@@ -415,6 +533,9 @@ namespace Arcanum.Runtime.Magic
                 && _world.Vitality.GetCurrentHitPoints(request.Target) >= _world.Vitality.GetMaximumHitPoints(request.Target))
                 return SpellCastFailure.InvalidTarget;
             if (spell.Id == PhaseOneSpellCatalog.MinorHealing
+                && _world.Combat.HasCritterFlag(request.Target, unchecked((int)0x20000000)))
+                return SpellCastFailure.InvalidTarget;
+            if (spell.Id == PhaseOneSpellCatalog.Flash
                 && _world.Combat.HasCritterFlag(request.Target, unchecked((int)0x20000000)))
                 return SpellCastFailure.InvalidTarget;
             if (request.Caster == request.Target) return SpellCastFailure.None;
@@ -443,8 +564,17 @@ namespace Arcanum.Runtime.Magic
             int aptitude = _world.DerivedStats.GetDerivedStat(target, CharacterDerivedStat.MagickTechAptitude);
             if (aptitude < 0) resistance = 100 - (100 - resistance) * (aptitude + 100) / 100;
             resistance = Math.Max(0, Math.Min(100, resistance));
-            int chance = _random.Next(0, 100);
+            int chance = _random.Next(1, 101);
             return chance < resistance ? resistance - chance : 0;
+        }
+
+        private bool ResolveSavingThrow(SpellDefinition spell, ArcanumObjectId caster,
+            ArcanumObjectId target, int resistance)
+        {
+            if (caster == target || !spell.ResistanceAttribute.HasValue) return false;
+            int difficulty = _world.Characters.GetEffectiveAttribute(target, spell.ResistanceAttribute.Value)
+                             + spell.ResistanceModifier - resistance / 10;
+            return difficulty > 0 && _random.Next(1, 21) <= difficulty;
         }
 
         private int ScaledMagnitude(SpellDefinition spell, ArcanumObjectId caster)
@@ -471,7 +601,8 @@ namespace Arcanum.Runtime.Magic
             => Math.Min(5, _world.Characters.GetEffectiveAttribute(caster, CharacterAttribute.Intelligence) / 4);
 
         private int MaintainedCount(ArcanumObjectId caster)
-            => _activeEffects.Count(value => value.Caster == caster);
+            => _activeEffects.Count(value => value.Caster == caster
+                && PhaseOneSpellCatalog.TryGet(value.SpellId, out SpellDefinition spell) && spell.Maintained);
 
         private static SpellCastResult Fail(SpellCastFailure failure, SpellCastRequest request)
             => new(failure, request);
