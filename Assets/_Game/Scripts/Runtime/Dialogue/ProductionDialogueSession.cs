@@ -7,6 +7,7 @@ using Arcanum.Formats.Script;
 using Arcanum.Formats.World;
 using Arcanum.Runtime.Campaign;
 using Arcanum.Runtime.Character;
+using Arcanum.Runtime.Party;
 using Arcanum.Runtime.World;
 using Arcanum.Script;
 using UnityEngine;
@@ -92,9 +93,9 @@ namespace Arcanum.Runtime.Dialogue
     public sealed class ProductionDialogueSession
     {
         private static readonly HashSet<string> M5AAdmittedTests = new(StringComparer.OrdinalIgnoreCase)
-            { "gf", "qu", "ra" };
+            { "gf", "qu", "ra", "fo" };
         private static readonly HashSet<string> M5AAdmittedEffects = new(StringComparer.OrdinalIgnoreCase)
-            { "lf", "qu", "fl" };
+            { "lf", "qu", "fl", "jo", "lv" };
         private static readonly HashSet<string> M5BAdmittedTests = new(StringComparer.OrdinalIgnoreCase)
             { "gf", "gv", "lf", "qu", "qb", "ra", "in", "ni", "re", "ch", "ha" };
         private static readonly HashSet<string> M5BAdmittedEffects = new(StringComparer.OrdinalIgnoreCase)
@@ -615,6 +616,7 @@ namespace Arcanum.Runtime.Dialogue
             private readonly CharacterProgressionService.Snapshot _progression;
             private readonly CharacterDerivedStatService.Snapshot _derived;
             private readonly WorldMapSessionCoordinator.DialogueInventorySnapshot _inventory;
+            private readonly PartyMember[] _party;
 
             public DialogueTransactionSnapshot(WorldMapSessionCoordinator world, CampaignStateService campaign)
             {
@@ -622,6 +624,7 @@ namespace Arcanum.Runtime.Dialogue
                 _progression = world.Progression.CaptureSnapshot();
                 _derived = world.DerivedStats.CaptureSnapshot();
                 _inventory = world.CaptureDialogueInventorySnapshot();
+                _party = world.Party.CaptureMembership();
             }
 
             public void Restore(WorldMapSessionCoordinator world, CampaignStateService campaign)
@@ -630,6 +633,7 @@ namespace Arcanum.Runtime.Dialogue
                 world.Progression.RestoreSnapshot(_progression);
                 world.DerivedStats.RestoreSnapshot(_derived);
                 world.RestoreDialogueInventorySnapshot(_inventory);
+                world.Party.RestoreMembership(_party);
             }
         }
 
@@ -699,7 +703,8 @@ namespace Arcanum.Runtime.Dialogue
                 {
                     ScriptCondition entry = file.Entries[line];
                     Sct condition = (Sct)entry.Type;
-                    if (condition is not Sct.True and not Sct.LocalFlag)
+                    if (condition is not Sct.True and not Sct.LocalFlag
+                        and not Sct.ObjFollowingPc and not Sct.ObjJilted)
                     {
                         failure = $"condition {condition} at script line {line}";
                         return false;
@@ -750,6 +755,9 @@ namespace Arcanum.Runtime.Dialogue
 
             public override void StartDialog(object obj, int dialogLine, int scriptNum, int scriptLine)
                 => _dialogue.OpenFromScript(obj, dialogLine, scriptLine);
+
+            public override bool IsFollowingPc(object obj)
+                => obj is WorldScriptObjectReference reference && _world.Party.IsMember(reference.Identity);
 
             private static object[] One(object value) => value == null ? Array.Empty<object>() : new[] { value };
         }
@@ -877,10 +885,20 @@ namespace Arcanum.Runtime.Dialogue
         public void GiveXp(int questId) => throw Outside(nameof(GiveXp));
         public void GiveFatePoint() => throw Outside(nameof(GiveFatePoint));
         public void StartCombat() => throw Outside(nameof(StartCombat));
-        public void RecruitNpc() => throw Outside(nameof(RecruitNpc));
-        public bool IsNpcFollowingPc => throw Outside(nameof(IsNpcFollowingPc));
+        public void RecruitNpc()
+        {
+            PartyMutationResult result = _world.Party.Join(_npc);
+            if (!result.Succeeded)
+                throw new InvalidOperationException($"Follower join failed: {result.Failure}.");
+        }
+        public bool IsNpcFollowingPc => _world.Party.IsMember(_npc);
         public bool AreaKnown(int id) => _campaign.IsAreaKnown(new AreaId(id));
-        public void DisbandNpc() => throw Outside(nameof(DisbandNpc));
+        public void DisbandNpc()
+        {
+            PartyMutationResult result = _world.Party.Remove(_npc);
+            if (!result.Succeeded)
+                throw new InvalidOperationException($"Follower removal failed: {result.Failure}.");
+        }
         public string GeneratedText(char token)
             => _resolveGeneratedText?.Invoke(_npc, token) ?? (token == 'e' ? "Goodbye." : null);
 
@@ -946,6 +964,20 @@ namespace Arcanum.Runtime.Dialogue
                     }
                     case "$$":
                         return _world.CanAddGold(_pc, first, out failure);
+                    case "jo":
+                    {
+                        PartyMutationResult preview = _world.Party.PreviewJoin(_npc);
+                        if (preview.Succeeded) return true;
+                        failure = $"follower join rejected: {preview.Failure}";
+                        return false;
+                    }
+                    case "lv":
+                    {
+                        PartyMutationResult preview = _world.Party.PreviewRemove(_npc);
+                        if (preview.Succeeded) return true;
+                        failure = $"follower removal rejected: {preview.Failure}";
+                        return false;
+                    }
                     default:
                         failure = $"dialog effect '{code}' has no production preflight";
                         return false;

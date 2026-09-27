@@ -21,6 +21,7 @@ namespace Arcanum.Script
         public virtual int GetGold(object obj) => throw Unsupported(nameof(GetGold));
         public virtual bool IsSwitchedOff(object obj) => throw Unsupported(nameof(IsSwitchedOff));
         public virtual bool IsFollowingPc(object obj) => throw Unsupported(nameof(IsFollowingPc));
+        public virtual bool IsJilted(object obj) => false;
         public virtual bool IsInCombat(object obj) => throw Unsupported(nameof(IsInCombat));
         public virtual bool IsAtTile(object obj, int x, int y) => throw Unsupported(nameof(IsAtTile));
         public virtual bool IsWithinRange(object obj, int x, int y, int range) => throw Unsupported(nameof(IsWithinRange));

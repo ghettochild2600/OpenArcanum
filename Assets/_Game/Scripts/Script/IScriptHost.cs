@@ -51,6 +51,7 @@ namespace Arcanum.Script
 
         /// <summary>Critter is a follower of the PC (engine <c>SCT_OBJ_FOLLOWING_PC</c> → <c>critter_leader_get</c>).</summary>
         bool IsFollowingPc(object obj);
+        bool IsJilted(object obj);
 
         /// <summary>Critter is engaged in combat (engine <c>SCT_OBJ_IS_IN_COMBAT</c>).</summary>
         bool IsInCombat(object obj);

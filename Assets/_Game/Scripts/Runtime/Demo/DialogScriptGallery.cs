@@ -479,6 +479,7 @@ namespace Arcanum.Runtime.Demo
                 return new object[0];
             }
             public bool IsFollowingPc(object obj) => Following;
+            public bool IsJilted(object obj) => false;
             public bool HasMetPc(object obj) => Met;
             public bool InConversation;                    // set by the gallery while a conversation is open
             public bool IsInDialog(object obj) => InConversation;

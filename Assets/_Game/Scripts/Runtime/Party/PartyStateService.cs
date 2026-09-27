@@ -77,26 +77,48 @@ namespace Arcanum.Runtime.Party
 
         public PartyMutationResult Join(ArcanumObjectId follower, bool forced = false)
         {
-            if (!Leader.IsPersistent) return Fail(PartyMutationFailure.NoLeader, follower);
-            if (IsMember(follower)) return Fail(PartyMutationFailure.AlreadyFollowing, follower);
-            if (!TryValidateFollower(follower, true, out PartyMutationFailure failure))
-                return Fail(failure, follower);
-            int ordinaryCount = _members.Count(member => !member.Forced);
-            if (!forced && ordinaryCount >= Capacity)
-                return Fail(PartyMutationFailure.CapacityReached, follower);
+            PartyMutationResult preview = PreviewJoin(follower, forced);
+            if (!preview.Succeeded) return preview;
 
             _members.Add(new PartyMember(follower, forced));
             MembershipChanged?.Invoke();
             return new PartyMutationResult(PartyMutationFailure.None, follower);
         }
 
+        public PartyMutationResult PreviewJoin(ArcanumObjectId follower, bool forced = false)
+        {
+            if (!Leader.IsPersistent) return Fail(PartyMutationFailure.NoLeader, follower);
+            if (IsMember(follower)) return Fail(PartyMutationFailure.AlreadyFollowing, follower);
+            if (!TryValidateFollower(follower, true, out PartyMutationFailure failure))
+                return Fail(failure, follower);
+            int ordinaryCount = _members.Count(member => !member.Forced);
+            return !forced && ordinaryCount >= Capacity
+                ? Fail(PartyMutationFailure.CapacityReached, follower)
+                : new PartyMutationResult(PartyMutationFailure.None, follower);
+        }
+
         public PartyMutationResult Remove(ArcanumObjectId follower)
         {
+            PartyMutationResult preview = PreviewRemove(follower);
+            if (!preview.Succeeded) return preview;
             int index = IndexOf(follower);
-            if (index < 0) return Fail(PartyMutationFailure.NotFollowing, follower);
             _members.RemoveAt(index);
             MembershipChanged?.Invoke();
             return new PartyMutationResult(PartyMutationFailure.None, follower);
+        }
+
+        public PartyMutationResult PreviewRemove(ArcanumObjectId follower)
+            => IndexOf(follower) < 0
+                ? Fail(PartyMutationFailure.NotFollowing, follower)
+                : new PartyMutationResult(PartyMutationFailure.None, follower);
+
+        internal PartyMember[] CaptureMembership() => _members.ToArray();
+
+        internal void RestoreMembership(IEnumerable<PartyMember> members)
+        {
+            _members.Clear();
+            if (members != null) _members.AddRange(members);
+            MembershipChanged?.Invoke();
         }
 
         internal bool TryAddRestored(PartyMember member, out string error)

@@ -162,6 +162,7 @@ namespace Arcanum.Script
                 case Sct.ObjIsDead:        return EvalObjSet(c, ctx, _host.IsDead);
                 case Sct.ObjIsSwitchedOff: return EvalObjSet(c, ctx, _host.IsSwitchedOff);
                 case Sct.ObjFollowingPc:   return EvalObjSet(c, ctx, _host.IsFollowingPc); // op1 = pc (single PC, not compared)
+                case Sct.ObjJilted:        return EvalObjSet(c, ctx, _host.IsJilted);
                 case Sct.ObjIsInCombat:    return EvalObjSet(c, ctx, _host.IsInCombat);
                 case Sct.ObjIsAnimal:      return EvalObjSet(c, ctx, _host.IsAnimal);
                 case Sct.ObjIsUndead:      return EvalObjSet(c, ctx, _host.IsUndead);
@@ -249,7 +250,6 @@ namespace Arcanum.Script
                 case Sct.ObjIsInvisible:
                 case Sct.ObjHasMirrorImage:
                 case Sct.ObjHasSurrendered:
-                case Sct.ObjJilted:
                 case Sct.ObjIsBusted:
                 case Sct.ObjHasMaxFollowers:
                 case Sct.ObjIsInfluencedBySpell:

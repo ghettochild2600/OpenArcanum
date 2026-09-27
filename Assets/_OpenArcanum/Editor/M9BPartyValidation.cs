@@ -1,13 +1,18 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Linq;
 using Arcanum.Formats.Database;
+using Arcanum.Formats.Dialog;
 using Arcanum.Formats.Objects;
+using Arcanum.Formats.Script;
 using Arcanum.Formats.World;
 using Arcanum.Runtime;
 using Arcanum.Runtime.Combat;
+using Arcanum.Runtime.Dialogue;
 using Arcanum.Runtime.Party;
 using Arcanum.Runtime.World;
+using Arcanum.Script;
 using OpenArcanum.Rendering;
 using UnityEditor;
 using UnityEngine;
@@ -26,13 +31,18 @@ internal static class M9BPartyValidation
     private static int _warnings;
     private static int _errors;
 
-    [MenuItem("OpenArcanum/M9B Phase 1/Audit Authentic Follower Fixture")]
+    [MenuItem("OpenArcanum/M9B Phase 1/Audit Authentic Follower Fixture", false, 0)]
     private static void AuditAuthenticFollowerFixture()
     {
         string archive = GameDataLocator.Find("modules/Arcanum.dat");
         if (string.IsNullOrEmpty(archive)) throw new InvalidOperationException("Arcanum.dat was not found.");
         using var vfs = new DatVirtualFileSystem();
         vfs.MountFile(archive);
+        foreach (string dataArchive in new[] { "arcanum1.dat", "arcanum2.dat", "arcanum3.dat", "arcanum4.dat" })
+        {
+            string path = GameDataLocator.Find(dataArchive);
+            if (!string.IsNullOrEmpty(path)) vfs.MountFile(path);
+        }
         int found = 0;
         foreach (string path in vfs.EnumerateFiles("maps/Arcanum1-024-fixed/"))
         {
@@ -49,6 +59,19 @@ internal static class M9BPartyValidation
                       + $"prototype={instance.PrototypeNumber}; dialog={instance.DialogNum}; "
                       + $"tile={instance.TileX},{instance.TileY}; sector=maps/arcanum1-024-fixed/{sectorId}.sec");
         }
+        DialogScript dialogue = DialogLocator.Load(vfs, 1324);
+        if (dialogue == null) throw new InvalidOperationException("Authentic dialogue 1324 was not found.");
+        Debug.Log($"M9B AUTHENTIC DIALOGUE SOURCE: path={DialogLocator.FindPath(vfs, 1324)}; "
+                  + $"lines={dialogue.LineNumbers.Count}");
+        foreach (int lineNumber in dialogue.LineNumbers)
+        {
+            dialogue.TryGet(lineNumber, out DialogLine line);
+            string source = $"{line.Test} {line.Effect}";
+            if (lineNumber is 72 or 514 or 524
+                || source.Contains("fo", StringComparison.OrdinalIgnoreCase))
+                Debug.Log($"M9B AUTHENTIC DIALOGUE: line={line.Num}; target={line.Target}; "
+                          + $"test={line.Test}; effect={line.Effect}; text={line.Text}");
+        }
         Debug.Log($"M9B AUTHENTIC FOLLOWER AUDIT: found={found}");
     }
 
@@ -60,6 +83,101 @@ internal static class M9BPartyValidation
         WorldObjectSectorLoader loader = Object.FindFirstObjectByType<WorldObjectSectorLoader>()
                                          ?? throw new InvalidOperationException("TestTerrain has no object loader.");
         loader.StartCoroutine(Validate(loader));
+    }
+
+    [MenuItem("OpenArcanum/M9B Phase 2/Run Physical Dialogue Validation", false, 0)]
+    private static void RunPhysicalDialogue()
+    {
+        if (!Application.isPlaying || _running)
+            throw new InvalidOperationException("Enter TestTerrain Play mode; run only one M9B harness.");
+        WorldObjectSectorLoader loader = Object.FindFirstObjectByType<WorldObjectSectorLoader>()
+                                         ?? throw new InvalidOperationException("TestTerrain has no object loader.");
+        loader.StartCoroutine(ValidateDialogue(loader));
+    }
+
+    private static IEnumerator ValidateDialogue(WorldObjectSectorLoader loader)
+    {
+        _running = true;
+        _warnings = _errors = 0;
+        Application.logMessageReceived += Track;
+        WorldMapSessionCoordinator session = loader.Session;
+        try
+        {
+            session.ResetAuthoritativeSession();
+            yield return null;
+            Check(session.SelectSector(VirgilSector), "authentic Virgil sector loads for dialogue proof");
+            yield return null;
+            Refresh(out loader, out ProductionPlayerLifecycle lifecycle, out _);
+            if (lifecycle.Presentation == null) Check(lifecycle.SpawnAndBind(), "production PC binds");
+            Check(session.TryGetObjectState(Virgil, out PersistentObjectState virgilState)
+                  && virgilState.Type == ObjectType.Npc && virgilState.PrototypeNumber == 17102
+                  && virgilState.DialogNum == 1324, "retail Virgil identity and dialogue source resolve");
+
+            using var vfs = new DatVirtualFileSystem();
+            string module = GameDataLocator.Find("modules/Arcanum.dat");
+            if (string.IsNullOrEmpty(module)) throw new InvalidOperationException("Arcanum.dat was not found.");
+            vfs.MountFile(module);
+            foreach (string dataArchive in new[] { "arcanum1.dat", "arcanum2.dat", "arcanum3.dat", "arcanum4.dat" })
+            {
+                string path = GameDataLocator.Find(dataArchive);
+                if (!string.IsNullOrEmpty(path)) vfs.MountFile(path);
+            }
+            DialogScript retail = DialogLocator.Load(vfs, 1324)
+                                  ?? throw new InvalidOperationException("Authentic dialogue 1324 was not found.");
+            retail.TryGet(72, out DialogLine join);
+            Check(join.Effect == "jo 0 74",
+                "authentic Virgil join row 72 resolves");
+            retail.TryGet(514, out DialogLine leave);
+            retail.TryGet(524, out DialogLine leaveResult);
+            Check(leave.Effect == "lv" && leaveResult.Effect == "lf31 1",
+                "authentic Virgil leave rows 514/524 resolve");
+
+            var joinDialogue = new DialogScript(new SortedDictionary<int, DialogLine>
+            {
+                [71] = new DialogLine(71, "Join proof", "", 0, "", 0, ""),
+                [72] = join,
+            });
+            session.BindDialogueSource(_ => StartAt(71), _ => joinDialogue);
+            Check(session.Dialogue.Start(session.PlayerState.Identity, Virgil) == DialogueStartStatus.Started,
+                "production dialogue transaction opens the authentic join row");
+            int joinIndex = IndexOfResponse(session.Dialogue.AvailableResponses, 72);
+            Check(joinIndex >= 0 && session.Dialogue.SelectResponse(joinIndex) == DialogueChoiceStatus.Completed,
+                "authentic jo effect completes through production dialogue");
+            Check(session.Party.Members.Count == 1 && session.Party.Members[0].Identity == Virgil,
+                "authentic jo effect enrolls Virgil exactly once");
+            CheckUnique(loader, Virgil);
+
+            var leaveDialogue = new DialogScript(new SortedDictionary<int, DialogLine>
+            {
+                [513] = new DialogLine(513, "Leave proof", "", 0, "", 0, ""),
+                [514] = leave,
+                [524] = leaveResult,
+            });
+            session.BindDialogueSource(_ => StartAt(513), _ => leaveDialogue);
+            Check(session.Dialogue.Start(session.PlayerState.Identity, Virgil) == DialogueStartStatus.Started,
+                "production dialogue transaction opens the authentic leave row");
+            int leaveIndex = IndexOfResponse(session.Dialogue.AvailableResponses, 514);
+            DialogueChoiceStatus leaveStatus = leaveIndex < 0
+                ? DialogueChoiceStatus.InvalidChoice
+                : session.Dialogue.SelectResponse(leaveIndex);
+            Check(leaveStatus is DialogueChoiceStatus.Advanced or DialogueChoiceStatus.Completed,
+                "authentic lv effect advances through its retail result node");
+            Check(!session.Party.IsMember(Virgil)
+                  && session.Campaign.GetLocalFlag(Virgil, (int)Sap.Dialog, 31) == 1,
+                "authentic lv effect removes Virgil and commits retail local flag 31");
+            Check(session.TryGetLoadedObject(Virgil, out _),
+                "disband preserves the same authoritative Virgil world identity");
+            CheckUnique(loader, Virgil);
+            Check(_errors == 0 && _warnings == 0, "accepted dialogue proof produced no warnings or errors");
+            Debug.Log("M9B PHASE 2 PHYSICAL PASS: retail Virgil 1324 rows 72/514/524; production jo/lv dialogue "
+                      + "transactions; exactly-once membership; stable identity; authored leave flag. "
+                      + $"warnings={_warnings}; errors={_errors}.");
+        }
+        finally
+        {
+            Application.logMessageReceived -= Track;
+            _running = false;
+        }
     }
 
     private static IEnumerator Validate(WorldObjectSectorLoader loader)
@@ -290,6 +408,28 @@ internal static class M9BPartyValidation
         => Check(loader.SpriteOwners.Count(owner => owner?.WorldObject?.Identity == identity) == 1,
             $"one presentation exists for {identity}");
 
+    private static int IndexOfResponse(IReadOnlyList<DialogLine> responses, int line)
+    {
+        for (int index = 0; index < responses.Count; index++)
+            if (responses[index].Num == line) return index;
+        return -1;
+    }
+
+    private static ScriptFile StartAt(int line)
+    {
+        var action = new ScriptAction { Type = (int)Sat.Dialog };
+        action.OpType[0] = (byte)Svt.Number;
+        action.OpValue[0] = line;
+        var script = new ScriptFile();
+        script.Entries.Add(new ScriptCondition
+        {
+            Type = (int)Sct.True,
+            Action = action,
+            Els = new ScriptAction { Type = (int)Sat.DoNothing },
+        });
+        return script;
+    }
+
     private static void Check(bool value, string label)
     {
         if (!value) throw new InvalidOperationException("M9B physical validation failed: " + label);
@@ -299,7 +439,8 @@ internal static class M9BPartyValidation
     private static void Track(string condition, string stack, LogType type)
     {
         if (condition.StartsWith("M9B PASS:", StringComparison.Ordinal)
-            || condition.StartsWith("M9B PHASE 1 PHYSICAL PASS:", StringComparison.Ordinal)) return;
+            || condition.StartsWith("M9B PHASE 1 PHYSICAL PASS:", StringComparison.Ordinal)
+            || condition.StartsWith("M9B PHASE 2 PHYSICAL PASS:", StringComparison.Ordinal)) return;
         if (type == LogType.Warning) _warnings++;
         if (type is LogType.Error or LogType.Exception or LogType.Assert) _errors++;
     }

@@ -47,6 +47,7 @@ namespace Arcanum.Formats.Tests
             public int GoldResult; public int GetGold(object obj) => GoldResult;
             public bool SwitchedOffResult; public bool IsSwitchedOff(object obj) => SwitchedOffResult;
             public bool FollowingResult; public bool IsFollowingPc(object obj) => FollowingResult;
+            public bool IsJilted(object obj) => false;
             public bool InCombatResult; public bool IsInCombat(object obj) => InCombatResult;
             public bool AtTileResult; public bool IsAtTile(object obj, int x, int y) => AtTileResult;
             public bool WithinRangeResult; public bool IsWithinRange(object obj, int x, int y, int range) => WithinRangeResult;
