@@ -39,7 +39,10 @@ player-facing manual save/load presentation, M7A bounded passive local map trans
   combat modes, authentic finite-duration Flash, exact source deadlines, and typed cancellation/dispel termination.
   **DONE M10B — Technology Runtime:** coordinator-owned source discipline ranks/schematic eligibility, exact M4 aptitude
   integration, typed transactional technological item use, M3 consumption, M8/M8H timing, optional V1 persistence,
-  and authentic Healing Salve and Power Axe malfunction vertical slices.
+  and authentic Healing Salve and Power Axe malfunction vertical slices. **DONE M11A — Economy / Vendors:**
+  coordinator-owned retail merchant resolution, authentic inventory/buy-source parsing, source-exact integer pricing,
+  transactional M3 item/Gold movement, Haggle/reaction integration, finite merchant payout, 12-24-hour source-time
+  restocking, optional V1 persistence, and an authentic inventor merchant vertical slice.
 `WorldMapSessionCoordinator` owns typed `World`, `Contained(parent)`, and `Equipped(parent, wornLocation)` placement,
 atomic raw item transfers/equipment replacement/stack merge and split, deterministic session-created item identities,
 source-faithful pickup/drop/owner-transfer policy, and pre-mutation weight/grid-capacity guards independently of Unity
@@ -124,7 +127,8 @@ Travel time, encounters, advanced follower catch-up/formation, mid-route cancell
 clock/day-night behavior,
 autosave, quicksave, cloud sync, original Arcanum save compatibility, unsupported critical-table effects, broader death
 scripts/consequences, broader NPC AI beyond the bounded M9A kernel, follower loyalty/leveling/campaign behavior,
-additional spell/technology content, crafting/schematics, and barter remain deferred.
+additional spell/technology content, crafting/schematics, the final merchant UI, and broader social systems remain
+deferred.
 
 ## Current Branch
 
@@ -2167,9 +2171,42 @@ This assessment is documentation-only. The accepted **12/12 focused**, **206/206
 **932/932 complete EditMode** baseline remains authoritative; there was no code change requiring a rerun. See
 [`documentation_unity/m10b-technology-runtime-closure-audit.md`](documentation_unity/m10b-technology-runtime-closure-audit.md).
 
+## M11A Economy / Vendor Runtime Validation Baseline (2026-09-27)
+
+M11A is formally complete as the bounded authoritative economy/vendor runtime. Ordinary stable-ObjectID NPCs resolve
+their instance-over-prototype retail multiplier, inventory source, optional nearby substitute container, buy script,
+and fence flags. The coordinator-owned service parses all 123 retail inventory-source definitions and their buy lists,
+uses existing M3 Gold stacks and item transfer/split/merge/capacity authority, consumes M4 Haggle/Intelligence/reaction,
+and exposes one typed preview/execute path with source-order integer pricing. Failed transactions restore the complete
+inventory/Gold snapshot.
+
+The source refresh lifecycle replaces nonpersistent stock, preserves persistent stock, generates source-bounded Gold
+and wares, skips dead/follower merchants, and schedules one future refresh after an inclusive random 12-24 source-game
+hours. Save format remains V1: ordinary world state owns items and Gold, while an optional economy domain persists only
+inventory-source ownership, the next deadline, and valid generated identities. Older V1 documents remain valid and no
+pending/preview transaction persists.
+
+Computer Use physical Play Mode validation used authentic inventor
+`G_C626B82F_5190_2C40_995A_00BCB987F7A5` in
+`maps/arcanum1-024-fixed/68853695432.sec` (retail multiplier 200, inventory source 7). It proved authentic stock,
+purchase and sale with exact Gold/item movement, insufficient-funds rollback, deterministic exactly-once restock,
+Save V1 committed-state restoration, and Original -> Enhanced -> Original presentation independence. The accepted run
+reported **0 warnings and 0 errors**.
+
+Focused M11A was **20/20**. Directly affected M3A/M3D/M3E, M4C/M4D, and M6A regressions were **126/126**. Complete
+EditMode was **952/952**, with **0 failed, 0 skipped, and 0 inconclusive**. Unity compilation was clean. The full suite's
+nine intentional fail-closed dialogue compatibility warnings were cleared; the final Console was **0 logs, 0 warnings,
+0 errors**. `git diff --check` was clean.
+
+No M11A Phase 2 is required. Additional merchant fixtures/buy-script evaluators are compatible content. Broader
+reputation/faction/crime/reaction consequences belong to M11B; crafting belongs to M11C; the final merchant presenter
+and Apprentice price-markup display belong to M12 UI. The exact destroyed-ART predicate remains source-ambiguous and
+was not approximated.
+
+See [`documentation_unity/m11a-economy-vendor-audit.md`](documentation_unity/m11a-economy-vendor-audit.md).
+
 ## Next Recommended Milestone
 
-M9A, M9B, M10A, and M10B are formally closed. Do not treat compatible spell or technological-item content as
-unfinished core runtime. The next milestone must be selected from the audited roadmap before implementation; this
-closure does not authorize M11, M11C crafting, broader UI, AI/follower behavior, resurrection, campaign, or general-
-simulation work.
+M9A, M9B, M10A, M10B, and M11A are formally closed. Do not treat compatible spell, technological-item, or merchant
+content as unfinished core runtime. M11B social systems, M11C crafting, and M12 merchant presentation remain separate
+future milestones and are not authorized by this closure.
