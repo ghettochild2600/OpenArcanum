@@ -2205,8 +2205,39 @@ was not approximated.
 
 See [`documentation_unity/m11a-economy-vendor-audit.md`](documentation_unity/m11a-economy-vendor-audit.md).
 
+## M11B Social Systems Validation Baseline (2026-09-28)
+
+M11B is formally complete as the bounded social authority. The coordinator-owned service parses authentic reputation
+and social-AI sources, composes unbounded source/M4/persistent/reputation reaction, applies exact dispositions,
+maintains typed acquired reputations and faction grants, resolves party/faction alliance, records directional
+hostility, and exposes the representable detected-theft boundary. Dialogue `re`/`rp`/`co`, M9A combat hostility, and
+M11A merchant prices consume the same authority. Social state never starts combat or duplicates party, pricing,
+inventory, vitality, or character-stat ownership.
+
+Save format remains V1. Its optional social domain persists reputation acquisition order and remembered hostility;
+ordinary object state now retains source AI data, origin, and faction. Earlier V1 documents load with empty social
+state, invalid documents fail before mutation, and pending dialogue/crime/combat transactions are never restored.
+
+Computer Use physical Play Mode validation used authentic Tarant inventor
+`G_C626B82F_5190_2C40_995A_00BCB987F7A5` in `maps/arcanum1-024-fixed/68853695432.sec`. It proved reaction
+`43 -> 58` from one `+5` social operation and authentic reputation 1000's `+10`; authentic faction-7 grant 1024;
+remembered hostility and detected theft feeding combat opponent authority without starting combat; M11A price
+`16 -> 15`; Save V1 social/object-input restoration; and Original -> Enhanced -> Original presentation independence.
+The accepted run reported **0 warnings and 0 errors**.
+
+Focused M11B was **31/31**. Directly affected M4D, M5A, M6A, M8A, M9A, both M9B slices, and M11A regressions were
+**143/143**. Complete EditMode was **983/983**, with **0 failed, 0 skipped, and 0 inconclusive**. Unity compilation
+was clean, the final cleared Console was **0 logs, 0 warnings, and 0 errors**, and `git diff --check` was clean.
+
+Stealth/perception/LOS and witness propagation, generic crime/city/guard consequences, campaign-specific reputation
+awards, faction diplomacy, assault/murder orchestration, follower loyalty/departure, charm/control, and final social
+UI remain deferred to their owning systems. No generic crime ledger, hostility propagation, reputation decay,
+universal Charisma reaction term, or inferred detection was invented.
+
+See [`documentation_unity/m11b-social-systems-audit.md`](documentation_unity/m11b-social-systems-audit.md).
+
 ## Next Recommended Milestone
 
-M9A, M9B, M10A, M10B, and M11A are formally closed. Do not treat compatible spell, technological-item, or merchant
-content as unfinished core runtime. M11B social systems, M11C crafting, and M12 merchant presentation remain separate
-future milestones and are not authorized by this closure.
+M9A, M9B, M10A, M10B, M11A, and M11B are formally closed. Do not treat compatible spell, technological-item,
+merchant, reputation, or campaign content as unfinished core runtime. M11C crafting and M12 presentation remain
+separate future milestones and are not authorized by this closure.
