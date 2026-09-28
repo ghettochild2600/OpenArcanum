@@ -608,7 +608,7 @@ namespace Arcanum.Runtime.Combat
             bool leftParty = IsPlayerSide(left);
             bool rightParty = IsPlayerSide(right);
             if (leftParty || rightParty) return leftParty && rightParty;
-            return left == right;
+            return _world.Social.AreAllies(left, right);
         }
 
         public bool AreOpponents(PersistentObjectId left, PersistentObjectId right)
@@ -617,7 +617,7 @@ namespace Arcanum.Runtime.Combat
             bool leftParty = IsPlayerSide(left);
             bool rightParty = IsPlayerSide(right);
             if (leftParty && rightParty) return false;
-            if (!leftParty && !rightParty) return true;
+            if (!leftParty && !rightParty) return !AreAllies(left, right);
             PersistentObjectId npc = leftParty ? right : left;
             return _sources.TryGetValue(npc, out CombatActorSource source) && IsSourceHostile(source);
         }

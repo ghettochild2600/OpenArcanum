@@ -17,6 +17,7 @@ using Arcanum.Runtime.Party;
 using Arcanum.Runtime.Magic;
 using Arcanum.Runtime.Technology;
 using Arcanum.Runtime.Economy;
+using Arcanum.Runtime.Social;
 using UnityEngine;
 
 namespace Arcanum.Runtime.World
@@ -66,6 +67,9 @@ namespace Arcanum.Runtime.World
         private SourceTimeService _sourceTime;
         private EconomyStateService _economy;
         private InventorySourceCatalog _economySource;
+        private SocialStateService _social;
+        private ReputationCatalog _reputationSource;
+        private SocialAiCatalog _socialAiSource;
         private bool _mapTransitionActive;
         private ulong _nextDynamicIdentity = 1;
 
@@ -105,6 +109,7 @@ namespace Arcanum.Runtime.World
         public MagicStateService Magic => _magic ??= new MagicStateService(this);
         public TechnologyStateService Technology => _technology ??= new TechnologyStateService(this);
         public EconomyStateService Economy => _economy ??= CreateEconomy();
+        public SocialStateService Social => _social ??= CreateSocial();
         internal bool HasMagicCritterFlag(ArcanumObjectId identity, int flag)
             => _magic?.HasActiveCritterFlag(identity, flag) == true;
         public bool IsMapTransitionActive => _mapTransitionActive;
@@ -287,6 +292,13 @@ namespace Arcanum.Runtime.World
             Economy.BindInventorySources(source);
         }
 
+        public void BindSocialSources(ReputationCatalog reputations, SocialAiCatalog ai)
+        {
+            _reputationSource = reputations ?? throw new ArgumentNullException(nameof(reputations));
+            _socialAiSource = ai ?? throw new ArgumentNullException(nameof(ai));
+            Social.BindSources(reputations, ai);
+        }
+
         public void BindInventoryFootprintSource(Func<uint?, InventoryFootprint> resolveInventoryFootprint)
             => _resolveInventoryFootprint = resolveInventoryFootprint
                 ?? throw new ArgumentNullException(nameof(resolveInventoryFootprint));
@@ -324,6 +336,14 @@ namespace Arcanum.Runtime.World
             var economy = new EconomyStateService(this);
             if (_economySource != null) economy.BindInventorySources(_economySource);
             return economy;
+        }
+
+        private SocialStateService CreateSocial()
+        {
+            var social = new SocialStateService(this);
+            if (_reputationSource != null && _socialAiSource != null)
+                social.BindSources(_reputationSource, _socialAiSource);
+            return social;
         }
 
         public bool IsAreaEntranceTarget(ArcanumObjectId identity)
@@ -552,7 +572,10 @@ namespace Arcanum.Runtime.World
             ArcanumObjectId substituteInventoryIdentity = default,
             int npcFlags = 0,
             int buyObjectScriptNum = 0,
-            int containerFlags = 0)
+            int containerFlags = 0,
+            int? aiData = null,
+            int? origin = null,
+            int? faction = null)
         {
             if (!identity.IsPersistent) return null;
             if (_removedObjectIdentities.Contains(identity)) return null;
@@ -565,7 +588,7 @@ namespace Arcanum.Runtime.World
                 inventoryArtId, weaponFlags, genericFlags, stackQuantity, unitWeight, inventoryFootprint,
                 inventoryLocation, nameIndex, socialClass, weaponData, ammoItemType, sourceWorth,
                 maximumHitPoints, hitPointDamage, retailPriceMultiplier, inventorySourceId,
-                substituteInventoryIdentity, npcFlags, buyObjectScriptNum, containerFlags);
+                substituteInventoryIdentity, npcFlags, buyObjectScriptNum, containerFlags, aiData, origin, faction);
             _states.Add(identity, state);
             return state;
         }
@@ -577,12 +600,13 @@ namespace Arcanum.Runtime.World
             Weapon weaponData = null, int? ammoItemType = null, int? sourceWorth = null,
             int? maximumHitPoints = null, int? hitPointDamage = null, int? retailPriceMultiplier = null,
             int? inventorySourceId = null, ArcanumObjectId substituteInventoryIdentity = default,
-            int npcFlags = 0, int buyObjectScriptNum = 0, int containerFlags = 0)
+            int npcFlags = 0, int buyObjectScriptNum = 0, int containerFlags = 0,
+            int? aiData = null, int? origin = null, int? faction = null)
             => GetOrCreate(source, source.Identity, sector, artId, off, locked, itemFlags, inventoryArtId,
                 weaponFlags, genericFlags, stackQuantity, unitWeight, inventoryFootprint, inventoryLocation,
                 nameIndex, socialClass, weaponData, ammoItemType, sourceWorth, maximumHitPoints,
                 hitPointDamage, retailPriceMultiplier, inventorySourceId, substituteInventoryIdentity,
-                npcFlags, buyObjectScriptNum, containerFlags);
+                npcFlags, buyObjectScriptNum, containerFlags, aiData, origin, faction);
 
         public void Bind(string sector, PersistentObjectState state, WorldObject runtime)
         {
@@ -1957,6 +1981,7 @@ namespace Arcanum.Runtime.World
             _magic = null;
             _technology = null;
             _economy = null;
+            _social = null;
             _sourceTime = null;
             _portals = null;
             _dialogue = null;
@@ -1991,6 +2016,7 @@ namespace Arcanum.Runtime.World
             _magic = null;
             _technology = null;
             _economy = null;
+            _social = null;
             _sourceTime = new SourceTimeService();
             _sourceTime.Restore(plan.Magic?.ElapsedMilliseconds ?? 0);
             foreach (PartyMember member in plan.PartyMembers)
@@ -2016,6 +2042,8 @@ namespace Arcanum.Runtime.World
             _technology.RestoreSaveData(plan.Technology);
             _economy = CreateEconomy();
             _economy.RestoreSaveData(plan.Economy);
+            _social = CreateSocial();
+            _social.RestoreSaveData(plan.Social);
             return SelectSector(plan.SelectedSector);
         }
 

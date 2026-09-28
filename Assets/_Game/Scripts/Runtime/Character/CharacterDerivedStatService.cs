@@ -189,7 +189,14 @@ namespace Arcanum.Runtime.Character
         public int GetReaction(ArcanumObjectId npcIdentity, ArcanumObjectId pcIdentity)
         {
             int initial = GetReactionInputs(npcIdentity, pcIdentity).Subtotal;
-            return checked(initial + _reactionAdjustments.GetValueOrDefault(new ReactionKey(npcIdentity, pcIdentity)));
+            return checked(initial + GetReactionAdjustment(npcIdentity, pcIdentity));
+        }
+
+        /// <summary>The stored pairwise source reaction level minus recomputed character-derived inputs.</summary>
+        public int GetReactionAdjustment(ArcanumObjectId npcIdentity, ArcanumObjectId pcIdentity)
+        {
+            GetReactionInputs(npcIdentity, pcIdentity);
+            return _reactionAdjustments.GetValueOrDefault(new ReactionKey(npcIdentity, pcIdentity));
         }
 
         public int AdjustReaction(ArcanumObjectId npcIdentity, ArcanumObjectId pcIdentity, int delta)

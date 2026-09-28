@@ -406,7 +406,7 @@ namespace Arcanum.Runtime.Economy
             { EconomyGameDifficulty.Easy => haggle * 3 / 2, EconomyGameDifficulty.Hard => haggle * 3 / 4, _ => haggle };
             haggle = Math.Max(0, Math.Min(95, haggle));
             int multiplier = merchant?.RetailPriceMultiplier ?? 0;
-            int reaction = _world.DerivedStats.GetReaction(merchantIdentity, customer);
+            int reaction = _world.Social.GetReaction(merchantIdentity, customer);
             int reactionPercent = ReactionPercent(reaction);
             int maximumHp = Math.Max(0, item.MaximumHitPoints);
             int currentHp = Math.Max(0, maximumHp - item.HitPointDamage);

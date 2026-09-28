@@ -14,6 +14,26 @@ namespace Arcanum.Runtime.Save
         public MagicSaveData Magic { get; set; }
         public TechnologySaveData Technology { get; set; }
         public EconomySaveData Economy { get; set; }
+        public SocialSaveData Social { get; set; }
+    }
+
+    public sealed class SocialSaveData
+    {
+        public List<SocialReputationSaveData> Reputations { get; set; }
+        public List<SocialHostilitySaveData> Hostilities { get; set; }
+    }
+
+    public sealed class SocialReputationSaveData
+    {
+        public string PcIdentity { get; set; }
+        public int ReputationId { get; set; }
+        public long AcquiredAtMilliseconds { get; set; }
+    }
+
+    public sealed class SocialHostilitySaveData
+    {
+        public string SourceIdentity { get; set; }
+        public string TargetIdentity { get; set; }
     }
 
     public sealed class EconomySaveData
@@ -107,6 +127,9 @@ namespace Arcanum.Runtime.Save
         public int PrototypeNumber { get; set; }
         public int NameIndex { get; set; }
         public int SocialClass { get; set; }
+        public int AiData { get; set; }
+        public int Origin { get; set; }
+        public int Faction { get; set; }
         public int SourceWorth { get; set; }
         public int MaximumHitPoints { get; set; }
         public int HitPointDamage { get; set; }

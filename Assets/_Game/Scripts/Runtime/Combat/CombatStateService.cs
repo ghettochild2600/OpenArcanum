@@ -1939,9 +1939,18 @@ namespace Arcanum.Runtime.Combat
             }
         }
 
-        private static bool IsSourceHostile(CombatActorSource source)
-            => source.WillKosScriptNum == 0 && (source.NpcFlags & OnfKos) != 0
-               && (source.NpcFlags & OnfNoAttack) == 0;
+        private bool IsSourceHostile(CombatActorSource source)
+        {
+            if (_world.PlayerState == null || _world.Party.IsMember(source.Identity)
+                || (source.NpcFlags & OnfNoAttack) != 0) return false;
+            ArcanumObjectId pc = _world.PlayerState.Identity;
+            if (_world.Social.IsRememberedHostile(source.Identity, pc)) return true;
+            // An unresolved SAP_WILL_KOS hook can veto the source decision, so fail closed.
+            if (source.WillKosScriptNum != 0) return false;
+            if ((source.NpcFlags & OnfKos) != 0 && !_world.Social.AreAllies(source.Identity, pc)) return true;
+            return _world.Social.IsReactionHostile(source.Identity, pc)
+                   || _world.Social.IsAlignmentHostile(source.Identity, pc);
+        }
 
         private void BeginParticipantTurn(ArcanumObjectId identity, bool requireActive)
         {

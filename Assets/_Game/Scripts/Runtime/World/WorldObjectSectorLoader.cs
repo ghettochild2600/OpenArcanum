@@ -17,6 +17,7 @@ using Arcanum.Runtime.Dialogue;
 using Arcanum.Runtime.Save;
 using Arcanum.Runtime.Magic;
 using Arcanum.Runtime.Economy;
+using Arcanum.Runtime.Social;
 using Arcanum.World;
 using UnityEngine;
 
@@ -449,7 +450,10 @@ namespace Arcanum.Runtime.World
                     substituteInventory,
                     instance.NpcFlags ?? proto?.NpcFlags ?? 0,
                     instance.BuyObjectScriptNum != 0 ? instance.BuyObjectScriptNum : proto?.BuyObjectScriptNum ?? 0,
-                    instance.ContainerFlags ?? proto?.ContainerFlags ?? 0);
+                    instance.ContainerFlags ?? proto?.ContainerFlags ?? 0,
+                    instance.AiData ?? proto?.AiData ?? 0,
+                    instance.Origin ?? proto?.Origin ?? 0,
+                    instance.Faction ?? proto?.Faction ?? 0);
                 if (state == null && Session.IsObjectRemoved(identity))
                 {
                     suppressed++;
@@ -1097,6 +1101,12 @@ namespace Arcanum.Runtime.World
                 MesReader.Read(_vfs.ReadAllBytes("rules/InvenSource.mes")),
                 _vfs.Exists("rules/InvenSourceBuy.mes")
                     ? MesReader.Read(_vfs.ReadAllBytes("rules/InvenSourceBuy.mes")) : null));
+            Session.BindSocialSources(
+                ReputationCatalog.FromMes(MesReader.Read(_vfs.ReadAllBytes("rules/gamerep.mes"))),
+                SocialAiCatalog.FromMes(
+                    MesReader.Read(_vfs.ReadAllBytes("rules/ai_params.mes")),
+                    _vfs.Exists("rules/gameai.mes")
+                        ? MesReader.Read(_vfs.ReadAllBytes("rules/gameai.mes")) : null));
             MapList maps = MapList.Read(_vfs.ReadAllBytes("rules/maplist.mes"));
             var transitions = new MapTransitionResolver(
                 maps,

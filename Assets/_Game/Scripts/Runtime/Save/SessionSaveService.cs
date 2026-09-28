@@ -13,6 +13,7 @@ using Arcanum.Runtime.Party;
 using Arcanum.Runtime.Magic;
 using Arcanum.Runtime.Technology;
 using Arcanum.Runtime.Economy;
+using Arcanum.Runtime.Social;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Serialization;
 using UnityEngine;
@@ -95,6 +96,7 @@ namespace Arcanum.Runtime.Save
         internal MagicSaveData Magic;
         internal TechnologySaveData Technology;
         internal EconomySaveData Economy;
+        internal SocialSaveData Social;
     }
 
     /// <summary>Versioned, presentation-independent persistence for the bounded M1-M5 session state.</summary>
@@ -283,6 +285,7 @@ namespace Arcanum.Runtime.Save
                 Magic = _session.Magic.ExportSaveData(),
                 Technology = _session.Technology.ExportSaveData(),
                 Economy = _session.Economy.ExportSaveData(),
+                Social = _session.Social.ExportSaveData(),
                 Party = new PartySaveData
                 {
                     LeaderIdentity = _session.Party.Leader.Key,
@@ -313,6 +316,9 @@ namespace Arcanum.Runtime.Save
                 PrototypeNumber = state.PrototypeNumber,
                 NameIndex = state.NameIndex,
                 SocialClass = state.SocialClass,
+                AiData = state.AiData,
+                Origin = state.Origin,
+                Faction = state.Faction,
                 SourceWorth = state.SourceWorth,
                 MaximumHitPoints = state.MaximumHitPoints,
                 HitPointDamage = state.HitPointDamage,
@@ -458,6 +464,8 @@ namespace Arcanum.Runtime.Save
             if (!result.Succeeded) { plan = null; return result; }
             result = BuildEconomy(data.Economy, plan);
             if (!result.Succeeded) { plan = null; return result; }
+            result = BuildSocial(data.Social, plan);
+            if (!result.Succeeded) { plan = null; return result; }
             result = BuildCampaign(data.Campaign, plan);
             if (!result.Succeeded) { plan = null; return result; }
             result = BuildParty(data.Party, plan);
@@ -497,6 +505,35 @@ namespace Arcanum.Runtime.Save
                             $"Economy generated object '{key}' is invalid.");
             }
             plan.Economy = data;
+            return new SessionLoadResult(SessionLoadFailure.None);
+        }
+
+        private SessionLoadResult BuildSocial(SocialSaveData data, SessionRestorePlan plan)
+        {
+            // Earlier V1 saves legitimately have no social domain.
+            if (data == null) { plan.Social = null; return new SessionLoadResult(SessionLoadFailure.None); }
+            if (data.Reputations == null || data.Hostilities == null)
+                return Failure(SessionLoadFailure.InvalidCampaign, "The social state is incomplete.");
+            var reputations = new HashSet<string>(StringComparer.Ordinal);
+            foreach (SocialReputationSaveData value in data.Reputations)
+            {
+                if (value == null || !TryIdentity(value.PcIdentity, out ArcanumObjectId pc)
+                    || pc != plan.Player.Identity || value.ReputationId < ReputationId.Minimum
+                    || value.ReputationId > ReputationId.Maximum || value.AcquiredAtMilliseconds < 0
+                    || !reputations.Add(pc.Key + ":" + value.ReputationId))
+                    return Failure(SessionLoadFailure.InvalidCampaign, "A social reputation is invalid.");
+            }
+            var hostilities = new HashSet<string>(StringComparer.Ordinal);
+            foreach (SocialHostilitySaveData value in data.Hostilities)
+            {
+                if (value == null || !TryIdentity(value.SourceIdentity, out ArcanumObjectId source)
+                    || !TryIdentity(value.TargetIdentity, out ArcanumObjectId target)
+                    || source == target || target != plan.Player.Identity
+                    || !plan.Objects.TryGetValue(source, out PersistentObjectState npc)
+                    || npc.Type != ObjectType.Npc || !hostilities.Add(source.Key + ":" + target.Key))
+                    return Failure(SessionLoadFailure.InvalidCampaign, "A social hostility is invalid.");
+            }
+            plan.Social = data;
             return new SessionLoadResult(SessionLoadFailure.None);
         }
 
@@ -696,7 +733,8 @@ namespace Arcanum.Runtime.Save
             {
                 ObjectProtoInfo prototype = _session.ResolvePrototype(value.PrototypeNumber);
                 state = new PersistentObjectState(identity, authoredParent, sourceSector, type, value.PrototypeNumber,
-                    value.NameIndex, value.SocialClass, value.SourceWorth, value.MaximumHitPoints,
+                    value.NameIndex, value.SocialClass, value.AiData, value.Origin, value.Faction,
+                    value.SourceWorth, value.MaximumHitPoints,
                     value.HitPointDamage, value.RetailPriceMultiplier, value.InventorySourceId,
                     substituteInventory, value.NpcFlags, value.BuyObjectScriptNum, value.ContainerFlags,
                     value.AuthoredLocation, value.ArtId, value.Off, value.Locked,

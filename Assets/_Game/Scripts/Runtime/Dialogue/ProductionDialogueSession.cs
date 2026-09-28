@@ -7,8 +7,10 @@ using Arcanum.Formats.Script;
 using Arcanum.Formats.World;
 using Arcanum.Runtime.Campaign;
 using Arcanum.Runtime.Character;
+using Arcanum.Runtime.Combat;
 using Arcanum.Runtime.Party;
 using Arcanum.Runtime.World;
+using Arcanum.Runtime.Social;
 using Arcanum.Script;
 using UnityEngine;
 
@@ -93,17 +95,17 @@ namespace Arcanum.Runtime.Dialogue
     public sealed class ProductionDialogueSession
     {
         private static readonly HashSet<string> M5AAdmittedTests = new(StringComparer.OrdinalIgnoreCase)
-            { "gf", "qu", "ra", "fo" };
+            { "gf", "qu", "ra", "fo", "re", "rp" };
         private static readonly HashSet<string> M5AAdmittedEffects = new(StringComparer.OrdinalIgnoreCase)
-            { "lf", "qu", "fl", "jo", "lv" };
+            { "lf", "qu", "fl", "jo", "lv", "re", "rp", "co" };
         private static readonly HashSet<string> M5BAdmittedTests = new(StringComparer.OrdinalIgnoreCase)
-            { "gf", "gv", "lf", "qu", "qb", "ra", "in", "ni", "re", "ch", "ha" };
+            { "gf", "gv", "lf", "qu", "qb", "ra", "in", "ni", "re", "rp", "ch", "ha" };
         private static readonly HashSet<string> M5BAdmittedEffects = new(StringComparer.OrdinalIgnoreCase)
-            { "lf", "qu", "fl", "in", "re", "$$" };
+            { "lf", "qu", "fl", "in", "re", "rp", "co", "$$" };
         private static readonly HashSet<string> M7CAdmittedTests = new(StringComparer.OrdinalIgnoreCase)
-            { "gf", "gv", "lf", "qu", "qb", "qa", "ra", "in", "ni", "re", "ch", "ha", "tr", "sk", "ar" };
+            { "gf", "gv", "lf", "qu", "qb", "qa", "ra", "in", "ni", "re", "rp", "ch", "ha", "tr", "sk", "ar" };
         private static readonly HashSet<string> M7CAdmittedEffects = new(StringComparer.OrdinalIgnoreCase)
-            { "lf", "qu", "fl", "in", "re", "$$", "mm" };
+            { "lf", "qu", "fl", "in", "re", "rp", "co", "$$", "mm" };
 
         private readonly WorldMapSessionCoordinator _world;
         private readonly CampaignStateService _campaign;
@@ -615,6 +617,7 @@ namespace Arcanum.Runtime.Dialogue
             private readonly CampaignStateService.Snapshot _campaign;
             private readonly CharacterProgressionService.Snapshot _progression;
             private readonly CharacterDerivedStatService.Snapshot _derived;
+            private readonly SocialStateService.Snapshot _social;
             private readonly WorldMapSessionCoordinator.DialogueInventorySnapshot _inventory;
             private readonly PartyMember[] _party;
 
@@ -623,6 +626,7 @@ namespace Arcanum.Runtime.Dialogue
                 _campaign = campaign.CaptureSnapshot();
                 _progression = world.Progression.CaptureSnapshot();
                 _derived = world.DerivedStats.CaptureSnapshot();
+                _social = world.Social.CaptureSnapshot();
                 _inventory = world.CaptureDialogueInventorySnapshot();
                 _party = world.Party.CaptureMembership();
             }
@@ -632,6 +636,7 @@ namespace Arcanum.Runtime.Dialogue
                 campaign.RestoreSnapshot(_campaign);
                 world.Progression.RestoreSnapshot(_progression);
                 world.DerivedStats.RestoreSnapshot(_derived);
+                world.Social.RestoreSnapshot(_social);
                 world.RestoreDialogueInventorySnapshot(_inventory);
                 world.Party.RestoreMembership(_party);
             }
@@ -834,13 +839,13 @@ namespace Arcanum.Runtime.Dialogue
             if (effective == old) return;
             if (effective == QuestState.Accepted)
             {
-                int reaction = _world.DerivedStats.GetReaction(_npc, _pc);
-                if (reaction < 41) _world.DerivedStats.SetReaction(_npc, _pc, 41);
+                int reaction = _world.Social.GetReaction(_npc, _pc);
+                if (reaction < 41) _world.Social.SetReaction(_npc, _pc, 41);
                 return;
             }
             if (effective != QuestState.Completed) return;
             _world.DerivedStats.AdjustAlignment(_pc, quests.AlignmentAdjustment(num));
-            _world.DerivedStats.AdjustReaction(_npc, _pc, 10);
+            _world.Social.AdjustReaction(_npc, _pc, 10);
         }
         public int GlobalFlag(int index) => _campaign.GetFlag(index);
         public void SetGlobalFlag(int index, int value) => _campaign.SetFlag(index, value);
@@ -853,9 +858,9 @@ namespace Arcanum.Runtime.Dialogue
         public void SetStoryState(int value) => throw Outside(nameof(SetStoryState));
         public bool RumorKnown(int id) => throw Outside(nameof(RumorKnown));
         public void SetRumorKnown(int id) => throw Outside(nameof(SetRumorKnown));
-        public bool HasReputation(int id) => throw Outside(nameof(HasReputation));
-        public void AddReputation(int id) => throw Outside(nameof(AddReputation));
-        public void RemoveReputation(int id) => throw Outside(nameof(RemoveReputation));
+        public bool HasReputation(int id) => _world.Social.HasReputation(_pc, new ReputationId(id));
+        public void AddReputation(int id) => _world.Social.AddReputation(_pc, new ReputationId(id));
+        public void RemoveReputation(int id) => _world.Social.RemoveReputation(_pc, new ReputationId(id));
         public void MarkAreaKnown(int id)
         {
             if (id != 58) throw Outside($"{nameof(MarkAreaKnown)}({id})");
@@ -863,9 +868,9 @@ namespace Arcanum.Runtime.Dialogue
         }
         public bool HasMetNpc => throw Outside(nameof(HasMetNpc));
         public void KillNpc() => throw Outside(nameof(KillNpc));
-        public int NpcReaction => _world.DerivedStats.GetReaction(_npc, _pc);
-        public void AdjustReaction(int delta) => _world.DerivedStats.AdjustReaction(_npc, _pc, delta);
-        public void SetReaction(int value) => _world.DerivedStats.SetReaction(_npc, _pc, value);
+        public int NpcReaction => _world.Social.GetReaction(_npc, _pc);
+        public void AdjustReaction(int delta) => _world.Social.AdjustReaction(_npc, _pc, delta);
+        public void SetReaction(int value) => _world.Social.SetReaction(_npc, _pc, value);
         public int LocalFlag(int index) => _campaign.GetLocalFlag(_npc, (int)Sap.Dialog, index);
         public void SetLocalFlag(int index, int value) => _campaign.SetLocalFlag(_npc, (int)Sap.Dialog, index, value);
         public int LocalCounter(int index) => _campaign.GetLocalCounter(_npc, (int)Sap.Dialog, index);
@@ -884,7 +889,13 @@ namespace Arcanum.Runtime.Dialogue
         }
         public void GiveXp(int questId) => throw Outside(nameof(GiveXp));
         public void GiveFatePoint() => throw Outside(nameof(GiveFatePoint));
-        public void StartCombat() => throw Outside(nameof(StartCombat));
+        public void StartCombat()
+        {
+            _world.Social.SetHostile(_npc, _pc);
+            CombatResult result = _world.Combat.StartCombat(_pc, _npc);
+            if (!result.Succeeded)
+                throw new InvalidOperationException($"Dialogue combat start failed: {result.Failure}.");
+        }
         public void RecruitNpc()
         {
             PartyMutationResult result = _world.Party.Join(_npc);
@@ -914,6 +925,18 @@ namespace Arcanum.Runtime.Dialogue
                         return true;
                     case "fl":
                     case "re":
+                        return true;
+                    case "rp":
+                        _ = new ReputationId(Math.Abs(first));
+                        return true;
+                    case "co":
+                        if (_world.Combat.IsActive)
+                        {
+                            failure = "combat is already active";
+                            return false;
+                        }
+                        _world.DerivedStats.Get(_pc);
+                        _world.DerivedStats.Get(_npc);
                         return true;
                     case "qu":
                         if (!_campaign.TryPreviewPcQuestTransition(first, second, out QuestState effective,

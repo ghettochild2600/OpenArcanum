@@ -21,6 +21,12 @@ namespace Arcanum.Runtime.World
         public int NameIndex { get; }
         /// <summary>Effective source NPC social class used by generated class-specific dialogue.</summary>
         public int SocialClass { get; }
+        /// <summary>Effective source NPC AI packet row.</summary>
+        public int AiData { get; }
+        /// <summary>Effective source NPC home origin used by reputation effects and guard protection.</summary>
+        public int Origin { get; }
+        /// <summary>Effective source NPC faction.</summary>
+        public int Faction { get; }
         public int SourceWorth { get; }
         public int MaximumHitPoints { get; }
         public int HitPointDamage { get; }
@@ -86,7 +92,10 @@ namespace Arcanum.Runtime.World
             ArcanumObjectId substituteInventoryIdentity = default,
             int npcFlags = 0,
             int buyObjectScriptNum = 0,
-            int containerFlags = 0)
+            int containerFlags = 0,
+            int? aiData = null,
+            int? origin = null,
+            int? faction = null)
         {
             Identity = identity;
             AuthoredParentIdentity = source.ParentIdentity;
@@ -95,6 +104,9 @@ namespace Arcanum.Runtime.World
             PrototypeNumber = source.PrototypeNumber;
             NameIndex = nameIndex ?? source.NameIndex ?? 0;
             SocialClass = socialClass ?? source.SocialClass ?? 0;
+            AiData = aiData ?? source.AiData ?? 0;
+            Origin = origin ?? source.Origin ?? 0;
+            Faction = faction ?? source.Faction ?? 0;
             SourceWorth = sourceWorth ?? source.Worth ?? 0;
             MaximumHitPoints = Math.Max(0, maximumHitPoints ?? source.HpPoints.GetValueOrDefault());
             HitPointDamage = Math.Max(0, hitPointDamage ?? source.HpDamage.GetValueOrDefault());
@@ -146,6 +158,9 @@ namespace Arcanum.Runtime.World
             PrototypeNumber = prototype.ProtoNumber;
             NameIndex = prototype.NameIndex ?? 0;
             SocialClass = prototype.SocialClass ?? 0;
+            AiData = prototype.AiData ?? 0;
+            Origin = prototype.Origin ?? 0;
+            Faction = prototype.Faction ?? 0;
             SourceWorth = prototype.Worth;
             MaximumHitPoints = Math.Max(0, prototype.HpPoints.GetValueOrDefault()
                                              + prototype.HpAdjustment.GetValueOrDefault());
@@ -186,6 +201,9 @@ namespace Arcanum.Runtime.World
             PrototypeNumber = source.PrototypeNumber;
             NameIndex = source.NameIndex;
             SocialClass = source.SocialClass;
+            AiData = source.AiData;
+            Origin = source.Origin;
+            Faction = source.Faction;
             SourceWorth = source.SourceWorth;
             MaximumHitPoints = source.MaximumHitPoints;
             HitPointDamage = source.HitPointDamage;
@@ -218,6 +236,7 @@ namespace Arcanum.Runtime.World
 
         internal PersistentObjectState(ArcanumObjectId identity, ArcanumObjectId authoredParentIdentity,
             string sourceSector, ObjectType type, int prototypeNumber, int nameIndex, int socialClass,
+            int aiData, int origin, int faction,
             int sourceWorth, int maximumHitPoints, int hitPointDamage, int retailPriceMultiplier,
             int inventorySourceId, ArcanumObjectId substituteInventoryIdentity, int npcFlags,
             int buyObjectScriptNum, int containerFlags,
@@ -234,6 +253,9 @@ namespace Arcanum.Runtime.World
             PrototypeNumber = prototypeNumber;
             NameIndex = nameIndex;
             SocialClass = socialClass;
+            AiData = aiData;
+            Origin = origin;
+            Faction = faction;
             SourceWorth = sourceWorth;
             MaximumHitPoints = maximumHitPoints;
             HitPointDamage = hitPointDamage;
