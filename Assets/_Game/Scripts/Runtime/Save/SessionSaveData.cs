@@ -13,6 +13,21 @@ namespace Arcanum.Runtime.Save
         public PartySaveData Party { get; set; }
         public MagicSaveData Magic { get; set; }
         public TechnologySaveData Technology { get; set; }
+        public EconomySaveData Economy { get; set; }
+    }
+
+    public sealed class EconomySaveData
+    {
+        public List<EconomyMerchantSaveData> Merchants { get; set; }
+    }
+
+    public sealed class EconomyMerchantSaveData
+    {
+        public string MerchantIdentity { get; set; }
+        public string InventoryOwnerIdentity { get; set; }
+        public int InventorySourceId { get; set; }
+        public long NextRestockAtMilliseconds { get; set; }
+        public List<string> GeneratedIdentities { get; set; }
     }
 
     public sealed class TechnologySaveData
@@ -92,6 +107,15 @@ namespace Arcanum.Runtime.Save
         public int PrototypeNumber { get; set; }
         public int NameIndex { get; set; }
         public int SocialClass { get; set; }
+        public int SourceWorth { get; set; }
+        public int MaximumHitPoints { get; set; }
+        public int HitPointDamage { get; set; }
+        public int RetailPriceMultiplier { get; set; }
+        public int InventorySourceId { get; set; }
+        public string SubstituteInventoryIdentity { get; set; }
+        public int NpcFlags { get; set; }
+        public int BuyObjectScriptNum { get; set; }
+        public int ContainerFlags { get; set; }
         public long? AuthoredLocation { get; set; }
         public uint ArtId { get; set; }
         public bool Off { get; set; }

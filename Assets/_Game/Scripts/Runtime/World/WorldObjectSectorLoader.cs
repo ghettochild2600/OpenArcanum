@@ -16,6 +16,7 @@ using Arcanum.Runtime.Party;
 using Arcanum.Runtime.Dialogue;
 using Arcanum.Runtime.Save;
 using Arcanum.Runtime.Magic;
+using Arcanum.Runtime.Economy;
 using Arcanum.World;
 using UnityEngine;
 
@@ -417,6 +418,9 @@ namespace Arcanum.Runtime.World
                     Session.Magic.RegisterSourceCharacter(identity, instance.SpellTech, proto?.SpellTech);
                     Session.Technology.RegisterSourceCharacter(identity, instance.SpellTech, proto?.SpellTech);
                 }
+                byte[] substituteBytes = instance.SubstituteInventoryOid ?? proto?.SubstituteInventoryOid;
+                ArcanumObjectId substituteInventory = substituteBytes == null
+                    ? default : ArcanumObjectId.FromBytes(substituteBytes);
                 PersistentObjectState state = Session.GetOrCreate(instance, identity, sectorPath, artId,
                     (flags & ObjectFlagOff) != 0, (stateFlags & 1) != 0,
                     instance.ItemFlags ?? proto?.ItemFlags ?? 0,
@@ -435,7 +439,17 @@ namespace Arcanum.Runtime.World
                     instance.NameIndex ?? proto?.NameIndex,
                     instance.SocialClass ?? proto?.SocialClass,
                     proto?.Weapon != null ? Weapon.FromFields(proto.Weapon) : null,
-                    instance.AmmoItemType ?? proto?.AmmoItemType);
+                    instance.AmmoItemType ?? proto?.AmmoItemType,
+                    instance.Worth ?? proto?.Worth ?? 0,
+                    Math.Max(0, (instance.HpPoints ?? proto?.HpPoints ?? 0)
+                                + (instance.HpAdjustment ?? proto?.HpAdjustment ?? 0)),
+                    instance.HpDamage ?? proto?.HpDamage ?? 0,
+                    instance.RetailPriceMultiplier ?? proto?.RetailPriceMultiplier ?? 0,
+                    instance.InventorySource ?? proto?.InventorySource ?? 0,
+                    substituteInventory,
+                    instance.NpcFlags ?? proto?.NpcFlags ?? 0,
+                    instance.BuyObjectScriptNum != 0 ? instance.BuyObjectScriptNum : proto?.BuyObjectScriptNum ?? 0,
+                    instance.ContainerFlags ?? proto?.ContainerFlags ?? 0);
                 if (state == null && Session.IsObjectRemoved(identity))
                 {
                     suppressed++;
@@ -1079,6 +1093,10 @@ namespace Arcanum.Runtime.World
             _art = new ObjectArtResolvers(_vfs);
             Session.BindPrototypeSource(_prototypes.Get);
             Session.BindInventoryFootprintSource(ResolveInventoryFootprint);
+            Session.BindEconomySource(InventorySourceCatalog.FromMes(
+                MesReader.Read(_vfs.ReadAllBytes("rules/InvenSource.mes")),
+                _vfs.Exists("rules/InvenSourceBuy.mes")
+                    ? MesReader.Read(_vfs.ReadAllBytes("rules/InvenSourceBuy.mes")) : null));
             MapList maps = MapList.Read(_vfs.ReadAllBytes("rules/maplist.mes"));
             var transitions = new MapTransitionResolver(
                 maps,

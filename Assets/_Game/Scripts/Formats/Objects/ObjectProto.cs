@@ -91,6 +91,11 @@ namespace Arcanum.Formats.Objects
         /// feeds into <c>item_cost</c>; null if unset on the prototype.</summary>
         public int? RetailPriceMultiplier { get; internal set; }
 
+        /// <summary>One-based source-stock row used by NPCs and containers.</summary>
+        public int? InventorySource { get; internal set; }
+
+        public byte[] SubstituteInventoryOid { get; internal set; }
+
         /// <summary>The prototype's <c>SAP_BUY_OBJECT</c> (merchant sale-veto), <c>SAP_DIALOG_OVERRIDE</c> and
         /// <c>SAP_WILL_KOS</c> (kill-on-sight veto) script numbers; 0 = none.</summary>
         public int BuyObjectScriptNum { get; internal set; }
@@ -268,6 +273,8 @@ namespace Arcanum.Formats.Objects
                         BaseArmorClass = p.BaseArmorClass,
                         ReactionBase = p.ReactionBase,
                         RetailPriceMultiplier = p.RetailPriceMultiplier,
+                        InventorySource = p.InventorySource,
+                        SubstituteInventoryOid = p.SubstituteInventoryOid,
                         BuyObjectScriptNum = p.BuyObjectScriptNum,
                         DialogOverrideNum = p.DialogOverrideNum,
                         WillKosScriptNum = p.WillKosScriptNum,

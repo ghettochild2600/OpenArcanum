@@ -1,3 +1,4 @@
+using System;
 using Arcanum.Formats.Art;
 using Arcanum.Formats.Objects;
 using Arcanum.Runtime.Combat;
@@ -20,6 +21,15 @@ namespace Arcanum.Runtime.World
         public int NameIndex { get; }
         /// <summary>Effective source NPC social class used by generated class-specific dialogue.</summary>
         public int SocialClass { get; }
+        public int SourceWorth { get; }
+        public int MaximumHitPoints { get; }
+        public int HitPointDamage { get; }
+        public int RetailPriceMultiplier { get; }
+        public int InventorySourceId { get; }
+        public ArcanumObjectId SubstituteInventoryIdentity { get; }
+        public int NpcFlags { get; }
+        public int BuyObjectScriptNum { get; }
+        public int ContainerFlags { get; }
         public long? AuthoredLocation { get; }
         public uint ArtId { get; internal set; }
         public bool Off { get; internal set; }
@@ -67,7 +77,16 @@ namespace Arcanum.Runtime.World
             int? nameIndex = null,
             int? socialClass = null,
             Weapon weaponData = null,
-            int? ammoItemType = null)
+            int? ammoItemType = null,
+            int? sourceWorth = null,
+            int? maximumHitPoints = null,
+            int? hitPointDamage = null,
+            int? retailPriceMultiplier = null,
+            int? inventorySourceId = null,
+            ArcanumObjectId substituteInventoryIdentity = default,
+            int npcFlags = 0,
+            int buyObjectScriptNum = 0,
+            int containerFlags = 0)
         {
             Identity = identity;
             AuthoredParentIdentity = source.ParentIdentity;
@@ -76,6 +95,15 @@ namespace Arcanum.Runtime.World
             PrototypeNumber = source.PrototypeNumber;
             NameIndex = nameIndex ?? source.NameIndex ?? 0;
             SocialClass = socialClass ?? source.SocialClass ?? 0;
+            SourceWorth = sourceWorth ?? source.Worth ?? 0;
+            MaximumHitPoints = Math.Max(0, maximumHitPoints ?? source.HpPoints.GetValueOrDefault());
+            HitPointDamage = Math.Max(0, hitPointDamage ?? source.HpDamage.GetValueOrDefault());
+            RetailPriceMultiplier = retailPriceMultiplier ?? source.RetailPriceMultiplier ?? 0;
+            InventorySourceId = Math.Max(0, inventorySourceId ?? source.InventorySource.GetValueOrDefault());
+            SubstituteInventoryIdentity = substituteInventoryIdentity;
+            NpcFlags = npcFlags;
+            BuyObjectScriptNum = buyObjectScriptNum != 0 ? buyObjectScriptNum : source.BuyObjectScriptNum;
+            ContainerFlags = containerFlags;
             AuthoredLocation = source.Location;
             ArtId = artId;
             Off = off;
@@ -118,6 +146,15 @@ namespace Arcanum.Runtime.World
             PrototypeNumber = prototype.ProtoNumber;
             NameIndex = prototype.NameIndex ?? 0;
             SocialClass = prototype.SocialClass ?? 0;
+            SourceWorth = prototype.Worth;
+            MaximumHitPoints = Math.Max(0, prototype.HpPoints.GetValueOrDefault()
+                                             + prototype.HpAdjustment.GetValueOrDefault());
+            HitPointDamage = Math.Max(0, prototype.HpDamage.GetValueOrDefault());
+            RetailPriceMultiplier = prototype.RetailPriceMultiplier ?? 0;
+            InventorySourceId = Math.Max(0, prototype.InventorySource.GetValueOrDefault());
+            NpcFlags = prototype.NpcFlags ?? 0;
+            BuyObjectScriptNum = prototype.BuyObjectScriptNum;
+            ContainerFlags = prototype.ContainerFlags ?? 0;
             ArtId = prototype.CurrentArtId;
             ItemFlags = prototype.ItemFlags ?? 0;
             InventoryArtId = prototype.InvAid;
@@ -149,6 +186,15 @@ namespace Arcanum.Runtime.World
             PrototypeNumber = source.PrototypeNumber;
             NameIndex = source.NameIndex;
             SocialClass = source.SocialClass;
+            SourceWorth = source.SourceWorth;
+            MaximumHitPoints = source.MaximumHitPoints;
+            HitPointDamage = source.HitPointDamage;
+            RetailPriceMultiplier = source.RetailPriceMultiplier;
+            InventorySourceId = source.InventorySourceId;
+            SubstituteInventoryIdentity = source.SubstituteInventoryIdentity;
+            NpcFlags = source.NpcFlags;
+            BuyObjectScriptNum = source.BuyObjectScriptNum;
+            ContainerFlags = source.ContainerFlags;
             ArtId = source.ArtId;
             Off = source.Off;
             Locked = source.Locked;
@@ -172,6 +218,9 @@ namespace Arcanum.Runtime.World
 
         internal PersistentObjectState(ArcanumObjectId identity, ArcanumObjectId authoredParentIdentity,
             string sourceSector, ObjectType type, int prototypeNumber, int nameIndex, int socialClass,
+            int sourceWorth, int maximumHitPoints, int hitPointDamage, int retailPriceMultiplier,
+            int inventorySourceId, ArcanumObjectId substituteInventoryIdentity, int npcFlags,
+            int buyObjectScriptNum, int containerFlags,
             long? authoredLocation, uint artId, bool off, bool locked, int useScriptNum, int dialogNum,
             int itemFlags, uint? inventoryArtId, int weaponFlags, int genericFlags, int unitWeight,
             InventoryFootprint inventoryFootprint, int inventoryLocation, int? stackQuantity, bool portalOpen,
@@ -185,6 +234,15 @@ namespace Arcanum.Runtime.World
             PrototypeNumber = prototypeNumber;
             NameIndex = nameIndex;
             SocialClass = socialClass;
+            SourceWorth = sourceWorth;
+            MaximumHitPoints = maximumHitPoints;
+            HitPointDamage = hitPointDamage;
+            RetailPriceMultiplier = retailPriceMultiplier;
+            InventorySourceId = inventorySourceId;
+            SubstituteInventoryIdentity = substituteInventoryIdentity;
+            NpcFlags = npcFlags;
+            BuyObjectScriptNum = buyObjectScriptNum;
+            ContainerFlags = containerFlags;
             AuthoredLocation = authoredLocation;
             ArtId = artId;
             Off = off;

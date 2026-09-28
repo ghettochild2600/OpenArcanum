@@ -16,6 +16,7 @@ using Arcanum.Runtime.Combat;
 using Arcanum.Runtime.Party;
 using Arcanum.Runtime.Magic;
 using Arcanum.Runtime.Technology;
+using Arcanum.Runtime.Economy;
 using UnityEngine;
 
 namespace Arcanum.Runtime.World
@@ -63,6 +64,8 @@ namespace Arcanum.Runtime.World
         private MagicStateService _magic;
         private TechnologyStateService _technology;
         private SourceTimeService _sourceTime;
+        private EconomyStateService _economy;
+        private InventorySourceCatalog _economySource;
         private bool _mapTransitionActive;
         private ulong _nextDynamicIdentity = 1;
 
@@ -101,6 +104,7 @@ namespace Arcanum.Runtime.World
         public SourceTimeService SourceTime => _sourceTime ??= new SourceTimeService();
         public MagicStateService Magic => _magic ??= new MagicStateService(this);
         public TechnologyStateService Technology => _technology ??= new TechnologyStateService(this);
+        public EconomyStateService Economy => _economy ??= CreateEconomy();
         internal bool HasMagicCritterFlag(ArcanumObjectId identity, int flag)
             => _magic?.HasActiveCritterFlag(identity, flag) == true;
         public bool IsMapTransitionActive => _mapTransitionActive;
@@ -277,6 +281,12 @@ namespace Arcanum.Runtime.World
         internal ObjectProtoInfo ResolvePrototype(int prototypeNumber)
             => _resolvePrototype?.Invoke(prototypeNumber);
 
+        public void BindEconomySource(InventorySourceCatalog source)
+        {
+            _economySource = source ?? throw new ArgumentNullException(nameof(source));
+            Economy.BindInventorySources(source);
+        }
+
         public void BindInventoryFootprintSource(Func<uint?, InventoryFootprint> resolveInventoryFootprint)
             => _resolveInventoryFootprint = resolveInventoryFootprint
                 ?? throw new ArgumentNullException(nameof(resolveInventoryFootprint));
@@ -307,6 +317,13 @@ namespace Arcanum.Runtime.World
             var campaign = new CampaignStateService();
             if (_areaSource != null) campaign.BindAreaSource(_areaSource);
             return campaign;
+        }
+
+        private EconomyStateService CreateEconomy()
+        {
+            var economy = new EconomyStateService(this);
+            if (_economySource != null) economy.BindInventorySources(_economySource);
+            return economy;
         }
 
         public bool IsAreaEntranceTarget(ArcanumObjectId identity)
@@ -526,7 +543,16 @@ namespace Arcanum.Runtime.World
             int? nameIndex = null,
             int? socialClass = null,
             Weapon weaponData = null,
-            int? ammoItemType = null)
+            int? ammoItemType = null,
+            int? sourceWorth = null,
+            int? maximumHitPoints = null,
+            int? hitPointDamage = null,
+            int? retailPriceMultiplier = null,
+            int? inventorySourceId = null,
+            ArcanumObjectId substituteInventoryIdentity = default,
+            int npcFlags = 0,
+            int buyObjectScriptNum = 0,
+            int containerFlags = 0)
         {
             if (!identity.IsPersistent) return null;
             if (_removedObjectIdentities.Contains(identity)) return null;
@@ -537,7 +563,9 @@ namespace Arcanum.Runtime.World
             }
             var state = new PersistentObjectState(source, identity, sector, artId, off, locked, itemFlags,
                 inventoryArtId, weaponFlags, genericFlags, stackQuantity, unitWeight, inventoryFootprint,
-                inventoryLocation, nameIndex, socialClass, weaponData, ammoItemType);
+                inventoryLocation, nameIndex, socialClass, weaponData, ammoItemType, sourceWorth,
+                maximumHitPoints, hitPointDamage, retailPriceMultiplier, inventorySourceId,
+                substituteInventoryIdentity, npcFlags, buyObjectScriptNum, containerFlags);
             _states.Add(identity, state);
             return state;
         }
@@ -546,10 +574,15 @@ namespace Arcanum.Runtime.World
             int itemFlags = 0, uint? inventoryArtId = null, int weaponFlags = 0, int genericFlags = 0,
             int? stackQuantity = null, int? unitWeight = null, InventoryFootprint? inventoryFootprint = null,
             int? inventoryLocation = null, int? nameIndex = null, int? socialClass = null,
-            Weapon weaponData = null, int? ammoItemType = null)
+            Weapon weaponData = null, int? ammoItemType = null, int? sourceWorth = null,
+            int? maximumHitPoints = null, int? hitPointDamage = null, int? retailPriceMultiplier = null,
+            int? inventorySourceId = null, ArcanumObjectId substituteInventoryIdentity = default,
+            int npcFlags = 0, int buyObjectScriptNum = 0, int containerFlags = 0)
             => GetOrCreate(source, source.Identity, sector, artId, off, locked, itemFlags, inventoryArtId,
                 weaponFlags, genericFlags, stackQuantity, unitWeight, inventoryFootprint, inventoryLocation,
-                nameIndex, socialClass, weaponData, ammoItemType);
+                nameIndex, socialClass, weaponData, ammoItemType, sourceWorth, maximumHitPoints,
+                hitPointDamage, retailPriceMultiplier, inventorySourceId, substituteInventoryIdentity,
+                npcFlags, buyObjectScriptNum, containerFlags);
 
         public void Bind(string sector, PersistentObjectState state, WorldObject runtime)
         {
@@ -1322,6 +1355,18 @@ namespace Arcanum.Runtime.World
         internal DialogueInventorySnapshot CaptureDialogueInventorySnapshot() => new(this);
         internal void RestoreDialogueInventorySnapshot(DialogueInventorySnapshot snapshot) => snapshot.Restore(this);
 
+        internal bool RemoveEconomyGeneratedObject(ArcanumObjectId identity, ArcanumObjectId expectedOwner)
+        {
+            if (!_states.TryGetValue(identity, out PersistentObjectState state)
+                || state.ParentIdentity != expectedOwner
+                || state.Placement.Kind != ObjectPlacementKind.Contained) return false;
+            ObjectPlacement placement = state.Placement;
+            _states.Remove(identity);
+            _removedObjectIdentities.Add(identity);
+            ObjectStateRemoved?.Invoke(state, placement);
+            return true;
+        }
+
         public ItemCreationResult CreateItem(int prototypeNumber, ObjectPlacement destination)
         {
             if (_resolvePrototype == null)
@@ -1911,6 +1956,7 @@ namespace Arcanum.Runtime.World
             _party = null;
             _magic = null;
             _technology = null;
+            _economy = null;
             _sourceTime = null;
             _portals = null;
             _dialogue = null;
@@ -1944,6 +1990,7 @@ namespace Arcanum.Runtime.World
             _party = new PartyStateService(this);
             _magic = null;
             _technology = null;
+            _economy = null;
             _sourceTime = new SourceTimeService();
             _sourceTime.Restore(plan.Magic?.ElapsedMilliseconds ?? 0);
             foreach (PartyMember member in plan.PartyMembers)
@@ -1967,6 +2014,8 @@ namespace Arcanum.Runtime.World
             _magic.RestoreSaveData(plan.Magic);
             _technology = new TechnologyStateService(this);
             _technology.RestoreSaveData(plan.Technology);
+            _economy = CreateEconomy();
+            _economy.RestoreSaveData(plan.Economy);
             return SelectSector(plan.SelectedSector);
         }
 

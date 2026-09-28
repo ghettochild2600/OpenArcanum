@@ -12,6 +12,7 @@ using Arcanum.Runtime.World;
 using Arcanum.Runtime.Party;
 using Arcanum.Runtime.Magic;
 using Arcanum.Runtime.Technology;
+using Arcanum.Runtime.Economy;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Serialization;
 using UnityEngine;
@@ -93,6 +94,7 @@ namespace Arcanum.Runtime.Save
         internal List<PartyMember> PartyMembers;
         internal MagicSaveData Magic;
         internal TechnologySaveData Technology;
+        internal EconomySaveData Economy;
     }
 
     /// <summary>Versioned, presentation-independent persistence for the bounded M1-M5 session state.</summary>
@@ -280,6 +282,7 @@ namespace Arcanum.Runtime.Save
                 Campaign = _session.Campaign.ExportSaveData(),
                 Magic = _session.Magic.ExportSaveData(),
                 Technology = _session.Technology.ExportSaveData(),
+                Economy = _session.Economy.ExportSaveData(),
                 Party = new PartySaveData
                 {
                     LeaderIdentity = _session.Party.Leader.Key,
@@ -310,6 +313,16 @@ namespace Arcanum.Runtime.Save
                 PrototypeNumber = state.PrototypeNumber,
                 NameIndex = state.NameIndex,
                 SocialClass = state.SocialClass,
+                SourceWorth = state.SourceWorth,
+                MaximumHitPoints = state.MaximumHitPoints,
+                HitPointDamage = state.HitPointDamage,
+                RetailPriceMultiplier = state.RetailPriceMultiplier,
+                InventorySourceId = state.InventorySourceId,
+                SubstituteInventoryIdentity = state.SubstituteInventoryIdentity.IsNull
+                    ? null : state.SubstituteInventoryIdentity.Key,
+                NpcFlags = state.NpcFlags,
+                BuyObjectScriptNum = state.BuyObjectScriptNum,
+                ContainerFlags = state.ContainerFlags,
                 AuthoredLocation = state.AuthoredLocation,
                 ArtId = state.ArtId,
                 Off = state.Off,
@@ -443,10 +456,47 @@ namespace Arcanum.Runtime.Save
             if (!result.Succeeded) { plan = null; return result; }
             result = BuildTechnology(data.Technology, plan);
             if (!result.Succeeded) { plan = null; return result; }
+            result = BuildEconomy(data.Economy, plan);
+            if (!result.Succeeded) { plan = null; return result; }
             result = BuildCampaign(data.Campaign, plan);
             if (!result.Succeeded) { plan = null; return result; }
             result = BuildParty(data.Party, plan);
             if (!result.Succeeded) { plan = null; return result; }
+            return new SessionLoadResult(SessionLoadFailure.None);
+        }
+
+        private SessionLoadResult BuildEconomy(EconomySaveData data, SessionRestorePlan plan)
+        {
+            // V1 saves written before M11A legitimately have no economy domain.
+            if (data == null)
+            {
+                plan.Economy = null;
+                return new SessionLoadResult(SessionLoadFailure.None);
+            }
+            if (data.Merchants == null)
+                return Failure(SessionLoadFailure.InvalidObject, "The economy state is incomplete.");
+            var merchants = new HashSet<ArcanumObjectId>();
+            foreach (EconomyMerchantSaveData value in data.Merchants)
+            {
+                if (value == null || !TryIdentity(value.MerchantIdentity, out ArcanumObjectId merchant)
+                    || !TryIdentity(value.InventoryOwnerIdentity, out ArcanumObjectId owner)
+                    || !merchants.Add(merchant) || value.InventorySourceId < 1
+                    || value.NextRestockAtMilliseconds < 0 || value.GeneratedIdentities == null
+                    || !plan.Objects.TryGetValue(merchant, out PersistentObjectState merchantState)
+                    || merchantState.Type != ObjectType.Npc
+                    || !plan.Objects.TryGetValue(owner, out PersistentObjectState ownerState)
+                    || ownerState.Type is not (ObjectType.Npc or ObjectType.Container))
+                    return Failure(SessionLoadFailure.InvalidObject,
+                        $"Economy merchant '{value?.MerchantIdentity}' is invalid.");
+                var generated = new HashSet<ArcanumObjectId>();
+                foreach (string key in value.GeneratedIdentities)
+                    if (!TryIdentity(key, out ArcanumObjectId identity) || !generated.Add(identity)
+                        || !plan.Objects.TryGetValue(identity, out PersistentObjectState item)
+                        || item.ParentIdentity != owner)
+                        return Failure(SessionLoadFailure.InvalidObject,
+                            $"Economy generated object '{key}' is invalid.");
+            }
+            plan.Economy = data;
             return new SessionLoadResult(SessionLoadFailure.None);
         }
 
@@ -621,7 +671,8 @@ namespace Arcanum.Runtime.Save
             if (!TryIdentity(value.Identity, out ArcanumObjectId identity))
                 return Failure(SessionLoadFailure.InvalidIdentity, $"Invalid object ObjectID '{value.Identity}'.");
             if (!Enum.IsDefined(typeof(ObjectType), value.Type) || !Finite(value.TileX) || !Finite(value.TileY)
-                || value.FootprintWidth < 1 || value.FootprintHeight < 1)
+                || value.FootprintWidth < 1 || value.FootprintHeight < 1 || value.SourceWorth < 0
+                || value.MaximumHitPoints < 0 || value.HitPointDamage < 0 || value.InventorySourceId < 0)
                 return Failure(SessionLoadFailure.InvalidObject, $"Object {identity} contains invalid source values.");
             ObjectType type = (ObjectType)value.Type;
             bool stackable = type is ObjectType.Ammo or ObjectType.Gold;
@@ -635,6 +686,9 @@ namespace Arcanum.Runtime.Save
                 return Failure(SessionLoadFailure.InvalidObject, $"Object {identity} has an invalid source sector.");
             if (!TryNullableIdentity(value.AuthoredParentIdentity, out ArcanumObjectId authoredParent))
                 return Failure(SessionLoadFailure.InvalidIdentity, $"Object {identity} has an invalid authored parent.");
+            if (!TryNullableIdentity(value.SubstituteInventoryIdentity, out ArcanumObjectId substituteInventory))
+                return Failure(SessionLoadFailure.InvalidIdentity,
+                    $"Object {identity} has an invalid substitute inventory.");
             SessionLoadResult placementResult = TryRestorePlacement(value.Placement, out ObjectPlacement placement);
             if (!placementResult.Succeeded) return placementResult;
 
@@ -642,7 +696,10 @@ namespace Arcanum.Runtime.Save
             {
                 ObjectProtoInfo prototype = _session.ResolvePrototype(value.PrototypeNumber);
                 state = new PersistentObjectState(identity, authoredParent, sourceSector, type, value.PrototypeNumber,
-                    value.NameIndex, value.SocialClass, value.AuthoredLocation, value.ArtId, value.Off, value.Locked,
+                    value.NameIndex, value.SocialClass, value.SourceWorth, value.MaximumHitPoints,
+                    value.HitPointDamage, value.RetailPriceMultiplier, value.InventorySourceId,
+                    substituteInventory, value.NpcFlags, value.BuyObjectScriptNum, value.ContainerFlags,
+                    value.AuthoredLocation, value.ArtId, value.Off, value.Locked,
                     value.UseScriptNum, value.DialogNum, value.ItemFlags, value.InventoryArtId, value.WeaponFlags,
                     value.GenericFlags, value.UnitWeight,
                     new InventoryFootprint(value.FootprintWidth, value.FootprintHeight), value.InventoryLocation,

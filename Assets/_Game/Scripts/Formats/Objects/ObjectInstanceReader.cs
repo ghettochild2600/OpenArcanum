@@ -122,6 +122,10 @@ namespace Arcanum.Formats.Objects
         /// container (barter trades against its inventory, not the NPC's own); null if none.</summary>
         public byte[] SubstituteInventoryOid { get; internal set; }
 
+        /// <summary><c>OBJ_F_CRITTER_INVENTORY_SOURCE</c> / <c>OBJ_F_CONTAINER_INVENTORY_SOURCE</c> —
+        /// the 1-based row in <c>rules/InvenSource.mes</c>; null when inherited.</summary>
+        public int? InventorySource { get; internal set; }
+
         /// <summary>For NPCs, <c>OBJ_F_NPC_EXPERIENCE_WORTH</c> (field 285) — XP the killer earns, via the engine
         /// formula <c>20 × worth / 100</c> (critter.c:702); null if inherited from the prototype.</summary>
         public int? ExperienceWorth { get; internal set; }
@@ -340,6 +344,8 @@ namespace Arcanum.Formats.Objects
         private const int F_NPC_REACTION_BASE = 295;         // OBJ_F_NPC_REACTION_BASE (INT32) → authored starting reaction
         private const int F_NPC_RETAIL_PRICE_MULTIPLIER = 293; // OBJ_F_NPC_RETAIL_PRICE_MULTIPLIER (INT32) → barter markup %
         private const int F_NPC_SUBSTITUTE_INVENTORY = 294; // OBJ_F_NPC_SUBSTITUTE_INVENTORY (HANDLE) → merchant store container
+        private const int F_CONTAINER_INVENTORY_SOURCE = 61;
+        private const int F_CRITTER_INVENTORY_SOURCE = 239;
         private const int F_NPC_FLAGS = 280;                // OBJ_F_NPC_FLAGS (INT32) → ONF_* (KOS, FENCE, …)
         private const int F_NPC_AI_DATA = 282;              // OBJ_F_NPC_AI_DATA (INT32) → rules/ai_params.mes row
         private const int F_NPC_SOCIAL_CLASS = 296;         // OBJ_F_NPC_SOCIAL_CLASS (INT32) → SOCIAL_CLASS_*
@@ -481,6 +487,7 @@ namespace Arcanum.Formats.Objects
             int? reactionBase = null;
             int? retailPriceMultiplier = null;
             byte[] substituteInventoryOid = null;
+            int? inventorySource = null;
             int? npcFlags = null, aiData = null, socialClass = null, npcOrigin = null;
             int? experienceWorth = null;
             int? nameIndex = null;
@@ -640,6 +647,11 @@ namespace Arcanum.Formats.Objects
 
                         break;
                     }
+                    case F_CONTAINER_INVENTORY_SOURCE:
+                    case F_CRITTER_INVENTORY_SOURCE:
+                        inventorySource = I32(b, o);
+                        o += 4;
+                        break;
                     case F_NPC_EXPERIENCE_WORTH:
                         experienceWorth = I32(b, o);
                         o += 4;
@@ -889,6 +901,7 @@ namespace Arcanum.Formats.Objects
                 ReactionBase = reactionBase,
                 RetailPriceMultiplier = retailPriceMultiplier,
                 SubstituteInventoryOid = substituteInventoryOid,
+                InventorySource = inventorySource,
                 NpcFlags = npcFlags,
                 AiData = aiData,
                 SocialClass = socialClass,
