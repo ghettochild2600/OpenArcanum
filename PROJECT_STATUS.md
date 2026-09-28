@@ -37,7 +37,7 @@ player-facing manual save/load presentation, M7A bounded passive local map trans
   integration, maintained modifiers, optional V1 persistence, and authentic Strength of Earth, Harm, and Minor
   Healing vertical slices. Phase 2 closes M10A with one authoritative source-time axis spanning noncombat and both
   combat modes, authentic finite-duration Flash, exact source deadlines, and typed cancellation/dispel termination.
-  M10B is now complete with coordinator-owned source discipline ranks/schematic eligibility, exact M4 aptitude
+  **DONE M10B — Technology Runtime:** coordinator-owned source discipline ranks/schematic eligibility, exact M4 aptitude
   integration, typed transactional technological item use, M3 consumption, M8/M8H timing, optional V1 persistence,
   and authentic Healing Salve and Power Axe malfunction vertical slices.
 `WorldMapSessionCoordinator` owns typed `World`, `Contained(parent)`, and `Equipped(parent, wornLocation)` placement,
@@ -2147,6 +2147,25 @@ status semantics, broader compatible technology content, final technology UI, NP
 integration remain deferred. The source audit records each dependency and ambiguity without approximating it.
 
 See [`documentation_unity/m10b-phase1-technology-runtime-audit.md`](documentation_unity/m10b-phase1-technology-runtime-audit.md).
+
+## M10B Technology Runtime Closure Assessment (2026-09-27)
+
+**DONE M10B — Technology Runtime.** A final source-to-runtime closure audit found no missing M10B core prerequisite,
+so no Phase 2 is required. The remaining findings are classified as compatible technology content, M11C
+schematic/manufacture work, later shared item-instance/effect/world systems, UI/AI/campaign integration, or preserved
+source ambiguity. They must not be used to reopen M10B merely because every retail technological item has not been
+authored.
+
+M11C's exact boundary is found/written schematic knowledge, effective-rank prerequisites, recipe/component aliases,
+atomic ingredient consumption, product variant and quantity resolution, output creation/transfer through M3, and
+committed crafting persistence. Reusable charge stores, general item-property adjustment, equipment/item event
+triggers, status and maintained effects, AoE, placed traps, and world-device scripts belong to their shared owning
+systems rather than a second technology authority. Retail Healing Salve and Trap Springer recipe/product
+discrepancies remain recorded source ambiguities; no synthetic correction is approved.
+
+This assessment is documentation-only. The accepted **12/12 focused**, **206/206 affected regressions**, and
+**932/932 complete EditMode** baseline remains authoritative; there was no code change requiring a rerun. See
+[`documentation_unity/m10b-technology-runtime-closure-audit.md`](documentation_unity/m10b-technology-runtime-closure-audit.md).
 
 ## Next Recommended Milestone
 
