@@ -52,7 +52,9 @@ player-facing manual save/load presentation, M7A bounded passive local map trans
   authentic START_MAP entry, and optional V1 creation metadata. **DONE M12C — Full HUD / Game UI:** one source-shaped
   modal coordinator and production presenter now expose New Game/load, the persistent HUD, inventory/equipment,
   character/skills, combat, magic, technology, schematics, barter, logbook, map/travel, followers, dialogue, and
-  save/load strictly as projections and commands over M1-M12B authority.
+  save/load strictly as projections and commands over M1-M12B authority. **DONE M12D — Audio:** one central
+  presentation bridge now resolves retail WAV/MP3 resources and source sound/scheme/dialogue rules for UI, world,
+  combat, magic, technology, voice, music, and ambience without owning gameplay or changing Save V1.
 `WorldMapSessionCoordinator` owns typed `World`, `Contained(parent)`, and `Equipped(parent, wornLocation)` placement,
 atomic raw item transfers/equipment replacement/stack merge and split, deterministic session-created item identities,
 source-faithful pickup/drop/owner-transfer policy, and pre-mutation weight/grid-capacity guards independently of Unity
@@ -2306,7 +2308,7 @@ was clean; the ten intentional existing fail-closed dialogue warnings were inspe
 **0 logs, 0 warnings, 0 errors**; and `git diff --check` was clean.
 
 M12B intentionally left creation screens/input, the retail shopping-map flow, and pregen presentation to the later
-UI milestone; the bounded creation screen is now supplied by M12C below. Intro movies and audio remain separate. See
+UI milestone; the bounded creation screen is now supplied by M12C below. Intro movies remain separate. See
 [`documentation_unity/m12b-character-creation-new-game-audit.md`](documentation_unity/m12b-character-creation-new-game-audit.md).
 
 ## M12C Full HUD / Game UI Validation Baseline (2026-09-28)
@@ -2330,12 +2332,38 @@ inconclusive**. Unity compilation was clean; the ten intentional existing fail-c
 and cleared; final Console was **0 logs, 0 warnings, 0 errors**; and `git diff --check` was clean.
 
 Retail UI bitmap/paperdoll animation, gesture-only drag/right-click affordances, recent-action slots, local-map reveal
-art, options, intro movies, and audio remain presentation/content boundaries. All completed gameplay systems remain
+art, options, and intro movies remain presentation/content boundaries. All completed gameplay systems remain
 operable through explicit M12C commands. See
 [`documentation_unity/m12c-full-game-ui-audit.md`](documentation_unity/m12c-full-game-ui-audit.md).
 
+## M12D Audio Validation Baseline (2026-09-29)
+
+M12D is formally complete as the bounded source-backed audio milestone. `ProductionAudioPresenter` is the single
+production bridge over the existing gameplay authorities. Retail `snd_*.mes`, source SFX selection, sound parameters,
+sector music/ambient schemes, and dialogue voice paths drive lazy WAV decoding, loose/DAT-backed MP3 streaming,
+source positional attenuation/pan, music/ambience, UI, world, combat, spell, technology, and voice presentation.
+Playback is transient; Save V1 remains unchanged, restore does not replay completed actions, and graphics rebuilds do
+not duplicate presentation.
+
+Physical Play Mode used production services and authentic retail fixtures to prove exact UI 3012, Strength of Earth
+12010/12015/12018, documented Healing Salve fallback 3018, a Virgil DAT MP3, an authored portal bank, an authored Bow
+release, lethal material-impact/death presentation without a fabricated unarmed swing, Tarant scheme 5, City ambience
+33, unchanged-context continuation, save/load non-replay, and Original -> Enhanced -> Original independence. Every
+representative path resolved a concrete clip/source and playback progress plus non-zero Unity output; the final run
+reported peak **0.252783** across **121** non-zero sample blocks with **0 warnings and 0 errors**.
+
+Focused M12D was **17/17**. The directly affected M12C UI API regression was **18/18**. Complete EditMode was
+**1049/1049**, with **0 failed, 0 skipped, and 0 inconclusive**. Unity compilation was clean; the ten intentional
+existing fail-closed dialogue warnings were inspected and cleared; final Console was **0 logs, 0 warnings, 0 errors**;
+and `git diff --check` was clean.
+
+Automated validation proves that Unity generated and routed the intended audio signal, but does not independently
+verify the final Windows-device-to-speaker acoustic path. Broader campaign-specific audio, compatible content,
+options/pause/ducking policy, intro/cinematic audio, and optional HD replacement audio remain later boundaries. See
+[`documentation_unity/m12d-audio-runtime-audit.md`](documentation_unity/m12d-audio-runtime-audit.md).
+
 ## Next Recommended Milestone
 
-M9A, M9B, M10A, M10B, M11A, M11B, M11C, M12B, and M12C are formally closed. Do not treat compatible spell,
+M9A, M9B, M10A, M10B, M11A, M11B, M11C, M12B, M12C, and M12D are formally closed. Do not treat compatible spell,
 technological-item, retail schematic, merchant, reputation, background, portrait, pregen, or campaign content as
-unfinished core runtime. M12D audio remains a separate future milestone and was not started by this closure.
+unfinished core runtime. M13 was not started by this closure.
