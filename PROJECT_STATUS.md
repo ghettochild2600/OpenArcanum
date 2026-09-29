@@ -49,7 +49,10 @@ player-facing manual save/load presentation, M7A bounded passive local map trans
   product-alias resolution, exact stack/singular consumption, preflighted atomic production, and optional V1 found
   knowledge persistence. **DONE M12B — Character Creation / New Game:** source-driven race/gender/portrait/background
   rules, exact Character Point validation, existing-authority character construction, atomic clean-session finalize,
-  authentic START_MAP entry, and optional V1 creation metadata.
+  authentic START_MAP entry, and optional V1 creation metadata. **DONE M12C — Full HUD / Game UI:** one source-shaped
+  modal coordinator and production presenter now expose New Game/load, the persistent HUD, inventory/equipment,
+  character/skills, combat, magic, technology, schematics, barter, logbook, map/travel, followers, dialogue, and
+  save/load strictly as projections and commands over M1-M12B authority.
 `WorldMapSessionCoordinator` owns typed `World`, `Contained(parent)`, and `Equipped(parent, wornLocation)` placement,
 atomic raw item transfers/equipment replacement/stack merge and split, deterministic session-created item identities,
 source-faithful pickup/drop/owner-transfer policy, and pre-mutation weight/grid-capacity guards independently of Unity
@@ -134,8 +137,8 @@ Travel time, encounters, advanced follower catch-up/formation, mid-route cancell
 clock/day-night behavior,
 autosave, quicksave, cloud sync, original Arcanum save compatibility, unsupported critical-table effects, broader death
 scripts/consequences, broader NPC AI beyond the bounded M9A kernel, follower loyalty/leveling/campaign behavior,
-additional spell/technology content, the final merchant/crafting/social UI, polished M12C character-creation
-presentation, intro movies/audio, and broader campaign-specific social systems remain deferred.
+additional spell/technology content, retail UI bitmap/paperdoll/rotating-window polish, recent-action/quick-use slots,
+local-map fog artwork, intro movies/audio, and broader campaign-specific social systems remain deferred.
 
 ## Current Branch
 
@@ -2302,12 +2305,37 @@ Focused M12B was **13/13**. Directly affected M3A/M3C, M4A-M4D, M6A, M7A, M8A, M
 was clean; the ten intentional existing fail-closed dialogue warnings were inspected and cleared; final Console was
 **0 logs, 0 warnings, 0 errors**; and `git diff --check` was clean.
 
-Polished creation screens/input, the retail shopping-map flow, full pregen catalog presentation, intro movies, and
-audio remain presentation/content boundaries. See
+M12B intentionally left creation screens/input, the retail shopping-map flow, and pregen presentation to the later
+UI milestone; the bounded creation screen is now supplied by M12C below. Intro movies and audio remain separate. See
 [`documentation_unity/m12b-character-creation-new-game-audit.md`](documentation_unity/m12b-character-creation-new-game-audit.md).
+
+## M12C Full HUD / Game UI Validation Baseline (2026-09-28)
+
+M12C is formally complete as the bounded player-operable presentation/controller milestone. A single
+`ProductionGameUiPresenter` and transient `GameUiController` now replace the independent legacy panel loops while
+reusing their established command boundaries, especially M8I combat. No UI owns inventory, statistics, quests,
+combat outcomes, prices, spell/technology effects, crafting, travel legality, party membership, dialogue evaluation,
+or save state. A no-session production launch exposes source-backed New Game and Load rather than requiring an Editor
+harness.
+
+Physical Play Mode proved an authentic Human New Game and the production HUD, starting-armor equipment transaction,
+character projection, turn-based and real-time combat, Strength of Earth, Healing Salve, schematic 4020 craft,
+merchant purchase, quest 1005, Bates-to-Tarant travel, Virgil dialogue/party/dismissal, temporary manual-slot
+save/load/delete, Original -> Enhanced -> Original rebuild, and single UI/PC presentation. The physical run ended with
+**0 warnings and 0 errors**.
+
+Focused M12C was **18/18**. The only required older focused regression was **M11C 18/18**, because M12C added its
+read-only known-schematic projection API. Complete EditMode was **1032/1032**, with **0 failed, 0 skipped, and 0
+inconclusive**. Unity compilation was clean; the ten intentional existing fail-closed dialogue warnings were inspected
+and cleared; final Console was **0 logs, 0 warnings, 0 errors**; and `git diff --check` was clean.
+
+Retail UI bitmap/paperdoll animation, gesture-only drag/right-click affordances, recent-action slots, local-map reveal
+art, options, intro movies, and audio remain presentation/content boundaries. All completed gameplay systems remain
+operable through explicit M12C commands. See
+[`documentation_unity/m12c-full-game-ui-audit.md`](documentation_unity/m12c-full-game-ui-audit.md).
 
 ## Next Recommended Milestone
 
-M9A, M9B, M10A, M10B, M11A, M11B, M11C, and M12B are formally closed. Do not treat compatible spell,
+M9A, M9B, M10A, M10B, M11A, M11B, M11C, M12B, and M12C are formally closed. Do not treat compatible spell,
 technological-item, retail schematic, merchant, reputation, background, portrait, pregen, or campaign content as
-unfinished core runtime. M12C presentation remains a separate future milestone and is not authorized by this closure.
+unfinished core runtime. M12D audio remains a separate future milestone and was not started by this closure.
