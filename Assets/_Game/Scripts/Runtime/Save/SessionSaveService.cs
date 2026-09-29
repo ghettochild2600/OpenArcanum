@@ -14,6 +14,7 @@ using Arcanum.Runtime.Magic;
 using Arcanum.Runtime.Technology;
 using Arcanum.Runtime.Economy;
 using Arcanum.Runtime.Social;
+using Arcanum.Runtime.Crafting;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Serialization;
 using UnityEngine;
@@ -95,6 +96,7 @@ namespace Arcanum.Runtime.Save
         internal List<PartyMember> PartyMembers;
         internal MagicSaveData Magic;
         internal TechnologySaveData Technology;
+        internal CraftingSaveData Crafting;
         internal EconomySaveData Economy;
         internal SocialSaveData Social;
     }
@@ -284,6 +286,7 @@ namespace Arcanum.Runtime.Save
                 Campaign = _session.Campaign.ExportSaveData(),
                 Magic = _session.Magic.ExportSaveData(),
                 Technology = _session.Technology.ExportSaveData(),
+                Crafting = _session.Crafting.ExportSaveData(),
                 Economy = _session.Economy.ExportSaveData(),
                 Social = _session.Social.ExportSaveData(),
                 Party = new PartySaveData
@@ -339,6 +342,8 @@ namespace Arcanum.Runtime.Save
                 InventoryArtId = state.InventoryArtId,
                 WeaponFlags = state.WeaponFlags,
                 GenericFlags = state.GenericFlags,
+                WrittenSubtype = state.WrittenSubtype,
+                WrittenStartLine = state.WrittenStartLine,
                 UnitWeight = state.UnitWeight,
                 FootprintWidth = state.InventoryFootprint.Width,
                 FootprintHeight = state.InventoryFootprint.Height,
@@ -461,6 +466,8 @@ namespace Arcanum.Runtime.Save
             result = BuildMagic(data.Magic, plan);
             if (!result.Succeeded) { plan = null; return result; }
             result = BuildTechnology(data.Technology, plan);
+            if (!result.Succeeded) { plan = null; return result; }
+            result = BuildCrafting(data.Crafting, plan);
             if (!result.Succeeded) { plan = null; return result; }
             result = BuildEconomy(data.Economy, plan);
             if (!result.Succeeded) { plan = null; return result; }
@@ -607,6 +614,33 @@ namespace Arcanum.Runtime.Save
             return new SessionLoadResult(SessionLoadFailure.None);
         }
 
+        private SessionLoadResult BuildCrafting(CraftingSaveData data, SessionRestorePlan plan)
+        {
+            // Earlier V1 saves legitimately have no crafting domain.
+            if (data == null) { plan.Crafting = null; return new SessionLoadResult(SessionLoadFailure.None); }
+            if (data.Characters == null)
+                return Failure(SessionLoadFailure.InvalidCharacter, "The crafting state is incomplete.");
+            var characters = new HashSet<ArcanumObjectId>();
+            foreach (CraftingCharacterSaveData value in data.Characters)
+            {
+                if (value == null || !TryIdentity(value.Identity, out ArcanumObjectId identity)
+                    || identity != plan.Player.Identity || !characters.Add(identity)
+                    || value.FoundSchematicIds == null)
+                    return Failure(SessionLoadFailure.InvalidCharacter,
+                        $"Crafting knowledge for '{value?.Identity}' is invalid.");
+                var recipes = new HashSet<int>();
+                foreach (int schematic in value.FoundSchematicIds)
+                    if (schematic < 4000 || schematic > 5999 || schematic % 10 != 0 || !recipes.Add(schematic))
+                        return Failure(SessionLoadFailure.InvalidCharacter,
+                            $"Found schematic '{schematic}' is invalid or duplicated.");
+                    else if (!_session.Crafting.IsDefined(new SchematicId(schematic)))
+                        return Failure(SessionLoadFailure.InvalidCharacter,
+                            $"Found schematic '{schematic}' is not present in the bound source catalog.");
+            }
+            plan.Crafting = data;
+            return new SessionLoadResult(SessionLoadFailure.None);
+        }
+
         private SessionLoadResult BuildParty(PartySaveData data, SessionRestorePlan plan)
         {
             if (data == null)
@@ -739,7 +773,7 @@ namespace Arcanum.Runtime.Save
                     substituteInventory, value.NpcFlags, value.BuyObjectScriptNum, value.ContainerFlags,
                     value.AuthoredLocation, value.ArtId, value.Off, value.Locked,
                     value.UseScriptNum, value.DialogNum, value.ItemFlags, value.InventoryArtId, value.WeaponFlags,
-                    value.GenericFlags, value.UnitWeight,
+                    value.GenericFlags, value.UnitWeight, value.WrittenSubtype, value.WrittenStartLine,
                     new InventoryFootprint(value.FootprintWidth, value.FootprintHeight), value.InventoryLocation,
                     value.StackQuantity, value.PortalOpen, new Vector2(value.TileX, value.TileY), placement,
                     value.RuntimeCreated,

@@ -140,6 +140,22 @@ namespace Arcanum.Runtime.Technology
             while (learned > 0 && intelligence < IntelligenceRequirements[learned]) learned--;
             return (TechnologyDegree)learned;
         }
+        public int GetEffectiveLevel(ArcanumObjectId identity, TechnologyDiscipline discipline)
+        {
+            TechnologyDegree degree = GetEffectiveDegree(identity, discipline);
+            return degree switch
+            {
+                TechnologyDegree.Layman => 0,
+                TechnologyDegree.Novice => 10,
+                TechnologyDegree.Assistant => 20,
+                TechnologyDegree.Associate => 35,
+                TechnologyDegree.Technician => 50,
+                TechnologyDegree.Engineer => 65,
+                TechnologyDegree.Professor => 80,
+                TechnologyDegree.Doctorate => 100,
+                _ => 0,
+            };
+        }
         public bool KnowsBuiltInSchematic(ArcanumObjectId identity, TechnologyDiscipline discipline, TechnologyDegree degree)
             => degree >= TechnologyDegree.Novice && degree <= GetEffectiveDegree(identity, discipline);
 

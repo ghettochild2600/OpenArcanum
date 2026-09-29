@@ -12,6 +12,26 @@ internal sealed class M8ATestExecution : ScriptableObject, ICallbacks
     private string _label;
     private bool _active;
 
+    [MenuItem("OpenArcanum/M11C/Run Focused EditMode Tests", false, 1)]
+    private static void RunM11CFocused()
+        => Run(Category("M11CCraftingSchematics"), "M11C focused EditMode");
+
+    [MenuItem("OpenArcanum/M11C/Run Targeted Regression Tests", false, 2)]
+    private static void RunM11CTargeted()
+    {
+        RunMany(
+            new[]
+            {
+                Category("M3A"), Category("M3D"), Category("M3E"),
+                Category("M6A"), Category("M10BTechnologyRuntime"),
+            },
+            new[] { "M3A inventory", "M3D stacks", "M3E capacity", "M6A save/load", "M10B technology" });
+    }
+
+    [MenuItem("OpenArcanum/M11C/Run Complete EditMode Tests", false, 3)]
+    private static void RunM11CAll()
+        => Run(new Filter { testMode = TestMode.EditMode }, "M11C complete EditMode");
+
     [MenuItem("OpenArcanum/M11B/Run Focused EditMode Tests", false, 1)]
     private static void RunM11BFocused()
         => Run(Category("M11BSocialSystems"), "M11B focused EditMode");

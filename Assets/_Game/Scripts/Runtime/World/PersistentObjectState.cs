@@ -50,6 +50,8 @@ namespace Arcanum.Runtime.World
         /// <summary>Effective source OBJ_F_AMMO_TYPE for an ammo stack.</summary>
         public int? AmmoItemType { get; }
         public int GenericFlags { get; }
+        public int WrittenSubtype { get; }
+        public int WrittenStartLine { get; }
         /// <summary>Effective stored OBJ_F_ITEM_WEIGHT (instance override, otherwise prototype).</summary>
         public int UnitWeight { get; }
         /// <summary>First inventory ART frame rounded up to source 32-pixel grid cells.</summary>
@@ -95,7 +97,9 @@ namespace Arcanum.Runtime.World
             int containerFlags = 0,
             int? aiData = null,
             int? origin = null,
-            int? faction = null)
+            int? faction = null,
+            int? writtenSubtype = null,
+            int? writtenStartLine = null)
         {
             Identity = identity;
             AuthoredParentIdentity = source.ParentIdentity;
@@ -128,6 +132,8 @@ namespace Arcanum.Runtime.World
             WeaponData = weaponData?.Clone();
             AmmoItemType = ammoItemType;
             GenericFlags = genericFlags;
+            WrittenSubtype = writtenSubtype ?? source.WrittenSubtype ?? -1;
+            WrittenStartLine = writtenStartLine ?? source.TextStartLine ?? 0;
             UnitWeight = unitWeight ?? source.Weight ?? 0;
             InventoryFootprint = inventoryFootprint ?? InventoryFootprint.OneCell;
             StackQuantity = ValidateStackQuantity(Type, stackQuantity);
@@ -177,6 +183,8 @@ namespace Arcanum.Runtime.World
             WeaponData = prototype.Weapon != null ? Weapon.FromFields(prototype.Weapon) : null;
             AmmoItemType = prototype.AmmoItemType;
             GenericFlags = prototype.GenericFlags ?? 0;
+            WrittenSubtype = prototype.WrittenSubtype ?? -1;
+            WrittenStartLine = prototype.TextStartLine ?? 0;
             UnitWeight = prototype.Weight;
             InventoryFootprint = inventoryFootprint;
             StackQuantity = ValidateStackQuantity(Type, Type switch
@@ -224,6 +232,8 @@ namespace Arcanum.Runtime.World
             WeaponData = source.WeaponData?.Clone();
             AmmoItemType = source.AmmoItemType;
             GenericFlags = source.GenericFlags;
+            WrittenSubtype = source.WrittenSubtype;
+            WrittenStartLine = source.WrittenStartLine;
             UnitWeight = source.UnitWeight;
             InventoryFootprint = source.InventoryFootprint;
             StackQuantity = ValidateStackQuantity(Type, stackQuantity);
@@ -242,6 +252,7 @@ namespace Arcanum.Runtime.World
             int buyObjectScriptNum, int containerFlags,
             long? authoredLocation, uint artId, bool off, bool locked, int useScriptNum, int dialogNum,
             int itemFlags, uint? inventoryArtId, int weaponFlags, int genericFlags, int unitWeight,
+            int writtenSubtype, int writtenStartLine,
             InventoryFootprint inventoryFootprint, int inventoryLocation, int? stackQuantity, bool portalOpen,
             Vector2 tilePosition, ObjectPlacement placement, bool isRuntimeCreated,
             Weapon weaponData = null, int? ammoItemType = null, bool deathConsequencesProcessed = false)
@@ -277,6 +288,8 @@ namespace Arcanum.Runtime.World
             WeaponData = weaponData?.Clone();
             AmmoItemType = ammoItemType;
             GenericFlags = genericFlags;
+            WrittenSubtype = writtenSubtype;
+            WrittenStartLine = writtenStartLine;
             UnitWeight = unitWeight;
             InventoryFootprint = inventoryFootprint;
             InventoryLocation = inventoryLocation;
@@ -304,6 +317,8 @@ namespace Arcanum.Runtime.World
             runtime.UseScriptNum = UseScriptNum;
             runtime.DialogNum = DialogNum;
             runtime.ItemFlags = ItemFlags;
+            runtime.WrittenSubtype = WrittenSubtype;
+            runtime.WrittenStartLine = WrittenStartLine;
             runtime.AmmoQuantity = Type == ObjectType.Ammo ? StackQuantity.GetValueOrDefault() : 0;
             runtime.GoldQuantity = Type == ObjectType.Gold ? StackQuantity.GetValueOrDefault() : 0;
             runtime.IsOpen = PortalOpen;

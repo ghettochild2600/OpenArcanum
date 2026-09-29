@@ -13,6 +13,7 @@ namespace Arcanum.Runtime.Save
         public PartySaveData Party { get; set; }
         public MagicSaveData Magic { get; set; }
         public TechnologySaveData Technology { get; set; }
+        public CraftingSaveData Crafting { get; set; }
         public EconomySaveData Economy { get; set; }
         public SocialSaveData Social { get; set; }
     }
@@ -59,6 +60,17 @@ namespace Arcanum.Runtime.Save
     {
         public string Identity { get; set; }
         public int[] DisciplineRanks { get; set; }
+    }
+
+    public sealed class CraftingSaveData
+    {
+        public List<CraftingCharacterSaveData> Characters { get; set; }
+    }
+
+    public sealed class CraftingCharacterSaveData
+    {
+        public string Identity { get; set; }
+        public List<int> FoundSchematicIds { get; set; }
     }
 
     public sealed class MagicSaveData
@@ -149,6 +161,8 @@ namespace Arcanum.Runtime.Save
         public uint? InventoryArtId { get; set; }
         public int WeaponFlags { get; set; }
         public int GenericFlags { get; set; }
+        public int WrittenSubtype { get; set; } = -1;
+        public int WrittenStartLine { get; set; }
         public int UnitWeight { get; set; }
         public int FootprintWidth { get; set; }
         public int FootprintHeight { get; set; }

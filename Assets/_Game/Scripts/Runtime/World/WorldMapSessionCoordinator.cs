@@ -18,6 +18,7 @@ using Arcanum.Runtime.Magic;
 using Arcanum.Runtime.Technology;
 using Arcanum.Runtime.Economy;
 using Arcanum.Runtime.Social;
+using Arcanum.Runtime.Crafting;
 using UnityEngine;
 
 namespace Arcanum.Runtime.World
@@ -64,6 +65,8 @@ namespace Arcanum.Runtime.World
         private PartyStateService _party;
         private MagicStateService _magic;
         private TechnologyStateService _technology;
+        private CraftingStateService _crafting;
+        private SchematicCatalog _schematicSource;
         private SourceTimeService _sourceTime;
         private EconomyStateService _economy;
         private InventorySourceCatalog _economySource;
@@ -108,6 +111,7 @@ namespace Arcanum.Runtime.World
         public SourceTimeService SourceTime => _sourceTime ??= new SourceTimeService();
         public MagicStateService Magic => _magic ??= new MagicStateService(this);
         public TechnologyStateService Technology => _technology ??= new TechnologyStateService(this);
+        public CraftingStateService Crafting => _crafting ??= CreateCrafting();
         public EconomyStateService Economy => _economy ??= CreateEconomy();
         public SocialStateService Social => _social ??= CreateSocial();
         internal bool HasMagicCritterFlag(ArcanumObjectId identity, int flag)
@@ -286,10 +290,19 @@ namespace Arcanum.Runtime.World
         internal ObjectProtoInfo ResolvePrototype(int prototypeNumber)
             => _resolvePrototype?.Invoke(prototypeNumber);
 
+        internal InventoryFootprint ResolveInventoryFootprint(uint? inventoryArtId)
+            => _resolveInventoryFootprint?.Invoke(inventoryArtId) ?? InventoryFootprint.OneCell;
+
         public void BindEconomySource(InventorySourceCatalog source)
         {
             _economySource = source ?? throw new ArgumentNullException(nameof(source));
             Economy.BindInventorySources(source);
+        }
+
+        public void BindCraftingSource(SchematicCatalog source)
+        {
+            _schematicSource = source ?? throw new ArgumentNullException(nameof(source));
+            Crafting.BindCatalog(source);
         }
 
         public void BindSocialSources(ReputationCatalog reputations, SocialAiCatalog ai)
@@ -336,6 +349,13 @@ namespace Arcanum.Runtime.World
             var economy = new EconomyStateService(this);
             if (_economySource != null) economy.BindInventorySources(_economySource);
             return economy;
+        }
+
+        private CraftingStateService CreateCrafting()
+        {
+            var crafting = new CraftingStateService(this);
+            if (_schematicSource != null) crafting.BindCatalog(_schematicSource);
+            return crafting;
         }
 
         private SocialStateService CreateSocial()
@@ -575,7 +595,9 @@ namespace Arcanum.Runtime.World
             int containerFlags = 0,
             int? aiData = null,
             int? origin = null,
-            int? faction = null)
+            int? faction = null,
+            int? writtenSubtype = null,
+            int? writtenStartLine = null)
         {
             if (!identity.IsPersistent) return null;
             if (_removedObjectIdentities.Contains(identity)) return null;
@@ -588,7 +610,8 @@ namespace Arcanum.Runtime.World
                 inventoryArtId, weaponFlags, genericFlags, stackQuantity, unitWeight, inventoryFootprint,
                 inventoryLocation, nameIndex, socialClass, weaponData, ammoItemType, sourceWorth,
                 maximumHitPoints, hitPointDamage, retailPriceMultiplier, inventorySourceId,
-                substituteInventoryIdentity, npcFlags, buyObjectScriptNum, containerFlags, aiData, origin, faction);
+                substituteInventoryIdentity, npcFlags, buyObjectScriptNum, containerFlags, aiData, origin, faction,
+                writtenSubtype, writtenStartLine);
             _states.Add(identity, state);
             return state;
         }
@@ -601,12 +624,14 @@ namespace Arcanum.Runtime.World
             int? maximumHitPoints = null, int? hitPointDamage = null, int? retailPriceMultiplier = null,
             int? inventorySourceId = null, ArcanumObjectId substituteInventoryIdentity = default,
             int npcFlags = 0, int buyObjectScriptNum = 0, int containerFlags = 0,
-            int? aiData = null, int? origin = null, int? faction = null)
+            int? aiData = null, int? origin = null, int? faction = null,
+            int? writtenSubtype = null, int? writtenStartLine = null)
             => GetOrCreate(source, source.Identity, sector, artId, off, locked, itemFlags, inventoryArtId,
                 weaponFlags, genericFlags, stackQuantity, unitWeight, inventoryFootprint, inventoryLocation,
                 nameIndex, socialClass, weaponData, ammoItemType, sourceWorth, maximumHitPoints,
                 hitPointDamage, retailPriceMultiplier, inventorySourceId, substituteInventoryIdentity,
-                npcFlags, buyObjectScriptNum, containerFlags, aiData, origin, faction);
+                npcFlags, buyObjectScriptNum, containerFlags, aiData, origin, faction,
+                writtenSubtype, writtenStartLine);
 
         public void Bind(string sector, PersistentObjectState state, WorldObject runtime)
         {
@@ -1980,6 +2005,7 @@ namespace Arcanum.Runtime.World
             _party = null;
             _magic = null;
             _technology = null;
+            _crafting = null;
             _economy = null;
             _social = null;
             _sourceTime = null;
@@ -2015,6 +2041,7 @@ namespace Arcanum.Runtime.World
             _party = new PartyStateService(this);
             _magic = null;
             _technology = null;
+            _crafting = null;
             _economy = null;
             _social = null;
             _sourceTime = new SourceTimeService();
@@ -2040,6 +2067,8 @@ namespace Arcanum.Runtime.World
             _magic.RestoreSaveData(plan.Magic);
             _technology = new TechnologyStateService(this);
             _technology.RestoreSaveData(plan.Technology);
+            _crafting = CreateCrafting();
+            _crafting.RestoreSaveData(plan.Crafting);
             _economy = CreateEconomy();
             _economy.RestoreSaveData(plan.Economy);
             _social = CreateSocial();

@@ -18,6 +18,7 @@ using Arcanum.Runtime.Save;
 using Arcanum.Runtime.Magic;
 using Arcanum.Runtime.Economy;
 using Arcanum.Runtime.Social;
+using Arcanum.Runtime.Crafting;
 using Arcanum.World;
 using UnityEngine;
 
@@ -453,7 +454,9 @@ namespace Arcanum.Runtime.World
                     instance.ContainerFlags ?? proto?.ContainerFlags ?? 0,
                     instance.AiData ?? proto?.AiData ?? 0,
                     instance.Origin ?? proto?.Origin ?? 0,
-                    instance.Faction ?? proto?.Faction ?? 0);
+                    instance.Faction ?? proto?.Faction ?? 0,
+                    instance.WrittenSubtype ?? proto?.WrittenSubtype ?? -1,
+                    instance.TextStartLine ?? proto?.TextStartLine ?? 0);
                 if (state == null && Session.IsObjectRemoved(identity))
                 {
                     suppressed++;
@@ -1097,6 +1100,9 @@ namespace Arcanum.Runtime.World
             _art = new ObjectArtResolvers(_vfs);
             Session.BindPrototypeSource(_prototypes.Get);
             Session.BindInventoryFootprintSource(ResolveInventoryFootprint);
+            Session.BindCraftingSource(SchematicCatalog.FromMes(
+                MesReader.Read(_vfs.ReadAllBytes("rules/schematic.mes")),
+                MesReader.Read(_vfs.ReadAllBytes("mes/schematic_text.mes"))));
             Session.BindEconomySource(InventorySourceCatalog.FromMes(
                 MesReader.Read(_vfs.ReadAllBytes("rules/InvenSource.mes")),
                 _vfs.Exists("rules/InvenSourceBuy.mes")

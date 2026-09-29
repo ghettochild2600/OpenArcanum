@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Arcanum.Formats.Objects;
 using Arcanum.Runtime.Character;
 
@@ -152,6 +153,63 @@ namespace Arcanum.Runtime.World
             return location >= 0 ? InventoryAcceptance.Accept(location) : InventoryAcceptance.NoRoom;
         }
 
+        internal InventoryAcceptance EvaluateCraftOutputs(ObjectProtoInfo prototype, InventoryFootprint footprint,
+            ArcanumObjectId destinationOwner, int outputQuantity,
+            IReadOnlyDictionary<ArcanumObjectId, int> consumed)
+        {
+            if (prototype == null) throw new ArgumentNullException(nameof(prototype));
+            if (outputQuantity < 1) throw new ArgumentOutOfRangeException(nameof(outputQuantity));
+            if (consumed == null) throw new ArgumentNullException(nameof(consumed));
+            RequireOwner(destinationOwner, out ObjectType ownerType);
+
+            var removed = new HashSet<ArcanumObjectId>();
+            long load = ownerType is ObjectType.Pc or ObjectType.Npc ? GetInventoryLoad(destinationOwner) : 0;
+            foreach (var pair in consumed)
+            {
+                PersistentObjectState item = Item(pair.Key);
+                if (pair.Value < 1 || item.ParentIdentity != destinationOwner
+                    || item.Placement.Kind != ObjectPlacementKind.Contained)
+                    return InventoryAcceptance.NoRoom;
+                long before = TotalWeight(item.Type, item.UnitWeight, item.StackQuantity);
+                long after = 0;
+                if (item.Type == ObjectType.Ammo)
+                {
+                    int remaining = item.StackQuantity.GetValueOrDefault() - pair.Value;
+                    if (remaining < 0) return InventoryAcceptance.NoRoom;
+                    if (remaining > 0) after = TotalWeight(item.Type, item.UnitWeight, remaining);
+                    else removed.Add(item.Identity);
+                }
+                else if (pair.Value == 1) removed.Add(item.Identity);
+                else return InventoryAcceptance.NoRoom;
+                load = checked(load - before + after);
+            }
+
+            int? productStack = prototype.Type switch
+            {
+                ObjectType.Ammo => prototype.AmmoQuantity,
+                ObjectType.Gold => prototype.GoldQuantity,
+                _ => null,
+            };
+            if (ownerType is ObjectType.Pc or ObjectType.Npc)
+            {
+                long incoming = checked(TotalWeight(prototype.Type, prototype.Weight, productStack) * outputQuantity);
+                if (checked(load + incoming) > GetCarryCapacity(destinationOwner))
+                    return InventoryAcceptance.TooHeavy;
+            }
+
+            int rows = ownerType == ObjectType.Container ? ContainerGridRows : CritterGridRows;
+            bool[] grid = BuildGridExcluding(destinationOwner, rows, removed);
+            int first = -1;
+            for (int index = 0; index < outputQuantity; index++)
+            {
+                int location = FindFirstFit(grid, rows, footprint);
+                if (location < 0) return InventoryAcceptance.NoRoom;
+                if (first < 0) first = location;
+                Mark(grid, location, footprint);
+            }
+            return InventoryAcceptance.Accept(first);
+        }
+
         internal InventoryAcceptance EvaluateSplit(PersistentObjectState source, int splitQuantity)
         {
             if (source == null) throw new ArgumentNullException(nameof(source));
@@ -232,11 +290,16 @@ namespace Arcanum.Runtime.World
         }
 
         private bool[] BuildGrid(ArcanumObjectId ownerIdentity, int rows, ArcanumObjectId excludedIdentity)
+            => BuildGridExcluding(ownerIdentity, rows, excludedIdentity.IsPersistent
+                ? new HashSet<ArcanumObjectId> { excludedIdentity } : null);
+
+        private bool[] BuildGridExcluding(ArcanumObjectId ownerIdentity, int rows,
+            IReadOnlyCollection<ArcanumObjectId> excludedIdentities)
         {
             var grid = new bool[GridColumns * rows];
             var contents = new List<PersistentObjectState>();
             foreach (PersistentObjectState item in _session.States.Values)
-                if (item.Identity != excludedIdentity
+                if (excludedIdentities?.Contains(item.Identity) != true
                     && item.Placement.Kind == ObjectPlacementKind.Contained
                     && item.ParentIdentity == ownerIdentity)
                     contents.Add(item);
