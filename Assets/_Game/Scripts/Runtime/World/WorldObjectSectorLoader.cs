@@ -21,6 +21,7 @@ using Arcanum.Runtime.Magic;
 using Arcanum.Runtime.Economy;
 using Arcanum.Runtime.Social;
 using Arcanum.Runtime.Crafting;
+using Arcanum.Runtime.Audio;
 using Arcanum.World;
 using UnityEngine;
 
@@ -154,6 +155,8 @@ namespace Arcanum.Runtime.World
                 gameObject.AddComponent<ProductionCombatPresenter>();
             if (GetComponent<ProductionGameUiPresenter>() == null)
                 gameObject.AddComponent<ProductionGameUiPresenter>();
+            if (GetComponent<ProductionAudioPresenter>() == null)
+                gameObject.AddComponent<ProductionAudioPresenter>();
             GetComponent<ProductionGameUiPresenter>().BindProductionPresentation();
             if (GetComponent<ProductionCombatAiDriver>() == null)
                 gameObject.AddComponent<ProductionCombatAiDriver>();
@@ -428,6 +431,14 @@ namespace Arcanum.Runtime.World
                 byte[] substituteBytes = instance.SubstituteInventoryOid ?? proto?.SubstituteInventoryOid;
                 ArcanumObjectId substituteInventory = substituteBytes == null
                     ? default : ArcanumObjectId.FromBytes(substituteBytes);
+                Weapon weaponData = proto?.Weapon != null ? Weapon.FromFields(proto.Weapon) : null;
+                if (weaponData != null)
+                {
+                    weaponData.SoundEffect = instance.SoundEffect ?? proto?.SoundEffect ?? 0;
+                    weaponData.MaterialId = instance.Material ?? proto?.Material ?? 0;
+                    weaponData.Weight = instance.Weight ?? proto?.Weight ?? 0;
+                    weaponData.ItemArtId = artId;
+                }
                 PersistentObjectState state = Session.GetOrCreate(instance, identity, sectorPath, artId,
                     (flags & ObjectFlagOff) != 0, (stateFlags & 1) != 0,
                     instance.ItemFlags ?? proto?.ItemFlags ?? 0,
@@ -445,7 +456,7 @@ namespace Arcanum.Runtime.World
                     instance.InvLocation,
                     instance.NameIndex ?? proto?.NameIndex,
                     instance.SocialClass ?? proto?.SocialClass,
-                    proto?.Weapon != null ? Weapon.FromFields(proto.Weapon) : null,
+                    weaponData,
                     instance.AmmoItemType ?? proto?.AmmoItemType,
                     instance.Worth ?? proto?.Worth ?? 0,
                     Math.Max(0, (instance.HpPoints ?? proto?.HpPoints ?? 0)
@@ -948,6 +959,9 @@ namespace Arcanum.Runtime.World
             worldObject.TilePosition = new Vector2(instance.TileX, instance.TileY);
             worldObject.PixelsPerUnit = pixelsPerUnit;
             worldObject.PrototypeNumber = instance.PrototypeNumber;
+            worldObject.Weight = instance.Weight ?? proto?.Weight ?? 0;
+            worldObject.Material = instance.Material ?? proto?.Material ?? 0;
+            worldObject.SoundEffect = instance.SoundEffect ?? proto?.SoundEffect ?? 0;
             int stateFlags = instance.Type == ObjectType.Portal
                 ? instance.PortalFlags ?? proto?.PortalFlags ?? 0
                 : instance.Type == ObjectType.Container
@@ -1074,6 +1088,8 @@ namespace Arcanum.Runtime.World
 
             var vfs = new DatVirtualFileSystem();
             int mounted = 0;
+            string looseModule = GameDataLocator.FindDirectory("modules/Arcanum");
+            if (!string.IsNullOrEmpty(looseModule)) vfs.MountDirectory(looseModule);
             string modulePath = GameDataLocator.Find(moduleArchive);
             if (!string.IsNullOrEmpty(modulePath))
             {
@@ -1154,6 +1170,36 @@ namespace Arcanum.Runtime.World
                 MesReader.Read(_vfs.ReadAllBytes("rules/gamequest.mes")),
                 MesReader.Read(_vfs.ReadAllBytes("mes/gamequestlogdumb.mes"))));
             return true;
+        }
+
+        /// <summary>Source-backed audio access for the co-located presentation service. This never exposes
+        /// ownership of the VFS and never writes to retail data.</summary>
+        public bool TryGetAudioSource(out DatVirtualFileSystem vfs)
+        {
+            bool ready = EnsureData();
+            vfs = ready ? _vfs : null;
+            return ready;
+        }
+
+        public bool TryGetSectorAudio(string path, out int musicScheme, out int ambientScheme)
+        {
+            musicScheme = 0;
+            ambientScheme = 0;
+            if (!EnsureData()) return false;
+            path = WorldMapSessionCoordinator.NormalizeSector(path);
+            if (string.IsNullOrEmpty(path) || !_vfs.Exists(path)) return false;
+            try
+            {
+                SectorReader.SectorSections sections = SectorReader.ReadSections(_vfs.ReadAllBytes(path));
+                musicScheme = sections.MusicScheme;
+                ambientScheme = sections.AmbientScheme;
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"WorldObjectSectorLoader: sector audio read failed for '{path}': {ex.Message}", this);
+                return false;
+            }
         }
 
         public bool ReloadSector() => Session.HasSelectedSector

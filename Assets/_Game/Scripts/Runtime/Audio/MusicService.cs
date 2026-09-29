@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
+using System;
 using Arcanum.Formats.Database;
 using Arcanum.Formats.Sound;
 using UnityEngine;
@@ -56,6 +57,23 @@ namespace Arcanum.Runtime.Audio
         private int _musicIdx, _ambientIdx; // active scheme indices (to restore after combat)
         private bool _combatMusic;
         private AudioSource _combatSource;
+        private long _sequence;
+
+        public int MusicSchemeIndex => _musicIdx;
+        public int AmbientSchemeIndex => _ambientIdx;
+        public bool CombatMusicActive => _combatMusic;
+        public int ActiveLoopCount
+        {
+            get
+            {
+                int count = _combatSource != null && _combatSource.isPlaying ? 1 : 0;
+                foreach (Slot slot in _slots) if (slot.Source != null && slot.Source.isPlaying) count++;
+                return count;
+            }
+        }
+        public AudioPlaybackRecord LastMusicPlayback { get; private set; }
+        public AudioPlaybackRecord LastAmbientPlayback { get; private set; }
+        public event Action<AudioPlaybackRecord> PlaybackStarted;
 
         public void Init(SoundBank bank, DatVirtualFileSystem vfs, AudioService sfx, System.Func<float> gameHour)
         {
@@ -78,11 +96,13 @@ namespace Arcanum.Runtime.Audio
         /// <summary>Swap the scheme slots (map load / sector override / script). 0 = keep silence.</summary>
         public void PlayScheme(int musicIdx, int ambientIdx)
         {
+            bool musicChanged = _musicIdx != musicIdx;
+            bool ambientChanged = _ambientIdx != ambientIdx;
             _musicIdx = musicIdx;
             _ambientIdx = ambientIdx;
             if (_combatMusic) return; // deferred — restored when combat music ends (gsound.c:1319)
-            Apply(0, musicIdx);
-            Apply(1, ambientIdx);
+            if (musicChanged || _slots[0].Scheme == null && musicIdx != 0) Apply(0, musicIdx);
+            if (ambientChanged || _slots[1].Scheme == null && ambientIdx != 0) Apply(1, ambientIdx);
         }
 
         /// <summary>Combat music on/off — save schemes → stinger → loop; restore on end.</summary>
@@ -108,8 +128,9 @@ namespace Arcanum.Runtime.Audio
         private void Apply(int slotIdx, int schemeIdx)
         {
             Slot slot = _slots[slotIdx];
+            if (slot.Scheme?.Index == schemeIdx) return;
             StopSlot(slot);
-            slot.Scheme = _bank?.Schemes.Get(schemeIdx);
+            slot.Scheme = schemeIdx == 0 ? null : _bank?.Schemes.Get(schemeIdx);
         }
 
         private void StopSlot(Slot slot)
@@ -136,7 +157,7 @@ namespace Arcanum.Runtime.Audio
                         if (inWindow && slot.ActiveLoop != e) StartCoroutine(StartLoop(slot, e));
                         else if (!inWindow && slot.ActiveLoop == e) StopSlot(slot);
                     }
-                    else if (!e.IsMusic && e.Frequency > 0 && inWindow && Random.Range(0, 1000) < e.Frequency)
+                    else if (!e.IsMusic && e.Frequency > 0 && inWindow && UnityEngine.Random.Range(0, 1000) < e.Frequency)
                     {
                         PlayAmbientOneShot(e);
                     }
@@ -152,11 +173,13 @@ namespace Arcanum.Runtime.Audio
                 ? _bank.Clip(e.SoundId)
                 : _bank.ClipByPath(_vfs, SoundTable.BasePath + e.File);
             if (clip == null || _sfx == null) return;
-            int vol = Random.Range(e.VolMin, e.VolMax + 1) * 127 / 100;
-            int bal = e.BalMin >= 0 ? Random.Range(e.BalMin, e.BalMax + 1) * 127 / 100
-                : e.Scatter > 0 ? Random.Range(0, 128)
+            int vol = UnityEngine.Random.Range(e.VolMin, e.VolMax + 1) * 127 / 100;
+            int bal = e.BalMin >= 0 ? UnityEngine.Random.Range(e.BalMin, e.BalMax + 1) * 127 / 100
+                : e.Scatter > 0 ? UnityEngine.Random.Range(0, 128)
                 : SoundParams.BalanceCenter;
-            _sfx.PlayClip(clip, vol, bal);
+            LastAmbientPlayback = _sfx.PlayClip(clip, vol, bal,
+                e.SoundId >= 0 ? _bank.ResolvePath(e.SoundId) : SoundTable.BasePath + e.File,
+                AudioCategory.Ambience, AudioPresentationKind.Ambience);
         }
 
         private IEnumerator StartLoop(Slot slot, SchemeEntry e)
@@ -179,13 +202,25 @@ namespace Arcanum.Runtime.Audio
             slot.Source.loop = true;
             slot.Source.volume = e.VolMax / 100f * _musicVolume;
             slot.Source.Play();
+            var record = new AudioPlaybackRecord
+            {
+                Sequence = ++_sequence, Kind = slot == _slots[0]
+                    ? AudioPresentationKind.Music : AudioPresentationKind.Ambience,
+                Category = slot == _slots[0] ? AudioCategory.Music : AudioCategory.Ambience,
+                SoundId = e.SoundId, VirtualPath = e.SoundId >= 0
+                    ? _bank.ResolvePath(e.SoundId) : SoundTable.BasePath + e.File,
+                Loop = true, Clip = clip, Source = slot.Source,
+            };
+            if (slot == _slots[0]) LastMusicPlayback = record;
+            else LastAmbientPlayback = record;
+            PlaybackStarted?.Invoke(record);
         }
 
         private IEnumerator PlayCombat()
         {
             // A random tension stinger, then the combat loop (gsound.c:1750-1752).
             AudioClip stinger = null, loop = null;
-            yield return StreamMp3($"{SoundTable.BasePath}music/combat {Random.Range(1, 7)}.mp3", c => stinger = c);
+            yield return StreamMp3($"{SoundTable.BasePath}music/combat {UnityEngine.Random.Range(1, 7)}.mp3", c => stinger = c);
             if (!_combatMusic) yield break;
             if (stinger != null)
             {
@@ -193,6 +228,7 @@ namespace Arcanum.Runtime.Audio
                 _combatSource.loop = false;
                 _combatSource.volume = _musicVolume;
                 _combatSource.Play();
+                RecordCombat(stinger, stinger.name, false);
                 yield return new WaitForSeconds(stinger.length);
             }
 
@@ -203,10 +239,24 @@ namespace Arcanum.Runtime.Audio
             _combatSource.loop = true;
             _combatSource.volume = _musicVolume;
             _combatSource.Play();
+            RecordCombat(loop, SoundTable.BasePath + "music/combatmusic.mp3", true);
         }
 
-        // MP3s are loose files (modules/<module>/sound/music/*.mp3) — stream via UnityWebRequest; cached.
-        private IEnumerator StreamMp3(string virtualPath, System.Action<AudioClip> done)
+        private void RecordCombat(AudioClip clip, string path, bool loop)
+        {
+            LastMusicPlayback = new AudioPlaybackRecord
+            {
+                Sequence = ++_sequence, Kind = AudioPresentationKind.Music,
+                Category = AudioCategory.Music, VirtualPath = path, Loop = loop,
+                Clip = clip, Source = _combatSource,
+            };
+            PlaybackStarted?.Invoke(LastMusicPlayback);
+        }
+
+        /// <summary>Streams a retail MP3. Loose files are used in place; DAT-only files are copied to a
+        /// deterministic generated cache under Unity's temporary cache because UnityWebRequest cannot
+        /// decode directly from the DAT byte stream. Original GameData is never changed.</summary>
+        public IEnumerator StreamMp3(string virtualPath, System.Action<AudioClip> done)
         {
             if (_streamed.TryGetValue(virtualPath, out AudioClip cached))
             {
@@ -214,7 +264,7 @@ namespace Arcanum.Runtime.Audio
                 yield break;
             }
 
-            string file = LoosePath(virtualPath);
+            string file = MaterializedPath(virtualPath);
             if (file == null)
             {
                 _streamed[virtualPath] = null;
@@ -222,7 +272,7 @@ namespace Arcanum.Runtime.Audio
                 yield break;
             }
 
-            using UnityWebRequest req = UnityWebRequestMultimedia.GetAudioClip("file://" + file, AudioType.MPEG);
+            using UnityWebRequest req = UnityWebRequestMultimedia.GetAudioClip(new Uri(file).AbsoluteUri, AudioType.MPEG);
             yield return req.SendWebRequest();
             AudioClip clip = req.result == UnityWebRequest.Result.Success ? DownloadHandlerAudioClip.GetContent(req) : null;
             if (clip == null) Debug.LogWarning($"[Audio] music stream failed: {virtualPath}");
@@ -230,7 +280,7 @@ namespace Arcanum.Runtime.Audio
             done(clip);
         }
 
-        private string LoosePath(string virtualPath)
+        public string MaterializedPath(string virtualPath)
         {
             if (_vfs == null) return null;
             foreach (string root in _vfs.LooseRoots)
@@ -238,8 +288,14 @@ namespace Arcanum.Runtime.Audio
                 string candidate = Path.Combine(root, virtualPath.Replace('/', Path.DirectorySeparatorChar));
                 if (File.Exists(candidate)) return candidate;
             }
-
-            return null;
+            if (!_vfs.Exists(virtualPath)) return null;
+            string relative = virtualPath.Replace('/', Path.DirectorySeparatorChar)
+                .Replace('\\', Path.DirectorySeparatorChar);
+            string cache = Path.Combine(Application.temporaryCachePath, "OpenArcanumAudio", relative);
+            string directory = Path.GetDirectoryName(cache);
+            if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
+            if (!File.Exists(cache)) File.WriteAllBytes(cache, _vfs.ReadAllBytes(virtualPath));
+            return cache;
         }
     }
 }

@@ -181,6 +181,13 @@ namespace Arcanum.Runtime.World
             InventoryArtId = prototype.InvAid;
             WeaponFlags = prototype.Weapon?.Flags ?? 0;
             WeaponData = prototype.Weapon != null ? Weapon.FromFields(prototype.Weapon) : null;
+            if (WeaponData != null)
+            {
+                WeaponData.SoundEffect = prototype.SoundEffect ?? 0;
+                WeaponData.MaterialId = prototype.Material ?? 0;
+                WeaponData.Weight = prototype.Weight;
+                WeaponData.ItemArtId = prototype.CurrentArtId;
+            }
             AmmoItemType = prototype.AmmoItemType;
             GenericFlags = prototype.GenericFlags ?? 0;
             WrittenSubtype = prototype.WrittenSubtype ?? -1;

@@ -7,25 +7,27 @@ using UnityEngine;
 namespace Arcanum.Runtime.Audio
 {
     /// <summary>
-    /// The preloaded sound bank: at boot it walks every id of every loaded <c>snd_*.mes</c> table, decodes
-    /// the WAV from the VFS (<see cref="WavPcm"/>) and bakes the <see cref="AudioClip"/> — runtime playback
-    /// is a pure dictionary hit, zero I/O or decoding on the hot path. Missing/undecodable files are
-    /// counted once at boot instead of surfacing mid-fight. Music MP3s are NOT here — they stream (engine
-    /// does the same). Also holds the parsed positional params and schemes.
+    /// Source-backed sound bank. The original <c>snd_*.mes</c> tables remain the authority for id lookup;
+    /// PCM clips are decoded lazily and cached on first use so production startup does not eagerly expand
+    /// the entire retail sound library into Unity memory. Music and voice MP3s are streamed by the
+    /// presentation service. Also owns the parsed positional parameters and scheme table.
     /// </summary>
     public sealed class SoundBank
     {
         private readonly Dictionary<int, AudioClip> _clips = new Dictionary<int, AudioClip>();
         private readonly Dictionary<string, AudioClip> _byPath = new Dictionary<string, AudioClip>();
+        private DatVirtualFileSystem _vfs;
 
         public SoundTable Table { get; private set; }
         public SoundParams Params { get; private set; }
         public SoundSchemeTable Schemes { get; private set; }
+        public DatVirtualFileSystem VirtualFileSystem => _vfs;
 
         public static SoundBank Load(DatVirtualFileSystem vfs)
         {
             var bank = new SoundBank();
             float started = Time.realtimeSinceStartup;
+            bank._vfs = vfs;
 
             MesFile LoadMes(string path) => vfs != null && vfs.Exists(path) ? MesReader.Read(vfs.ReadAllBytes(path)) : null;
 
@@ -33,23 +35,27 @@ namespace Arcanum.Runtime.Audio
             bank.Params = SoundParams.Read(LoadMes("sound/soundparams.mes"));
             bank.Schemes = SoundSchemeTable.Read(LoadMes("sound/schemeindex.mes"), LoadMes("sound/schemelist.mes"));
 
-            int missing = 0, bad = 0;
-            foreach (KeyValuePair<int, string> entry in bank.Table.All())
-            {
-                AudioClip clip = bank.LoadClip(vfs, entry.Value);
-                if (clip != null) bank._clips[entry.Key] = clip;
-                else if (vfs != null && vfs.Exists(entry.Value)) bad++;
-                else missing++;
-            }
-
-            Debug.Log($"[Audio] sound bank: {bank._clips.Count} clips preloaded " +
-                      $"({missing} unmapped files, {bad} undecodable) in {Time.realtimeSinceStartup - started:0.00}s; " +
-                      $"{bank.Schemes.All.Count} schemes.");
+            int mapped = 0;
+            foreach (KeyValuePair<int, string> _ in bank.Table.All()) mapped++;
+            Debug.Log($"[Audio] sound bank: {mapped} source mappings indexed lazily in " +
+                      $"{Time.realtimeSinceStartup - started:0.00}s; {bank.Schemes.All.Count} schemes.");
             return bank;
         }
 
-        /// <summary>The preloaded clip for a sound id, or null when the id is unmapped.</summary>
-        public AudioClip Clip(int soundId) => _clips.GetValueOrDefault(soundId);
+        /// <summary>The lazily decoded clip for a sound id, or null when the id is unmapped/missing.</summary>
+        public AudioClip Clip(int soundId)
+        {
+            if (_clips.TryGetValue(soundId, out AudioClip cached)) return cached;
+            string path = ResolvePath(soundId);
+            AudioClip clip = LoadClip(_vfs, path);
+            _clips[soundId] = clip; // cache nulls too
+            return clip;
+        }
+
+        public string ResolvePath(int soundId) => Table?.Resolve(soundId);
+
+        public bool Exists(string virtualPath)
+            => !string.IsNullOrWhiteSpace(virtualPath) && _vfs != null && _vfs.Exists(virtualPath);
 
         /// <summary>A clip by VFS path (scheme ambient entries reference files directly); cached.</summary>
         public AudioClip ClipByPath(DatVirtualFileSystem vfs, string path)
@@ -63,6 +69,7 @@ namespace Arcanum.Runtime.Audio
 
         private AudioClip LoadClip(DatVirtualFileSystem vfs, string path)
         {
+            if (string.IsNullOrWhiteSpace(path)) return null;
             if (_byPath.TryGetValue(path, out AudioClip cached)) return cached;
             if (vfs == null || !vfs.Exists(path)) return null;
             PcmData pcm;

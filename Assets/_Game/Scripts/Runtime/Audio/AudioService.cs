@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Arcanum.Formats.Sound;
 using UnityEngine;
@@ -21,6 +22,19 @@ namespace Arcanum.Runtime.Audio
         private readonly List<AudioSource> _pool = new List<AudioSource>();
         private readonly List<float> _poolBaseVolume = new List<float>(); // engine volume 0..1 per source
         private float _effectsVolume = 0.8f;
+        private long _sequence;
+
+        public AudioPlaybackRecord LastPlayback { get; private set; }
+        public event Action<AudioPlaybackRecord> PlaybackStarted;
+        public int ActiveSourceCount
+        {
+            get
+            {
+                int count = 0;
+                for (int i = 0; i < _pool.Count; i++) if (_pool[i].isPlaying) count++;
+                return count;
+            }
+        }
 
         /// <summary>Effects channel volume 0..1 (the engine's 0–10 user scale × 0.8 headroom). Setting it
         /// re-scales sounds that are ALREADY playing, so the options slider is heard immediately.</summary>
@@ -56,19 +70,28 @@ namespace Arcanum.Runtime.Audio
         public void SetListener(Vector3 worldPos) => _listener = worldPos;
 
         /// <summary>A UI/global sound: full volume, centered.</summary>
-        public void PlayUi(int soundId) => Play(_bank?.Clip(soundId), SoundParams.VolumeMax, SoundParams.BalanceCenter, 1f);
+        public AudioPlaybackRecord PlayUi(int soundId,
+            AudioPresentationKind kind = AudioPresentationKind.Interface)
+            => PlayResolved(soundId, _bank?.ResolvePath(soundId), _bank?.Clip(soundId),
+                SoundParams.VolumeMax, SoundParams.BalanceCenter, 1f, false, default,
+                AudioCategory.Interface, kind);
 
         /// <summary>A positional sound at a world position (gsound_play_sfx_at_loc).</summary>
-        public void PlayAt(int soundId, Vector3 worldPos, SoundSize size = SoundSize.Large)
+        public AudioPlaybackRecord PlayAt(int soundId, Vector3 worldPos,
+            SoundSize size = SoundSize.Large, AudioPresentationKind kind = AudioPresentationKind.WorldObject)
         {
             AudioClip clip = _bank?.Clip(soundId);
-            if (clip == null) return;
             (int vol, int bal) = Positional(worldPos, size);
-            Play(clip, vol, bal, 1f);
+            return PlayResolved(soundId, _bank?.ResolvePath(soundId), clip, vol, bal, 1f,
+                true, worldPos, AudioCategory.Effects, kind);
         }
 
         /// <summary>A positional clip by file (scheme ambients), with explicit engine volume/balance.</summary>
-        public void PlayClip(AudioClip clip, int volume, int balance) => Play(clip, volume, balance, 1f);
+        public AudioPlaybackRecord PlayClip(AudioClip clip, int volume, int balance,
+            string virtualPath = null, AudioCategory category = AudioCategory.Ambience,
+            AudioPresentationKind kind = AudioPresentationKind.Ambience)
+            => PlayResolved(-1, virtualPath ?? clip?.name, clip, volume, balance, 1f,
+                false, default, category, kind);
 
         /// <summary>Engine volume (0–127) + balance (0–127) for a source at a world position.</summary>
         public (int volume, int balance) Positional(Vector3 worldPos, SoundSize size)
@@ -80,11 +103,28 @@ namespace Arcanum.Runtime.Audio
             return (_bank.Params.Volume(size, dist), _bank.Params.Balance(dxPx));
         }
 
-        private void Play(AudioClip clip, int volume, int balance, float pitch)
+        private AudioPlaybackRecord PlayResolved(int soundId, string path, AudioClip clip,
+            int volume, int balance, float pitch, bool positional, Vector3 worldPosition,
+            AudioCategory category, AudioPresentationKind kind)
         {
-            if (clip == null || volume <= 0) return;
+            var record = new AudioPlaybackRecord
+            {
+                Sequence = ++_sequence, Kind = kind, Category = category, SoundId = soundId,
+                VirtualPath = path, Positional = positional, WorldPosition = worldPosition,
+                Clip = clip, Loop = false,
+            };
+            LastPlayback = record;
+            if (clip == null || volume <= 0)
+            {
+                PlaybackStarted?.Invoke(record);
+                return record;
+            }
             int i = FreeSource();
-            if (i < 0) return;
+            if (i < 0)
+            {
+                PlaybackStarted?.Invoke(record);
+                return record;
+            }
             AudioSource src = _pool[i];
             _poolBaseVolume[i] = volume / 127f;
             src.clip = clip;
@@ -93,6 +133,9 @@ namespace Arcanum.Runtime.Audio
             src.pitch = pitch;
             src.loop = false;
             src.Play();
+            record.Source = src;
+            PlaybackStarted?.Invoke(record);
+            return record;
         }
 
         private int FreeSource()

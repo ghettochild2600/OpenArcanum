@@ -14,6 +14,7 @@ using Arcanum.Runtime.Party;
 using Arcanum.Runtime.Save;
 using Arcanum.Runtime.Technology;
 using Arcanum.Runtime.World;
+using Arcanum.Runtime.Audio;
 
 namespace Arcanum.Runtime.UI
 {
@@ -147,6 +148,7 @@ namespace Arcanum.Runtime.UI
         private ArcanumObjectId _merchant;
         private int _pendingSpell = -1;
         private ArcanumObjectId _pendingTechnologyItem;
+        private IGameAudioPresentation _audio;
 
         public GameUiScreen Screen { get; private set; }
         public GameUiCursorMode CursorMode { get; private set; } = GameUiCursorMode.Default;
@@ -169,6 +171,8 @@ namespace Arcanum.Runtime.UI
             SaveLoad = new SaveLoadPanelController(saveOperations ?? session.SaveSlots);
             Screen = session.PlayerState == null ? GameUiScreen.MainMenu : GameUiScreen.None;
         }
+
+        public void BindAudioPresentation(IGameAudioPresentation audio) => _audio = audio;
 
         public void Refresh()
         {
@@ -210,6 +214,8 @@ namespace Arcanum.Runtime.UI
             SelectedWorldTarget = default;
             Feedback = string.Empty;
             if (screen == GameUiScreen.SaveLoad) SaveLoad.Open(SaveLoadPanelMode.Save);
+            _audio?.PresentInterface(screen is GameUiScreen.Journal or GameUiScreen.Map
+                ? InterfaceAudioCue.BookOpen : InterfaceAudioCue.WindowOpen);
             return true;
         }
 
@@ -320,6 +326,7 @@ namespace Arcanum.Runtime.UI
 
         public void Close()
         {
+            bool wasOpen = Screen != GameUiScreen.None;
             SaveLoad.Close();
             Screen = GameUiScreen.None;
             CursorMode = GameUiCursorMode.Default;
@@ -330,6 +337,7 @@ namespace Arcanum.Runtime.UI
             _pendingTechnologyItem = default;
             Feedback = string.Empty;
             if (HasPlayer) CreationDraft = null;
+            if (wasOpen) _audio?.PresentInterface(InterfaceAudioCue.WindowClose);
         }
 
         public void RebuildPresentation()
@@ -476,12 +484,17 @@ namespace Arcanum.Runtime.UI
                 return Complete(scheduled.Succeeded, scheduled.Succeeded ? "Spell scheduled." : scheduled.Failure.ToString());
             }
             SpellCastResult result = _session.Magic.Cast(request);
+            _audio?.PresentSpellCast(request, result.Succeeded);
             return Complete(result.Succeeded, result.Succeeded ? "Spell cast." : result.Failure.ToString());
         }
 
         public bool CancelEffect(long effectId)
         {
+            int spellId = -1;
+            foreach (ActiveSpellEffect effect in _session.Magic.ActiveEffects)
+                if (effect.Id == effectId) { spellId = effect.SpellId; break; }
             bool cancelled = _session.Magic.CancelMaintainedEffect(Player, effectId);
+            if (cancelled && spellId >= 0) _audio?.PresentSpellEnd(spellId);
             return Complete(cancelled, cancelled ? "Maintained spell ended." : "The effect could not be cancelled.");
         }
 
@@ -513,6 +526,7 @@ namespace Arcanum.Runtime.UI
                 return Complete(scheduled.Succeeded, scheduled.Succeeded ? "Technology use scheduled." : scheduled.Failure.ToString());
             }
             TechnologyUseResult result = _session.Technology.Use(request);
+            _audio?.PresentTechnology(request, result.Succeeded);
             return Complete(result.Succeeded, result.Succeeded ? "Technology item used." : result.Failure.ToString());
         }
 
@@ -622,6 +636,7 @@ namespace Arcanum.Runtime.UI
                 return Reject("That response is not available.");
             DialogueChoiceStatus status = _session.Dialogue.SelectResponse(index);
             bool accepted = status is DialogueChoiceStatus.Advanced or DialogueChoiceStatus.Completed;
+            _audio?.PresentInterface(InterfaceAudioCue.DialogueResponse, accepted);
             Refresh();
             return Complete(accepted, accepted ? "Response selected."
                 : _session.Dialogue.LastFailure ?? status.ToString());
@@ -716,6 +731,10 @@ namespace Arcanum.Runtime.UI
             return success;
         }
 
-        private bool Reject(string message) => Complete(false, message);
+        private bool Reject(string message)
+        {
+            _audio?.PresentInterface(InterfaceAudioCue.InvalidAction, false);
+            return Complete(false, message);
+        }
     }
 }
