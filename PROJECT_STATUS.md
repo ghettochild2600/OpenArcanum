@@ -43,6 +43,11 @@ player-facing manual save/load presentation, M7A bounded passive local map trans
   coordinator-owned retail merchant resolution, authentic inventory/buy-source parsing, source-exact integer pricing,
   transactional M3 item/Gold movement, Haggle/reaction integration, finite merchant payout, 12-24-hour source-time
   restocking, optional V1 persistence, and an authentic inventor merchant vertical slice.
+  **DONE M11B — Social Systems:** coordinator-owned reaction/reputation/faction/hostility authority, detected-theft
+  boundary, combat/economy/dialogue integration, and optional V1 persistence. **DONE M11C — Crafting / Schematics:**
+  retail schematic definitions, M10B-derived discipline unlocks, PC-only found learning, deterministic component and
+  product-alias resolution, exact stack/singular consumption, preflighted atomic production, and optional V1 found
+  knowledge persistence.
 `WorldMapSessionCoordinator` owns typed `World`, `Contained(parent)`, and `Equipped(parent, wornLocation)` placement,
 atomic raw item transfers/equipment replacement/stack merge and split, deterministic session-created item identities,
 source-faithful pickup/drop/owner-transfer policy, and pre-mutation weight/grid-capacity guards independently of Unity
@@ -127,7 +132,7 @@ Travel time, encounters, advanced follower catch-up/formation, mid-route cancell
 clock/day-night behavior,
 autosave, quicksave, cloud sync, original Arcanum save compatibility, unsupported critical-table effects, broader death
 scripts/consequences, broader NPC AI beyond the bounded M9A kernel, follower loyalty/leveling/campaign behavior,
-additional spell/technology content, crafting/schematics, the final merchant UI, and broader social systems remain
+additional spell/technology content, the final merchant/crafting/social UI, and broader campaign-specific social systems remain
 deferred.
 
 ## Current Branch
@@ -2236,8 +2241,43 @@ universal Charisma reaction term, or inferred detection was invented.
 
 See [`documentation_unity/m11b-social-systems-audit.md`](documentation_unity/m11b-social-systems-audit.md).
 
+## M11C Crafting / Schematics Validation Baseline (2026-09-28)
+
+M11C is formally complete as the bounded authoritative crafting runtime. `SchematicCatalog` parses the retail
+seven-row/two-component/three-alias definitions. Discipline recipe availability derives from current M10B effective
+degrees; only the PC persists source found-recipe IDs. Written subtype 5 learning consumes the first authentic
+blueprint and leaves duplicates untouched. Direct loose inventory is searched deterministically by alias, inventory
+location, then ObjectID; equipped, nested, world, party, and foreign-owner items are excluded.
+
+Each component checks its own source discipline and negated complexity against M10B's exact effective expertise
+level. A singular input is destroyed; each ammo slot consumes one unit. Product aliases follow the source first-
+nonzero-component-index rule. Exact output quantity is preflighted against M3 carry weight/grid capacity after input
+removal, then committed with snapshot rollback across inputs, outputs, tombstones, and the dynamic allocator. Crafting
+is instantaneous, costs no AP/time, has no random failure or crafting XP, and does not reinterpret M4/M10B aptitude.
+Products are ordinary M3/M11A items.
+
+Save format remains V1. An optional crafting domain stores only PC found-schematic knowledge; written fields persist
+on ordinary objects. Earlier V1 documents load empty, invalid source knowledge fails before mutation, and requests,
+selections, previews, and partial transactions never persist.
+
+Physical Play Mode used the production PC in authentic Tarant data. It proved built-in Healing Salve recipe 2000
+appearing at Herbology Novice, authentic written prototype 14095 learning found Clockwork Physician recipe 4020,
+duplicate non-consumption, components 10084 + 15116 producing 15169 x1, missing-component zero mutation, no time/AP/
+combat mutation, Save V1 restoration, and Original -> Enhanced -> Original independence with **0 warnings and 0
+errors**. The authentic ammo-stack fixture remains dependency-not-ready because its base-only prototype is not exposed
+by the current production prototype source; the generic source-shaped ammo path is automatically covered.
+
+Focused M11C was **18/18**. Directly affected M3A/M3D/M3E, M6A, and M10B regressions were **84/84**. Complete
+EditMode was **1001/1001**, with **0 failed, 0 skipped, and 0 inconclusive**. Unity compilation was clean; the ten
+intentional existing fail-closed dialogue warnings were inspected and cleared; final Console was **0 logs, 0 warnings,
+0 errors**; and `git diff --check` was clean.
+
+No M11C Phase 2 is required. Additional retail recipe demonstrations are content over the completed generic runtime.
+The schematic browser/readiness/feedback belongs to M12; authored blueprint grants and consequences remain campaign
+content. See [`documentation_unity/m11c-crafting-schematics-audit.md`](documentation_unity/m11c-crafting-schematics-audit.md).
+
 ## Next Recommended Milestone
 
-M9A, M9B, M10A, M10B, M11A, and M11B are formally closed. Do not treat compatible spell, technological-item,
-merchant, reputation, or campaign content as unfinished core runtime. M11C crafting and M12 presentation remain
-separate future milestones and are not authorized by this closure.
+M9A, M9B, M10A, M10B, M11A, M11B, and M11C are formally closed. Do not treat compatible spell,
+technological-item, retail schematic, merchant, reputation, or campaign content as unfinished core runtime. M12
+presentation remains a separate future milestone and is not authorized by this closure.
