@@ -193,6 +193,12 @@ namespace Arcanum.Runtime.Crafting
             return _found.TryGetValue(identity, out List<int> values) && values.Contains(id.Value);
         }
 
+        /// <summary>Read-only source definitions currently available to one character, in source ID order.</summary>
+        public IReadOnlyList<SchematicDefinition> ProjectKnown(ArcanumObjectId identity)
+            => _catalog == null ? Array.Empty<SchematicDefinition>()
+                : _catalog.Definitions.Values.Where(value => Knows(identity, value.Id))
+                    .OrderBy(value => value.Id.Value).ToArray();
+
         public SchematicLearningResult LearnFoundSchematic(ArcanumObjectId character, ArcanumObjectId writtenItem)
         {
             if (!_world.Characters.TryGet(character, out var source)) return LearnFailure(SchematicLearningFailure.InvalidCharacter);

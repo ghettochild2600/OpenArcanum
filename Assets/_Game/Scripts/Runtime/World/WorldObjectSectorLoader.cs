@@ -16,6 +16,7 @@ using Arcanum.Runtime.Combat;
 using Arcanum.Runtime.Party;
 using Arcanum.Runtime.Dialogue;
 using Arcanum.Runtime.Save;
+using Arcanum.Runtime.UI;
 using Arcanum.Runtime.Magic;
 using Arcanum.Runtime.Economy;
 using Arcanum.Runtime.Social;
@@ -151,6 +152,9 @@ namespace Arcanum.Runtime.World
                 gameObject.AddComponent<ProductionWorldMapDestinationPresenter>();
             if (GetComponent<ProductionCombatPresenter>() == null)
                 gameObject.AddComponent<ProductionCombatPresenter>();
+            if (GetComponent<ProductionGameUiPresenter>() == null)
+                gameObject.AddComponent<ProductionGameUiPresenter>();
+            GetComponent<ProductionGameUiPresenter>().BindProductionPresentation();
             if (GetComponent<ProductionCombatAiDriver>() == null)
                 gameObject.AddComponent<ProductionCombatAiDriver>();
             if (GetComponent<ProductionPartyFollowerDriver>() == null)
