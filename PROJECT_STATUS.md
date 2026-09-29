@@ -47,7 +47,9 @@ player-facing manual save/load presentation, M7A bounded passive local map trans
   boundary, combat/economy/dialogue integration, and optional V1 persistence. **DONE M11C — Crafting / Schematics:**
   retail schematic definitions, M10B-derived discipline unlocks, PC-only found learning, deterministic component and
   product-alias resolution, exact stack/singular consumption, preflighted atomic production, and optional V1 found
-  knowledge persistence.
+  knowledge persistence. **DONE M12B — Character Creation / New Game:** source-driven race/gender/portrait/background
+  rules, exact Character Point validation, existing-authority character construction, atomic clean-session finalize,
+  authentic START_MAP entry, and optional V1 creation metadata.
 `WorldMapSessionCoordinator` owns typed `World`, `Contained(parent)`, and `Equipped(parent, wornLocation)` placement,
 atomic raw item transfers/equipment replacement/stack merge and split, deterministic session-created item identities,
 source-faithful pickup/drop/owner-transfer policy, and pre-mutation weight/grid-capacity guards independently of Unity
@@ -132,8 +134,8 @@ Travel time, encounters, advanced follower catch-up/formation, mid-route cancell
 clock/day-night behavior,
 autosave, quicksave, cloud sync, original Arcanum save compatibility, unsupported critical-table effects, broader death
 scripts/consequences, broader NPC AI beyond the bounded M9A kernel, follower loyalty/leveling/campaign behavior,
-additional spell/technology content, the final merchant/crafting/social UI, and broader campaign-specific social systems remain
-deferred.
+additional spell/technology content, the final merchant/crafting/social UI, polished M12C character-creation
+presentation, intro movies/audio, and broader campaign-specific social systems remain deferred.
 
 ## Current Branch
 
@@ -2276,8 +2278,36 @@ No M11C Phase 2 is required. Additional retail recipe demonstrations are content
 The schematic browser/readiness/feedback belongs to M12; authored blueprint grants and consequences remain campaign
 content. See [`documentation_unity/m11c-crafting-schematics-audit.md`](documentation_unity/m11c-crafting-schematics-audit.md).
 
+## M12B Character Creation / New Game Validation Baseline (2026-09-28)
+
+M12B is formally complete as the bounded authoritative character-creation and New Game runtime. The coordinator-owned
+service validates a UI-independent specification against mounted retail background, effect, portrait, and MapList
+data. It enforces eight playable races, source-supported gender/body combinations, legal portrait identity, age 20,
+1..23-character names, M4 attribute limits, exact five-point spending, skill caps, sequential spell prerequisites,
+technology Intelligence prerequisites, and fail-closed background effects before mutation.
+
+Finalization resets stale session authority, creates the stable production PC through existing M3/M4/M10 systems,
+applies keyed non-duplicating background modifiers, creates/equips source items and Gold, and enters START_MAP id 1 at
+`maps/arcanum1-024-fixed/86570436012.sec`, local `(30,32)`. Failure leaves no partial PC and a finalized session cannot
+commit twice. Optional Save V1 creation metadata restores name/background/portrait/age/spent-points identity while
+existing domains continue to own character, inventory, magic, technology, and world state; older V1 saves remain valid.
+
+Physical Play Mode proved a Human male with authentic background 3/portrait 1005, four spent/one unspent points,
+Earth 1, Herbology Novice, item 8157 equipped, 400 Gold, authentic campaign entry, immediate Save V1 round-trip, and
+Original -> Enhanced -> Original independence. It also proved a male Dwarf with portrait 1001, body index 1, effective
+Strength 9, and the same production pipeline. Final physical Console was **0 warnings and 0 errors**.
+
+Focused M12B was **13/13**. Directly affected M3A/M3C, M4A-M4D, M6A, M7A, M8A, M10A, and M10B regressions were
+**222/222**. Complete EditMode was **1014/1014**, with **0 failed, 0 skipped, and 0 inconclusive**. Unity compilation
+was clean; the ten intentional existing fail-closed dialogue warnings were inspected and cleared; final Console was
+**0 logs, 0 warnings, 0 errors**; and `git diff --check` was clean.
+
+Polished creation screens/input, the retail shopping-map flow, full pregen catalog presentation, intro movies, and
+audio remain presentation/content boundaries. See
+[`documentation_unity/m12b-character-creation-new-game-audit.md`](documentation_unity/m12b-character-creation-new-game-audit.md).
+
 ## Next Recommended Milestone
 
-M9A, M9B, M10A, M10B, M11A, M11B, and M11C are formally closed. Do not treat compatible spell,
-technological-item, retail schematic, merchant, reputation, or campaign content as unfinished core runtime. M12
-presentation remains a separate future milestone and is not authorized by this closure.
+M9A, M9B, M10A, M10B, M11A, M11B, M11C, and M12B are formally closed. Do not treat compatible spell,
+technological-item, retail schematic, merchant, reputation, background, portrait, pregen, or campaign content as
+unfinished core runtime. M12C presentation remains a separate future milestone and is not authorized by this closure.
