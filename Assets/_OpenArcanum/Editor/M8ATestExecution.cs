@@ -12,6 +12,35 @@ internal sealed class M8ATestExecution : ScriptableObject, ICallbacks
     private string _label;
     private bool _active;
 
+    [MenuItem("OpenArcanum/M12B/Run Focused EditMode Tests #&b", false, 1)]
+    private static void RunM12BFocused()
+        => Run(Category("M12BCharacterCreationNewGame"), "M12B focused EditMode");
+
+    [MenuItem("OpenArcanum/M12B/Run Targeted Regression Tests #&t", false, 2)]
+    private static void RunM12BTargeted()
+    {
+        RunMany(
+            new[]
+            {
+                Category("M3A"), Category("M3C"), Category("M4ACharacterAttributes"),
+                Category("M4BCharacterVitality"), Category("M4CCharacterProgression"),
+                Category("M4DDerivedCharacterStats"), Category("M6A"),
+                Category("M7ALocalTransition"), Category("M8ACoreCombatState"),
+                Category("M10AMagicRuntime"),
+                Category("M10BTechnologyRuntime"),
+            },
+            new[]
+            {
+                "M3A inventory", "M3C equipment", "M4A attributes", "M4B vitality",
+                "M4C progression", "M4D derived stats", "M6A save/load",
+                "M7A local transition", "M8A core combat", "M10A magic", "M10B technology",
+            });
+    }
+
+    [MenuItem("OpenArcanum/M12B/Run Complete EditMode Tests #&g", false, 3)]
+    private static void RunM12BAll()
+        => Run(new Filter { testMode = TestMode.EditMode }, "M12B complete EditMode");
+
     [MenuItem("OpenArcanum/M11C/Run Focused EditMode Tests", false, 1)]
     private static void RunM11CFocused()
         => Run(Category("M11CCraftingSchematics"), "M11C focused EditMode");

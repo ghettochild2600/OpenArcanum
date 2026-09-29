@@ -59,6 +59,10 @@ namespace Arcanum.Runtime.Character
         public PersistentCharacterDerivedState GetOrCreateDevelopmentPlayer(ArcanumObjectId identity)
             => GetOrCreate(identity, ObjectType.Pc, null, CharacterDerivedSource.DevelopmentPlayer);
 
+        public PersistentCharacterDerivedState GetOrCreateCreatedPlayer(ArcanumObjectId identity,
+            CharacterDerivedSource source)
+            => GetOrCreate(identity, ObjectType.Pc, null, source);
+
         public PersistentCharacterDerivedState GetOrCreateSourceCharacter(ArcanumObjectId identity,
             ObjectType objectType, int prototypeNumber, CharacterDerivedSource source)
             => GetOrCreate(identity, objectType, prototypeNumber, source);

@@ -16,6 +16,19 @@ namespace Arcanum.Runtime.Save
         public CraftingSaveData Crafting { get; set; }
         public EconomySaveData Economy { get; set; }
         public SocialSaveData Social { get; set; }
+        public CharacterCreationSaveData CharacterCreation { get; set; }
+    }
+
+    /// <summary>Optional M12B identity metadata added without changing the compatible V1 envelope.</summary>
+    public sealed class CharacterCreationSaveData
+    {
+        public string Identity { get; set; }
+        public string Name { get; set; }
+        public int BackgroundId { get; set; }
+        public int BackgroundTextId { get; set; }
+        public int PortraitId { get; set; }
+        public int Age { get; set; }
+        public int SpentCharacterPoints { get; set; }
     }
 
     public sealed class SocialSaveData

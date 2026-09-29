@@ -44,6 +44,10 @@ namespace Arcanum.Runtime.Character
         public PersistentCharacterVitalityState GetOrCreateDevelopmentPlayer(ArcanumObjectId identity)
             => GetOrCreate(identity, ObjectType.Pc, null, CharacterVitalitySource.DevelopmentPlayer);
 
+        public PersistentCharacterVitalityState GetOrCreateCreatedPlayer(ArcanumObjectId identity,
+            CharacterVitalitySource source)
+            => GetOrCreate(identity, ObjectType.Pc, null, source);
+
         public PersistentCharacterVitalityState GetOrCreateSourceCharacter(ArcanumObjectId identity,
             ObjectType objectType, int prototypeNumber, CharacterVitalitySource source)
             => GetOrCreate(identity, objectType, prototypeNumber, source);

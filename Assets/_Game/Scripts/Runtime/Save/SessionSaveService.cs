@@ -15,6 +15,7 @@ using Arcanum.Runtime.Technology;
 using Arcanum.Runtime.Economy;
 using Arcanum.Runtime.Social;
 using Arcanum.Runtime.Crafting;
+using Arcanum.Runtime.Creation;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Serialization;
 using UnityEngine;
@@ -99,6 +100,7 @@ namespace Arcanum.Runtime.Save
         internal CraftingSaveData Crafting;
         internal EconomySaveData Economy;
         internal SocialSaveData Social;
+        internal CharacterCreationSaveData CharacterCreation;
     }
 
     /// <summary>Versioned, presentation-independent persistence for the bounded M1-M5 session state.</summary>
@@ -289,6 +291,7 @@ namespace Arcanum.Runtime.Save
                 Crafting = _session.Crafting.ExportSaveData(),
                 Economy = _session.Economy.ExportSaveData(),
                 Social = _session.Social.ExportSaveData(),
+                CharacterCreation = _session.CharacterCreation.ExportSaveData(),
                 Party = new PartySaveData
                 {
                     LeaderIdentity = _session.Party.Leader.Key,
@@ -473,10 +476,30 @@ namespace Arcanum.Runtime.Save
             if (!result.Succeeded) { plan = null; return result; }
             result = BuildSocial(data.Social, plan);
             if (!result.Succeeded) { plan = null; return result; }
+            result = BuildCharacterCreation(data.CharacterCreation, plan);
+            if (!result.Succeeded) { plan = null; return result; }
             result = BuildCampaign(data.Campaign, plan);
             if (!result.Succeeded) { plan = null; return result; }
             result = BuildParty(data.Party, plan);
             if (!result.Succeeded) { plan = null; return result; }
+            return new SessionLoadResult(SessionLoadFailure.None);
+        }
+
+        private static SessionLoadResult BuildCharacterCreation(CharacterCreationSaveData data,
+            SessionRestorePlan plan)
+        {
+            // Earlier V1 saves legitimately have no M12B identity domain.
+            if (data == null) { plan.CharacterCreation = null; return new SessionLoadResult(SessionLoadFailure.None); }
+            if (!TryIdentity(data.Identity, out ArcanumObjectId identity) || identity != plan.Player.Identity
+                || string.IsNullOrWhiteSpace(data.Name)
+                || data.Name.Trim().Length > CharacterCreationRules.MaximumNameLength
+                || data.BackgroundId < 0 || data.BackgroundTextId < 1000
+                || data.PortraitId < 1000 || data.Age != CharacterCreationRules.SourceStartingAge
+                || data.SpentCharacterPoints < 0
+                || data.SpentCharacterPoints > CharacterCreationRules.StartingCharacterPoints)
+                return Failure(SessionLoadFailure.InvalidCharacter,
+                    "The finalized character-creation identity is invalid.");
+            plan.CharacterCreation = data;
             return new SessionLoadResult(SessionLoadFailure.None);
         }
 

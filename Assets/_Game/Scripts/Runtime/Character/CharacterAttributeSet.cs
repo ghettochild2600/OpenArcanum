@@ -65,6 +65,14 @@ namespace Arcanum.Runtime.Character
                 SourceDefault, SourceDefault, SourceDefault, SourceDefault,
                 SourceDefault, SourceDefault, SourceDefault, SourceDefault,
             }, race);
+
+        public static int SourceMaximumFor(CharacterRace race, CharacterAttribute attribute)
+            => CharacterAttributeRules.SourceMaximum(race, attribute);
+
+        public static int SourceAdjustment(CharacterRace race, CharacterGender gender,
+            CharacterAttribute attribute)
+            => checked(CharacterAttributeRules.RaceAdjustment(race, attribute)
+                       + CharacterAttributeRules.GenderAdjustment(gender, attribute));
     }
 
     /// <summary>Source limits and the audited primary-attribute subset of retail effects 64..74 and 330.</summary>

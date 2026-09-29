@@ -11,6 +11,7 @@ using Arcanum.Formats.Text;
 using Arcanum.Formats.Tiles;
 using Arcanum.Formats.World;
 using Arcanum.Runtime.Character;
+using Arcanum.Runtime.Creation;
 using Arcanum.Runtime.Combat;
 using Arcanum.Runtime.Party;
 using Arcanum.Runtime.Dialogue;
@@ -1114,6 +1115,11 @@ namespace Arcanum.Runtime.World
                     _vfs.Exists("rules/gameai.mes")
                         ? MesReader.Read(_vfs.ReadAllBytes("rules/gameai.mes")) : null));
             MapList maps = MapList.Read(_vfs.ReadAllBytes("rules/maplist.mes"));
+            Session.BindCharacterCreationSource(CharacterCreationCatalog.FromMes(
+                MesReader.Read(_vfs.ReadAllBytes("rules/backgrnd.mes")),
+                MesReader.Read(_vfs.ReadAllBytes("mes/gameback.mes")),
+                MesReader.Read(_vfs.ReadAllBytes("rules/effect.mes")),
+                MesReader.Read(_vfs.ReadAllBytes("portrait/gameport.mes")), maps));
             var transitions = new MapTransitionResolver(
                 maps,
                 _vfs.Exists,

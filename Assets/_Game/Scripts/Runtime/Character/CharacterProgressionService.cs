@@ -48,6 +48,19 @@ namespace Arcanum.Runtime.Character
 
         private readonly CharacterStatService _characters;
         private readonly Dictionary<ArcanumObjectId, PersistentCharacterProgressionState> _states = new();
+        private readonly Dictionary<ArcanumObjectId, Dictionary<string, SkillModifier>> _skillModifiers = new();
+
+        private readonly struct SkillModifier
+        {
+            public CharacterSkill Skill { get; }
+            public int Amount { get; }
+
+            public SkillModifier(CharacterSkill skill, int amount)
+            {
+                Skill = skill;
+                Amount = amount;
+            }
+        }
 
         public IReadOnlyDictionary<ArcanumObjectId, PersistentCharacterProgressionState> States => _states;
         public event Action<ArcanumObjectId> LevelChanged;
@@ -57,6 +70,10 @@ namespace Arcanum.Runtime.Character
 
         public PersistentCharacterProgressionState GetOrCreateDevelopmentPlayer(ArcanumObjectId identity)
             => GetOrCreate(identity, ObjectType.Pc, null, CharacterProgressionSource.DevelopmentPlayer);
+
+        public PersistentCharacterProgressionState GetOrCreateCreatedPlayer(ArcanumObjectId identity,
+            CharacterProgressionSource source)
+            => GetOrCreate(identity, ObjectType.Pc, null, source);
 
         public PersistentCharacterProgressionState GetOrCreateSourceCharacter(ArcanumObjectId identity,
             ObjectType objectType, int prototypeNumber, CharacterProgressionSource source)
@@ -113,10 +130,35 @@ namespace Arcanum.Runtime.Character
             int rank = state.Source.IsMonstrous && skill == CharacterSkill.Melee
                 ? CharacterSkillRules.MaximumEffectiveRank
                 : GetBaseSkillRank(identity, skill);
+            rank = checked(rank + GetSkillModifier(identity, skill));
             int governing = _characters.GetEffectiveAttribute(identity,
                 CharacterSkillRules.GoverningAttribute(skill));
             return Math.Min(CharacterSkillRules.MaximumRankForAttribute(governing),
                 Math.Min(CharacterSkillRules.MaximumEffectiveRank, Math.Max(0, rank)));
+        }
+
+        /// <summary>Registers one inspectable non-base skill modifier owned by another runtime system.</summary>
+        public void SetEffectModifier(ArcanumObjectId identity, string effectIdentity,
+            CharacterSkill skill, int amount)
+        {
+            _ = Get(identity);
+            CharacterSkillRules.ValidateSkill(skill);
+            if (string.IsNullOrWhiteSpace(effectIdentity))
+                throw new ArgumentException("Effect identity is required.", nameof(effectIdentity));
+            if (!_skillModifiers.TryGetValue(identity, out Dictionary<string, SkillModifier> modifiers))
+                _skillModifiers.Add(identity,
+                    modifiers = new Dictionary<string, SkillModifier>(StringComparer.Ordinal));
+            if (modifiers.ContainsKey(effectIdentity))
+                throw new InvalidOperationException($"Character skill effect {effectIdentity} is already applied to {identity}.");
+            modifiers.Add(effectIdentity, new SkillModifier(skill, amount));
+        }
+
+        public bool RemoveEffectModifier(ArcanumObjectId identity, string effectIdentity)
+        {
+            if (!_skillModifiers.TryGetValue(identity, out Dictionary<string, SkillModifier> modifiers)
+                || !modifiers.Remove(effectIdentity)) return false;
+            if (modifiers.Count == 0) _skillModifiers.Remove(identity);
+            return true;
         }
 
         public SkillTrainingLevel GetTrainingLevel(ArcanumObjectId identity, CharacterSkill skill)
@@ -166,7 +208,8 @@ namespace Arcanum.Runtime.Character
             int current = state.GetPurchasedPoints(skill);
             if (current >= CharacterSkillRules.MaximumPurchasedPoints) return SkillIncreaseResult.MaximumRank;
             if (state.UnspentCharacterPoints < 1) return SkillIncreaseResult.InsufficientCharacterPoints;
-            int nextRank = checked((current + 1) * CharacterSkillRules.SkillUnitsPerPoint);
+            int nextRank = checked((current + 1) * CharacterSkillRules.SkillUnitsPerPoint
+                                   + GetSkillModifier(identity, skill));
             int governing = _characters.GetEffectiveAttribute(identity,
                 CharacterSkillRules.GoverningAttribute(skill));
             if (nextRank > CharacterSkillRules.MaximumRankForAttribute(governing))
@@ -226,6 +269,15 @@ namespace Arcanum.Runtime.Character
                         state.RestoreSkills(pair.Value.PurchasedPoints, pair.Value.Training);
                     }
             }
+        }
+
+        private int GetSkillModifier(ArcanumObjectId identity, CharacterSkill skill)
+        {
+            int amount = 0;
+            if (_skillModifiers.TryGetValue(identity, out Dictionary<string, SkillModifier> modifiers))
+                foreach (SkillModifier modifier in modifiers.Values)
+                    if (modifier.Skill == skill) amount = checked(amount + modifier.Amount);
+            return amount;
         }
 
         private readonly struct ProgressionValues

@@ -45,6 +45,10 @@ namespace Arcanum.Runtime.Character
             return GetOrCreate(identity, ObjectType.Pc, null, attributes, race, gender, false);
         }
 
+        public PersistentCharacterState GetOrCreateCreatedPlayer(ArcanumObjectId identity,
+            CharacterAttributeSet attributes, CharacterRace race, CharacterGender gender)
+            => GetOrCreate(identity, ObjectType.Pc, null, attributes, race, gender, true);
+
         public PersistentCharacterState GetOrCreateSourceCharacter(ArcanumObjectId identity, ObjectType objectType,
             int prototypeNumber, int[] instanceStatBase, int[] prototypeStatBase)
         {

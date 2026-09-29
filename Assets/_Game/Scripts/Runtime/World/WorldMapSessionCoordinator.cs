@@ -19,6 +19,7 @@ using Arcanum.Runtime.Technology;
 using Arcanum.Runtime.Economy;
 using Arcanum.Runtime.Social;
 using Arcanum.Runtime.Crafting;
+using Arcanum.Runtime.Creation;
 using UnityEngine;
 
 namespace Arcanum.Runtime.World
@@ -73,6 +74,8 @@ namespace Arcanum.Runtime.World
         private SocialStateService _social;
         private ReputationCatalog _reputationSource;
         private SocialAiCatalog _socialAiSource;
+        private CharacterCreationCatalog _characterCreationSource;
+        private CharacterCreationStateService _characterCreation;
         private bool _mapTransitionActive;
         private ulong _nextDynamicIdentity = 1;
 
@@ -114,6 +117,8 @@ namespace Arcanum.Runtime.World
         public CraftingStateService Crafting => _crafting ??= CreateCrafting();
         public EconomyStateService Economy => _economy ??= CreateEconomy();
         public SocialStateService Social => _social ??= CreateSocial();
+        public CharacterCreationStateService CharacterCreation
+            => _characterCreation ??= new CharacterCreationStateService(this, _characterCreationSource);
         internal bool HasMagicCritterFlag(ArcanumObjectId identity, int flag)
             => _magic?.HasActiveCritterFlag(identity, flag) == true;
         public bool IsMapTransitionActive => _mapTransitionActive;
@@ -310,6 +315,12 @@ namespace Arcanum.Runtime.World
             _reputationSource = reputations ?? throw new ArgumentNullException(nameof(reputations));
             _socialAiSource = ai ?? throw new ArgumentNullException(nameof(ai));
             Social.BindSources(reputations, ai);
+        }
+
+        public void BindCharacterCreationSource(CharacterCreationCatalog source)
+        {
+            _characterCreationSource = source ?? throw new ArgumentNullException(nameof(source));
+            CharacterCreation.BindCatalog(source);
         }
 
         public void BindInventoryFootprintSource(Func<uint?, InventoryFootprint> resolveInventoryFootprint)
@@ -648,8 +659,15 @@ namespace Arcanum.Runtime.World
             uint artId)
         {
             if (!identity.IsPersistent) throw new ArgumentException("Player identity must be persistent.", nameof(identity));
-            if (_states.ContainsKey(identity)) throw new InvalidOperationException($"Player ObjectID collides with {identity}.");
             string normalized = NormalizeSector(sector) ?? throw new ArgumentException("Player sector is required.", nameof(sector));
+            if (PlayerState != null && PlayerState.Identity == identity)
+            {
+                PlayerState.EnterSector(normalized, spawnTile, artId);
+                Combat.RegisterActorSource(new CombatActorSource(identity, ObjectType.Pc, null, normalized,
+                    int.MaxValue, 0, 0, 0));
+                return PlayerState;
+            }
+            if (_states.ContainsKey(identity)) throw new InvalidOperationException($"Player ObjectID collides with {identity}.");
             if (PlayerState != null && PlayerState.Identity != identity)
                 throw new InvalidOperationException("A different production player is already registered.");
             Characters.GetOrCreateDevelopmentPlayer(identity);
@@ -666,6 +684,26 @@ namespace Arcanum.Runtime.World
             {
                 PlayerState.EnterSector(normalized, spawnTile, artId);
             }
+            return PlayerState;
+        }
+
+        internal PersistentPlayerState InitializeCreatedPlayer(ArcanumObjectId identity, string sector,
+            Vector2 spawnTile, uint artId, CharacterAttributeSet attributes, CharacterRace race,
+            CharacterGender gender, CharacterProgressionSource progression, CharacterDerivedSource derived,
+            CharacterVitalitySource vitality, int[] spellTech)
+        {
+            if (PlayerState != null) throw new InvalidOperationException("A production player is already registered.");
+            string normalized = NormalizeSector(sector)
+                ?? throw new ArgumentException("Player sector is required.", nameof(sector));
+            Characters.GetOrCreateCreatedPlayer(identity, attributes, race, gender);
+            Progression.GetOrCreateCreatedPlayer(identity, progression);
+            DerivedStats.GetOrCreateCreatedPlayer(identity, derived);
+            Vitality.GetOrCreateCreatedPlayer(identity, vitality);
+            Magic.RegisterSourceCharacter(identity, spellTech, null);
+            Technology.RegisterSourceCharacter(identity, spellTech, null);
+            Combat.RegisterActorSource(new CombatActorSource(identity, ObjectType.Pc, null, normalized,
+                int.MaxValue, 0, 0, 0));
+            PlayerState = new PersistentPlayerState(identity, normalized, spawnTile, artId);
             return PlayerState;
         }
 
@@ -2008,6 +2046,7 @@ namespace Arcanum.Runtime.World
             _crafting = null;
             _economy = null;
             _social = null;
+            _characterCreation?.ClearFinalized();
             _sourceTime = null;
             _portals = null;
             _dialogue = null;
@@ -2073,6 +2112,7 @@ namespace Arcanum.Runtime.World
             _economy.RestoreSaveData(plan.Economy);
             _social = CreateSocial();
             _social.RestoreSaveData(plan.Social);
+            CharacterCreation.RestoreSaveData(plan.CharacterCreation);
             return SelectSector(plan.SelectedSector);
         }
 
