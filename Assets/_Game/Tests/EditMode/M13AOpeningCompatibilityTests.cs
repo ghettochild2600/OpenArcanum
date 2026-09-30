@@ -6,7 +6,9 @@ using Arcanum.Formats.Database;
 using Arcanum.Formats.Dialog;
 using Arcanum.Formats.Objects;
 using Arcanum.Formats.Script;
+using Arcanum.Formats.World;
 using Arcanum.Runtime;
+using Arcanum.Runtime.Campaign;
 using Arcanum.Runtime.Character;
 using Arcanum.Runtime.Dialogue;
 using Arcanum.Runtime.Party;
@@ -34,6 +36,20 @@ namespace Arcanum.Formats.Tests
             ("G_DD753C8F_B655_D411_8F1D_00A0CC6511C6", 1),
             ("G_39EBE998_F113_D411_8F1D_00E02920220C", 2),
             ("G_B82C1DC3_080B_D411_8F1D_00E02920220C", 2),
+        };
+
+        private static readonly string[] HeartbeatInitializedCorpses =
+        {
+            "G_729DB2F6_503E_B84E_B5E3_0DADC947D188",
+            "G_D3A6E04A_78E5_FE41_AE7A_555C6CBC77B7",
+            "G_91A6CACB_B653_DD4A_A763_93911F389C9D",
+            "G_F2C1B8B6_AA9F_AE4E_BDF1_92C1DAB6B64B",
+            "G_0BBB1D21_0997_2A49_B8CD_0D0099667DED",
+            "G_81B28CDB_13AA_0048_8326_F2C432DFE976",
+            "G_9C04A958_C5F2_784D_AA9C_5E76A603C764",
+            "G_2798503E_F21C_724D_B1A7_2E968EB88EAA",
+            "G_1BAD7FCC_C094_5148_875F_B72C51004AF2",
+            "G_75FFCBCC_04BF_234D_B380_6C7B60E4ECD3",
         };
 
         private static DatVirtualFileSystem _vfs;
@@ -142,6 +158,50 @@ namespace Arcanum.Formats.Tests
             finally { Object.DestroyImmediate(root); }
         }
 
+        [Test]
+        public void VirgilRemainingWaGateAndMmEffectsUseAuthoritativeSourceState()
+        {
+            Assert.That(_virgilDialogue.TryGet(71, out DialogLine firstMarker), Is.True);
+            Assert.That(firstMarker.Effect.Replace(" ", string.Empty), Is.EqualTo("mm1,mm2"));
+            Assert.That(_virgilDialogue.TryGet(120, out DialogLine secondMarker), Is.True);
+            Assert.That(secondMarker.Effect.Replace(" ", string.Empty), Is.EqualTo("mm1"));
+            foreach (int line in new[] { 386, 387, 388, 389, 390 })
+            {
+                Assert.That(_virgilDialogue.TryGet(line, out DialogLine option), Is.True, $"line {line}");
+                Assert.That(option.Test.Replace(" ", string.Empty), Is.EqualTo("wa0"), $"line {line}");
+            }
+
+            GameObject root = new(nameof(VirgilRemainingWaGateAndMmEffectsUseAuthoritativeSourceState));
+            try
+            {
+                WorldMapSessionCoordinator session = root.AddComponent<WorldMapSessionCoordinator>();
+                WorldObjectSectorLoader loader = root.AddComponent<WorldObjectSectorLoader>();
+                loader.BindSessionAuthority();
+                Assert.That(session.SelectSector(CrashSector), Is.True);
+                PersistentPlayerState pc = session.GetOrCreatePlayer(ProductionPlayerLifecycle.DefaultPlayerIdentity,
+                    CrashSector, Vector2.one, 0x28100000u);
+                session.BindPlayer(CrashSector, pc, Runtime(root, "Player", ObjectType.Pc, pc.Identity));
+                Assert.That(session.TryGetObjectState(Virgil, out PersistentObjectState virgil), Is.True);
+                Assert.That(virgil.NpcFlags & 0x00000008, Is.Zero,
+                    "retail Virgil is not in ONF_AI_WAIT_HERE state at the opening");
+
+                var lines = new SortedDictionary<int, DialogLine>
+                {
+                    [385] = new(385, "What is it that you want of me?", "", 0, "", 0, ""),
+                    [386] = new(386, "Show me the marked places.", "", 1, "wa 0", 0, "mm1, mm2"),
+                };
+                session.BindDialogueSource(_ => StartDialogueAt(385),
+                    number => number == VirgilDialogueNumber ? new DialogScript(lines) : null);
+
+                Assert.That(session.Dialogue.Start(pc.Identity, Virgil), Is.EqualTo(DialogueStartStatus.Started));
+                Assert.That(session.Dialogue.AvailableResponses, Has.Count.EqualTo(1));
+                Assert.That(session.Dialogue.SelectResponse(0), Is.EqualTo(DialogueChoiceStatus.Completed));
+                Assert.That(session.Campaign.IsAreaKnown(new AreaId(1)), Is.True);
+                Assert.That(session.Campaign.IsAreaKnown(new AreaId(2)), Is.True);
+            }
+            finally { Object.DestroyImmediate(root); }
+        }
+
         [Test, Category("RealData")]
         public void AuthenticOpeningCorpsesFreezeOnFinalFrameRemainSelectableAndKeepSourceInventory()
         {
@@ -179,8 +239,61 @@ namespace Arcanum.Formats.Tests
             finally { Object.DestroyImmediate(root); }
         }
 
+        [Test, Category("RealData")]
+        public void AuthenticCrashSiteHeartbeatCasualtiesInitializeDeadWithoutRuntimeDeathConsequences()
+        {
+            GameObject root = new(nameof(AuthenticCrashSiteHeartbeatCasualtiesInitializeDeadWithoutRuntimeDeathConsequences));
+            try
+            {
+                WorldMapSessionCoordinator session = root.AddComponent<WorldMapSessionCoordinator>();
+                WorldObjectSectorLoader loader = root.AddComponent<WorldObjectSectorLoader>();
+                loader.BindSessionAuthority();
+                Assert.That(session.SelectSector(CrashSector), Is.True);
+
+                foreach (string key in HeartbeatInitializedCorpses)
+                {
+                    ArcanumObjectId identity = Parse(key);
+                    Assert.That(session.TryGetObjectState(identity, out PersistentObjectState corpse), Is.True, key);
+                    Assert.That(session.Vitality.IsDead(identity), Is.True, key);
+                    Assert.That(session.Vitality.Get(identity).HitPointDamage, Is.EqualTo(32000), key);
+                    Assert.That(corpse.DeathConsequencesProcessed, Is.False, key);
+                    Assert.That(session.TryGetLoadedObject(identity, out WorldObject runtime), Is.True, key);
+                    Assert.That(runtime.IsDead, Is.True, key);
+                    Assert.That((runtime.ArtId >> 6) & 0x1Fu, Is.EqualTo(7u), key);
+                }
+
+                Assert.That(session.Vitality.IsAlive(Virgil), Is.True, "Virgil is the opening living control");
+                Assert.That(session.States.Values.Where(value => value.PrototypeNumber is 28359 or 27356),
+                    Is.Not.Empty, "authentic wolf/scout controls must be present");
+                foreach (PersistentObjectState control in session.States.Values.Where(value =>
+                             value.PrototypeNumber is 28359 or 27356))
+                    Assert.That(session.Vitality.IsAlive(control.Identity), Is.True,
+                        $"living control {control.Identity}");
+            }
+            finally { Object.DestroyImmediate(root); }
+        }
+
         [Test]
-        public void WalkRegistrationAccumulatesSourceOffsetsAndMirrorsHorizontalDeltas()
+        public void StateOnlyHeartbeatResolverSupportsBothRetailBranchesAndRejectsUnsafePrograms()
+        {
+            ScriptFile retailShape = HeartbeatGate(2350);
+            var campaign = new CampaignStateService();
+            Assert.That(SourceHeartbeatInitialStateResolver.TryResolve(retailShape, campaign,
+                out SourceHeartbeatInitialStateResolver.Result absent), Is.True);
+            Assert.That(absent, Is.EqualTo(SourceHeartbeatInitialStateResolver.Result.Dead));
+
+            campaign.SetFlag(2350, 1);
+            Assert.That(SourceHeartbeatInitialStateResolver.TryResolve(retailShape, campaign,
+                out SourceHeartbeatInitialStateResolver.Result hidden), Is.True);
+            Assert.That(hidden, Is.EqualTo(SourceHeartbeatInitialStateResolver.Result.Off));
+
+            retailShape.Entries[4].Action = Action(Sat.AdjustGold);
+            Assert.That(SourceHeartbeatInitialStateResolver.TryResolve(retailShape, campaign, out _), Is.False,
+                "ordinary gameplay mutations are outside initial-state reconstruction");
+        }
+
+        [Test]
+        public void WalkRegistrationLeavesSourceMovementDeltasOutOfSpritePivot()
         {
             ArtFrame[] frames =
             {
@@ -188,15 +301,37 @@ namespace Arcanum.Formats.Tests
                 Frame(10, 20, 3, -2),
                 Frame(10, 20, -1, 4),
             };
-            Assert.That(WorldObjectSpriteOwner.CumulativeFrameOffsets(frames, false),
-                Is.EqualTo(new[] { Vector2Int.zero, new Vector2Int(3, -2), new Vector2Int(2, 2) }));
-            Assert.That(WorldObjectSpriteOwner.CumulativeFrameOffsets(frames, true),
-                Is.EqualTo(new[] { Vector2Int.zero, new Vector2Int(-3, -2), new Vector2Int(-2, 2) }));
-
             Vector2 pivot = WorldObjectSpriteOwner.ExactPivot(frames[2], ArtId.TypeCritter,
-                0, false, false, 2, 2);
-            Assert.That(pivot.x, Is.EqualTo(.4f).Within(.0001f));
-            Assert.That(pivot.y, Is.EqualTo(.4f).Within(.0001f));
+                0, false, false);
+            Assert.That(pivot.x, Is.EqualTo(.5f).Within(.0001f));
+            Assert.That(pivot.y, Is.EqualTo(1f / 3f).Within(.0001f));
+
+            Vector2 mirrored = WorldObjectSpriteOwner.ExactPivot(frames[2], ArtId.TypeCritter,
+                7, true, false);
+            Assert.That(mirrored.x, Is.EqualTo(.45f).Within(.0001f));
+            Assert.That(mirrored.y, Is.EqualTo(1f / 3f).Within(.0001f));
+        }
+
+        [Test, Category("RealData")]
+        public void AuthenticHumanWalkOffsetsAreMovementDeltasNotPresentationAnchors()
+        {
+            const string path = "art/critter/hmm/hmmv1xab.art";
+            Assert.That(_vfs.Exists(path), Is.True);
+            ArtFile art = ArtReader.Read(_vfs.ReadAllBytes(path));
+            ArtFrame[] east = art.Rotations[2].Frames;
+            Assert.That(east.Select(frame => frame.OffsetX),
+                Is.EqualTo(new[] { 4, 10, 8, 4, 6, 4, 8, 8, 4, 4 }));
+            Assert.That(east.Select(frame => frame.OffsetY), Is.All.EqualTo(0));
+            for (int frameIndex = 0; frameIndex < east.Length; frameIndex++)
+            {
+                ArtFrame frame = east[frameIndex];
+                Vector2 pivot = WorldObjectSpriteOwner.ExactPivot(frame, ArtId.TypeCritter,
+                    2, false, false);
+                Assert.That(pivot.x, Is.EqualTo(frame.HotX / (float)frame.Width).Within(.0001f),
+                    $"frame {frameIndex}");
+                Assert.That(pivot.y, Is.EqualTo((frame.Height - frame.HotY) / (float)frame.Height)
+                    .Within(.0001f), $"frame {frameIndex}");
+            }
         }
 
         [Test]
@@ -230,6 +365,59 @@ namespace Arcanum.Formats.Tests
 
         private static ArtFrame Frame(int hotX, int hotY, int offsetX, int offsetY)
             => new(20, 30, hotX, hotY, offsetX, offsetY, new byte[600]);
+
+        private static ScriptFile StartDialogueAt(int line)
+        {
+            var file = new ScriptFile();
+            file.Entries.Add(Condition(Sct.True, Action(Sat.Dialog, (Svt.Number, line)), Action(Sat.DoNothing)));
+            return file;
+        }
+
+        private static ScriptFile HeartbeatGate(int flag)
+        {
+            var file = new ScriptFile();
+            file.Entries.Add(Condition(Sct.Eq,
+                Action(Sat.DoNothing), Action(Sat.Goto, (Svt.Number, 4)),
+                (Svt.GlFlag, flag), (Svt.Number, 1)));
+            file.Entries.Add(Condition(Sct.True,
+                ObjectAction(Sat.ToggleState, Sfo.Attachee), Action(Sat.DoNothing)));
+            file.Entries.Add(Condition(Sct.True, Action(Sat.RemoveThisScript), Action(Sat.DoNothing)));
+            file.Entries.Add(Condition(Sct.True, Action(Sat.ReturnAndSkipDefault), Action(Sat.DoNothing)));
+            file.Entries.Add(Condition(Sct.True,
+                ObjectAction(Sat.Kill, Sfo.Attachee), Action(Sat.DoNothing)));
+            file.Entries.Add(Condition(Sct.True, Action(Sat.ReturnAndRunDefault), Action(Sat.DoNothing)));
+            return file;
+        }
+
+        private static ScriptCondition Condition(Sct type, ScriptAction action, ScriptAction els,
+            params (Svt type, int value)[] operands)
+        {
+            var condition = new ScriptCondition { Type = (int)type, Action = action, Els = els };
+            for (int index = 0; index < operands.Length; index++)
+            {
+                condition.OpType[index] = (byte)operands[index].type;
+                condition.OpValue[index] = operands[index].value;
+            }
+            return condition;
+        }
+
+        private static ScriptAction Action(Sat type, params (Svt type, int value)[] operands)
+        {
+            var action = new ScriptAction { Type = (int)type };
+            for (int index = 0; index < operands.Length; index++)
+            {
+                action.OpType[index] = (byte)operands[index].type;
+                action.OpValue[index] = operands[index].value;
+            }
+            return action;
+        }
+
+        private static ScriptAction ObjectAction(Sat type, Sfo focus)
+        {
+            var action = Action(type);
+            action.OpType[0] = (byte)focus;
+            return action;
+        }
 
         private static bool TryOpaqueWorldPoint(Sprite sprite, Transform transform, out Vector2 point)
         {

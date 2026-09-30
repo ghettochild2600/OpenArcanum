@@ -129,15 +129,7 @@ namespace Arcanum.Runtime.Campaign
         public bool TryDiscoverArea(AreaId id, out bool changed, out CampaignStateFailure failure)
         {
             changed = false;
-            try
-            {
-                ValidateArea(id);
-            }
-            catch (CampaignStateException ex)
-            {
-                failure = ex.Failure;
-                return false;
-            }
+            if (!TryValidateArea(id, out failure)) return false;
             if (!_knownAreas.Add(id))
             {
                 failure = CampaignStateFailure.None;
@@ -147,6 +139,22 @@ namespace Arcanum.Runtime.Campaign
             failure = CampaignStateFailure.None;
             AreaDiscovered?.Invoke(id);
             return true;
+        }
+
+        /// <summary>Validates source-backed area identity without mutating campaign state.</summary>
+        public bool TryValidateArea(AreaId id, out CampaignStateFailure failure)
+        {
+            try
+            {
+                ValidateArea(id);
+                failure = CampaignStateFailure.None;
+                return true;
+            }
+            catch (CampaignStateException ex)
+            {
+                failure = ex.Failure;
+                return false;
+            }
         }
 
         public void DiscoverArea(AreaId id)

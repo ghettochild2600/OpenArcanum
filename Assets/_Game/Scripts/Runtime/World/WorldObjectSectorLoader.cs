@@ -109,6 +109,7 @@ namespace Arcanum.Runtime.World
         private DatVirtualFileSystem _vfs;
         private ProtoLibrary _prototypes;
         private ObjectArtResolvers _art;
+        private ScriptDatabase _scripts;
         private GeneratedDialogText _generatedToMale;
         private GeneratedDialogText _generatedToFemale;
         private Transform _objectRoot;
@@ -395,6 +396,20 @@ namespace Arcanum.Runtime.World
                 int stateFlags = instance.Type == ObjectType.Portal
                     ? instance.PortalFlags ?? proto?.PortalFlags ?? 0
                     : instance.Type == ObjectType.Container ? instance.ContainerFlags ?? proto?.ContainerFlags ?? 0 : 0;
+                SourceHeartbeatInitialStateResolver.Result initialHeartbeatState =
+                    SourceHeartbeatInitialStateResolver.Result.None;
+                bool hasEstablishedObjectState = Session.TryGetObjectState(identity, out _);
+                bool hasEstablishedVitality = Session.Vitality.TryGet(identity, out var establishedVitality);
+                if (identity.IsPersistent && instance.Type is ObjectType.Pc or ObjectType.Npc
+                    && !hasEstablishedObjectState && !hasEstablishedVitality)
+                {
+                    int heartbeatScript = instance.HeartbeatScriptNum != 0
+                        ? instance.HeartbeatScriptNum
+                        : proto?.HeartbeatScriptNum ?? 0;
+                    if (heartbeatScript != 0)
+                        SourceHeartbeatInitialStateResolver.TryResolve(_scripts?.Get(heartbeatScript),
+                            Session.Campaign, out initialHeartbeatState);
+                }
                 if (identity.IsPersistent && (instance.Type is ObjectType.Pc or ObjectType.Npc))
                 {
                     Session.Characters.GetOrCreateSourceCharacter(identity, instance.Type, instance.PrototypeNumber,
@@ -423,6 +438,13 @@ namespace Arcanum.Runtime.World
                         instance.FatiguePoints, proto?.FatiguePoints,
                         instance.FatigueAdjustment, proto?.FatigueAdjustment,
                         instance.FatigueDamage, proto?.FatigueDamage);
+                    if (hasEstablishedVitality)
+                        vitalitySource = establishedVitality.Source;
+                    else if (initialHeartbeatState == SourceHeartbeatInitialStateResolver.Result.Dead)
+                        vitalitySource = new CharacterVitalitySource(vitalitySource.Level,
+                            vitalitySource.HitPointPoints, vitalitySource.HitPointAdjustment, 32000,
+                            vitalitySource.FatiguePoints, vitalitySource.FatigueAdjustment,
+                            vitalitySource.FatigueDamage);
                     Session.Vitality.GetOrCreateSourceCharacter(identity, instance.Type, instance.PrototypeNumber,
                         vitalitySource);
                     Session.Magic.RegisterSourceCharacter(identity, instance.SpellTech, proto?.SpellTech);
@@ -440,7 +462,9 @@ namespace Arcanum.Runtime.World
                     weaponData.ItemArtId = artId;
                 }
                 PersistentObjectState state = Session.GetOrCreate(instance, identity, sectorPath, artId,
-                    (flags & ObjectFlagOff) != 0, (stateFlags & 1) != 0,
+                    (flags & ObjectFlagOff) != 0
+                    || initialHeartbeatState == SourceHeartbeatInitialStateResolver.Result.Off,
+                    (stateFlags & 1) != 0,
                     instance.ItemFlags ?? proto?.ItemFlags ?? 0,
                     instance.InvAid ?? proto?.InvAid,
                     instance.WeaponFlags ?? proto?.Weapon?.Flags ?? 0,
@@ -461,7 +485,8 @@ namespace Arcanum.Runtime.World
                     instance.Worth ?? proto?.Worth ?? 0,
                     Math.Max(0, (instance.HpPoints ?? proto?.HpPoints ?? 0)
                                 + (instance.HpAdjustment ?? proto?.HpAdjustment ?? 0)),
-                    instance.HpDamage ?? proto?.HpDamage ?? 0,
+                    initialHeartbeatState == SourceHeartbeatInitialStateResolver.Result.Dead
+                        ? 32000 : instance.HpDamage ?? proto?.HpDamage ?? 0,
                     instance.RetailPriceMultiplier ?? proto?.RetailPriceMultiplier ?? 0,
                     instance.InventorySource ?? proto?.InventorySource ?? 0,
                     substituteInventory,
@@ -1147,13 +1172,13 @@ namespace Arcanum.Runtime.World
             Session.BindMapTransitionSource(transitions);
             Session.BindWorldMapTravelSource(new WorldMapTravelSource(
                 maps, transitions, _vfs.Exists, _vfs.ReadAllBytes));
-            ScriptDatabase scripts = ScriptDatabase.Load(_vfs);
+            _scripts = ScriptDatabase.Load(_vfs);
             AreaList areas = AreaList.FromMes(Arcanum.Formats.Text.MesReader.Read(
                 _vfs.ReadAllBytes("mes/gamearea.mes")));
             Session.BindAreaSource(areas);
-            Session.BindAreaEntranceSource(new AreaEntranceResolver(maps, areas, transitions, scripts.Get));
-            Session.BindUseScriptSource(scripts);
-            Session.BindDialogueSource(scripts.Get, dialogNum => DialogLocator.Load(_vfs, dialogNum));
+            Session.BindAreaEntranceSource(new AreaEntranceResolver(maps, areas, transitions, _scripts.Get));
+            Session.BindUseScriptSource(_scripts);
+            Session.BindDialogueSource(_scripts.Get, dialogNum => DialogLocator.Load(_vfs, dialogNum));
             _generatedToMale = new GeneratedDialogText(MesReader.Read(_vfs.ReadAllBytes("mes/gd_pc2m.mes")));
             _generatedToFemale = new GeneratedDialogText(MesReader.Read(_vfs.ReadAllBytes("mes/gd_pc2f.mes")));
             Session.BindGeneratedDialogueText((npc, token) =>

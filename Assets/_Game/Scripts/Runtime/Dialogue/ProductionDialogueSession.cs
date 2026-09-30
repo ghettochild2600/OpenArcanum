@@ -95,15 +95,15 @@ namespace Arcanum.Runtime.Dialogue
     public sealed class ProductionDialogueSession
     {
         private static readonly HashSet<string> M5AAdmittedTests = new(StringComparer.OrdinalIgnoreCase)
-            { "gf", "qu", "ra", "fo", "re", "rp" };
+            { "gf", "qu", "ra", "fo", "re", "rp", "wa" };
         private static readonly HashSet<string> M5AAdmittedEffects = new(StringComparer.OrdinalIgnoreCase)
-            { "gf", "lf", "qu", "fl", "in", "ru", "jo", "lv", "re", "rp", "co" };
+            { "gf", "lf", "qu", "fl", "in", "ru", "jo", "lv", "re", "rp", "co", "mm" };
         private static readonly HashSet<string> M5BAdmittedTests = new(StringComparer.OrdinalIgnoreCase)
-            { "gf", "gv", "lf", "qu", "qb", "ra", "in", "ni", "re", "rp", "ch", "ha" };
+            { "gf", "gv", "lf", "qu", "qb", "ra", "in", "ni", "re", "rp", "ch", "ha", "wa" };
         private static readonly HashSet<string> M5BAdmittedEffects = new(StringComparer.OrdinalIgnoreCase)
-            { "lf", "qu", "fl", "in", "re", "rp", "co", "$$" };
+            { "lf", "qu", "fl", "in", "re", "rp", "co", "$$", "mm" };
         private static readonly HashSet<string> M7CAdmittedTests = new(StringComparer.OrdinalIgnoreCase)
-            { "gf", "gv", "lf", "qu", "qb", "qa", "ra", "in", "ni", "re", "rp", "ch", "ha", "tr", "sk", "ar" };
+            { "gf", "gv", "lf", "qu", "qb", "qa", "ra", "in", "ni", "re", "rp", "ch", "ha", "tr", "sk", "ar", "wa" };
         private static readonly HashSet<string> M7CAdmittedEffects = new(StringComparer.OrdinalIgnoreCase)
             { "lf", "qu", "fl", "in", "re", "rp", "co", "$$", "mm" };
 
@@ -139,12 +139,18 @@ namespace Arcanum.Runtime.Dialogue
         public bool IsBusy => Phase is DialogueSessionPhase.Starting or DialogueSessionPhase.Active
             or DialogueSessionPhase.AwaitingPlayerChoice or DialogueSessionPhase.ExecutingResponse;
 
-        private ISet<string> AdmittedTests => DialogueNumber == 1497
-            ? M7CAdmittedTests
-            : DialogueNumber == 1009 ? M5BAdmittedTests : M5AAdmittedTests;
-        private ISet<string> AdmittedEffects => DialogueNumber == 1497
-            ? M7CAdmittedEffects
-            : DialogueNumber == 1009 ? M5BAdmittedEffects : M5AAdmittedEffects;
+        private ISet<string> AdmittedTests => DialogueNumber switch
+        {
+            1497 => M7CAdmittedTests,
+            1009 => M5BAdmittedTests,
+            _ => M5AAdmittedTests,
+        };
+        private ISet<string> AdmittedEffects => DialogueNumber switch
+        {
+            1497 => M7CAdmittedEffects,
+            1009 => M5BAdmittedEffects,
+            _ => M5AAdmittedEffects,
+        };
 
         public event Action Changed;
         public event Action<DialogueDiagnostic> Diagnostic;
@@ -826,7 +832,6 @@ namespace Arcanum.Runtime.Dialogue
         public void RemoveReputation(int id) => _world.Social.RemoveReputation(_pc, new ReputationId(id));
         public void MarkAreaKnown(int id)
         {
-            if (id != 58) throw Outside($"{nameof(MarkAreaKnown)}({id})");
             _campaign.DiscoverArea(new AreaId(id));
         }
         public bool HasMetNpc => throw Outside(nameof(HasMetNpc));
@@ -866,6 +871,8 @@ namespace Arcanum.Runtime.Dialogue
                 throw new InvalidOperationException($"Follower join failed: {result.Failure}.");
         }
         public bool IsNpcFollowingPc => _world.Party.IsMember(_npc);
+        public bool IsNpcWaiting => _world.TryGetObjectState(_npc, out PersistentObjectState state)
+                                    && (state.NpcFlags & 0x00000008) != 0;
         public bool AreaKnown(int id) => _campaign.IsAreaKnown(new AreaId(id));
         public void DisbandNpc()
         {
@@ -927,12 +934,11 @@ namespace Arcanum.Runtime.Dialogue
                         _campaign.IsRumorKnown(first);
                         return true;
                     case "mm":
-                        if (first != 58)
+                        if (!_campaign.TryValidateArea(new AreaId(first), out CampaignStateFailure areaFailure))
                         {
-                            failure = $"area {first} is outside the audited M7C dialogue path";
+                            failure = $"area {first} rejected {areaFailure}";
                             return false;
                         }
-                        _campaign.IsAreaKnown(new AreaId(first));
                         return true;
                     case "in":
                     {
