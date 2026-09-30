@@ -53,6 +53,111 @@ A fresh character was created through the normal New Game UI and entered the aut
 - No broader campaign progress was attempted.
 - Final cleared Unity Console: **0 logs / 0 warnings / 0 errors**.
 
+## User-discovered opening follow-up (2026-09-29)
+
+This bounded follow-up started at `b568baef3b23013288a53602d05510f6d1fc1d55` after additional user playtesting.
+It corrects only the three newly reproduced opening-area defects below. The earlier cumulative-offset walking entry is
+retained as history, but its interpretation and implementation are superseded here.
+
+### Virgil dialogue 1324: `mm` and `wa`
+
+- **Symptom:** authentic progression reached `UnsupportedEffect 'mm'` at rows 71/120 (and the calling response rows
+  58/118), plus `UnsupportedCondition 'wa'` at row 385's response set.
+- **Source evidence:** retail rows 71 and 74 execute `mm1, mm2`; row 120 executes `mm1`; rows 386-390 test `wa0`.
+  In arcanum-ce's dialogue dispatcher, `DIALOG_ACTION_MM` calls `area_set_known(pc_obj, value)`. `DIALOG_COND_WA`
+  compares the speaker's `OBJ_F_NPC_FLAGS` bit `ONF_AI_WAIT_HERE` (`0x00000008`) with the requested zero/one value.
+- **Semantics:** `mm N` source-validates area `N` and marks it known for the PC. `wa 1` passes when the speaking NPC's
+  authoritative wait-here bit is set; `wa 0` passes when it is clear.
+- **Owner/correction:** `CampaignStateService` remains the known-area authority and exposes pure area validation for
+  transaction preflight. `ProductionDialogueContext` reads the NPC bit from persistent world state. Both operations
+  are admitted by every production dialogue vocabulary; there is no Virgil, dialogue-1324, or area-1/2 special case.
+- **Regression:** the source-shaped test reads the exact retail rows, proves opening Virgil has `wa0`, executes
+  `mm1,mm2` through the normal production transaction, and verifies areas 1 and 2 become known.
+
+### Source-initialized crash-site casualties
+
+The HP-only assumption was incomplete. Original `critter_is_dead` is HP-based, but these placed records are not dead
+in serialized HP. Their source-authored `SAP_HEARTBEAT` programs establish initial state: when the paired global flag
+is clear they call `Kill(attachee)`; when set they toggle the actor off and remove the script. Original
+`critter_kill` sets HP damage to 32000.
+
+OpenArcanum now runs only a strict, state-only subset of a previously unestablished persistent critter's heartbeat
+during load. It accepts the audited flag comparison/control flow plus `ToggleState`, `Kill`, script removal, and
+return operations. Any other opcode rejects reconstruction rather than executing gameplay. `Kill` seeds M4B vitality
+damage 32000 and the existing M8D corpse projection without a current-session death transition, AI, XP, or M8E
+consequence. Existing saved object/vitality authority always wins.
+
+| ObjectID | Proto | Heartbeat / flag | Relevant source state | Retail opening state | Before | After / presentation |
+| --- | ---: | --- | --- | --- | --- | --- |
+| `G_729DB2F6_503E_B84E_B5E3_0DADC947D188` | 17212 | 1781 / 2350 | HP alive; heartbeat initialization | dead when flag clear | upright | damage 32000; frozen fallen action 7 |
+| `G_D3A6E04A_78E5_FE41_AE7A_555C6CBC77B7` | 17188 | 1782 / 2351 | HP alive; heartbeat initialization | dead when flag clear | upright | damage 32000; frozen fallen action 7 |
+| `G_91A6CACB_B653_DD4A_A763_93911F389C9D` | 17100 | 1783 / 2352 | HP alive; heartbeat initialization | dead when flag clear | upright | damage 32000; frozen fallen action 7 |
+| `G_F2C1B8B6_AA9F_AE4E_BDF1_92C1DAB6B64B` | 17256 | 1784 / 2353 | HP alive; heartbeat initialization | dead when flag clear | upright | damage 32000; frozen fallen action 7 |
+| `G_0BBB1D21_0997_2A49_B8CD_0D0099667DED` | 17132 | 1785 / 2354 | HP alive; one inventory child | dead when flag clear | upright | damage 32000; fallen and lootable; inventory preserved |
+| `G_81B28CDB_13AA_0048_8326_F2C432DFE976` | 17124 | 1788 / 2357 | HP alive; heartbeat initialization | dead when flag clear | upright | damage 32000; frozen fallen action 7 |
+| `G_9C04A958_C5F2_784D_AA9C_5E76A603C764` | 17099 | 1789 / 2358 | HP alive; heartbeat initialization | dead when flag clear | upright | damage 32000; frozen fallen action 7 |
+| `G_2798503E_F21C_724D_B1A7_2E968EB88EAA` | 17145 | 1790 / 2359 | HP alive; heartbeat initialization | dead when flag clear | upright | damage 32000; frozen fallen action 7 |
+| `G_1BAD7FCC_C094_5148_875F_B72C51004AF2` | 17233 | 1791 / 2360 | HP alive; heartbeat initialization | dead when flag clear | upright | damage 32000; frozen fallen action 7 |
+| `G_75FFCBCC_04BF_234D_B380_6C7B60E4ECD3` | 17165 | 1792 / 2361 | HP alive; heartbeat initialization | dead when flag clear | upright | damage 32000; frozen fallen action 7 |
+| Virgil `G_A09DCD63_7A15_D411_8F1D_00E02920220C` | 17102 | ordinary living control | no death initializer | alive | alive | standing/interactable |
+
+Focused regressions prove all ten casualties load dead with stable identity, 32000 damage, fallen final frame, and an
+unprocessed consequence marker, while Virgil and authentic wolf/scout controls remain alive. A synthetic
+source-shaped heartbeat also proves both flag branches and fail-closed rejection of an unrelated mutation opcode.
+
+### WALK ART movement-delta correction
+
+The earlier pivot treatment double-applied movement. Source `object_inc_current_aid` advances the frame and adds that
+frame's `offset_x/offset_y` into the original object's movement offset. These values are per-frame locomotion deltas
+consumed by the original movement system, not independent sprite-registration offsets to layer over Unity's already
+continuous root interpolation. `tig_art_frame_data` mirrors rotations 1-3 from the opposite source rotation and
+transforms both hotspot and horizontal delta; it does not turn the delta into an absolute pivot.
+
+Authority is now separated as follows:
+
+1. coordinator/navigation route authority is unchanged;
+2. `WorldObject.ApplyMovementState`/route following supplies the continuous interpolated root;
+3. the sprite uses only exact source hotspot/mirror registration;
+4. ART movement deltas are not accumulated into the Unity pivot;
+5. camera motion follows the root and is not part of frame registration.
+
+No interpolation, route, collision, destination, FPS, or navigation authority changed. The animator already preserves
+frame phase across compatible directional loop rebuilds and returns to STAND only when the route completes.
+
+Complete-cycle diagnostic, `art/critter/hmm/hmmv1xab.art`, 17 FPS:
+
+| Frame | rot 2 raw `(x,y)` | old extra cumulative x | rot 2 hotspot `(x,y)` | corrected pivot `(x/w,(h-y)/h)` | rot 6 raw x |
+| ---: | --- | ---: | --- | --- | ---: |
+| 0 | `(4,0)` | 0 | `(12,74)` | `(12/22, 0/74)` | -4 |
+| 1 | `(10,0)` | 10 | `(17,73)` | `(17/28, 1/74)` | -10 |
+| 2 | `(8,0)` | 18 | `(25,73)` | `(25/45, 3/76)` | -8 |
+| 3 | `(4,0)` | 22 | `(28,72)` | `(28/44, 4/76)` | -4 |
+| 4 | `(6,0)` | 28 | `(25,73)` | `(25/35, 4/77)` | -6 |
+| 5 | `(4,0)` | 32 | `(15,74)` | `(15/22, 4/78)` | -4 |
+| 6 | `(8,0)` | 40 | `(17,73)` | `(17/29, 4/77)` | -8 |
+| 7 | `(8,0)` | 48 | `(25,73)` | `(25/44, 4/77)` | -8 |
+| 8 | `(4,0)` | 52 | `(29,72)` | `(29/45, 4/76)` | -4 |
+| 9 | `(4,0)` | 56 | `(22,73)` | `(22/34, 1/74)` | -4 |
+
+Rotation 0 carries y deltas `-2,-5,-4,-2,-3,-2,-4,-4,-2,-2`; rotation 6 carries the mirrored x deltas above. The old
+extra cumulative column exposes the 56-pixel lurch layered over one Unity route. Correct rendered placement is now
+`interpolated root + stable visual-child offset + source hotspot registration`; no ART delta is added twice.
+
+### Follow-up validation
+
+- M13A focused: **10/10**
+- directly affected regressions: **79/79** (`M5A` 16, `M8E` 8, `M2AInteraction` 16,
+  `PlayerNavigation` 21, `M12CFullGameUi` 18)
+- complete EditMode suite, run once: **1058 passed / 0 failed / 0 skipped / 0 inconclusive**
+- Unity 6000.0.71f1 compilation: clean
+- fresh production New Game: the authentic crash sector loaded; audited casualties were fallen while Virgil and
+  living controls remained standing; several long representative routes remained smooth through frame, path-node,
+  and tile transitions and ended in a clean WALK-to-STAND transition; route destinations/navigation were unchanged
+- source-shaped production dialogue execution: exact retail `wa0` and `mm1,mm2` completed against authoritative
+  NPC/campaign state without an unsupported diagnostic
+- final cleared Unity Console: **0 logs / 0 warnings / 0 errors**
+- `git diff --check`: clean
+
 ## Deliberate limits
 
 This pass does not redesign the HUD, add new campaign content, broaden unsupported dialogue opcodes beyond reached
