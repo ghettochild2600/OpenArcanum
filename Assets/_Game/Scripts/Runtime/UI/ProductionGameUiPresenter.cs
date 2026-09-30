@@ -301,6 +301,9 @@ namespace Arcanum.Runtime.UI
             if (GUILayout.Button("NEW GAME", GUILayout.Height(48f))) Controller.BeginNewGame();
             if (GUILayout.Button("LOAD GAME", GUILayout.Height(48f)))
                 Controller.OpenSaveLoad(SaveLoadPanelMode.Load);
+#if !UNITY_EDITOR
+            if (GUILayout.Button("QUIT", GUILayout.Height(48f))) Application.Quit();
+#endif
             GUILayout.FlexibleSpace();
         }
 

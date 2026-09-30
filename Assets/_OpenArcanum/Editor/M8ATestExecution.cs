@@ -12,6 +12,18 @@ internal sealed class M8ATestExecution : ScriptableObject, ICallbacks
     private string _label;
     private bool _active;
 
+    [MenuItem("OpenArcanum/Player Startup/Run Focused EditMode Tests", false, 1)]
+    private static void RunPlayerStartupFocused()
+        => Run(Category("PlayerStartup"), "player startup focused EditMode");
+
+    [MenuItem("OpenArcanum/Player Startup/Run M12C UI Regression", false, 2)]
+    private static void RunPlayerStartupM12C()
+        => Run(Category("M12CFullGameUi"), "player startup M12C UI regression");
+
+    [MenuItem("OpenArcanum/Player Startup/Run Complete EditMode Tests", false, 3)]
+    private static void RunPlayerStartupAll()
+        => Run(new Filter { testMode = TestMode.EditMode }, "player startup complete EditMode");
+
     [MenuItem("OpenArcanum/M12D/Run Focused EditMode Tests #&a", false, 1)]
     private static void RunM12DFocused()
         => Run(Category("M12DAudio"), "M12D focused EditMode");

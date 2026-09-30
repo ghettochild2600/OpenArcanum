@@ -45,6 +45,15 @@ namespace Arcanum.World.Demo
         [SerializeField]
         private Color Background = new Color(0.16f, 0.17f, 0.20f, 1f);
 
+        [Header("Startup")]
+        [Tooltip("Select the configured sector when no session authority has selected one. Disable for the production main menu.")]
+        [SerializeField]
+        private bool LoadConfiguredSectorOnStart = true;
+
+        [Tooltip("Expose the development-only runtime sector browser.")]
+        [SerializeField]
+        private bool ShowSectorBrowser = true;
+
         private DatVirtualFileSystem _vfs;
         private TileMapRenderer _tileMap;
         private Camera _cam;
@@ -82,8 +91,11 @@ namespace Arcanum.World.Demo
             if (_dataReady)
             {
                 RefreshSectorList();
-                if (_selectionAuthority == null) PresentSector(SectorPath);
-                else if (!_selectionAuthority.HasSelectedSector) _selectionAuthority.SelectSector(SectorPath);
+                if (LoadConfiguredSectorOnStart)
+                {
+                    if (_selectionAuthority == null) PresentSector(SectorPath);
+                    else if (!_selectionAuthority.HasSelectedSector) _selectionAuthority.SelectSector(SectorPath);
+                }
             }
             // In a browser with no data yet, OnGUI shows the upload gate instead of a black screen.
         }
@@ -297,7 +309,7 @@ namespace Arcanum.World.Demo
             _rich ??= new GUIStyle(GUI.skin.label) { richText = true, wordWrap = true };
 
             if (!_dataReady) { DrawUploadGate(); return; }
-            DrawSectorBrowser();
+            if (ShowSectorBrowser) DrawSectorBrowser();
         }
 
         private void DrawUploadGate()
