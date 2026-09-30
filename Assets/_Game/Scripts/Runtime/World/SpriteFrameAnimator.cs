@@ -74,11 +74,13 @@ namespace Arcanum.Runtime.World
 
         /// <summary>Freeze on a single sprite with no animation — a static corpse pose (engine
         /// <c>critter_kill</c>'s "set FALL_DOWN last frame"). Clears the clip so <see cref="Update"/> doesn't loop.</summary>
-        public void ShowStatic(Sprite sprite)
+        public void ShowStatic(Sprite sprite, int frameIndex = 0)
         {
             if (_sr == null) _sr = GetComponent<SpriteRenderer>();
             _once = false;
             _frames = null;
+            _frame = Mathf.Max(0, frameIndex);
+            _accum = 0f;
             if (_sr != null && sprite != null) _sr.sprite = sprite;
         }
 

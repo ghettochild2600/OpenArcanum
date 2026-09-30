@@ -12,6 +12,28 @@ internal sealed class M8ATestExecution : ScriptableObject, ICallbacks
     private string _label;
     private bool _active;
 
+    [MenuItem("OpenArcanum/M13A/Run Focused EditMode Tests #&q", false, 1)]
+    private static void RunM13AFocused()
+        => Run(Category("M13AOpeningCompatibility"), "M13A focused EditMode");
+
+    [MenuItem("OpenArcanum/M13A/Run Targeted Regression Tests #&w", false, 2)]
+    private static void RunM13ATargeted()
+    {
+        RunMany(
+            new[]
+            {
+                Category("M5A"), Category("M8EDeathConsequences"),
+                Category("M2AInteraction"), Category("PlayerNavigation"),
+                Category("M12CFullGameUi"),
+            },
+            new[]
+            {
+                "M5A dialogue and quest", "M8E death consequences and corpse loot",
+                "M2A interaction kernel", "player navigation",
+                "M12C full-game UI",
+            });
+    }
+
     [MenuItem("OpenArcanum/Player Startup/Run Focused EditMode Tests", false, 1)]
     private static void RunPlayerStartupFocused()
         => Run(Category("PlayerStartup"), "player startup focused EditMode");

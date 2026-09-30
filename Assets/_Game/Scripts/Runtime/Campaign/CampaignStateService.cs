@@ -86,6 +86,7 @@ namespace Arcanum.Runtime.Campaign
         private readonly QuestTimestamp[] _pcQuestTimestamps = new QuestTimestamp[QuestCount];
         private readonly Dictionary<ScriptAttachmentKey, ScriptAttachmentState> _attachments = new();
         private readonly HashSet<AreaId> _knownAreas = new();
+        private readonly HashSet<int> _knownRumors = new();
         private AreaList _areaSource;
         private int _storyState;
         private ulong _questClock;
@@ -183,6 +184,18 @@ namespace Arcanum.Runtime.Campaign
         public void SetStoryState(int value)
         {
             if (value > _storyState) _storyState = value;
+        }
+
+        public bool IsRumorKnown(int id)
+        {
+            if (id <= 0) throw new ArgumentOutOfRangeException(nameof(id));
+            return _knownRumors.Contains(id);
+        }
+
+        public void SetRumorKnown(int id)
+        {
+            if (id <= 0) throw new ArgumentOutOfRangeException(nameof(id));
+            _knownRumors.Add(id);
         }
 
         public int GetGlobalQuestState(int quest)
@@ -429,6 +442,7 @@ namespace Arcanum.Runtime.Campaign
             private readonly QuestTimestamp[] _pcQuestTimestamps;
             private readonly Dictionary<ScriptAttachmentKey, ScriptAttachmentState> _attachments;
             private readonly HashSet<AreaId> _knownAreas;
+            private readonly HashSet<int> _knownRumors;
             private readonly int _storyState;
             private readonly ulong _questClock;
 
@@ -443,6 +457,7 @@ namespace Arcanum.Runtime.Campaign
                 _pcQuestTimestamps = (QuestTimestamp[])state._pcQuestTimestamps.Clone();
                 _attachments = new Dictionary<ScriptAttachmentKey, ScriptAttachmentState>(state._attachments);
                 _knownAreas = new HashSet<AreaId>(state._knownAreas);
+                _knownRumors = new HashSet<int>(state._knownRumors);
                 _storyState = state._storyState;
                 _questClock = state._questClock;
             }
@@ -460,6 +475,8 @@ namespace Arcanum.Runtime.Campaign
                 foreach (var pair in _attachments) state._attachments.Add(pair.Key, pair.Value);
                 state._knownAreas.Clear();
                 foreach (AreaId id in _knownAreas) state._knownAreas.Add(id);
+                state._knownRumors.Clear();
+                foreach (int id in _knownRumors) state._knownRumors.Add(id);
                 state._storyState = _storyState;
                 state._questClock = _questClock;
             }

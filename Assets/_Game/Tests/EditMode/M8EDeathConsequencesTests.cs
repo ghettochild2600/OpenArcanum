@@ -1,10 +1,12 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Arcanum.Formats.Database;
 using Arcanum.Formats.Objects;
 using Arcanum.Runtime;
 using Arcanum.Runtime.Character;
 using Arcanum.Runtime.Combat;
+using Arcanum.Runtime.UI;
 using Arcanum.Runtime.World;
 using Arcanum.World;
 using NUnit.Framework;
@@ -181,6 +183,29 @@ namespace Arcanum.Formats.Tests
             Assert.That(swordState.Placement, Is.EqualTo(ObjectPlacement.ContainedBy(_pc.Identity)));
             Assert.That(_session.States.ContainsKey(_gold), Is.True);
             Assert.That(_session.States.ContainsKey(_sword), Is.True);
+        }
+
+        [Test, Category("M13AOpeningCompatibility")]
+        public void CorpseInteractionAndUiDelegateLootToM8EWithoutCloning()
+        {
+            KillWithPcAttack();
+            Assert.That(_session.Combat.EndCombat(_pc.Identity).Succeeded, Is.True);
+            Assert.That(_session.Combat.IsActive, Is.False);
+            var command = new WorldInteractionCommand(_pc.Identity, _skeleton,
+                WorldInteractionCommandType.Loot);
+            Assert.That(_session.ExecuteInteraction(command).IsSuccess, Is.True);
+
+            var ui = new GameUiController(_session);
+            Assert.That(ui.BeginCorpseLoot(_skeleton), Is.True, ui.Feedback);
+            Assert.That(ui.Screen, Is.EqualTo(GameUiScreen.Corpse));
+            Assert.That(ui.ProjectCorpseInventory().Select(item => item.Identity),
+                Is.EquivalentTo(new[] { _gold, _sword }));
+            Assert.That(ui.LootCorpseItem(_gold), Is.True, ui.Feedback);
+            Assert.That(_session.States[_gold].Identity, Is.EqualTo(_gold));
+            Assert.That(_session.States[_gold].Placement,
+                Is.EqualTo(ObjectPlacement.ContainedBy(_pc.Identity)));
+            Assert.That(ui.ProjectCorpseInventory().Select(item => item.Identity),
+                Is.EqualTo(new[] { _sword }));
         }
 
         [Test]

@@ -130,6 +130,20 @@ namespace Arcanum.Runtime.World
                 InteractionRangeRules.TalkApproachRange);
         }
 
+        public WorldInteractionResult TryLoot(ArcanumObjectId corpse)
+        {
+            WorldInteractionCommand command = BeginCommand(corpse, WorldInteractionCommandType.Loot);
+            if (!TryResolveActor(command, out WorldMapSessionCoordinator session))
+                return Complete(command, WorldInteractionResultCode.ActorNotFound);
+            if (!session.TryGetObjectState(corpse, out PersistentObjectState corpseState)
+                || !session.TryGetLoadedObject(corpse, out WorldObject runtime))
+                return Complete(command, WorldInteractionResultCode.TargetNotFound);
+            if (corpseState.Type != ObjectType.Npc || runtime.Type != ObjectType.Npc
+                || !session.Vitality.TryGet(corpse, out _) || !session.Vitality.IsDead(corpse))
+                return Complete(command, WorldInteractionResultCode.InvalidTarget);
+            return TryApproachOrExecute(command, corpseState, InteractionRangeRules.CorpseLootRange);
+        }
+
         private WorldInteractionResult TryApproachOrExecute(WorldInteractionCommand command,
             PersistentObjectState targetState, int range)
             => TryApproachOrExecute(command, targetState, range, range);

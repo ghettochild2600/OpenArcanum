@@ -4,7 +4,7 @@ using UnityEngine;
 
 namespace Arcanum.Runtime.World
 {
-    public enum WorldInteractionCommandType { Use, PickUp, Drop, Transfer, Talk }
+    public enum WorldInteractionCommandType { Use, PickUp, Drop, Transfer, Talk, Loot }
 
     public enum WorldInteractionResultCode
     {
@@ -120,11 +120,15 @@ namespace Arcanum.Runtime.World
         // Out-of-range AG_TALK schedules AG_MOVE_NEAR_OBJ with range 1.
         public const int TalkApproachRange = 1;
 
+        // Corpse inventory is opened from an adjacent interaction position.
+        public const int CorpseLootRange = 1;
+
         public static int For(WorldInteractionCommandType type)
             => type switch
             {
                 WorldInteractionCommandType.PickUp => ItemPickupRange,
                 WorldInteractionCommandType.Talk => TalkStartRange,
+                WorldInteractionCommandType.Loot => CorpseLootRange,
                 _ => PortalUseRange,
             };
 

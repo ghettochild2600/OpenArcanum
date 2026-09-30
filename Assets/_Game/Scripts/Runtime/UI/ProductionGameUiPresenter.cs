@@ -36,6 +36,7 @@ namespace Arcanum.Runtime.UI
         private Vector2 _scroll;
         private Rect _panelRect;
         private bool _showHud = true;
+        private bool _interactionSubscribed;
 
         private GameUiController _controller;
         public GameUiController Controller
@@ -60,7 +61,7 @@ namespace Arcanum.Runtime.UI
             _loader = GetComponent<WorldObjectSectorLoader>();
             _inputGate = GetComponent<PlayerInputGate>();
             _navigation = GetComponent<PlayerNavigationController>();
-            _interaction = GetComponent<PlayerInteractionController>();
+            EnsureInteractionSubscription();
             _legacyCombat = GetComponent<ProductionCombatPresenter>();
             if (_controller == null)
                 _controller = new GameUiController(_session, _session.SaveSlots, _legacyCombat?.Controller);
@@ -73,8 +74,26 @@ namespace Arcanum.Runtime.UI
             _inputGate?.SetBlocked(false);
         }
 
+        private void OnDestroy()
+        {
+            if (_interaction != null && _interactionSubscribed)
+                _interaction.Resolved -= OnInteractionResolved;
+            _interactionSubscribed = false;
+        }
+
+        private void OnInteractionResolved(WorldInteractionResult result)
+        {
+            if (!result.IsSuccess || result.Command.Type != WorldInteractionCommandType.Loot) return;
+            if (Controller.BeginCorpseLoot(result.Command.Target))
+            {
+                _scroll = Vector2.zero;
+                SyncInputGate();
+            }
+        }
+
         private void Update()
         {
+            EnsureInteractionSubscription();
             EnsureController();
             Controller.Refresh();
             SyncInputGate();
@@ -112,6 +131,19 @@ namespace Arcanum.Runtime.UI
 
             HandleWorldPointer();
             SyncInputGate();
+        }
+
+        internal void EnsureInteractionSubscription()
+        {
+            PlayerInteractionController next = GetComponent<PlayerInteractionController>();
+            if (next == _interaction && (_interactionSubscribed || next == null)) return;
+            if (_interaction != null && _interactionSubscribed)
+                _interaction.Resolved -= OnInteractionResolved;
+            _interaction = next;
+            _interactionSubscribed = false;
+            if (_interaction == null) return;
+            _interaction.Resolved += OnInteractionResolved;
+            _interactionSubscribed = true;
         }
 
         private void HandleToggle(KeyCode key, GameUiScreen screen)
@@ -286,6 +318,7 @@ namespace Arcanum.Runtime.UI
                 case GameUiScreen.Merchant: DrawMerchant(); break;
                 case GameUiScreen.SaveLoad: DrawSaveLoad(); break;
                 case GameUiScreen.Dialogue: DrawDialogue(); break;
+                case GameUiScreen.Corpse: DrawCorpse(); break;
             }
             GUILayout.EndScrollView();
             if (!string.IsNullOrEmpty(Controller.Feedback)) GUILayout.Label(Controller.Feedback, GUI.skin.box);
@@ -474,6 +507,23 @@ namespace Arcanum.Runtime.UI
                     if (GUILayout.Button("UNEQUIP", GUILayout.Width(82f))) Controller.Unequip(item.WornLocation.Value);
                 }
                 else if (GUILayout.Button("EQUIP", GUILayout.Width(82f))) Controller.Equip(item.Identity);
+                GUILayout.EndHorizontal();
+            }
+        }
+
+        private void DrawCorpse()
+        {
+            IReadOnlyList<GameUiItemView> items = Controller.ProjectCorpseInventory();
+            if (items.Count == 0)
+            {
+                GUILayout.Label("This corpse carries nothing.");
+                return;
+            }
+            foreach (GameUiItemView item in items)
+            {
+                GUILayout.BeginHorizontal(GUI.skin.box);
+                GUILayout.Label($"{item.Name} x{item.Quantity}  [{item.Weight} st]", GUILayout.ExpandWidth(true));
+                if (GUILayout.Button("LOOT", GUILayout.Width(82f))) Controller.LootCorpseItem(item.Identity);
                 GUILayout.EndHorizontal();
             }
         }
@@ -692,8 +742,13 @@ namespace Arcanum.Runtime.UI
 
         private void DrawCursorLabel()
         {
-            if (Controller.CursorMode == GameUiCursorMode.Default) return;
             Vector3 mouse = Event.current.mousePosition;
+            if (Controller.CursorMode == GameUiCursorMode.Default)
+            {
+                if (!TryGetCorpseHoverLabel(out string corpseLabel)) return;
+                GUI.Box(new Rect(mouse.x + 16f, mouse.y + 16f, 82f, 24f), corpseLabel);
+                return;
+            }
             string label = Controller.CursorMode switch
             {
                 GameUiCursorMode.SpellTarget => "SPELL",
@@ -706,6 +761,23 @@ namespace Arcanum.Runtime.UI
                 _ => Controller.CursorMode.ToString().ToUpperInvariant(),
             };
             GUI.Box(new Rect(mouse.x + 16f, mouse.y + 16f, 82f, 24f), label);
+        }
+
+        private bool TryGetCorpseHoverLabel(out string label)
+        {
+            label = null;
+            if (Controller.IsModalOpen || _loader == null || PointerOverInterface(Input.mousePosition)) return false;
+            Camera camera = Camera.main;
+            if (camera == null) return false;
+            Vector3 screen = Input.mousePosition;
+            screen.z = Mathf.Abs(camera.transform.position.z - _loader.transform.position.z);
+            Vector3 world = camera.ScreenToWorldPoint(screen);
+            if (!WorldObjectTargetSelector.TrySelectInteractionTarget(_loader.SpriteOwners, world,
+                    out ArcanumObjectId target, out ObjectType type)
+                || type != ObjectType.Npc || !_session.Vitality.TryGet(target, out _)
+                || !_session.Vitality.IsDead(target)) return false;
+            label = "LOOT";
+            return true;
         }
 
         private void SyncInputGate()
@@ -752,6 +824,7 @@ namespace Arcanum.Runtime.UI
             GameUiScreen.Merchant => "BARTER",
             GameUiScreen.SaveLoad => "SAVE / LOAD",
             GameUiScreen.Dialogue => "DIALOGUE",
+            GameUiScreen.Corpse => "CORPSE",
             _ => "OPENARCANUM",
         };
     }

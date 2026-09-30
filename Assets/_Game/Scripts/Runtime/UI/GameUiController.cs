@@ -21,7 +21,7 @@ namespace Arcanum.Runtime.UI
     public enum GameUiScreen
     {
         None, MainMenu, CharacterCreation, Inventory, Character, Magic, Technology, Crafting,
-        Journal, Map, Party, Merchant, SaveLoad, Dialogue,
+        Journal, Map, Party, Merchant, SaveLoad, Dialogue, Corpse,
     }
 
     public enum GameUiCursorMode
@@ -146,6 +146,7 @@ namespace Arcanum.Runtime.UI
     {
         private readonly WorldMapSessionCoordinator _session;
         private ArcanumObjectId _merchant;
+        private ArcanumObjectId _corpse;
         private int _pendingSpell = -1;
         private ArcanumObjectId _pendingTechnologyItem;
         private IGameAudioPresentation _audio;
@@ -154,6 +155,7 @@ namespace Arcanum.Runtime.UI
         public GameUiCursorMode CursorMode { get; private set; } = GameUiCursorMode.Default;
         public ArcanumObjectId SelectedItem { get; private set; }
         public ArcanumObjectId SelectedWorldTarget { get; private set; }
+        public ArcanumObjectId Corpse => _corpse;
         public string Feedback { get; private set; } = string.Empty;
         public CombatUiController Combat { get; }
         public SaveLoadPanelController SaveLoad { get; }
@@ -212,6 +214,7 @@ namespace Arcanum.Runtime.UI
             CursorMode = GameUiCursorMode.Default;
             SelectedItem = default;
             SelectedWorldTarget = default;
+            if (screen != GameUiScreen.Corpse) _corpse = default;
             Feedback = string.Empty;
             if (screen == GameUiScreen.SaveLoad) SaveLoad.Open(SaveLoadPanelMode.Save);
             _audio?.PresentInterface(screen is GameUiScreen.Journal or GameUiScreen.Map
@@ -333,6 +336,7 @@ namespace Arcanum.Runtime.UI
             SelectedItem = default;
             SelectedWorldTarget = default;
             _merchant = default;
+            _corpse = default;
             _pendingSpell = -1;
             _pendingTechnologyItem = default;
             Feedback = string.Empty;
@@ -343,9 +347,13 @@ namespace Arcanum.Runtime.UI
         public void RebuildPresentation()
         {
             GameUiScreen previous = Screen;
+            ArcanumObjectId previousCorpse = _corpse;
             Close();
             Combat.ResetTransient();
-            if (previous != GameUiScreen.None && HasPlayer) Open(previous);
+            if (!HasPlayer || previous == GameUiScreen.None) return;
+            if (previous == GameUiScreen.Corpse && !previousCorpse.IsNull)
+                BeginCorpseLoot(previousCorpse);
+            else Open(previous);
         }
 
         public GameUiHudView ProjectHud()
@@ -387,6 +395,30 @@ namespace Arcanum.Runtime.UI
                 .OrderBy(value => value.Placement.Kind == ObjectPlacementKind.Equipped ? 0 : 1)
                 .ThenBy(value => value.InventoryLocation).ThenBy(value => value.Identity.Key, StringComparer.Ordinal)
                 .Select(ProjectItem).ToArray();
+        }
+
+        public bool BeginCorpseLoot(ArcanumObjectId corpse)
+        {
+            if (!_session.TryGetObjectState(corpse, out PersistentObjectState state)
+                || state.Type != ObjectType.Npc || !_session.TryGetLoadedObject(corpse, out _)
+                || !_session.Vitality.TryGet(corpse, out _) || !_session.Vitality.IsDead(corpse))
+                return Reject("That corpse is unavailable.");
+            if (!Open(GameUiScreen.Corpse)) return false;
+            _corpse = corpse;
+            return true;
+        }
+
+        public IReadOnlyList<GameUiItemView> ProjectCorpseInventory()
+            => _corpse.IsNull ? Array.Empty<GameUiItemView>() : ProjectInventory(_corpse);
+
+        public bool LootCorpseItem(ArcanumObjectId item)
+        {
+            if (_corpse.IsNull) return Reject("No corpse is open.");
+            string name = _session.TryGetObjectState(item, out PersistentObjectState state)
+                ? ItemName(state) : "item";
+            CorpseLootResult result = _session.DeathConsequences.LootItem(_corpse, Player, item);
+            return Complete(result.Succeeded,
+                result.Succeeded ? $"Looted {name}." : result.Failure.ToString());
         }
 
         public bool SelectItem(ArcanumObjectId item)

@@ -64,6 +64,9 @@ namespace Arcanum.Runtime.World
                 {
                     ObjectType.Portal => _interaction.TryUse(target),
                     ObjectType.Scenery => _interaction.TryUse(target),
+                    ObjectType.Npc when _loader.Session.Vitality.TryGet(target, out _)
+                                             && _loader.Session.Vitality.IsDead(target)
+                        => _interaction.TryLoot(target),
                     ObjectType.Npc => _interaction.TryTalk(target),
                     _ => _interaction.TryPickUp(target),
                 };

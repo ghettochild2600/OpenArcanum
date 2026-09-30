@@ -105,6 +105,7 @@ namespace Arcanum.Runtime.World
                 InitialFrameIndex = Mathf.Clamp(FrameOf(_worldObject.ArtId), 0, sourceFrames.Length - 1);
                 FramesPerSecond = art.Fps;
                 rebuilt = new Sprite[sourceFrames.Length];
+                Vector2Int[] cumulativeOffsets = CumulativeFrameOffsets(sourceFrames, MirrorX);
                 for (int frameIndex = 0; frameIndex < sourceFrames.Length; frameIndex++)
                 {
                     ArtFrame frame = sourceFrames[frameIndex];
@@ -113,7 +114,9 @@ namespace Arcanum.Runtime.World
                         artType,
                         SourceRotation,
                         UsesFacingMirror(artType) && RequestedRotation > 0 && RequestedRotation < 4,
-                        idFlip);
+                        idFlip,
+                        cumulativeOffsets[frameIndex].x,
+                        cumulativeOffsets[frameIndex].y);
 
                     rebuilt[frameIndex] = ArtTextureFactory.CreateSprite(
                         frame,
@@ -129,7 +132,13 @@ namespace Arcanum.Runtime.World
                 Sprite[] previous = _ownedSprites;
                 _ownedSprites = rebuilt;
                 adopted = true;
-                if (_animate && rebuilt.Length > 1)
+                if (_worldObject.IsDead)
+                {
+                    int corpseFrame = rebuilt.Length - 1;
+                    _animator ??= GetComponent<SpriteFrameAnimator>() ?? gameObject.AddComponent<SpriteFrameAnimator>();
+                    _animator.ShowStatic(rebuilt[corpseFrame], corpseFrame);
+                }
+                else if (_animate && rebuilt.Length > 1)
                 {
                     _animator ??= GetComponent<SpriteFrameAnimator>() ?? gameObject.AddComponent<SpriteFrameAnimator>();
                     if (previous == null) _animator.Init(rebuilt, art.Fps, InitialFrameIndex);
@@ -137,7 +146,7 @@ namespace Arcanum.Runtime.World
                 }
                 else
                 {
-                    if (_animator != null) _animator.ShowStatic(rebuilt[InitialFrameIndex]);
+                    if (_animator != null) _animator.ShowStatic(rebuilt[InitialFrameIndex], InitialFrameIndex);
                     else _renderer.sprite = rebuilt[InitialFrameIndex];
                 }
 
@@ -165,7 +174,7 @@ namespace Arcanum.Runtime.World
                 return false;
 
             InitialFrameIndex = frameIndex;
-            if (_animator != null) _animator.ShowStatic(_ownedSprites[frameIndex]);
+            if (_animator != null) _animator.ShowStatic(_ownedSprites[frameIndex], frameIndex);
             else if (_renderer != null) _renderer.sprite = _ownedSprites[frameIndex];
             return true;
         }
@@ -222,14 +231,29 @@ namespace Arcanum.Runtime.World
         private static bool UsesArtIdFlip(int artType)
             => artType == ArtId.TypeWall || artType == ArtId.TypePortal || artType == ArtId.TypeRoof;
 
+        internal static Vector2Int[] CumulativeFrameOffsets(ArtFrame[] frames, bool mirrorX)
+        {
+            if (frames == null || frames.Length == 0) return Array.Empty<Vector2Int>();
+            var result = new Vector2Int[frames.Length];
+            for (int frameIndex = 1; frameIndex < frames.Length; frameIndex++)
+            {
+                ArtFrame frame = frames[frameIndex];
+                result[frameIndex] = result[frameIndex - 1]
+                    + new Vector2Int(mirrorX ? -frame.OffsetX : frame.OffsetX, frame.OffsetY);
+            }
+            return result;
+        }
+
         // Exact tig_art_frame_data hotspot transforms. Supplying this as a pivot keeps
         // mirror semantics independent of SpriteRenderer.flipX and preserves the anchor.
-        private static Vector2 ExactPivot(
+        internal static Vector2 ExactPivot(
             ArtFrame frame,
             int artType,
             int sourceRotation,
             bool facingMirror,
-            bool idFlip)
+            bool idFlip,
+            int cumulativeOffsetX = 0,
+            int cumulativeOffsetY = 0)
         {
             int hotX = frame.HotX;
             int hotY = frame.HotY;
@@ -249,6 +273,12 @@ namespace Arcanum.Runtime.World
                     ? 0
                     : frame.Width - hotX - 2;
             }
+
+            // Arcanum accumulates each newly displayed frame's authored offset into the
+            // object's presentation offset. Baking that cumulative delta into the pivot
+            // preserves the original registration without moving the gameplay transform.
+            hotX -= cumulativeOffsetX;
+            hotY -= cumulativeOffsetY;
 
             return new Vector2(
                 frame.Width > 0 ? hotX / (float)frame.Width : 0.5f,

@@ -97,7 +97,7 @@ namespace Arcanum.Runtime.Dialogue
         private static readonly HashSet<string> M5AAdmittedTests = new(StringComparer.OrdinalIgnoreCase)
             { "gf", "qu", "ra", "fo", "re", "rp" };
         private static readonly HashSet<string> M5AAdmittedEffects = new(StringComparer.OrdinalIgnoreCase)
-            { "lf", "qu", "fl", "jo", "lv", "re", "rp", "co" };
+            { "gf", "lf", "qu", "fl", "in", "ru", "jo", "lv", "re", "rp", "co" };
         private static readonly HashSet<string> M5BAdmittedTests = new(StringComparer.OrdinalIgnoreCase)
             { "gf", "gv", "lf", "qu", "qb", "ra", "in", "ni", "re", "rp", "ch", "ha" };
         private static readonly HashSet<string> M5BAdmittedEffects = new(StringComparer.OrdinalIgnoreCase)
@@ -191,11 +191,6 @@ namespace Arcanum.Runtime.Dialogue
             ScriptFile script = _resolveScript(DialogueNumber);
             if (script == null)
                 return FailStart(DialogueStartStatus.MissingScript, $"SAP_DIALOG script {DialogueNumber} is missing.");
-            if (!ProductionDialogueScriptPolicy.Supports(script, out string unsupported))
-            {
-                Report(DialogueDiagnosticKind.UnsupportedScriptOpcode, 0, unsupported);
-                return FailStart(DialogueStartStatus.UnsupportedScript, unsupported);
-            }
             _dialogue = _resolveDialogue(DialogueNumber);
             if (_dialogue == null)
                 return FailStart(DialogueStartStatus.MissingDialogue, $"Dialogue {DialogueNumber} is missing.");
@@ -219,6 +214,13 @@ namespace Arcanum.Runtime.Dialogue
             {
                 snapshot.Restore(_world, _campaign);
                 string detail = _startFailure ?? result.Detail ?? $"SAP_DIALOG ended with {result.Status}.";
+                if (result.Status is ScriptExecutionStatus.UnsupportedOpcode or ScriptExecutionStatus.EmptyScript
+                    || detail.StartsWith("Script host operation is outside this production slice:",
+                        StringComparison.Ordinal))
+                {
+                    Report(DialogueDiagnosticKind.UnsupportedScriptOpcode, CurrentLine, detail);
+                    return FailStart(DialogueStartStatus.UnsupportedScript, detail);
+                }
                 Report(DialogueDiagnosticKind.ExecutionFailure, CurrentLine, detail);
                 return FailStart(DialogueStartStatus.ExecutionFailed, detail);
             }
@@ -695,45 +697,6 @@ namespace Arcanum.Runtime.Dialogue
             Diagnostic?.Invoke(diagnostic);
         }
 
-        private static class ProductionDialogueScriptPolicy
-        {
-            public static bool Supports(ScriptFile file, out string failure)
-            {
-                if (file == null || file.Entries.Count == 0)
-                {
-                    failure = "empty SAP_DIALOG script";
-                    return false;
-                }
-                for (int line = 0; line < file.Entries.Count; line++)
-                {
-                    ScriptCondition entry = file.Entries[line];
-                    Sct condition = (Sct)entry.Type;
-                    if (condition is not Sct.True and not Sct.LocalFlag
-                        and not Sct.ObjFollowingPc and not Sct.ObjJilted)
-                    {
-                        failure = $"condition {condition} at script line {line}";
-                        return false;
-                    }
-                    if (!Supports(entry.Action) || !Supports(entry.Els))
-                    {
-                        ScriptAction action = !Supports(entry.Action) ? entry.Action : entry.Els;
-                        failure = $"action {(action == null ? "<null>" : ((Sat)action.Type).ToString())} at script line {line}";
-                        return false;
-                    }
-                }
-                failure = null;
-                return true;
-            }
-
-            private static bool Supports(ScriptAction action)
-            {
-                if (action == null) return false;
-                Sat type = (Sat)action.Type;
-                return type is Sat.DoNothing or Sat.ReturnAndSkipDefault or Sat.ReturnAndRunDefault
-                    or Sat.Goto or Sat.Dialog;
-            }
-        }
-
         private sealed class DialogueScriptHost : ScriptHostAdapter
         {
             private readonly ProductionDialogueSession _dialogue;
@@ -856,8 +819,8 @@ namespace Arcanum.Runtime.Dialogue
         public void SetAlignment(int value) => _world.DerivedStats.SetAlignment(_pc, value);
         public int StoryState => _campaign.StoryState;
         public void SetStoryState(int value) => throw Outside(nameof(SetStoryState));
-        public bool RumorKnown(int id) => throw Outside(nameof(RumorKnown));
-        public void SetRumorKnown(int id) => throw Outside(nameof(SetRumorKnown));
+        public bool RumorKnown(int id) => _campaign.IsRumorKnown(id);
+        public void SetRumorKnown(int id) => _campaign.SetRumorKnown(id);
         public bool HasReputation(int id) => _world.Social.HasReputation(_pc, new ReputationId(id));
         public void AddReputation(int id) => _world.Social.AddReputation(_pc, new ReputationId(id));
         public void RemoveReputation(int id) => _world.Social.RemoveReputation(_pc, new ReputationId(id));
@@ -920,6 +883,9 @@ namespace Arcanum.Runtime.Dialogue
             {
                 switch (code.ToLowerInvariant())
                 {
+                    case "gf":
+                        _campaign.GetFlag(first);
+                        return true;
                     case "lf":
                         _campaign.GetLocalFlag(_npc, (int)Sap.Dialog, first);
                         return true;
@@ -956,6 +922,9 @@ namespace Arcanum.Runtime.Dialogue
                             _world.DerivedStats.Get(_pc);
                             _world.DerivedStats.Get(_npc);
                         }
+                        return true;
+                    case "ru":
+                        _campaign.IsRumorKnown(first);
                         return true;
                     case "mm":
                         if (first != 58)

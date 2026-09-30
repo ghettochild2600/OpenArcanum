@@ -1572,6 +1572,7 @@ namespace Arcanum.Runtime.World
                 WorldInteractionCommandType.Drop => ExecuteDrop(command),
                 WorldInteractionCommandType.Transfer => ExecuteOwnerTransfer(command),
                 WorldInteractionCommandType.Talk => ExecuteTalk(command),
+                WorldInteractionCommandType.Loot => ExecuteLoot(command),
                 _ => new WorldInteractionResult(command, WorldInteractionResultCode.Unsupported),
             };
         }
@@ -1666,6 +1667,23 @@ namespace Arcanum.Runtime.World
                 _ => WorldInteractionResultCode.DialogueFailed,
             };
             return new WorldInteractionResult(command, result, scriptNum: targetState.DialogNum);
+        }
+
+        private WorldInteractionResult ExecuteLoot(WorldInteractionCommand command)
+        {
+            if (!_states.TryGetValue(command.Target, out PersistentObjectState corpse) || corpse.Off
+                || corpse.Type != ObjectType.Npc
+                || !TryGetLoadedObject(command.Target, out WorldObject runtime) || runtime.Type != ObjectType.Npc)
+                return new WorldInteractionResult(command, WorldInteractionResultCode.TargetNotFound);
+            if (!Vitality.TryGet(command.Target, out _) || !Vitality.IsDead(command.Target))
+                return new WorldInteractionResult(command, WorldInteractionResultCode.InvalidTarget);
+            if (!SectorCoordinate.TryParse(corpse.Placement.Sector, out SectorCoordinate sector)
+                || corpse.Placement.Sector != SelectedSector || PlayerState.Sector != SelectedSector)
+                return new WorldInteractionResult(command, WorldInteractionResultCode.TargetNotFound);
+            if (!InteractionRangeRules.IsWithin(PlayerState.MapPosition,
+                    sector.ToGlobal(corpse.Placement.TilePosition), InteractionRangeRules.CorpseLootRange))
+                return new WorldInteractionResult(command, WorldInteractionResultCode.OutOfRange);
+            return new WorldInteractionResult(command, WorldInteractionResultCode.Success);
         }
 
         private WorldInteractionResult ExecutePickUp(WorldInteractionCommand command)
