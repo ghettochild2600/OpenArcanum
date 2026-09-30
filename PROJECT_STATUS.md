@@ -55,6 +55,9 @@ player-facing manual save/load presentation, M7A bounded passive local map trans
   save/load strictly as projections and commands over M1-M12B authority. **DONE M12D — Audio:** one central
   presentation bridge now resolves retail WAV/MP3 resources and source sound/scheme/dialogue rules for UI, world,
   combat, magic, technology, voice, music, and ambience without owning gameplay or changing Save V1.
+  **DONE M13A opening crash-site compatibility pass:** authentic Virgil dialogue 1324, source-loaded corpse
+  presentation/interaction/loot, and source ART walk-frame registration are green through the production New Game
+  path. This is a bounded user-reported checkpoint pass, not an autonomous campaign playthrough.
 `WorldMapSessionCoordinator` owns typed `World`, `Contained(parent)`, and `Equipped(parent, wornLocation)` placement,
 atomic raw item transfers/equipment replacement/stack merge and split, deterministic session-created item identities,
 source-faithful pickup/drop/owner-transfer policy, and pre-mutation weight/grid-capacity guards independently of Unity
@@ -2362,8 +2365,34 @@ verify the final Windows-device-to-speaker acoustic path. Broader campaign-speci
 options/pause/ducking policy, intro/cinematic audio, and optional HD replacement audio remain later boundaries. See
 [`documentation_unity/m12d-audio-runtime-audit.md`](documentation_unity/m12d-audio-runtime-audit.md).
 
+## M13A Opening Crash-Site Compatibility Baseline (2026-09-29)
+
+The first user-discovered authentic New Game compatibility pass is complete. Dialogue 1324 no longer fails before
+entry because of its unreachable script-line-16 `FloatLine`: the eager whole-file policy scan is gone, while the
+strict VM still fails closed and rolls back if an unsupported opcode is actually reached. The reachable source path
+now has generic `gf`, `in`, and `ru` handling plus rollback-safe campaign rumor state; there is no Virgil special case.
+
+The three audited source corpses were already authoritatively dead through M4B's instance/prototype HP inputs. Their
+action-7 ART now freezes on the final frame instead of replaying as a living actor. Alpha-tested corpse selection keeps
+the retail ObjectID and routes a typed adjacent `Loot` interaction through the coordinator, M8E corpse inventory, and
+M3 transfer authority. The production HUD late-binds the interaction controller to cover actual component creation
+order. ART frame offsets now accumulate into exact pivots, including mirrored horizontal deltas, fixing the reported
+walk registration without changing navigation or movement timing. UI work was limited to the required LOOT hover and
+corpse panel; broad HUD polish remains deferred.
+
+Computer Use physical validation created a fresh authentic character, opened Virgil's first retail line and advanced
+one response, observed fallen/static source corpses, opened the adjacent B82 corpse's authentic two-item inventory,
+transferred one item exactly once into the PC inventory, and exercised representative multi-direction movement back
+to STAND. Focused M13A was **6/6**. Directly affected M5A, M8E, M2A, PlayerNavigation, and M12C regressions were
+**79/79**. Complete EditMode was **1058/1058**, with **0 failed, 0 skipped, and 0 inconclusive**. Unity compilation
+was clean; the final cleared Console was **0 logs, 0 warnings, and 0 errors**; and `git diff --check` was clean.
+
+See [`documentation_unity/m13a-campaign-compatibility-audit.md`](documentation_unity/m13a-campaign-compatibility-audit.md).
+
 ## Next Recommended Milestone
 
-M9A, M9B, M10A, M10B, M11A, M11B, M11C, M12B, M12C, and M12D are formally closed. Do not treat compatible spell,
+M9A, M9B, M10A, M10B, M11A, M11B, M11C, M12B, M12C, M12D, and the bounded M13A opening pass are formally closed.
+Do not treat compatible spell,
 technological-item, retail schematic, merchant, reputation, background, portrait, pregen, or campaign content as
-unfinished core runtime. M13 was not started by this closure.
+unfinished core runtime. Continue M13A only from concrete user-discovered campaign defects; do not start an autonomous
+campaign playthrough.
