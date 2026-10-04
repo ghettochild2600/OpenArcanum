@@ -188,7 +188,8 @@ namespace Arcanum.World.Demo
             _sectors.Sort(System.StringComparer.OrdinalIgnoreCase);
         }
 
-        // Tears down any previously rendered geometry and renders the current SectorPath, then frames the camera.
+        // Tears down the previous window and renders the source 3x3 precache neighborhood (map.c
+        // map_precache_sectors), centered on the session-selected sector.
         private bool RenderCurrentSector()
         {
             if (_tileMap == null) return false;
@@ -199,24 +200,48 @@ namespace Arcanum.World.Demo
                 return false;
             }
 
-            SectorTerrain terrain;
-            try { terrain = SectorReader.ReadTerrain(_vfs.ReadAllBytes(SectorPath)); }
-            catch (System.Exception ex) { Debug.LogError($"TileMapDemo: terrain read failed: {ex.Message}", this); return false; }
-
             ClearRendered();
             // Render at the world origin (the global tile offset only matters when stitching adjacent sectors),
             // so keep the host object's transform identity — the batched mesh positions its own quads.
             transform.SetPositionAndRotation(Vector3.zero, Quaternion.identity);
             transform.localScale = Vector3.one;
 
-            _tileMap.RenderSector(terrain, 0, 0, transform, DefaultSpriteMaterial(), sortingOrder: 0, batch: BatchTerrain,
-                placeTile: PlaceTile);
+            Material material = DefaultSpriteMaterial();
+            int rendered = 0;
+            Bounds? centerBounds = null;
+            foreach (SectorStreamingWindow.Entry entry in SectorStreamingWindow.Around(SectorPath))
+            {
+                if (!_vfs.Exists(entry.Path)) continue;
+                SectorTerrain terrain;
+                try { terrain = SectorReader.ReadTerrain(_vfs.ReadAllBytes(entry.Path)); }
+                catch (System.Exception ex)
+                {
+                    Debug.LogError($"TileMapDemo: terrain read failed for '{entry.Path}': {ex.Message}", this);
+                    continue;
+                }
+                var root = new GameObject($"Sector_{entry.DeltaX}_{entry.DeltaY}");
+                root.transform.SetParent(transform, false);
+                _tileMap.RenderSector(terrain, entry.DeltaX * SectorTerrain.Size,
+                    entry.DeltaY * SectorTerrain.Size, root.transform, material,
+                    sortingOrder: 0, batch: BatchTerrain, placeTile: PlaceTile);
+                rendered++;
+                if (entry.DeltaX == 0 && entry.DeltaY == 0)
+                {
+                    Renderer[] central = root.GetComponentsInChildren<Renderer>();
+                    if (central.Length > 0)
+                    {
+                        Bounds bounds = central[0].bounds;
+                        foreach (Renderer renderer in central) bounds.Encapsulate(renderer.bounds);
+                        centerBounds = bounds;
+                    }
+                }
+            }
 
-            Debug.Log($"TileMapDemo: rendered '{SectorPath}' ({SectorTerrain.Size}×{SectorTerrain.Size} tiles, " +
+            Debug.Log($"TileMapDemo: rendered source neighborhood around '{SectorPath}' ({rendered}/9 sectors, " +
                       $"{_tileMap.BlendMisses} cumulative blend miss(es)).", this);
             _presentedSector = Normalize(SectorPath);
-            ConfigureCamera();
-            return true;
+            ConfigureCamera(centerBounds);
+            return rendered > 0;
         }
 
         // Destroys previously rendered children (terrain mesh / per-tile sprites) before a reload.
@@ -248,7 +273,7 @@ namespace Arcanum.World.Demo
             return sr;
         }
 
-        private void ConfigureCamera()
+        private void ConfigureCamera(Bounds? selectedSectorBounds = null)
         {
             _cam = Camera.main;
             if (!_cam)
@@ -273,8 +298,9 @@ namespace Arcanum.World.Demo
                 return;
             }
 
-            Bounds b = renderers[0].bounds;
-            foreach (Renderer r in renderers) b.Encapsulate(r.bounds);
+            Bounds b = selectedSectorBounds ?? renderers[0].bounds;
+            if (!selectedSectorBounds.HasValue)
+                foreach (Renderer r in renderers) b.Encapsulate(r.bounds);
 
             _cam.transform.position = new Vector3(b.center.x, b.center.y, -10f);
             float aspect = _cam.aspect <= 0f ? 16f / 9f : _cam.aspect;

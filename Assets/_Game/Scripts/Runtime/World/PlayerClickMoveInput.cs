@@ -79,7 +79,9 @@ namespace Arcanum.Runtime.World
             LastClickedTile = tile;
             LastClickedObject = null;
             LastInteractionResult = null;
-            LastClickAccepted = _loader.NavigationMap.IsWalkable(tile) && _navigation.TrySetDestination(tile);
+            bool insideSelectedSector = _loader.NavigationMap.Contains(tile);
+            LastClickAccepted = (!insideSelectedSector || _loader.NavigationMap.IsWalkable(tile))
+                                && _navigation.TrySetDestination(tile);
         }
     }
 }
