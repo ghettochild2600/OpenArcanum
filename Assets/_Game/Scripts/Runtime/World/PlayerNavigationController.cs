@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Arcanum.Formats.Art;
 using Arcanum.Formats.Objects;
+using Arcanum.Runtime.Character;
 using UnityEngine;
 
 namespace Arcanum.Runtime.World
@@ -16,7 +17,6 @@ namespace Arcanum.Runtime.World
         private const int StandAnimation = 0;
         private const int WalkAnimation = 1;
 
-        [SerializeField, Min(0.1f)] private float walkSpeedTilesPerSecond = 4f;
         [SerializeField] private string playerObjectId;
 
         private readonly DeterministicTilePathfinder _pathfinder = new();
@@ -45,7 +45,18 @@ namespace Arcanum.Runtime.World
         {
             if (Player == null) TryBindConfiguredPlayer();
             if (_entryFrameHold.Consume()) return;
-            AdvanceNavigation(Time.deltaTime * walkSpeedTilesPerSecond);
+            AdvanceSourceNavigation(Time.deltaTime);
+        }
+
+        private void AdvanceSourceNavigation(float deltaSeconds)
+        {
+            if (Player == null || !_follower.IsMoving) return;
+            WorldObjectSpriteOwner owner = Player.GetComponentInChildren<WorldObjectSpriteOwner>();
+            if (owner == null) return;
+            int speed = _loader.Session.DerivedStats.GetDerivedStat(
+                Player.Identity, CharacterDerivedStat.Speed);
+            float tileSteps = owner.AdvanceLocomotion(deltaSeconds, speed);
+            if (tileSteps > 0f) AdvanceNavigation(tileSteps);
         }
 
         internal void AdvanceNavigation(float tileSteps)

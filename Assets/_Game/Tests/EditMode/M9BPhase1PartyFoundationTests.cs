@@ -129,6 +129,21 @@ namespace Arcanum.Formats.Tests
                 Is.EqualTo((Vector2)_followerRuntime.Tile));
         }
 
+        [Test, Category("M13AOpeningCompatibility")]
+        public void OrdinaryFollowingPlansAuthoritativeRouteWithoutTeleportingPresentation()
+        {
+            Assert.That(_session.Party.Join(_follower).Succeeded, Is.True);
+            var route = new List<Vector2Int>();
+            Vector2 before = _followerRuntime.TilePosition;
+
+            Assert.That(new PartyFollowerMovementService(_session).TryPlanRoute(_follower, _map, route),
+                Is.EqualTo(FollowerMoveResult.Moved));
+            Assert.That(route, Is.Not.Empty);
+            Assert.That(_followerRuntime.TilePosition, Is.EqualTo(before),
+                "planning cannot commit the destination before the locomotion presenter traverses it");
+            Assert.That(_session.States[_follower].Placement.TilePosition, Is.EqualTo(before));
+        }
+
         [Test]
         public void BlockedFollowingIsSafeAndDoesNotTeleport()
         {

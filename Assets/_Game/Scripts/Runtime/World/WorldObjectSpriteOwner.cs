@@ -20,6 +20,7 @@ namespace Arcanum.Runtime.World
         private SpriteRenderer _renderer;
         private SpriteFrameAnimator _animator;
         private Sprite[] _ownedSprites;
+        private ArtFrame[] _sourceFrames;
         private float _pixelsPerUnit;
         private bool _animate;
 
@@ -34,6 +35,22 @@ namespace Arcanum.Runtime.World
         public Sprite CurrentSprite => _renderer != null ? _renderer.sprite : null;
         public WorldObject WorldObject => _worldObject;
         public string LastBuildError { get; private set; }
+
+        /// <summary>Advances WALK presentation and returns the exact source-authored route distance consumed.</summary>
+        public float AdvanceLocomotion(float deltaSeconds, int speed)
+        {
+            if (_animator == null || _sourceFrames == null || _sourceFrames.Length < 2 || _worldObject == null)
+                return 0f;
+            float progress = 0f;
+            int fps = SourceLocomotionTiming.AdjustedWalkFramesPerSecond(FramesPerSecond, speed, _worldObject.ArtId);
+            _animator.AdvanceManual(deltaSeconds, fps, frameIndex =>
+            {
+                ArtFrame frame = _sourceFrames[frameIndex];
+                int offsetX = MirrorX ? -frame.OffsetX : frame.OffsetX;
+                progress += SourceLocomotionTiming.TileProgress(offsetX, frame.OffsetY, RequestedRotation);
+            });
+            return progress;
+        }
 
         public void Initialize(
             DatVirtualFileSystem vfs,
@@ -104,6 +121,7 @@ namespace Arcanum.Runtime.World
 
                 InitialFrameIndex = Mathf.Clamp(FrameOf(_worldObject.ArtId), 0, sourceFrames.Length - 1);
                 FramesPerSecond = art.Fps;
+                _sourceFrames = sourceFrames;
                 rebuilt = new Sprite[sourceFrames.Length];
                 for (int frameIndex = 0; frameIndex < sourceFrames.Length; frameIndex++)
                 {
@@ -140,6 +158,7 @@ namespace Arcanum.Runtime.World
                     _animator ??= GetComponent<SpriteFrameAnimator>() ?? gameObject.AddComponent<SpriteFrameAnimator>();
                     if (previous == null) _animator.Init(rebuilt, art.Fps, InitialFrameIndex);
                     else _animator.RebuildLoop(rebuilt, art.Fps);
+                    _animator.SetManualLoop(_worldObject.IsMoving);
                 }
                 else
                 {
@@ -288,6 +307,7 @@ namespace Arcanum.Runtime.World
                 _worldObject.SetVisualFrame = null;
             DestroySprites(_ownedSprites);
             _ownedSprites = null;
+            _sourceFrames = null;
         }
     }
 }

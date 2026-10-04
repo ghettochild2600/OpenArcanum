@@ -26,6 +26,7 @@ namespace Arcanum.Runtime.World
         private System.Action _onImpact, _onComplete;
         private Sprite[] _loopFrames;
         private float _loopFps;
+        private bool _manualLoop;
 
         /// <summary>True while a one-shot clip is playing (callers shouldn't override the clip meanwhile).</summary>
         public bool IsPlayingOnce => _once;
@@ -33,6 +34,26 @@ namespace Arcanum.Runtime.World
         public int CurrentFrame => _frame;
 
         public float FramesPerSecond => _fps;
+
+        /// <summary>Prevents <see cref="Update"/> from advancing a looping clip. Source locomotion uses this so
+        /// the frame change and the authored movement delta are consumed by one clock.</summary>
+        public void SetManualLoop(bool manual) => _manualLoop = manual;
+
+        /// <summary>Advances a manually-driven looping clip and reports every newly displayed frame.</summary>
+        public void AdvanceManual(float deltaSeconds, float fps, System.Action<int> frameEntered)
+        {
+            if (_frames == null || _frames.Length < 2 || _once || deltaSeconds <= 0f) return;
+            _manualLoop = true;
+            _fps = fps > 0f ? fps : _fps;
+            _accum += deltaSeconds * _fps;
+            while (_accum >= 1f)
+            {
+                _accum -= 1f;
+                _frame = (_frame + 1) % _frames.Length;
+                if (_sr != null) _sr.sprite = _frames[_frame];
+                frameEntered?.Invoke(_frame);
+            }
+        }
 
         public void Init(Sprite[] frames, float fps, int startFrame = 0)
         {
@@ -115,7 +136,7 @@ namespace Arcanum.Runtime.World
 
             if (_once) { UpdateOnce(); return; } // one-shots (attack/death) always run — they drive logic
 
-            if (_frames.Length < 2) return;
+            if (_frames.Length < 2 || _manualLoop) return;
             if (_sr != null && !_sr.isVisible) return; // skip looping anims while off-screen (perf)
             _accum += Time.deltaTime * _fps;
             while (_accum >= 1f)

@@ -20,7 +20,7 @@ namespace Arcanum.Runtime.World
             {
                 if (!IsMoving) return -1;
                 Vector2 delta = (Vector2)_route[_next] - Position;
-                return IsoProjection.DirFromDelta(Mathf.RoundToInt(delta.x), Mathf.RoundToInt(delta.y));
+                return IsoProjection.DirFromDelta(Math.Sign(delta.x), Math.Sign(delta.y));
             }
         }
 
