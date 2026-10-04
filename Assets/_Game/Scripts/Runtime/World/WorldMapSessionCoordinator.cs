@@ -57,6 +57,7 @@ namespace Arcanum.Runtime.World
         private ITrainingDialogueTextSource _trainingDialogueText;
         private MapTransitionResolver _mapTransitions;
         private AreaEntranceResolver _areaEntrances;
+        private MapAreaResolver _mapAreas;
         private AreaList _areaSource;
         private WorldMapDestinationProjection _worldMapDestinations;
         private WorldMapTravelSource _worldMapTravelSource;
@@ -332,6 +333,21 @@ namespace Arcanum.Runtime.World
 
         public void BindAreaEntranceSource(AreaEntranceResolver resolver)
             => _areaEntrances = resolver ?? throw new ArgumentNullException(nameof(resolver));
+
+        public void BindMapAreaSource(MapAreaResolver resolver)
+            => _mapAreas = resolver ?? throw new ArgumentNullException(nameof(resolver));
+
+        public int CurrentArea => PlayerState != null && HasSelectedSector && _mapAreas != null
+            ? _mapAreas.Resolve(SelectedSector, PlayerState.MapPosition) : 0;
+
+        public bool SetNpcWaiting(ArcanumObjectId identity, bool waiting)
+        {
+            if (!_states.TryGetValue(identity, out PersistentObjectState state) || state.Type != ObjectType.Npc)
+                return false;
+            state.NpcFlags = waiting ? state.NpcFlags | 0x00000008 : state.NpcFlags & ~0x00000008;
+            if (TryGetLoadedObject(identity, out WorldObject runtime)) runtime.NpcFlags = state.NpcFlags;
+            return true;
+        }
 
         public void BindWorldMapTravelSource(WorldMapTravelSource source)
         {

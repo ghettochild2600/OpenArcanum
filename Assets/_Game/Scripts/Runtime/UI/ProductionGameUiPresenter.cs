@@ -533,6 +533,7 @@ namespace Arcanum.Runtime.UI
             GameUiCharacterView view = Controller.ProjectCharacter();
             if (view == null) { GUILayout.Label("No active character."); return; }
             GUILayout.Label($"{view.Name} — {view.Race} {view.Gender} — Level {view.Level}");
+            if (Controller.CharacterReadOnly) GUILayout.Label("Character examination (read-only)", GUI.skin.box);
             GUILayout.Label($"XP {view.Experience}  CP {view.CharacterPoints}  Alignment {view.Alignment}  "
                           + $"Aptitude {view.Aptitude}  AC {view.ArmorClass}");
             GUILayout.Label($"Carry {view.CarriedWeight}/{view.CarryCapacity}");
@@ -548,7 +549,7 @@ namespace Arcanum.Runtime.UI
             {
                 GUILayout.BeginHorizontal();
                 GUILayout.Label($"{skill.Skill}: {skill.EffectiveRank}  {skill.Training}", GUILayout.ExpandWidth(true));
-                GUI.enabled = view.CharacterPoints > 0;
+                GUI.enabled = !Controller.CharacterReadOnly && view.CharacterPoints > 0;
                 if (GUILayout.Button("+", GUILayout.Width(34f))) Controller.IncreaseSkill(skill.Skill);
                 GUI.enabled = true;
                 GUILayout.EndHorizontal();

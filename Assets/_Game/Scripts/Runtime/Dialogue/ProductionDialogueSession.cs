@@ -66,6 +66,12 @@ namespace Arcanum.Runtime.Dialogue
         Result,
     }
 
+    public enum DialogueSpecialView
+    {
+        None,
+        CharacterExamination,
+    }
+
     public readonly struct DialogueDiagnostic
     {
         public DialogueDiagnosticKind Kind { get; }
@@ -95,17 +101,17 @@ namespace Arcanum.Runtime.Dialogue
     public sealed class ProductionDialogueSession
     {
         private static readonly HashSet<string> M5AAdmittedTests = new(StringComparer.OrdinalIgnoreCase)
-            { "gf", "qu", "ra", "fo", "re", "rp", "wa" };
+            { "gf", "qu", "ra", "fo", "re", "rp", "wa", "ss", "ia" };
         private static readonly HashSet<string> M5AAdmittedEffects = new(StringComparer.OrdinalIgnoreCase)
-            { "gf", "lf", "qu", "fl", "in", "ru", "jo", "lv", "re", "rp", "co", "mm" };
+            { "gf", "lf", "qu", "fl", "in", "ru", "jo", "lv", "re", "rp", "co", "mm", "ce", "wa" };
         private static readonly HashSet<string> M5BAdmittedTests = new(StringComparer.OrdinalIgnoreCase)
-            { "gf", "gv", "lf", "qu", "qb", "ra", "in", "ni", "re", "rp", "ch", "ha", "wa" };
+            { "gf", "gv", "lf", "qu", "qb", "ra", "in", "ni", "re", "rp", "ch", "ha", "wa", "ss", "ia" };
         private static readonly HashSet<string> M5BAdmittedEffects = new(StringComparer.OrdinalIgnoreCase)
-            { "lf", "qu", "fl", "in", "re", "rp", "co", "$$", "mm" };
+            { "lf", "qu", "fl", "in", "re", "rp", "co", "$$", "mm", "ce", "wa" };
         private static readonly HashSet<string> M7CAdmittedTests = new(StringComparer.OrdinalIgnoreCase)
-            { "gf", "gv", "lf", "qu", "qb", "qa", "ra", "in", "ni", "re", "rp", "ch", "ha", "tr", "sk", "ar", "wa" };
+            { "gf", "gv", "lf", "qu", "qb", "qa", "ra", "in", "ni", "re", "rp", "ch", "ha", "tr", "sk", "ar", "wa", "ss", "ia" };
         private static readonly HashSet<string> M7CAdmittedEffects = new(StringComparer.OrdinalIgnoreCase)
-            { "lf", "qu", "fl", "in", "re", "rp", "co", "$$", "mm" };
+            { "lf", "qu", "fl", "in", "re", "rp", "co", "$$", "mm", "ce", "wa" };
 
         private readonly WorldMapSessionCoordinator _world;
         private readonly CampaignStateService _campaign;
@@ -135,6 +141,8 @@ namespace Arcanum.Runtime.Dialogue
         public IReadOnlyList<CharacterSkill> OfferedTrainingSkills => _offeredTrainingSkills;
         public string LastFailure { get; private set; }
         public TrainingDialogueView TrainingView { get; private set; }
+        public DialogueSpecialView SpecialView { get; private set; }
+        public ArcanumObjectId SpecialViewTarget { get; private set; }
         public DialogueTrainingResult LastTrainingResult { get; private set; }
         public bool IsBusy => Phase is DialogueSessionPhase.Starting or DialogueSessionPhase.Active
             or DialogueSessionPhase.AwaitingPlayerChoice or DialogueSessionPhase.ExecutingResponse;
@@ -201,7 +209,12 @@ namespace Arcanum.Runtime.Dialogue
             if (_dialogue == null)
                 return FailStart(DialogueStartStatus.MissingDialogue, $"Dialogue {DialogueNumber} is missing.");
 
-            _context = new ProductionDialogueContext(_world, _campaign, pc, npc, _resolveGeneratedText);
+            _context = new ProductionDialogueContext(_world, _campaign, pc, npc, _resolveGeneratedText,
+                () =>
+                {
+                    SpecialView = DialogueSpecialView.CharacterExamination;
+                    SpecialViewTarget = npc;
+                });
             DialogueTransactionSnapshot snapshot = new(_world, _campaign);
             ScriptAttachmentState attachment = _campaign.GetScriptAttachment(npc, (int)Sap.Dialog);
             var scriptContext = new ScriptContext
@@ -271,6 +284,12 @@ namespace Arcanum.Runtime.Dialogue
                 Report(DialogueDiagnosticKind.UnsupportedEffect, response.Num, failure);
                 Changed?.Invoke();
                 return DialogueChoiceStatus.UnsupportedEffect;
+            }
+
+            if (SpecialView != DialogueSpecialView.None)
+            {
+                Complete();
+                return DialogueChoiceStatus.Completed;
             }
 
             if (gotoOverride >= 0)
@@ -628,6 +647,7 @@ namespace Arcanum.Runtime.Dialogue
             private readonly SocialStateService.Snapshot _social;
             private readonly WorldMapSessionCoordinator.DialogueInventorySnapshot _inventory;
             private readonly PartyMember[] _party;
+            private readonly Dictionary<ArcanumObjectId, bool> _waiting;
 
             public DialogueTransactionSnapshot(WorldMapSessionCoordinator world, CampaignStateService campaign)
             {
@@ -637,6 +657,10 @@ namespace Arcanum.Runtime.Dialogue
                 _social = world.Social.CaptureSnapshot();
                 _inventory = world.CaptureDialogueInventorySnapshot();
                 _party = world.Party.CaptureMembership();
+                _waiting = new Dictionary<ArcanumObjectId, bool>();
+                foreach (PersistentObjectState state in world.States.Values)
+                    if (state.Type == ObjectType.Npc)
+                        _waiting[state.Identity] = (state.NpcFlags & 0x00000008) != 0;
             }
 
             public void Restore(WorldMapSessionCoordinator world, CampaignStateService campaign)
@@ -647,6 +671,8 @@ namespace Arcanum.Runtime.Dialogue
                 world.Social.RestoreSnapshot(_social);
                 world.RestoreDialogueInventorySnapshot(_inventory);
                 world.Party.RestoreMembership(_party);
+                foreach (KeyValuePair<ArcanumObjectId, bool> pair in _waiting)
+                    world.SetNpcWaiting(pair.Key, pair.Value);
             }
         }
 
@@ -680,6 +706,8 @@ namespace Arcanum.Runtime.Dialogue
             _dialogue = null;
             _context = null;
             _finalSay = false;
+            SpecialView = DialogueSpecialView.None;
+            SpecialViewTarget = default;
             ClearTrainingFlow();
             LastTrainingResult = default;
             _responses.Clear();
@@ -744,15 +772,18 @@ namespace Arcanum.Runtime.Dialogue
         private readonly ArcanumObjectId _pc;
         private readonly ArcanumObjectId _npc;
         private readonly Func<ArcanumObjectId, char, string> _resolveGeneratedText;
+        private readonly Action _requestCharacterExamination;
 
         public ProductionDialogueContext(WorldMapSessionCoordinator world, CampaignStateService campaign,
-            ArcanumObjectId pc, ArcanumObjectId npc, Func<ArcanumObjectId, char, string> resolveGeneratedText)
+            ArcanumObjectId pc, ArcanumObjectId npc, Func<ArcanumObjectId, char, string> resolveGeneratedText,
+            Action requestCharacterExamination = null)
         {
             _world = world;
             _campaign = campaign;
             _pc = pc;
             _npc = npc;
             _resolveGeneratedText = resolveGeneratedText;
+            _requestCharacterExamination = requestCharacterExamination;
         }
 
         public int Intelligence => Attribute(CharacterAttribute.Intelligence);
@@ -873,6 +904,12 @@ namespace Arcanum.Runtime.Dialogue
         public bool IsNpcFollowingPc => _world.Party.IsMember(_npc);
         public bool IsNpcWaiting => _world.TryGetObjectState(_npc, out PersistentObjectState state)
                                     && (state.NpcFlags & 0x00000008) != 0;
+        public int CurrentArea => _world.CurrentArea;
+        public void RequestCharacterExamination() => _requestCharacterExamination?.Invoke();
+        public void SetNpcWaiting()
+        {
+            if (!_world.SetNpcWaiting(_npc, true)) throw Outside(nameof(SetNpcWaiting));
+        }
         public bool AreaKnown(int id) => _campaign.IsAreaKnown(new AreaId(id));
         public void DisbandNpc()
         {
@@ -976,6 +1013,16 @@ namespace Arcanum.Runtime.Dialogue
                         failure = $"follower removal rejected: {preview.Failure}";
                         return false;
                     }
+                    case "ce":
+                        return true;
+                    case "wa":
+                        if (!_world.TryGetObjectState(_npc, out PersistentObjectState waitState)
+                            || waitState.Type != ObjectType.Npc)
+                        {
+                            failure = "wait-here target is not an authoritative NPC";
+                            return false;
+                        }
+                        return true;
                     default:
                         failure = $"dialog effect '{code}' has no production preflight";
                         return false;

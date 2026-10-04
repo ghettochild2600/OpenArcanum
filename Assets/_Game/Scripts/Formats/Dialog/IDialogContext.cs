@@ -130,6 +130,15 @@ namespace Arcanum.Formats.Dialog
         /// Default: false (wait-here orders not modelled yet).</summary>
         bool IsNpcWaiting => false;
 
+        /// <summary>Current area from engine <c>area_of_object</c>; 0 is AREA_UNKNOWN.</summary>
+        int CurrentArea => 0;
+
+        /// <summary>Open the speaking NPC's passive character sheet (dialog effect <c>ce</c>).</summary>
+        void RequestCharacterExamination() { }
+
+        /// <summary>Tell the speaking follower to wait here (dialog effect <c>wa</c>).</summary>
+        void SetNpcWaiting() { }
+
         /// <summary>Whether a rumor's associated quest is resolved/quelled (engine global
         /// <c>rumor_qstate_get</c>) — the <c>rq</c> gate. Default: false (rumor-quell tracking not driven yet).</summary>
         bool RumorQuelled(int id) => false;

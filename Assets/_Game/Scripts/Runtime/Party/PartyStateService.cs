@@ -170,7 +170,9 @@ namespace Arcanum.Runtime.Party
         public bool CanAccompany(ArcanumObjectId follower)
         {
             if (!IsMember(follower) || !_world.Vitality.TryGet(follower, out _)
-                || _world.Vitality.IsDead(follower)) return false;
+                || _world.Vitality.IsDead(follower)
+                || _world.TryGetObjectState(follower, out PersistentObjectState state)
+                   && (state.NpcFlags & 0x00000008) != 0) return false;
             bool fatigueImmune = _world.Combat.TryGetActorSource(follower, out CombatActorSource source)
                                  && (source.CritterFlags & 0x04000004) != 0;
             return !_world.Vitality.IsUnconscious(follower, fatigueImmune);

@@ -6,6 +6,7 @@ using Arcanum.Formats.Database;
 using Arcanum.Formats.Dialog;
 using Arcanum.Formats.Objects;
 using Arcanum.Formats.Script;
+using Arcanum.Formats.Text;
 using Arcanum.Formats.World;
 using Arcanum.Runtime;
 using Arcanum.Runtime.Campaign;
@@ -359,6 +360,118 @@ namespace Arcanum.Formats.Tests
                 presenter.EnsureInteractionSubscription();
                 Assert.That(interactionField.GetValue(presenter), Is.SameAs(interaction),
                     "the subscription path must remain idempotent on subsequent production updates");
+            }
+            finally { Object.DestroyImmediate(root); }
+        }
+
+        [Test]
+        public void SourceWalkClockProjectsAuthoredFrameDeltasIntoRouteProgress()
+        {
+            Assert.That(SourceLocomotionTiming.AdjustedWalkFramesPerSecond(17, 8, 0x28100000u),
+                Is.EqualTo(17));
+            Assert.That(SourceLocomotionTiming.AdjustedWalkFramesPerSecond(17, 9, 0x28100000u),
+                Is.EqualTo(20), "source sub_437990 uses the actor SPEED timing formula");
+
+            float east = new[] { 4, 10, 8, 4, 6, 4, 8, 8, 4, 4 }
+                .Sum(offset => SourceLocomotionTiming.TileProgress(offset, 0, 2));
+            Assert.That(east, Is.EqualTo(.75f).Within(.0001f),
+                "60 authored pixels are 0.75 of rotation-2's 80-pixel tile vector");
+
+            var route = new TileRouteFollower();
+            route.Replace(Vector2.zero, new[] { new Vector2Int(-1, 1) });
+            Assert.That(route.Advance(east), Is.True);
+            Assert.That(route.Position.x, Is.EqualTo(-.75f).Within(.0001f));
+            Assert.That(route.Position.y, Is.EqualTo(.75f).Within(.0001f));
+            Assert.That(route.Facing, Is.EqualTo(2));
+        }
+
+        [Test, Category("RealData")]
+        public void AuthenticCrashSiteUsesCompleteSourceThreeByThreeTerrainWindow()
+        {
+            SectorStreamingWindow.Entry[] window = SectorStreamingWindow.Around(CrashSector).ToArray();
+            Assert.That(window, Has.Length.EqualTo(9));
+            Assert.That(window.Select(value => (value.DeltaX, value.DeltaY)).Distinct().Count(), Is.EqualTo(9));
+            Assert.That(window.All(value => _vfs.Exists(value.Path)), Is.True,
+                "all eight authentic crash-site neighbors are present in the retail module");
+            Assert.That(window.Single(value => value.DeltaX == 0 && value.DeltaY == 0).Path,
+                Is.EqualTo(CrashSector));
+        }
+
+        [Test, Category("RealData")]
+        public void AuthenticCrashSiteCurrentAreaUsesStartMapTownmapSemantics()
+        {
+            MapList maps = MapList.Read(_vfs.ReadAllBytes("rules/maplist.mes"));
+            AreaList areas = AreaList.FromMes(MesReader.Read(_vfs.ReadAllBytes("mes/gamearea.mes")));
+            var resolver = new MapAreaResolver(maps, areas, _vfs.Exists, _vfs.ReadAllBytes);
+            Assert.That(resolver.Resolve(CrashSector, new Vector2(92958, 82592)), Is.EqualTo(2),
+                "retail START_MAP location is in the Crash Site townmap/area");
+        }
+
+        [Test, Category("RealData")]
+        public void AuthenticVirgilSsIaCeAndWaReachProductionAuthorityWithoutCompatibilityDiagnostics()
+        {
+            var responseSet = new List<DialogLine>();
+            foreach (int line in Enumerable.Range(397, 33))
+                if (_virgilDialogue.TryGet(line, out DialogLine value))
+                    responseSet.Add(value);
+            Assert.That(responseSet.Any(value => value.Test.Replace(" ", string.Empty).Contains("ss")), Is.True);
+            Assert.That(_virgilDialogue.TryGet(454, out DialogLine areaGate), Is.True);
+            Assert.That(areaGate.Test.Replace(" ", string.Empty), Is.EqualTo("ia21"));
+            Assert.That(_virgilDialogue.TryGet(396, out DialogLine examine), Is.True);
+            Assert.That(examine.Effect.Replace(" ", string.Empty), Is.EqualTo("ce"));
+            Assert.That(_virgilDialogue.TryGet(510, out DialogLine wait), Is.True);
+            Assert.That(wait.Test.Replace(" ", string.Empty), Is.EqualTo("wa0"));
+            Assert.That(wait.Effect.Replace(" ", string.Empty), Is.EqualTo("wa"));
+
+            GameObject root = new(nameof(AuthenticVirgilSsIaCeAndWaReachProductionAuthorityWithoutCompatibilityDiagnostics));
+            try
+            {
+                WorldMapSessionCoordinator session = root.AddComponent<WorldMapSessionCoordinator>();
+                WorldObjectSectorLoader loader = root.AddComponent<WorldObjectSectorLoader>();
+                loader.BindSessionAuthority();
+                Assert.That(session.SelectSector(CrashSector), Is.True);
+                PersistentPlayerState pc = session.GetOrCreatePlayer(ProductionPlayerLifecycle.DefaultPlayerIdentity,
+                    CrashSector, new Vector2(30, 32), 0x28100000u);
+                session.BindPlayer(CrashSector, pc, Runtime(root, "Player", ObjectType.Pc, pc.Identity));
+                Assert.That(session.CurrentArea, Is.EqualTo(2));
+                var controller = new GameUiController(session);
+
+                var examinationLines = new SortedDictionary<int, DialogLine>
+                {
+                    [395] = new(395, "Let me examine your abilities.", "", 0, "", 0, ""),
+                    [396] = new(396, "Go ahead.", "", 1, "ss 0, ia 2", 0, "ce"),
+                };
+                session.BindDialogueSource(_ => StartDialogueAt(395),
+                    number => number == VirgilDialogueNumber ? new DialogScript(examinationLines) : null);
+                Assert.That(session.Dialogue.Start(pc.Identity, Virgil), Is.EqualTo(DialogueStartStatus.Started));
+                controller.Refresh();
+                int examineIndex = session.Dialogue.AvailableResponses.ToList()
+                    .FindIndex(value => value.Num == 396);
+                Assert.That(examineIndex, Is.GreaterThanOrEqualTo(0),
+                    "ss/ia filtering must admit the source-valid examination response");
+                Assert.That(controller.SelectDialogueResponse(examineIndex), Is.True);
+                Assert.That(controller.Screen, Is.EqualTo(GameUiScreen.Character));
+                Assert.That(controller.CharacterTarget, Is.EqualTo(Virgil));
+                Assert.That(controller.CharacterReadOnly, Is.True);
+                Assert.That(controller.ProjectCharacter(), Is.Not.Null);
+
+                Assert.That(session.Party.Join(Virgil).Succeeded, Is.True);
+                var waitLines = new SortedDictionary<int, DialogLine>
+                {
+                    [505] = new(505, "Do you want me to wait here?", "", 0, "", 0, ""),
+                    [510] = new(510, "Wait here.", "", 1, "wa 0", 0, "wa"),
+                };
+                session.BindDialogueSource(_ => StartDialogueAt(505),
+                    number => number == VirgilDialogueNumber ? new DialogScript(waitLines) : null);
+                Assert.That(session.Dialogue.Start(pc.Identity, Virgil), Is.EqualTo(DialogueStartStatus.Started));
+                int waitIndex = session.Dialogue.AvailableResponses.ToList().FindIndex(value => value.Num == 510);
+                Assert.That(waitIndex, Is.GreaterThanOrEqualTo(0));
+                Assert.That(session.Dialogue.SelectResponse(waitIndex), Is.EqualTo(DialogueChoiceStatus.Completed));
+                Assert.That(session.TryGetObjectState(Virgil, out PersistentObjectState virgil), Is.True);
+                Assert.That(virgil.NpcFlags & 0x00000008, Is.EqualTo(0x00000008));
+                Assert.That(session.Party.IsMember(Virgil), Is.True,
+                    "source wait preserves the restored leader relation");
+                Assert.That(session.Party.CanAccompany(Virgil), Is.False);
             }
             finally { Object.DestroyImmediate(root); }
         }

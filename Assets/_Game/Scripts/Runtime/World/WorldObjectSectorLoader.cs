@@ -1176,6 +1176,7 @@ namespace Arcanum.Runtime.World
             AreaList areas = AreaList.FromMes(Arcanum.Formats.Text.MesReader.Read(
                 _vfs.ReadAllBytes("mes/gamearea.mes")));
             Session.BindAreaSource(areas);
+            Session.BindMapAreaSource(new MapAreaResolver(maps, areas, _vfs.Exists, _vfs.ReadAllBytes));
             Session.BindAreaEntranceSource(new AreaEntranceResolver(maps, areas, transitions, _scripts.Get));
             Session.BindUseScriptSource(_scripts);
             Session.BindDialogueSource(_scripts.Get, dialogNum => DialogLocator.Load(_vfs, dialogNum));

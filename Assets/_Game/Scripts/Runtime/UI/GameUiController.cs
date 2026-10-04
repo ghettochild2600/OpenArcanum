@@ -147,6 +147,7 @@ namespace Arcanum.Runtime.UI
         private readonly WorldMapSessionCoordinator _session;
         private ArcanumObjectId _merchant;
         private ArcanumObjectId _corpse;
+        private ArcanumObjectId _character;
         private int _pendingSpell = -1;
         private ArcanumObjectId _pendingTechnologyItem;
         private IGameAudioPresentation _audio;
@@ -156,6 +157,8 @@ namespace Arcanum.Runtime.UI
         public ArcanumObjectId SelectedItem { get; private set; }
         public ArcanumObjectId SelectedWorldTarget { get; private set; }
         public ArcanumObjectId Corpse => _corpse;
+        public ArcanumObjectId CharacterTarget => _character.IsNull ? Player : _character;
+        public bool CharacterReadOnly => CharacterTarget != Player;
         public string Feedback { get; private set; } = string.Empty;
         public CombatUiController Combat { get; }
         public SaveLoadPanelController SaveLoad { get; }
@@ -215,6 +218,7 @@ namespace Arcanum.Runtime.UI
             SelectedItem = default;
             SelectedWorldTarget = default;
             if (screen != GameUiScreen.Corpse) _corpse = default;
+            _character = screen == GameUiScreen.Character ? Player : default;
             Feedback = string.Empty;
             if (screen == GameUiScreen.SaveLoad) SaveLoad.Open(SaveLoadPanelMode.Save);
             _audio?.PresentInterface(screen is GameUiScreen.Journal or GameUiScreen.Map
@@ -337,6 +341,7 @@ namespace Arcanum.Runtime.UI
             SelectedWorldTarget = default;
             _merchant = default;
             _corpse = default;
+            _character = default;
             _pendingSpell = -1;
             _pendingTechnologyItem = default;
             Feedback = string.Empty;
@@ -458,32 +463,35 @@ namespace Arcanum.Runtime.UI
 
         public GameUiCharacterView ProjectCharacter()
         {
-            if (!HasPlayer || !_session.Characters.TryGet(Player, out PersistentCharacterState character)
-                || !_session.Progression.TryGet(Player, out PersistentCharacterProgressionState progression)) return null;
+            ArcanumObjectId target = CharacterTarget;
+            if (!HasPlayer || target.IsNull
+                || !_session.Characters.TryGet(target, out PersistentCharacterState character)
+                || !_session.Progression.TryGet(target, out PersistentCharacterProgressionState progression)) return null;
             return new GameUiCharacterView
             {
-                Name = _session.CharacterCreation.Finalized?.Name ?? "Player",
+                Name = target == Player ? _session.CharacterCreation.Finalized?.Name ?? "Player" : ObjectName(target),
                 Race = character.Race, Gender = character.Gender,
                 Level = progression.Level, Experience = progression.Experience,
                 CharacterPoints = progression.UnspentCharacterPoints,
-                Alignment = _session.DerivedStats.GetAlignment(Player),
-                Aptitude = _session.DerivedStats.GetDerivedStat(Player, CharacterDerivedStat.MagickTechAptitude),
-                ArmorClass = _session.DerivedStats.GetArmorClass(Player),
-                CarriedWeight = _session.InventoryCapacity.GetInventoryLoad(Player),
-                CarryCapacity = _session.InventoryCapacity.GetCarryCapacity(Player),
+                Alignment = _session.DerivedStats.GetAlignment(target),
+                Aptitude = _session.DerivedStats.GetDerivedStat(target, CharacterDerivedStat.MagickTechAptitude),
+                ArmorClass = _session.DerivedStats.GetArmorClass(target),
+                CarriedWeight = _session.InventoryCapacity.GetInventoryLoad(target),
+                CarryCapacity = _session.InventoryCapacity.GetCarryCapacity(target),
                 Attributes = Enum.GetValues(typeof(CharacterAttribute)).Cast<CharacterAttribute>()
                     .Select(value => new GameUiAttributeView(value,
-                        _session.Characters.GetBaseAttribute(Player, value),
-                        _session.Characters.GetEffectiveAttribute(Player, value))).ToArray(),
+                        _session.Characters.GetBaseAttribute(target, value),
+                        _session.Characters.GetEffectiveAttribute(target, value))).ToArray(),
                 Skills = CharacterSkillRules.AllSkills.Select(value => new GameUiSkillView(value,
-                    _session.Progression.GetPurchasedSkillPoints(Player, value),
-                    _session.Progression.GetEffectiveSkillRank(Player, value),
-                    _session.Progression.GetTrainingLevel(Player, value))).ToArray(),
+                    _session.Progression.GetPurchasedSkillPoints(target, value),
+                    _session.Progression.GetEffectiveSkillRank(target, value),
+                    _session.Progression.GetTrainingLevel(target, value))).ToArray(),
             };
         }
 
         public bool IncreaseSkill(CharacterSkill skill)
         {
+            if (CharacterReadOnly) return Reject("This character examination is read-only.");
             SkillIncreaseResult result = _session.Progression.IncreaseSkill(Player, skill);
             return Complete(result == SkillIncreaseResult.Success,
                 result == SkillIncreaseResult.Success ? $"Increased {skill}." : result.ToString());
@@ -669,7 +677,14 @@ namespace Arcanum.Runtime.UI
             DialogueChoiceStatus status = _session.Dialogue.SelectResponse(index);
             bool accepted = status is DialogueChoiceStatus.Advanced or DialogueChoiceStatus.Completed;
             _audio?.PresentInterface(InterfaceAudioCue.DialogueResponse, accepted);
-            Refresh();
+            ArcanumObjectId examination = _session.Dialogue.SpecialView == DialogueSpecialView.CharacterExamination
+                ? _session.Dialogue.SpecialViewTarget : default;
+            if (accepted && !examination.IsNull)
+            {
+                Close();
+                if (Open(GameUiScreen.Character)) _character = examination;
+            }
+            else Refresh();
             return Complete(accepted, accepted ? "Response selected."
                 : _session.Dialogue.LastFailure ?? status.ToString());
         }

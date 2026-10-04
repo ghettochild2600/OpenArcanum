@@ -153,6 +153,7 @@ namespace Arcanum.Formats.Dialog
                 case "fo": return t.A == 0 ? ctx.IsNpcFollowingPc : !ctx.IsNpcFollowingPc; // 0 = follows PC, 1 = doesn't
                 case "na": return t.A < 0 ? ctx.Alignment <= t.A : ctx.Alignment >= -t.A;  // alignment, sign-reversed vs `al`
                 case "ar": return t.A > 0 ? ctx.AreaKnown(t.A) : !ctx.AreaKnown(-t.A);     // area is / isn't known
+                case "ia": return t.A > 0 ? ctx.CurrentArea == t.A : ctx.CurrentArea != -t.A;
 
                 // Magick(+)/tech(−) aptitude (engine DIALOG_COND_MA / _TA): ma reads the aptitude, ta its
                 // negation — both with the Cmp sign convention (positive arg ≥, negative ≤).
@@ -207,6 +208,8 @@ namespace Arcanum.Formats.Dialog
 
                 case "in": ctx.TransferItem(t.A >= 0 ? t.A : -t.A, t.A >= 0); break; // +PC→NPC / −NPC→PC
                 case "lv": ctx.DisbandNpc(); break;                                  // NPC leaves the party (critter_disband)
+                case "ce": ctx.RequestCharacterExamination(); break;                  // passive NPC character sheet
+                case "wa": ctx.SetNpcWaiting(); break;                                // disband-in-place / wait-here
 
                 default: OnUnsupported?.Invoke(t.Code, t.A); break; // no-op
             }

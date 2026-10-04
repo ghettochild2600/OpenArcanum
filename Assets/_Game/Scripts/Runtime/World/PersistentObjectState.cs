@@ -33,7 +33,7 @@ namespace Arcanum.Runtime.World
         public int RetailPriceMultiplier { get; }
         public int InventorySourceId { get; }
         public ArcanumObjectId SubstituteInventoryIdentity { get; }
-        public int NpcFlags { get; }
+        public int NpcFlags { get; internal set; }
         public int BuyObjectScriptNum { get; }
         public int ContainerFlags { get; }
         public long? AuthoredLocation { get; }

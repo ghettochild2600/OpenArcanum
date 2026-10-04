@@ -262,6 +262,22 @@ namespace Arcanum.Formats.Tests
             Assert.That(ctx.Disbanded, Is.True);
         }
 
+        [Test, Category("M13AOpeningCompatibility")]
+        public void EvaluatesStoryAndCurrentAreaAndRunsCharacterExaminationAndWaitEffects()
+        {
+            var ctx = new Ctx { Story = 3, Area = 2 };
+            Assert.That(DialogScriptEvaluator.TestPasses("ss 3, ss -3", ctx), Is.True);
+            Assert.That(DialogScriptEvaluator.TestPasses("ss 4", ctx), Is.False);
+            Assert.That(DialogScriptEvaluator.TestPasses("ia 2", ctx), Is.True);
+            Assert.That(DialogScriptEvaluator.TestPasses("ia -2", ctx), Is.False);
+            Assert.That(DialogScriptEvaluator.TestPasses("ia -1", ctx), Is.True);
+
+            DialogScriptEvaluator.RunEffect("ce, wa", ctx, out int jump);
+            Assert.That(jump, Is.EqualTo(-1));
+            Assert.That(ctx.Examined, Is.True);
+            Assert.That(ctx.WaitOrdered, Is.True);
+        }
+
         // Minimal IDialogContext for the pure tests — only gender/names matter here; the rest is permissive.
         private sealed class Ctx : IDialogContext
         {
@@ -280,6 +296,8 @@ namespace Arcanum.Formats.Tests
             public int CollegeLevel;
             public int PartyMemberName = -1;
             public bool Jilted, Waiting, Quelled;
+            public int Story, Area;
+            public bool Examined, WaitOrdered;
             public int MagickAptitude => Aptitude;
             public int SpellCollegeLevel(int college) => CollegeLevel;
             public bool PartyHasMemberNamed(int nameId) => nameId == PartyMemberName;
@@ -310,7 +328,7 @@ namespace Arcanum.Formats.Tests
             public int Alignment { get; set; }
             public void AdjustAlignment(int delta) { }
             public void SetAlignment(int value) { }
-            public int StoryState => 0;
+            public int StoryState => Story;
             public void SetStoryState(int value) { }
             public bool RumorKnown(int id) => false;
             public void SetRumorKnown(int id) { }
@@ -349,6 +367,9 @@ namespace Arcanum.Formats.Tests
             public bool IsNpcFollowingPc => Following;
             public bool AreaKnown(int id) => Areas.Contains(id);
             public void DisbandNpc() => Disbanded = true;
+            public int CurrentArea => Area;
+            public void RequestCharacterExamination() => Examined = true;
+            public void SetNpcWaiting() => WaitOrdered = true;
         }
     }
 }
