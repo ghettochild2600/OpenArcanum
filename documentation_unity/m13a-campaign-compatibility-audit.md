@@ -163,3 +163,97 @@ extra cumulative column exposes the 56-pixel lurch layered over one Unity route.
 This pass does not redesign the HUD, add new campaign content, broaden unsupported dialogue opcodes beyond reached
 source requirements, alter navigation, or run an autonomous campaign playthrough. Future user-discovered campaign
 compatibility defects should be appended here only when they are reproduced and source-audited.
+
+## Second opening follow-up: locomotion, sector presentation, and dialogue 1324 (2026-10-04)
+
+This bounded follow-up starts at `03be353b2ef63a89f86c59642b1f1e6abc4a339b`. It fixes only the four
+user-reported opening defects. It does not broaden the campaign pass or change route, collision, combat, save, or
+world-transition authority.
+
+### Source-authentic PC locomotion
+
+The previous follow-up correctly removed WALK offsets from sprite pivots, but left Unity's constant-speed root
+interpolation and the sprite animator as independent clocks. Original `object_inc_current_aid` instead advances one
+ART frame and adds that displayed frame's authored movement delta to the object's movement offset. Source
+`sub_437990` supplies the adjusted WALK frame rate from the critter's SPEED and body category.
+
+The production player now uses that source animation clock as the locomotion clock. Each displayed WALK frame yields
+its authored screen-space delta, projected onto the current tile-route direction; that bounded progress advances the
+existing route/session authority. Hotspots remain presentation-only, path selection and collision remain unchanged,
+and the actor returns to STAND only after reaching the final waypoint. A near-waypoint direction correction also now
+uses the sign of the remaining displacement rather than rounding a fractional displacement to zero, preserving the
+direction and animation phase through path-node transitions.
+
+Representative `hmmv1xab.art` eastward cycle at the ordinary human 17 FPS source rate:
+
+| Displayed frame | Source time (s) | Authored x delta (px) | Cumulative route progress (80 px tile) |
+| ---: | ---: | ---: | ---: |
+| 0 | 0.0000 | 4 | 0.050 |
+| 1 | 0.0588 | 10 | 0.175 |
+| 2 | 0.1176 | 8 | 0.275 |
+| 3 | 0.1765 | 4 | 0.325 |
+| 4 | 0.2353 | 6 | 0.400 |
+| 5 | 0.2941 | 4 | 0.450 |
+| 6 | 0.3529 | 8 | 0.550 |
+| 7 | 0.4118 | 8 | 0.650 |
+| 8 | 0.4706 | 4 | 0.700 |
+| 9 | 0.5294 | 4 | 0.750 |
+
+The diagnostic is intentionally source-shaped: the frame index, authored delta, frame timestamp, facing, and
+fractional route position all come from the same clock. Entered tile nodes still commit through the production
+session one at a time; rendering interpolates between those commits without adding a second constant-speed clock.
+
+### Generic Virgil/NPC movement
+
+The generic follower driver previously called an atomic one-step helper every 200 ms, so the authoritative NPC
+position jumped directly between tiles while the sprite merely selected WALK. The movement service now plans and
+returns the same authoritative route without mutating it. The production follower driver advances that route with
+the same source WALK frame/delta clock as the PC, commits entered tiles through the session and navigation occupancy,
+retains stable ObjectID ordering, and returns to STAND at arrival. A dynamic blocker rolls back the attempted entered
+tile and cancels the route rather than corrupting occupancy. Party membership and follower policy are unchanged.
+
+### Authentic adjacent-sector presentation
+
+The crash-site black void was presentation, not missing retail terrain. The source map cache keeps a 3x3 sector
+neighborhood around the current sector. Production terrain now builds that exact bounded window from existing source
+sector files, offsets each 64x64 sector by its relative sector coordinate, and retains the central sector as the
+camera/object-ownership frame. The crash-site sector `86570436012` resolves all nine authentic neighbors. Crossing a
+central-sector boundary rebuilds the window around the new owner sector while the global route remains authoritative;
+missing outer-map neighbors simply remain absent. The click input no longer rejects an otherwise valid global route
+solely because its destination is outside the currently central 64x64 sector.
+
+### Additional dialogue 1324 operations
+
+The generic dialogue VM and production transaction now admit the exact source operations reached by this follow-up:
+
+- `ss`: evaluates the existing source comparison semantics and is admitted by the production vocabularies.
+- `ia`: resolves the PC's current area from START_MAP/townmap semantics; positive values mean exactly that area and
+  negative values mean not that area. The authentic crash site resolves to area 2.
+- `ce`: requests the existing character projection for the speaking NPC, opens it read-only, and performs no
+  authoritative mutation.
+- `wa`: applies the NPC wait-here bit (`0x00000008`) through persistent/runtime world state. Party membership is
+  retained, matching the source leader-link restoration, while the follower is no longer eligible to accompany.
+
+NPC wait flags participate in the existing dialogue transaction snapshot. Unsupported examination/effect paths still
+fail closed. No Virgil-specific branch, retail-data edit, or broader unsupported opcode admission was added.
+
+### Final validation
+
+- focused M13A EditMode tests: **16 passed / 0 failed / 0 skipped / 0 inconclusive**
+- affected regressions: **79/79** (`M5A` 16, `M8E` 8, `M2AInteraction` 16,
+  `PlayerNavigation` 21, `M12CFullGameUi` 18)
+- complete EditMode suite, run once at the end: **1068 passed / 0 failed / 0 skipped / 0 inconclusive**
+- prior complete-suite baseline: **1058**; this follow-up adds ten focused tests
+- Unity 6000.0.71f1 compilation: clean
+- `git diff --check`: clean
+
+One fresh production New Game was used for the bounded physical proof. The initial crash-site window rendered **9/9**
+source sectors with no blend misses. The PC completed representative long movement and crossed
+`86570436012 -> 86570436011 -> 86570436012 -> 86637544876`; terrain rebuilt around each new owner sector (the
+outer-edge sector correctly had only 7 existing neighbors), movement remained continuous, and no teleport or black
+void was observed. The run stopped there to avoid broad campaign progress. Generic Virgil/follower movement and the
+additional dialogue operations are covered by production-path focused tests rather than a second physical campaign
+run. Final cleared Unity Console: **0 logs / 0 warnings / 0 errors**.
+
+The user-owned `OpenArcanumGraphicsConfig.asset` remains at `graphicsMode: 1` and is excluded from these commits, as
+are local `GameData`, `HDAssets`, `output`, and `tmp` content. Save V1 is unchanged.

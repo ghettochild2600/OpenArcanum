@@ -55,12 +55,14 @@ player-facing manual save/load presentation, M7A bounded passive local map trans
   save/load strictly as projections and commands over M1-M12B authority. **DONE M12D — Audio:** one central
   presentation bridge now resolves retail WAV/MP3 resources and source sound/scheme/dialogue rules for UI, world,
   combat, magic, technology, voice, music, and ambience without owning gameplay or changing Save V1.
-  **DONE M13A opening crash-site compatibility pass and bounded user follow-up:** authentic Virgil dialogue 1324
-  now includes generic source `mm` area discovery and `wa` NPC wait-state semantics; source heartbeat initialization
-  reconstructs the additional crash-site casualties without replaying death rewards/consequences; and WALK ART
-  movement deltas are no longer double-applied over Unity root interpolation. Opening corpse presentation,
-  interaction/loot, living controls, and smooth production movement are green through a fresh New Game checkpoint.
-  This remains a bounded user-reported pass, not an autonomous campaign playthrough.
+  **DONE M13A opening crash-site compatibility pass and bounded user follow-ups:** authentic Virgil dialogue 1324
+  now includes generic source `mm`, `ss`, `ia`, `ce`, and `wa` semantics; source heartbeat initialization reconstructs
+  the additional crash-site casualties without replaying death rewards/consequences; the production PC and generic
+  followers consume WALK ART frame deltas from the source timing clock while the existing route/session remains
+  authoritative; and the crash-site terrain presents the authentic adjacent-sector window. Opening corpse
+  presentation, interaction/loot, living controls, locomotion, sector-boundary travel, and the additional dialogue
+  operations are green through focused production tests and one bounded fresh New Game checkpoint. This remains a
+  bounded user-reported pass, not an autonomous campaign playthrough.
 `WorldMapSessionCoordinator` owns typed `World`, `Contained(parent)`, and `Equipped(parent, wornLocation)` placement,
 atomic raw item transfers/equipment replacement/stack merge and split, deterministic session-created item identities,
 source-faithful pickup/drop/owner-transfer policy, and pre-mutation weight/grid-capacity guards independently of Unity
