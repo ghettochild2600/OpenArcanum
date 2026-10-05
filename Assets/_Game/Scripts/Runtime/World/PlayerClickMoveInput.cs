@@ -2,6 +2,7 @@ using Arcanum.Formats.Objects;
 using Arcanum.Runtime.Combat;
 using Arcanum.Runtime.UI;
 using UnityEngine;
+using UnityEngine.EventSystems;
 
 namespace Arcanum.Runtime.World
 {
@@ -20,6 +21,7 @@ namespace Arcanum.Runtime.World
         private ProductionGameUiPresenter _ui;
         private Vector3 _pressPosition;
         private ArcanumObjectId _dragCorpse;
+        private bool _pressedOverInterface;
 
         public Vector2Int? LastClickedTile { get; private set; }
         public ArcanumObjectId? LastClickedObject { get; private set; }
@@ -44,7 +46,9 @@ namespace Arcanum.Runtime.World
             if (Input.GetMouseButtonDown(0))
             {
                 _pressPosition = Input.mousePosition;
+                _pressedOverInterface = EventSystem.current?.IsPointerOverGameObject() == true;
                 _dragCorpse = default;
+                if (_pressedOverInterface) return;
                 if (AltHeld && TryScreenWorld(_pressPosition, out Vector3 pressedWorld)
                     && WorldObjectTargetSelector.TrySelectInteractionTarget(_loader.SpriteOwners, pressedWorld,
                         out ArcanumObjectId pressed, out ObjectType pressedType)
@@ -53,6 +57,13 @@ namespace Arcanum.Runtime.World
                     _dragCorpse = pressed;
             }
             if (!Input.GetMouseButtonUp(0)) return;
+            if (_pressedOverInterface || EventSystem.current?.IsPointerOverGameObject() == true)
+            {
+                _pressedOverInterface = false;
+                _dragCorpse = default;
+                LastClickAccepted = false;
+                return;
+            }
             bool dragged = (Input.mousePosition - _pressPosition).sqrMagnitude
                            > dragThresholdPixels * dragThresholdPixels;
             if (dragged)

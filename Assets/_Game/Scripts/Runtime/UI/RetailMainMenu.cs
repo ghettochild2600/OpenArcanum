@@ -486,7 +486,9 @@ namespace Arcanum.Runtime.UI
             {
                 var events = new GameObject("OpenArcanum UI EventSystem",
                     typeof(EventSystem), typeof(StandaloneInputModule));
-                events.transform.SetParent(_canvasRoot.transform, worldPositionStays: false);
+                // The same production EventSystem serves the gameplay HUD after this menu canvas is hidden.
+                // Keep it on the presenter host rather than beneath either transient presentation root.
+                events.transform.SetParent(transform, worldPositionStays: false);
             }
         }
 

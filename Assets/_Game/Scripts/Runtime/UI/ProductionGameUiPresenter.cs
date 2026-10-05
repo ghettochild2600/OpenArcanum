@@ -36,6 +36,7 @@ namespace Arcanum.Runtime.UI
         private PlayerInteractionController _interaction;
         private ProductionCombatPresenter _legacyCombat;
         private RetailMainMenuView _retailMainMenu;
+        private RetailGameplayHudView _retailGameplayHud;
         private Vector2 _scroll;
         private Rect _panelRect;
         private bool _showHud = true;
@@ -88,6 +89,9 @@ namespace Arcanum.Runtime.UI
                 _controller = new GameUiController(_session, _session.SaveSlots, _legacyCombat?.Controller);
             _retailMainMenu = GetComponent<RetailMainMenuView>() ?? gameObject.AddComponent<RetailMainMenuView>();
             _retailMainMenu.Bind(_controller, Application.Quit);
+            _retailGameplayHud = GetComponent<RetailGameplayHudView>()
+                                 ?? gameObject.AddComponent<RetailGameplayHudView>();
+            _retailGameplayHud.Bind(_controller, _session, Open);
             DisableLegacyPresenters();
         }
 
@@ -122,6 +126,7 @@ namespace Arcanum.Runtime.UI
             SyncInputGate();
 
             _retailMainMenu?.Synchronize();
+            _retailGameplayHud?.Synchronize(_showHud);
             if (Controller.Screen == GameUiScreen.MainMenu && _retailMainMenu?.IsAvailable == true)
                 return;
 
@@ -297,9 +302,11 @@ namespace Arcanum.Runtime.UI
             else Controller.SubmitWorldTarget(default);
         }
 
-        private bool PointerOverInterface(Vector3 mouse)
+        internal bool PointerOverInterface(Vector3 mouse)
         {
+            if (_retailGameplayHud?.ContainsScreenPoint(mouse) == true) return true;
             Vector2 guiPoint = new(mouse.x, Screen.height - mouse.y);
+            if (_retailGameplayHud?.IsAvailable == true) return _panelRect.Contains(guiPoint);
             float hudHeight = 154f * PresentationScale;
             return guiPoint.y >= Screen.height - hudHeight || _panelRect.Contains(guiPoint);
         }
@@ -309,10 +316,11 @@ namespace Arcanum.Runtime.UI
             EnsureController();
             Controller.Refresh();
             _retailMainMenu?.Synchronize();
+            _retailGameplayHud?.Synchronize(_showHud);
             bool sourceMainMenu = Controller.Screen == GameUiScreen.MainMenu
                                   && _retailMainMenu?.IsAvailable == true;
             GUI.depth = -120;
-            if (_showHud) DrawHud();
+            if (_showHud && _retailGameplayHud?.IsAvailable != true) DrawHud();
             if (Controller.IsModalOpen && !sourceMainMenu) DrawScreen();
             DrawCursorLabel();
         }
