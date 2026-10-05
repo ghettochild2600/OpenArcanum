@@ -186,7 +186,8 @@ namespace Arcanum.Runtime.UI
             Combat.Refresh();
             if (!HasPlayer)
             {
-                if (Screen is not (GameUiScreen.MainMenu or GameUiScreen.CharacterCreation or GameUiScreen.SaveLoad))
+                if (Screen is not (GameUiScreen.MainMenu or GameUiScreen.CharacterCreation or GameUiScreen.SaveLoad
+                    or GameUiScreen.Options))
                     Screen = GameUiScreen.MainMenu;
                 return;
             }
@@ -206,7 +207,7 @@ namespace Arcanum.Runtime.UI
             Refresh();
             if (screen == GameUiScreen.None) { Close(); return true; }
             if (!HasPlayer && screen is not (GameUiScreen.MainMenu or GameUiScreen.CharacterCreation
-                or GameUiScreen.SaveLoad)) return Reject("Start or load a game first.");
+                or GameUiScreen.SaveLoad or GameUiScreen.Options)) return Reject("Start or load a game first.");
             if (_session.Dialogue.Phase == DialogueSessionPhase.AwaitingPlayerChoice
                 && screen != GameUiScreen.Dialogue)
                 return Reject("Finish the current conversation first.");

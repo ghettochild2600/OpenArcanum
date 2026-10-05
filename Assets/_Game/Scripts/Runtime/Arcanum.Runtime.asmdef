@@ -4,7 +4,9 @@
     "references": [
         "Arcanum.Formats",
         "Arcanum.World",
-        "Arcanum.Script"
+        "Arcanum.Script",
+        "OpenArcanum.UI",
+        "Unity.ugui"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

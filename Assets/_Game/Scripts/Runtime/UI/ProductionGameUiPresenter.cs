@@ -35,6 +35,7 @@ namespace Arcanum.Runtime.UI
         private PlayerNavigationController _navigation;
         private PlayerInteractionController _interaction;
         private ProductionCombatPresenter _legacyCombat;
+        private RetailMainMenuView _retailMainMenu;
         private Vector2 _scroll;
         private Rect _panelRect;
         private bool _showHud = true;
@@ -85,6 +86,8 @@ namespace Arcanum.Runtime.UI
             _legacyCombat = GetComponent<ProductionCombatPresenter>();
             if (_controller == null)
                 _controller = new GameUiController(_session, _session.SaveSlots, _legacyCombat?.Controller);
+            _retailMainMenu = GetComponent<RetailMainMenuView>() ?? gameObject.AddComponent<RetailMainMenuView>();
+            _retailMainMenu.Bind(_controller, Application.Quit);
             DisableLegacyPresenters();
         }
 
@@ -117,6 +120,10 @@ namespace Arcanum.Runtime.UI
             EnsureController();
             Controller.Refresh();
             SyncInputGate();
+
+            _retailMainMenu?.Synchronize();
+            if (Controller.Screen == GameUiScreen.MainMenu && _retailMainMenu?.IsAvailable == true)
+                return;
 
             if (Input.GetKeyDown(KeyCode.F10)) _showHud = !_showHud; // OpenArcanum-only HUD diagnostic
             _keyboard.SetModifiers(
@@ -301,9 +308,12 @@ namespace Arcanum.Runtime.UI
         {
             EnsureController();
             Controller.Refresh();
+            _retailMainMenu?.Synchronize();
+            bool sourceMainMenu = Controller.Screen == GameUiScreen.MainMenu
+                                  && _retailMainMenu?.IsAvailable == true;
             GUI.depth = -120;
             if (_showHud) DrawHud();
-            if (Controller.IsModalOpen) DrawScreen();
+            if (Controller.IsModalOpen && !sourceMainMenu) DrawScreen();
             DrawCursorLabel();
         }
 

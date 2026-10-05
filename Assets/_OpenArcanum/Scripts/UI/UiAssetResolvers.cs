@@ -28,6 +28,8 @@ namespace OpenArcanum.UI
         private readonly Dictionary<int, DecodedSource> _sources = new Dictionary<int, DecodedSource>();
         private readonly Dictionary<UiAssetKey, UiResolvedAsset> _frames =
             new Dictionary<UiAssetKey, UiResolvedAsset>();
+        private readonly Dictionary<string, MesFile> _messageTables =
+            new Dictionary<string, MesFile>(StringComparer.OrdinalIgnoreCase);
         private readonly HashSet<string> _reported = new HashSet<string>(StringComparer.Ordinal);
         private bool _disposed;
 
@@ -137,6 +139,35 @@ namespace OpenArcanum.UI
             }
         }
 
+        /// <summary>
+        /// Reads localized retail text through the same mounted source hierarchy as interface artwork. Screen
+        /// presenters use this instead of copying message tables or opening a second archive stack.
+        /// </summary>
+        public bool TryReadMessage(string virtualPath, int key, out string value)
+        {
+            ThrowIfDisposed();
+            value = null;
+            if (string.IsNullOrWhiteSpace(virtualPath)) return false;
+            string normalized = DatFileEntry.Normalize(virtualPath.Replace('\\', '/'));
+            if (!_messageTables.TryGetValue(normalized, out MesFile table))
+            {
+                if (!_vfs.Exists(normalized)) return false;
+                try
+                {
+                    table = MesReader.Read(_vfs.ReadAllBytes(normalized));
+                    _messageTables.Add(normalized, table);
+                }
+                catch (Exception exception)
+                {
+                    string message = $"OpenArcanum UI: retail message table '{normalized}' unavailable: "
+                                     + exception.Message;
+                    if (_reported.Add(message)) _diagnostic(message);
+                    return false;
+                }
+            }
+            return table.TryGet(key, out value);
+        }
+
         private bool TryGetSource(int sourceId, out DecodedSource source)
         {
             if (_sources.TryGetValue(sourceId, out source)) return source != null;
@@ -216,6 +247,7 @@ namespace OpenArcanum.UI
             }
             _frames.Clear();
             _sources.Clear();
+            _messageTables.Clear();
             _vfs.Dispose();
         }
 
