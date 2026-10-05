@@ -6,7 +6,7 @@
 A retail 120 x 32 image and its Enhanced 480 x 128 replacement both occupy a 120 x 32 logical rectangle. Graphics
 mode never selects a second coordinate system.
 
-The future runtime should expose three layers:
+The UI-A runtime exposes three layers:
 
 1. Source layout records in 800 x 600 UI units, including pivots and hit rectangles.
 2. A responsive root that determines scale, safe region, and any world-only expansion.
@@ -139,6 +139,8 @@ Tests assert the same logical rectangles/hit targets across modes, no non-unifor
 transform and input inversion, and per-frame fallback. Visual review checks proportions, fixed ornament, world-only
 expansion, text fit, cursor registration, and absence of placeholder controls.
 
-The first UI-A harness should include overlays for the 800 x 600 root, world aperture, safe edges, pointer logical
-coordinates, and sprite native/logical dimensions. Those overlays are development-only and never part of production
-presentation.
+The UI-A harness now proves the 800 x 600 root, full-width gameplay world rectangle, and representative native/logical
+dimensions directly through `UiLogicalMapping` and a transient `SourceUiPresentationRoot`. Focused tests and physical
+Play Mode passed at 1920 x 1080, 2560 x 1440, and 3840 x 2160. The scales/origins are respectively 1.8/240,
+2.4/320, and 3.6/480; a generated 4x texture retained the same 23 x 23 logical rectangle as its retail frame.
+Development proof objects are transient and never part of production presentation.

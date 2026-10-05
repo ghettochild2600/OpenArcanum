@@ -2465,12 +2465,39 @@ See [`documentation_unity/ui/ui-asset-audit.md`](documentation_unity/ui/ui-asset
 [`documentation_unity/ui/ui-remaster-pipeline.md`](documentation_unity/ui/ui-remaster-pipeline.md), and
 [`documentation_unity/ui/ui-enhanced-style-test-set.md`](documentation_unity/ui/ui-enhanced-style-test-set.md).
 
+## UI-A Common UI Runtime / Skin Resolver Baseline (2026-10-04)
+
+UI-A is complete as shared presentation infrastructure. Immutable `UiAssetKey(sourceId,palette,rotation,frame)`
+identity drives a production retail resolver over the mounted GameData VFS/ART decoder and a deterministic Enhanced
+resolver under `HDAssets/ui/by-source-id/...`. Enhanced files must decode, match exact 4x native dimensions, and retain
+compatible transparency; missing or invalid replacements fall back independently to the requested Original frame.
+Decoded retail frames, accepted Enhanced frames, rejected paths, and final selections use bounded deterministic
+caches with explicit disposal and graphics-mode-safe invalidation.
+
+The common presentation layer now supplies an 800 x 600 top-left logical mapping, the authentic 41/400/159 gameplay
+division, full-width widescreen world geometry, separated World/HUD/Modal/Dialogue/Tooltip/Cursor roots, source-backed
+images, state-keyed buttons, cursor hotspot support, audited fixed/slice/tile policies, scrollbar assembly, and dynamic
+logical typography roles. It owns no controller, screen, modal, input, command, or gameplay state. The M12C placeholder
+Main Menu/HUD/screens remain available and no production Enhanced artwork was generated.
+
+Focused UI-A validation passed **23/23**. Physical Play Mode retained the production placeholder Main Menu and one
+controller/presenter, resolved real retail ID 137 button, ID 3 HUD, ID 11 icon, ID 238 scrollbar cap, and ID 1 cursor,
+loaded a temporary generated exact-4x checker only in Enhanced mode, proved missing-frame fallback, and completed
+Original -> Enhanced -> Original without geometry, gameplay, modal, or screen mutation. The 1920 x 1080,
+2560 x 1440, and 3840 x 2160 logical mappings passed. The physical proof emitted **0 warnings and 0 errors**.
+
+The final complete EditMode suite passed **1114/1114**, with **0 failed, 0 skipped, and 0 inconclusive**. Its 11 warnings
+were the existing intentional fail-closed dialogue compatibility diagnostics. Unity compilation was clean. Final
+Console was cleared to **0 logs, 0 warnings, and 0 errors**, and `git diff --check` was clean. See
+[`documentation_unity/ui/ui-runtime-architecture.md`](documentation_unity/ui/ui-runtime-architecture.md).
+
 ## Next Recommended Milestone
 
 M9A, M9B, M10A, M10B, M11A, M11B, M11C, M12B, M12C, M12D, and the bounded M13A opening pass are formally closed.
-The source-authentic keyboard compatibility follow-up is also closed. The recommended bounded next milestone is
-**UI-A — Common UI Runtime / Skin Resolver**: prove deterministic source identity, Original decoding, Enhanced 4x
-lookup and per-frame fallback, the shared 800 x 600 logical scaling foundation, common controls/fonts/cursors, and
-Original -> Enhanced -> Original presentation rebuild without controller or gameplay mutation. Do not begin screen
-reconstruction or generate Enhanced artwork before that contract is proven. Continue M13A only from concrete
-user-discovered campaign defects; do not start an autonomous campaign playthrough.
+The source-authentic keyboard compatibility follow-up and UI-A common runtime are also closed. The recommended bounded
+next milestone is **UI-B — Retail Main Menu reconstruction**: replace only the placeholder Main Menu view with source
+ID 329 and audited source button states while reusing the existing M12C controller and New Game/Load/Options/Quit
+commands. Require Original layout proof, one test-only Enhanced replacement plus missing-frame fallback, stable
+interaction/controller state, and centered un-stretched 1080p/1440p/4K presentation. Do not include the HUD,
+Character Creation, other screens, gameplay authority, or production Enhanced artwork. Continue M13A only from
+concrete user-discovered campaign defects; do not start an autonomous campaign playthrough.

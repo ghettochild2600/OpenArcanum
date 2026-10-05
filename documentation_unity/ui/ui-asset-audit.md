@@ -200,7 +200,7 @@ outside this audit.
 
 | Phase | Bounded result | Existing authority | Focused proof and commit boundary |
 |---|---|---|---|
-| UI-A | Common source resolver, Original/Enhanced mapping, 800 x 600 logical foundation, common controls/fonts/cursors | Graphics mode is presentation selection only | Resolver identity/fallback/dimension/alpha tests; 1080p/1440p/4K harness; one tooling/runtime commit and audit update |
+| UI-A (complete 2026-10-04) | Common source resolver, Original/Enhanced mapping, 800 x 600 logical foundation, common controls/fonts/cursors | Graphics mode is presentation selection only | 23/23 focused; 1114/1114 complete; physical retail/fallback/mode/resolution proof |
 | UI-B | Retail Main Menu reconstruction | Production launch, New Game, Load, Options/Quit routes | Original source asset/layout proof; one Enhanced replacement and missing-replacement fallback; screen commit |
 | UI-C | Authentic gameplay/combat HUD | M12C, M8I, inventory/magic/technology/journal/map commands | World-aperture expansion, quick slots, vials, combat state at all targets; Original/Enhanced parity commit |
 | UI-D | Retail Character Creation | M12B creation service and M12C commands | No horizontal scrolling; fixed editor/subpanels; validation at all targets; screen commit |
@@ -228,6 +228,11 @@ control placement, and interaction semantics are required.
 
 ## Recommended next milestone
 
-Begin with **UI-A — Common UI Runtime / Skin Resolver**. It is the narrow proof that source identity, local retail
-decoding, Enhanced 4x replacement, fallback, logical sizing, and graphics-mode rebuild can coexist without duplicating
-controllers. Do not begin a screen reconstruction until that shared contract is proven.
+Begin **UI-B — Retail Main Menu reconstruction** now that the shared runtime contract is proven. Replace only the
+placeholder Main Menu view with the fixed source ID 329 800 x 600 composition and audited button states while reusing
+the existing M12C controller and New Game/Load/Options/Quit command paths. Prove Original geometry, one test-only
+Enhanced replacement, missing-frame fallback, stable hit/controller state, and centered un-stretched behavior at
+1080p/1440p/4K. Do not migrate the HUD, Character Creation, or any other screen in UI-B.
+
+The completed runtime design and validation record are in
+[`ui-runtime-architecture.md`](ui-runtime-architecture.md).

@@ -37,7 +37,7 @@ This deterministic by-source-ID scheme is used because one retail asset can serv
 `HDAssets` is ignored, local-only content. Enhanced assets are never copied into the normal repository payload by the
 resolver. Retail decoded references likewise remain outside Git.
 
-## Runtime resolution contract
+## Runtime resolution contract (implemented by UI-A)
 
 1. Receive a `UiAssetKey` and its source metadata.
 2. Resolve/decode the Original ART frame through the existing mounted-data pipeline and cache it.
@@ -129,7 +129,9 @@ unless new source evidence explicitly proves a scalable center/edge.
 
 ## Import and validation metadata
 
-A future UI-A importer/index should record:
+The UI-A resolved-result boundary exposes runtime identity, source path, native dimensions, logical size,
+pivot/hotspot, offset, transparency, skin/fallback result, and slice/tile policy. A later production-art curation
+index should persist the complete review record:
 
 - source key and source/Enhanced paths;
 - source and replacement file hashes;
@@ -176,5 +178,18 @@ accepted if it changes gameplay state, screen order, focus, hover target, timing
 
 Treat each accepted replacement as a reviewable local asset with provenance, prompt/tool metadata when applicable,
 manual edits, and validator result stored outside the retail reference. Do not overwrite the retail export. Regenerate
-references only from mounted retail data. UI-A should define the index format before the first Enhanced style test is
-generated.
+references only from mounted retail data. UI-A implements the canonical path and runtime validation boundary; a later
+production-art workflow may add a persisted curation index without changing `UiAssetKey` or runtime authority.
+
+## UI-A implementation and proof
+
+UI-A completed on 2026-10-04. `RetailUiAssetResolver` reads the mounted retail VFS and ART decoder directly;
+`EnhancedUiAssetResolver` validates the canonical local PNG per frame; and `UiSkinResolver` selects presentation,
+falls back independently, caches bounded results, and invalidates bound components on graphics-mode changes. Common
+image, button, cursor, tiled-scrollbar, typography, logical-root, and layer primitives are available to later screens.
+No production Enhanced art was created and `UIReference/Original` remains reference-only.
+
+Focused validation passed 23/23 and the complete EditMode suite passed 1114/1114. Physical Play Mode resolved retail
+button/HUD/icon/scrollbar/cursor fixtures, loaded a temporary generated exact-4x checker, proved missing-frame fallback,
+and rebound Original -> Enhanced -> Original without geometry, controller, screen, or gameplay mutation. See
+[`ui-runtime-architecture.md`](ui-runtime-architecture.md) for the concrete component and migration contract.
