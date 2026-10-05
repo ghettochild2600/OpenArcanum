@@ -2,9 +2,10 @@
 
 ## Status and boundary
 
-UI-A — Common UI Runtime / Skin Resolver completed on 2026-10-04. It adds shared presentation infrastructure only.
-The existing M12C `GameUiController`, view-model projections, command routing, input precedence, modal state, and
-placeholder views remain intact. UI-A reconstructs no screen and contains no production Enhanced artwork.
+UI-A — Common UI Runtime / Skin Resolver completed on 2026-10-04. UI-B — Source-Faithful Main Menu Reconstruction
+then became the first production consumer. The existing M12C `GameUiController`, view-model projections, command
+routing, input precedence, modal state, and gameplay authority remain intact. UI-B replaces only the disposable Main
+Menu view; the other placeholder views remain. Neither milestone contains production Enhanced artwork.
 
 The migration rule for UI-B onward is:
 
@@ -111,11 +112,23 @@ and passed all three resolution mappings with no warnings or errors during the p
 The complete EditMode suite passed **1114/1114**, with 0 failed, 0 skipped, and 0 inconclusive. Its 11 warnings were
 the existing intentional fail-closed dialogue compatibility diagnostics. Unity compilation was clean.
 
-## Exact UI-B boundary
+## UI-B production consumer
 
-UI-B should replace only the production Main Menu view with the retail fixed 800 x 600 composition (source ID 329 and
-audited button/state assets) while retaining the existing M12C Main Menu controller and New Game/Load/Options/Quit
-command paths. It should prove the authentic logical positions in Original mode, one generated/test-only valid
-Enhanced replacement plus missing-frame fallback, identical hit rectangles and controller state across
-Original -> Enhanced -> Original, and centered un-stretched behavior at 1080p, 1440p, and 4K. It must not migrate the
-HUD, Character Creation, other screens, gameplay authority, or generate production remastered artwork.
+`RetailMainMenuView` is attached once to `ProductionGameUiPresenter`. It resolves retail backgrounds 329/331,
+bitmap-font 327, cursor 0, and `mes/mainmenu.mes` labels through the shared UI-A lifetime. The view projects one
+presentation-only hierarchy over `GameUiController`; New Game, Load, Options, and quit still enter their existing
+authorities. The presenter suppresses the legacy IMGUI Main Menu only while the source view is available and consumes
+Main Menu input before gameplay shortcuts. One stale-invalidation guard lets parent rebuilds retire old glyphs safely.
+
+UI-B passed 22/22 focused tests, UI-A 23/23, M12C 18/18, Player Startup 3/3, and the complete 1136/1136 EditMode
+suite. Physical Play Mode proved the Original retail composition, generated exact-4x replacement and per-frame
+fallback, state/geometry preservation across Original -> Enhanced -> Original, one presenter/EventSystem, production
+New Game/Load/Options routes, bounded unsupported branches, retail cursor hotspot, and centered 1080p/1440p/4K output.
+See [`ui-b-main-menu-reconstruction.md`](ui-b-main-menu-reconstruction.md).
+
+## Exact UI-C boundary
+
+UI-C should replace only the production Gameplay HUD presentation with the source-backed center composition and
+source-proven widescreen anchors. It must reuse existing M12C/M8I projections, command routes, modal/input precedence,
+and gameplay authority. It must not migrate Character Creation, Inventory, Save/Load, Options, other screens, or
+generate production remastered artwork. UI-C has not started.

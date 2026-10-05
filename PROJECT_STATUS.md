@@ -2491,13 +2491,45 @@ were the existing intentional fail-closed dialogue compatibility diagnostics. Un
 Console was cleared to **0 logs, 0 warnings, and 0 errors**, and `git diff --check` was clean. See
 [`documentation_unity/ui/ui-runtime-architecture.md`](documentation_unity/ui/ui-runtime-architecture.md).
 
+## UI-B Source-Faithful Main Menu Reconstruction Baseline (2026-10-04)
+
+UI-B is complete. The production launch path now uses the mounted retail 800 x 600 Main Menu rather than the generic
+IMGUI placeholder. Source ID 329 supplies the top-level lamp/frame/globe/skull/tabletop composition, ID 331 supplies
+the Single Player composition, ID 327 supplies frame-addressed retail bitmap lettering, and ID 0 supplies the retail
+cursor and hotspot. `mes/mainmenu.mes` supplies the available top-level, Single Player, New Game choice, and quit
+labels. The top-level order is Single Player, Multiplayer, Options, Credits, and Exit Game at source center x=410 and
+y=143/193/243/293/343.
+
+Single Player retains the retail New Game/Load Game/Last Save/View Intro/Cancel hierarchy. New Game exposes the
+source Pick Character/New Character/Cancel choice; New Character enters existing M12B/M12C authority. Load and Last
+Save enter existing M6 authority, Options reuses the existing screen, and confirmed Exit delegates to the platform
+callback. Multiplayer, Credits, View Intro, and Pick Character remain visible where source-required but fail closed
+through bounded notices; no network gameplay, invented credits, movie system, or pregenerated-character system was
+created. No Main Menu-specific M12D mapping was proven, so UI-B does not invent audio behavior.
+
+One `RetailMainMenuView` is owned by the existing production presenter, and the legacy Main Menu is suppressed only
+while that source view is available. The implementation creates no second controller or session authority. Physical
+Play Mode found one view/presenter/controller and one EventSystem, proved the production New Game, Load, Options,
+Credits, Multiplayer, Exit, Escape, hover/pressed, and source-cursor paths, and matched the supplied retail reference
+without substantive layout deviation.
+
+Focused UI-B validation passed **22/22**. Directly affected UI-A, M12C, and Player Startup regressions passed
+**23/23**, **18/18**, and **3/3**. The complete EditMode suite passed **1136/1136**, with **0 failed, 0 skipped, and 0
+inconclusive**. A generated temporary 3200 x 2400 ID 329 replacement proved exact-4x Enhanced selection; missing and
+invalid replacements fell back to Original while state and geometry remained unchanged. Original -> Enhanced ->
+Original and centered, un-stretched 1920 x 1080, 2560 x 1440, and 3840 x 2160 mappings passed. Unity compilation was
+clean, the physical proof ended with 0 warnings/errors, final Console was independently cleared/rechecked, and `git
+diff --check` was clean.
+
+See [`documentation_unity/ui/ui-b-main-menu-reconstruction.md`](documentation_unity/ui/ui-b-main-menu-reconstruction.md).
+
 ## Next Recommended Milestone
 
 M9A, M9B, M10A, M10B, M11A, M11B, M11C, M12B, M12C, M12D, and the bounded M13A opening pass are formally closed.
-The source-authentic keyboard compatibility follow-up and UI-A common runtime are also closed. The recommended bounded
-next milestone is **UI-B — Retail Main Menu reconstruction**: replace only the placeholder Main Menu view with source
-ID 329 and audited source button states while reusing the existing M12C controller and New Game/Load/Options/Quit
-commands. Require Original layout proof, one test-only Enhanced replacement plus missing-frame fallback, stable
-interaction/controller state, and centered un-stretched 1080p/1440p/4K presentation. Do not include the HUD,
-Character Creation, other screens, gameplay authority, or production Enhanced artwork. Continue M13A only from
-concrete user-discovered campaign defects; do not start an autonomous campaign playthrough.
+The source-authentic keyboard compatibility follow-up, UI-A common runtime, and UI-B source-faithful Main Menu are
+also closed. The recommended bounded next milestone is **UI-C — Gameplay HUD presentation**: replace only the generic
+production HUD with the source-backed center composition and source-proven widescreen anchors while reusing existing
+M12C/M8I projections, commands, input precedence, and gameplay authority. Do not include Character Creation,
+Inventory, Save/Load, Options, other screens, gameplay authority, or production Enhanced artwork. UI-C has not
+started. Continue M13A only from concrete user-discovered campaign defects; do not start an autonomous campaign
+playthrough.

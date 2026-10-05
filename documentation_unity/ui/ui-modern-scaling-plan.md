@@ -77,6 +77,11 @@ Center the authentic 800 x 600 composition. Preserve button positions within it.
 neutral treatment or future authored background continuation; they do not scale the 4:3 painting to fill. A single
 uniform scale and safe-area offset converts hit rectangles.
 
+UI-B now implements this rule in production. Retail IDs 329/331, ID 327 glyphs, ID 0 cursor pixels/hotspot, and the
+five source rows all share the same logical root. Physical Play Mode passed 1920 x 1080, 2560 x 1440, and 3840 x
+2160 at scales 1.8/2.4/3.6 and origins 240/320/480. A temporary 3200 x 2400 ID 329 Enhanced fixture increased pixel
+density without changing the 800 x 600 RectTransform, state, hit geometry, or input mapping.
+
 ### Character Creation and character management
 
 Center the 800 x 400 editor strip within the 800 x 600 reference surface. At all required resolutions the primary
@@ -144,3 +149,6 @@ dimensions directly through `UiLogicalMapping` and a transient `SourceUiPresenta
 Play Mode passed at 1920 x 1080, 2560 x 1440, and 3840 x 2160. The scales/origins are respectively 1.8/240,
 2.4/320, and 3.6/480; a generated 4x texture retained the same 23 x 23 logical rectangle as its retail frame.
 Development proof objects are transient and never part of production presentation.
+
+UI-B applies that architecture to the first production screen. The retail Main Menu remains one centered, un-stretched
+4:3 composition at those same resolutions; no resolution-specific hierarchy or production Enhanced asset exists.
