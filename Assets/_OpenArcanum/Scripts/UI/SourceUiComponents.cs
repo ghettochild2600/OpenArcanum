@@ -135,7 +135,14 @@ namespace OpenArcanum.UI
             _subscribed = false;
         }
 
-        private void RefreshFromInvalidation() => Refresh();
+        private void RefreshFromInvalidation()
+        {
+            // A presentation invalidation can retain its delegate snapshot while a parent rebuild destroys this
+            // glyph. Unity's native object is already gone in that narrow window, so fail closed instead of
+            // touching the retired component.
+            if (this == null) return;
+            Refresh();
+        }
     }
 
     /// <summary>
