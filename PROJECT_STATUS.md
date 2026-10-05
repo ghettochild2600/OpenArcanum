@@ -2430,10 +2430,47 @@ See the `Original Keyboard Shortcut Compatibility` section of
 [`documentation_unity/m13a-campaign-compatibility-audit.md`](documentation_unity/m13a-campaign-compatibility-audit.md)
 and [`documentation_unity/player-launch-guide.md`](documentation_unity/player-launch-guide.md).
 
+## Retail UI Archaeology / Remaster-Pipeline Baseline (2026-10-04)
+
+The bounded post-M12C UI archaeology audit is complete. M12C remains the functionally complete controller,
+view-model, command-routing, input, and modal-state layer; its current generic panels, button matrix, translucent
+overlays, and scrolling Character Creation form are now explicitly classified as disposable placeholder
+presentation rather than layouts to preserve.
+
+The retail `art/interface/interface.mes` contains **846** authoritative source entries. The deterministic Editor
+exporter decoded **799** available ART targets to local-only RGBA references under
+`D:/OpenArcanum/UIReference/Original/` and recorded **47** archive-absent targets as explicit errors rather than
+inventing replacements. Retail image payloads remain outside Git. The committed manifest retains source ID,
+palette/rotation/frame identity, native dimensions, alpha, source evidence, conservative screen mapping,
+Original/Enhanced replacement identity, and slice suitability.
+
+Source and manual evidence establishes an authentic **800 x 600** logical surface, including the 41-pixel top bar,
+400-pixel world/management strip, and 159-pixel bottom HUD. Main Menu, Character Creation, HUD, Inventory/equipment,
+maps, Journal, Schematics, Dialogue, Merchant, Save/Load, Options, Party, Sleep, Fate, common controls, cursors, and
+bitmap-font families are inventoried. Exact coordinates are recorded where proven and left `unknown` otherwise.
+
+The future renderer uses one logical geometry and a presentation-only `UiAssetKey(sourceId,palette,rotation,frame)`
+resolver. Enhanced 4x PNGs use deterministic local `HDAssets/ui/by-source-id/...` paths, must retain exact geometry
+and alpha registration, and fall back per frame to Original retail decoding. Widescreen gameplay expands the world
+viewport; fixed authored art is centered/anchored without stretching. All modes reuse existing controllers and hit
+regions. No production UI, gameplay system, or Enhanced artwork changed during this audit.
+
+The exporter compiled and reran successfully in the existing Unity Editor with the stable 846/799/47 result.
+Representative full-screen, panel, control, indicator, icon, scrollbar, and dialogue references were visually
+verified; final Unity Console was **0 warnings and 0 errors**; and `git diff --check` was clean.
+
+See [`documentation_unity/ui/ui-asset-audit.md`](documentation_unity/ui/ui-asset-audit.md),
+[`documentation_unity/ui/ui-screen-inventory.md`](documentation_unity/ui/ui-screen-inventory.md),
+[`documentation_unity/ui/ui-modern-scaling-plan.md`](documentation_unity/ui/ui-modern-scaling-plan.md),
+[`documentation_unity/ui/ui-remaster-pipeline.md`](documentation_unity/ui/ui-remaster-pipeline.md), and
+[`documentation_unity/ui/ui-enhanced-style-test-set.md`](documentation_unity/ui/ui-enhanced-style-test-set.md).
+
 ## Next Recommended Milestone
 
 M9A, M9B, M10A, M10B, M11A, M11B, M11C, M12B, M12C, M12D, and the bounded M13A opening pass are formally closed.
-The source-authentic keyboard compatibility follow-up is also closed. Do not treat compatible spell,
-technological-item, retail schematic, merchant, reputation, background, portrait, pregen, or campaign content as
-unfinished core runtime. Continue M13A only from concrete user-discovered campaign defects; do not start an autonomous
-campaign playthrough.
+The source-authentic keyboard compatibility follow-up is also closed. The recommended bounded next milestone is
+**UI-A — Common UI Runtime / Skin Resolver**: prove deterministic source identity, Original decoding, Enhanced 4x
+lookup and per-frame fallback, the shared 800 x 600 logical scaling foundation, common controls/fonts/cursors, and
+Original -> Enhanced -> Original presentation rebuild without controller or gameplay mutation. Do not begin screen
+reconstruction or generate Enhanced artwork before that contract is proven. Continue M13A only from concrete
+user-discovered campaign defects; do not start an autonomous campaign playthrough.
