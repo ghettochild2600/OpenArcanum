@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 
 namespace OpenArcanum.Rendering
@@ -27,6 +28,12 @@ namespace OpenArcanum.Rendering
 
         private static GraphicsMode? _runtimeMode;
 
+        /// <summary>
+        /// Presentation owners may rebind visual resources after a runtime mode switch. Gameplay systems must not
+        /// subscribe to or derive authority from this event.
+        /// </summary>
+        public static event Action<GraphicsMode> ModeChanged;
+
         public static GraphicsMode Mode
         {
             get
@@ -54,6 +61,7 @@ namespace OpenArcanum.Rendering
             if (_runtimeMode == mode) return;
             _runtimeMode = mode;
             OpenArcanumHDAssetLoader.ClearCache();
+            ModeChanged?.Invoke(mode);
         }
 
         public static void ClearRuntimeMode()
@@ -61,6 +69,7 @@ namespace OpenArcanum.Rendering
             if (!_runtimeMode.HasValue) return;
             _runtimeMode = null;
             OpenArcanumHDAssetLoader.ClearCache();
+            ModeChanged?.Invoke(Mode);
         }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
@@ -68,6 +77,7 @@ namespace OpenArcanum.Rendering
         {
             _runtimeMode = null;
             _config = null;
+            ModeChanged = null;
         }
     }
 }

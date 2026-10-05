@@ -370,8 +370,14 @@ namespace OpenArcanum.Rendering
             {
                 if (texture != null)
                 {
-                    UnityEngine.Object.Destroy(
-                        texture);
+                    if (Application.isPlaying)
+                    {
+                        UnityEngine.Object.Destroy(texture);
+                    }
+                    else
+                    {
+                        UnityEngine.Object.DestroyImmediate(texture);
+                    }
                 }
             }
 

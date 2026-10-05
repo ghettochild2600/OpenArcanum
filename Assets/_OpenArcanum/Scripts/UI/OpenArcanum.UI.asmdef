@@ -1,0 +1,19 @@
+{
+    "name": "OpenArcanum.UI",
+    "rootNamespace": "OpenArcanum.UI",
+    "references": [
+        "Arcanum.Formats",
+        "Arcanum.World",
+        "OpenArcanum.Rendering",
+        "Unity.ugui"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

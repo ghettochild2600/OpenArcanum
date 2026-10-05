@@ -5,6 +5,9 @@
         "Arcanum.Formats",
         "Arcanum.Runtime",
         "Arcanum.World",
+        "OpenArcanum.Rendering",
+        "OpenArcanum.UI",
+        "Unity.ugui",
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner",
         "Arcanum.Script"
