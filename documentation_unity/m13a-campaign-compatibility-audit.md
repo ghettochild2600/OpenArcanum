@@ -257,3 +257,80 @@ run. Final cleared Unity Console: **0 logs / 0 warnings / 0 errors**.
 
 The user-owned `OpenArcanumGraphicsConfig.asset` remains at `graphicsMode: 1` and is excluded from these commits, as
 are local `GameData`, `HDAssets`, `output`, and `tmp` content. Save V1 is unchanged.
+
+## Original Keyboard Shortcut Compatibility (2026-10-04)
+
+This bounded pass audits the retail keyboard-reference diagram against the retail manual, source-derived behavior,
+and the reference implementation. `ProductionKeyboardController` now owns only deterministic key phase, modal
+precedence, text-entry suppression, and modifier intent. It delegates every result to the existing UI, M8 combat,
+M9 party, movement, camera, save-slot, inventory, magic, technology, or interaction authority. The input layer does
+not calculate gameplay outcomes and Save V1 remains unchanged.
+
+The source broadcast table is exact: F1 Walk, F2 Attack, F3 Stay Close, F4 Spread Out, F5 Back Off, and F6 Follow.
+Therefore the former OpenArcanum F6 Save/Load binding was a convenience conflict and has been removed; Save/Load
+remains available from the HUD while retail F7/F8 use the dedicated `auto` slot. Editor validation menu commands also
+remain available, but their global F8/F10/F11 accelerators were removed after physical validation proved that an
+Editor accelerator could steal a production shortcut.
+
+| Key | Original label | Exact source semantics | OpenArcanum implementation | Context | Physical validation status | Automated test status | Deferred / multiplayer-only notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Esc | Main Menu | Release closes the active interface first; otherwise opens the main menu | Presenter applies dialogue/confirmation/modal precedence, then opens Main Menu | All production contexts; text entry still permits Escape | Inventory, character, map, options, and post-load menu close/open paths proved | Modal precedence covered | None |
+| F1 | Walk | Source broadcast order 500 on release, using the pointer location | M9B `PartyStateService.IssueOrder(Walk)` | Valid world pointer | `Followers: Walk` proved | Exact source index/order covered | No valid destination fails closed |
+| F2 | Attack | Source broadcast order 501 on release, using the pointed target | M9B order plus existing forced-start combat path | Valid living target | Invalid-target rejection proved | Exact source index/order covered | No target means no mutation |
+| F3 | Stay Close | Source broadcast order 502; enable following at close range | M9B formation authority | Party runtime | Feedback and state change proved | Range/follow state covered | None |
+| F4 | Spread Out | Source broadcast order 503; enable following at spread range | M9B formation authority | Party runtime | Feedback and state change proved | Range/follow state covered | None |
+| F5 | Back Off | Source broadcast order 504; stop following and disengage followers | M9B party/combat authority | Party runtime | Feedback and state change proved | Follow state covered | None |
+| F6 | Follow | Source broadcast order 505; resume ordinary follow range | M9B formation authority; no Save/Load binding | Party runtime | `Followers: Follow` proved | Exact sixth order covered | HUD still exposes Save/Load |
+| F7 | Auto Save | Release writes the automatic save slot | Existing save-slot authority, slot `auto` | Active session | Fresh crash-site auto-save proved | Dedicated auto slot covered | None |
+| F8 | Auto Load | Release loads the automatic slot and rebuilds presentation | Existing load authority, slot `auto` | Existing auto-save | Auto-load and presentation rebuild proved after removing Editor collision | Dedicated auto slot covered | None |
+| F12 | Screenshot | Down captures a screenshot | Unity capture to the user persistent-data Screenshots folder | Production game | Concrete PNG path and file creation proved | Dispatch covered | None |
+| 1-0 | Quick slots 1-10 | Down activates the bound item/spell/skill; dialogue owns numbered replies | Coordinator-owned ten-slot binding bank; Inventory/Magic expose assignment | HUD; suppressed in text entry and dialogue | Slot 1 item assignment and activation boundary plus empty-slot rejection proved | All ten mappings, ownership, replacement, and learned-spell checks covered | No generic skill-action authority yet; skills are not fabricated |
+| W | World Map | Down opens/closes world map | Existing Map screen | Player session | Proved | Screen dispatch covered | None |
+| E | End Combat Round | Release ends the current turn only in active turn-based combat | Existing M8 combat UI/controller | Active turn-based combat | Production combat path retained; context proof automated | Inactive, real-time, and turn-based cases covered | No effect outside turn-based combat |
+| R | Attack / Talk | Down toggles attack pointer; in active combat returns to talk/end-combat path | Existing UI/combat authority | HUD or combat | Attack-mode feedback proved | Controller boundary covered | None |
+| T | Technology | Down opens/closes Technology | Existing Technology screen | Player session | Proved | Screen dispatch covered | None |
+| I | Inventory | Down opens/closes Inventory | Existing Inventory screen | Player session | Proved | Screen dispatch covered | None |
+| O | Options | Down opens/closes Options | Production presentation options | Player session | Proved | Screen dispatch covered | Key rebinding UI remains deferred; defaults are authoritative |
+| A | Active Action | Down repeats the most recently successful quick-slot action | Coordinator-owned active-slot marker and existing item/spell command | After a successful quick-slot action | Production boundary retained; context proof automated | Controller boundary covered | No invented action when no slot has succeeded |
+| S | Sleep | Retail sleep command | Explicit fail-closed feedback | Any supported single-player state | Feedback path inspected | Unsupported surface covered | Rest/sleep authority is not represented yet |
+| F | Fate Points | Retail Fate interface | Explicit fail-closed feedback | Any supported single-player state | Feedback path inspected | Unsupported surface covered | Fate-point runtime/UI is not represented yet |
+| K | Use Skills | Opens the existing Skills screen | Existing Skills screen | Player session | Proved | Screen dispatch covered | Generic skill quick-slot execution remains deferred |
+| L | Logbook | Down opens/closes logbook | Existing Journal/Logbook screen | Player session | Proved | Screen dispatch covered | None |
+| C | Character Info | Down opens/closes character projection | Existing Character screen | Player session | Proved | Screen dispatch covered | None |
+| V | Version Info | Down displays the current application version | Production feedback surface | Player session | `OpenArcanum 1.0` proved | Dispatch boundary covered | Retail cheat-gated details are not invented |
+| M | Use Magic | Down opens/closes Magic | Existing Magic screen | Player session | Proved | Screen dispatch covered | None |
+| Comma `<` | Aim at Head | Held selects Head; release restores Torso | Existing M8G called-location authority | Active combat only | Production combat path retained; context proof automated | Head/down and Torso/up covered | No latch and no duplicate penalty logic |
+| Period `>` | Aim at Arms | Held selects Arm; release restores Torso | Existing M8G called-location authority | Active combat only | Production combat path retained; context proof automated | Arm/down and Torso/up covered | Same behavior for melee/ranged authority |
+| Slash `?` | Aim at Legs | Held selects Leg; release restores Torso | Existing M8G called-location authority | Active combat only | Production combat path retained; context proof automated | Leg/down and Torso/up covered | Same behavior for melee/ranged authority |
+| Left/Right Shift | Stand and Attack | Held during click suppresses movement and submits through the selected combat target | Existing click targeting and M8 attack transaction | Valid combat target | Modifier-mouse injection was unavailable in the native backend; production path inspected | Held intent and authoritative attack path covered by affected tests | Invalid ground click performs no action |
+| Left/Right Ctrl | Run | Held temporarily inverts the persistent Num Lock walk/run choice | Existing navigation timing and animation authority | Ground movement | Representative movement remained authoritative; modifier combination proof automated | XOR run/walk semantics covered | Does not move the player by itself |
+| Left/Right Alt | Force Attack / Drag Corpse | Held click forces a legal neutral-target attack; held drag relocates a dead NPC | Existing combat start or coordinator corpse move with stable ObjectID/state | Valid target/corpse and destination | Native backend cannot hold Alt across mouse input; production path inspected | Modifier intent and directly affected combat/interaction regressions covered | Unsupported scenery destruction still fails closed |
+| Space | Close Interface / toggle TB-RT | Down closes an open interface first; with no interface, toggles active combat mode | Existing UI close and M8/M8H mode authority | Modal first, otherwise active combat | Inventory-close precedence proved; combat mode path covered automatically | Both precedence branches covered | Inactive combat rejects without mutation |
+| Home | Center Character | Release centers PC; when already centered in turn-based combat, centers current participant | Camera presentation only | Player session / turn-based combat | Detached camera and recenter proved | Controller boundary covered | No party-member cycling beyond source-supported behavior |
+| Arrow keys | Scroll Camera | Held continuously pans; opposing/diagonal combinations compose | Camera presentation only | Game view focused | Right-arrow detach proved while gameplay continued | Four held directions and unchanged player position covered | Camera never moves the player |
+| Num Lock | Toggle Run / Walk | Down flips persistent default; Ctrl temporarily inverts it | Input intent consumed by existing navigation | Ground movement | Production key path exercised; exact XOR state proved automatically | Default, toggle, and Ctrl inversion covered | No second movement clock |
+| Enter | Chat Window | Opens broadcast/chat in the reference executable, including the SP UI surface | Explicit unavailable feedback; no fake chat | Not supported by current runtime | Fail-closed feedback proved | Return/KeypadEnter covered | Multiplayer/chat runtime intentionally unavailable |
+| Print Screen / SysRq | Unlabeled | No retail diagram action | No production binding | N/A | Audited | Absence verified in map | Intentionally unavailable |
+| Scroll Lock | Unlabeled | No retail diagram action | No production binding | N/A | Audited | Absence verified in map | Intentionally unavailable |
+| Pause / Break | Unlabeled | No retail diagram action | No production binding | N/A | Audited | Absence verified in map | Intentionally unavailable |
+
+### Validation result
+
+- focused M13A keyboard/input: **23 passed / 0 failed / 0 skipped / 0 inconclusive**
+- directly affected regressions: **177 passed / 0 failed / 0 skipped / 0 inconclusive**
+- complete EditMode suite: **1091 passed / 0 failed / 0 skipped / 0 inconclusive**
+- baseline before this pass: **1068**; this pass adds 23 counted focused cases
+- Unity 6000.0.71f1 compilation: clean
+- `git diff --check`: clean
+
+Physical validation used a fresh authentic New Game at the crash site and stopped without campaign progression. It
+proved the production screens, modal precedence, auto-save/load, screenshot, attack/talk toggle, party broadcasts,
+camera detach/recenter, version and chat feedback, and a real inventory quick-slot assignment. The native automation
+backend cannot hold a modifier while issuing a mouse event, and the fresh crash-site state had no active combat;
+therefore modifier-click and active-combat permutations use the production-path automated evidence above rather than
+manufactured world state. Five targeted and sixteen complete-suite warnings were the established intentional
+fail-closed dialogue diagnostics. After inspection, the Console was cleared to **0 logs / 0 warnings / 0 errors**.
+
+Default retail bindings are now centralized and deterministic. A user-remapping UI, a generic skill-action command,
+sleep/rest, Fate, multiplayer/chat, and unsupported scenery/equipment destruction remain explicitly outside this
+bounded pass. No dummy window or duplicate gameplay authority was added.

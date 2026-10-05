@@ -2394,10 +2394,46 @@ was clean; the final cleared Console was **0 logs, 0 warnings, and 0 errors**; a
 
 See [`documentation_unity/m13a-campaign-compatibility-audit.md`](documentation_unity/m13a-campaign-compatibility-audit.md).
 
+## M13A Original Keyboard Shortcut Compatibility Baseline (2026-10-04)
+
+The bounded source-authentic keyboard pass is complete. A central production input mapper owns only key phase,
+context precedence, text-entry suppression, and modifier intent; existing UI, combat, party, movement, camera,
+interaction, inventory, magic, technology, and save-slot services remain authoritative. Retail F1-F6 are now the
+exact Walk, Attack, Stay Close, Spread Out, Back Off, and Follow broadcasts. The old OpenArcanum F6 Save/Load
+convenience was removed in favor of the retail F6 Follow command; HUD Save/Load remains available and F7/F8 use the
+dedicated automatic slot. Conflicting Editor-only F8/F10/F11 validation accelerators were also removed without
+removing their menu commands.
+
+The ten-slot `1`-through-`0` bank stores coordinator-owned item/spell references and finds deterministic same-
+prototype item replacements; Inventory and Magic provide the minimum assignment UI. Screen, options, version,
+screenshot, camera, attack/talk, active-action, end-turn, called-shot, run/walk, stand-and-attack, force-attack,
+corpse-drag, combat-mode, and party-order shortcuts route through their existing authorities. Modal close wins over
+Space combat switching, modal close wins over Escape main-menu opening, dialogue owns numbered replies, and text
+entry suppresses gameplay shortcuts. Sleep, Fate, generic skill quick-slot execution, multiplayer/chat, and
+unsupported destructive branches fail closed rather than creating placeholder systems. User remapping remains a
+documented later presentation boundary; the retail defaults are correct now.
+
+Physical validation used a fresh authentic crash-site New Game without campaign progression. It proved production
+screen dispatch and closure, options, version/chat feedback, F1-F6 party feedback, F7/F8 auto save/load, F12 file
+capture, an authoritative inventory quick-slot assignment, R attack mode, arrow-key camera detach, Home recenter,
+and Space modal precedence. Modifier-click and active-combat permutations were validated through production-path
+focused/affected tests because the native automation backend cannot hold a modifier across a mouse event and the
+fresh opening state had no active combat.
+
+Focused keyboard/input validation was **23/23**. Directly affected M13A opening, M12C UI, both M9B party slices,
+M8I/M8H/M8A combat, M6A save/load, M2A interaction, and PlayerNavigation regressions were **177/177**. Complete
+EditMode was **1091/1091**, with **0 failed, 0 skipped, and 0 inconclusive**. Unity compilation was clean. The five
+targeted and sixteen complete-suite warnings were the existing intentional fail-closed dialogue diagnostics; final
+cleared Console was **0 logs, 0 warnings, 0 errors**. `git diff --check` was clean and Save V1 is unchanged.
+
+See the `Original Keyboard Shortcut Compatibility` section of
+[`documentation_unity/m13a-campaign-compatibility-audit.md`](documentation_unity/m13a-campaign-compatibility-audit.md)
+and [`documentation_unity/player-launch-guide.md`](documentation_unity/player-launch-guide.md).
+
 ## Next Recommended Milestone
 
 M9A, M9B, M10A, M10B, M11A, M11B, M11C, M12B, M12C, M12D, and the bounded M13A opening pass are formally closed.
-Do not treat compatible spell,
+The source-authentic keyboard compatibility follow-up is also closed. Do not treat compatible spell,
 technological-item, retail schematic, merchant, reputation, background, portrait, pregen, or campaign content as
 unfinished core runtime. Continue M13A only from concrete user-discovered campaign defects; do not start an autonomous
 campaign playthrough.

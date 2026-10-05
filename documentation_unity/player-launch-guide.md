@@ -22,33 +22,48 @@ The game only enables finalization when the character is valid and all five star
 
 - Left-click an accessible ground location to move.
 - Left-click a nearby world object or character to interact when the active cursor and game state permit it.
-- Press `I` for Inventory.
-- Press `C` for Character.
-- Press `M` for Magic.
-- Press `T` for Technology.
-- Press `K` for Crafting.
-- Press `L` for the Logbook.
-- Press `W` for the World Map.
-- Press `P` for Party.
-- Press `B` for Barter with the selected target.
-- Press `F6` for Save/Load.
-- Press `F10` to show or hide the HUD.
-- Press `Escape` to close the current production UI screen.
+- Press `I`, `C`, `M`, `T`, `K`, `L`, `W`, or `O` for Inventory, Character, Magic,
+  Technology, Skills, Logbook, World Map, or Options.
+- Press `Escape` to close the current interface; with no interface open, it opens the Main Menu.
+- Press `Space` to close an open interface. During active combat with no interface open, it switches between
+  turn-based and real-time mode without resetting combat state.
+- Press `R` to toggle Attack/Talk mode. In turn-based combat, release `E` to end the current turn.
+- Hold comma `<`, period `>`, or slash `?` during an attack to aim at the Head, Arms, or Legs.
+- Hold either `Shift` while clicking a target to stand and attack without approaching.
+- Hold either `Alt` while clicking to force a legal attack against a neutral target; hold `Alt` while dragging a
+  corpse to move it through world-state authority.
+- Press `Num Lock` to toggle the default walk/run mode. Holding either `Ctrl` temporarily inverts that choice for
+  the next ground move.
+- Hold the arrow keys to pan the camera. Press `Home` to recenter on the player/current turn-based participant.
+- Press `F1` through `F6` for the source follower orders Walk, Attack, Stay Close, Spread Out, Back Off, and Follow.
+- Press `F7` to auto-save and `F8` to auto-load. Press `F12` to save a screenshot.
+- Assign an owned item or learned spell from Inventory or Magic to slots `1` through `0`; press that number on the
+  main HUD to activate it. Dialogue keeps ownership of its numbered response keys.
+- Press `A` to repeat the most recently successful quick-slot action and `V` to show the application version.
 
 The same production screens are also available from the HUD buttons along the bottom of the Game view.
 
+`S` (Sleep), `F` (Fate), generic skill quick-slot activation, and Enter broadcast/chat are not available in the
+current single-player runtime and fail closed instead of opening placeholder interfaces. Print Screen/SysRq,
+Scroll Lock, and Pause/Break have no retail game action. The retail default bindings are fixed for now; the Options
+screen does not yet expose remapping.
+
 ## Save a game
 
-1. Press `F6` or select **Save/Load** on the HUD.
+1. Select **Save/Load** on the HUD.
 2. Leave the **Save** tab selected.
 3. Select **Create** to make the suggested save slot, or select an existing slot and choose **Save / Overwrite**.
 4. Confirm an overwrite when prompted.
+
+For the dedicated automatic slot, press `F7` during play.
 
 ## Load a game
 
 From the main menu, select **Load Game**. Select the desired slot and choose **Load Selected**.
 
-During play, press `F6`, select the **Load** tab, choose a slot, and select **Load Selected**. The saved player, campaign sector, inventory, and supported session state are reconstructed through the normal production save/load path.
+During play, select **Save/Load** on the HUD, select the **Load** tab, choose a slot, and select **Load Selected**.
+Press `F8` to load the dedicated automatic slot. The saved player, campaign sector, inventory, and supported session
+state are reconstructed through the normal production save/load path.
 
 ## Exit Play Mode
 
