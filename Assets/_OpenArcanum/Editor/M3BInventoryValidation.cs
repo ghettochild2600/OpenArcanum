@@ -24,7 +24,7 @@ internal static class M3BInventoryValidation
     private static int _errors;
     private static bool _tracking;
 
-    [MenuItem("OpenArcanum/M3B/Prepare Real Pickup Click _F8")]
+    [MenuItem("OpenArcanum/M3B/Prepare Real Pickup Click")]
     private static void PreparePhysicalClick()
     {
         if (!Application.isPlaying) throw new InvalidOperationException("Enter Play mode first.");
@@ -33,7 +33,7 @@ internal static class M3BInventoryValidation
         loader.StartCoroutine(Prepare(loader));
     }
 
-    [MenuItem("OpenArcanum/M3B/Validate Real Pickup Lifecycle _F9")]
+    [MenuItem("OpenArcanum/M3B/Validate Real Pickup Lifecycle")]
     private static void ValidatePhysicalClick()
     {
         if (!Application.isPlaying) throw new InvalidOperationException("Enter Play mode first.");

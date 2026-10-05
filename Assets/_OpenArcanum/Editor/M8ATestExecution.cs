@@ -14,25 +14,25 @@ internal sealed class M8ATestExecution : ScriptableObject, ICallbacks
 
     [MenuItem("OpenArcanum/M13A/Run Focused EditMode Tests #&q", false, 1)]
     private static void RunM13AFocused()
-        => Run(Category("M13AOpeningCompatibility"), "M13A focused EditMode");
+        => Run(Category("M13AKeyboardInput"), "M13A keyboard/input focused EditMode");
 
     [MenuItem("OpenArcanum/M13A/Run Targeted Regression Tests #&w", false, 2)]
     private static void RunM13ATargeted()
-    {
-        RunMany(
-            new[]
+        => Run(new Filter
+        {
+            testMode = TestMode.EditMode,
+            categoryNames = new[]
             {
-                Category("M5A"), Category("M8EDeathConsequences"),
-                Category("M2AInteraction"), Category("PlayerNavigation"),
-                Category("M12CFullGameUi"),
+                "M13AOpeningCompatibility", "M12CFullGameUi",
+                "M9BPhase1PartyFoundation", "M9BPhase2DialogueParty",
+                "M8ICombatUI", "M8HRealTimeCombat", "M8ACoreCombatState",
+                "M6A", "M2AInteraction", "PlayerNavigation",
             },
-            new[]
-            {
-                "M5A dialogue and quest", "M8E death consequences and corpse loot",
-                "M2A interaction kernel", "player navigation",
-                "M12C full-game UI",
-            });
-    }
+        }, "M13A directly affected regressions");
+
+    [MenuItem("OpenArcanum/M13A/Run Complete EditMode Tests #&e", false, 3)]
+    private static void RunM13AAll()
+        => Run(new Filter { testMode = TestMode.EditMode }, "M13A complete EditMode");
 
     [MenuItem("OpenArcanum/Player Startup/Run Focused EditMode Tests", false, 1)]
     private static void RunPlayerStartupFocused()

@@ -25,7 +25,7 @@ internal static class M3CEquipmentValidation
     private static int _errors;
     private static bool _tracking;
 
-    [MenuItem("OpenArcanum/M3C/Prepare Real Equipment Click _F10")]
+    [MenuItem("OpenArcanum/M3C/Prepare Real Equipment Click")]
     private static void PreparePhysicalClick()
     {
         if (!Application.isPlaying) throw new InvalidOperationException("Enter Play mode first.");
@@ -34,7 +34,7 @@ internal static class M3CEquipmentValidation
         loader.StartCoroutine(Prepare(loader));
     }
 
-    [MenuItem("OpenArcanum/M3C/Validate Real Equipment Lifecycle _F11")]
+    [MenuItem("OpenArcanum/M3C/Validate Real Equipment Lifecycle")]
     private static void ValidatePhysicalClick()
     {
         if (!Application.isPlaying) throw new InvalidOperationException("Enter Play mode first.");

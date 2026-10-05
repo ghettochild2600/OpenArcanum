@@ -706,7 +706,7 @@ namespace Arcanum.Runtime.Combat
             => _sources.TryGetValue(identity, out source);
 
         public CombatResult StartCombat(ArcanumObjectId actor, ArcanumObjectId target,
-            CombatMode mode = CombatMode.TurnBased)
+            CombatMode mode = CombatMode.TurnBased, bool forceAttack = false)
         {
             if (Lifecycle != CombatLifecycle.Inactive) return Fail(CombatFailure.AlreadyActive);
             if (!Enum.IsDefined(typeof(CombatMode), mode)) return Fail(CombatFailure.UnsupportedMode);
@@ -715,9 +715,10 @@ namespace Arcanum.Runtime.Combat
                 return Fail(actorFailure);
             if (!TryValidateTarget(target, out CombatActorSource targetSource, out CombatFailure targetFailure))
                 return Fail(targetFailure);
-            if (targetSource.WillKosScriptNum != 0) return Fail(CombatFailure.UnresolvedHostilityScript);
+            if (!forceAttack && targetSource.WillKosScriptNum != 0)
+                return Fail(CombatFailure.UnresolvedHostilityScript);
             if ((targetSource.NpcFlags & OnfNoAttack) != 0
-                || (targetSource.NpcFlags & OnfKos) == 0)
+                || !forceAttack && (targetSource.NpcFlags & OnfKos) == 0)
                 return Fail(CombatFailure.TargetNotHostile);
 
             var pending = new List<CombatParticipant>
@@ -740,6 +741,29 @@ namespace Arcanum.Runtime.Combat
             else
                 InitializeRealTimeCombat();
             Lifecycle = CombatLifecycle.Active;
+            return Success();
+        }
+
+        /// <summary>Source Space-key combat-mode switch. Roster and committed world state stay authoritative.</summary>
+        public CombatResult ToggleMode(ArcanumObjectId actor)
+        {
+            if (!IsActive) return Fail(CombatFailure.Inactive);
+            if (actor != _world.PlayerState?.Identity || !_participants.Any(value => value.Identity == actor))
+                return Fail(CombatFailure.InvalidActor);
+            if (Mode == CombatMode.RealTime)
+            {
+                if (_realTimeActors.Values.Any(value => value.Pending != null))
+                    return Fail(CombatFailure.ActorBusy);
+                ClearRealTimeTransient();
+                Mode = CombatMode.TurnBased;
+                BeginParticipantTurn(actor, requireActive: false);
+                return Success();
+            }
+            CurrentParticipant = default;
+            CurrentActionPoints = 0;
+            MaximumActionPoints = 0;
+            Mode = CombatMode.RealTime;
+            InitializeRealTimeCombat();
             return Success();
         }
 

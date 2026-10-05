@@ -20,7 +20,7 @@ namespace Arcanum.Runtime.UI
 {
     public enum GameUiScreen
     {
-        None, MainMenu, CharacterCreation, Inventory, Character, Magic, Technology, Crafting,
+        None, MainMenu, CharacterCreation, Inventory, Character, Skills, Magic, Technology, Crafting, Options,
         Journal, Map, Party, Merchant, SaveLoad, Dialogue, Corpse,
     }
 
@@ -145,6 +145,7 @@ namespace Arcanum.Runtime.UI
     public sealed class GameUiController
     {
         private readonly WorldMapSessionCoordinator _session;
+        private readonly ISessionSaveSlotOperations _saveOperations;
         private ArcanumObjectId _merchant;
         private ArcanumObjectId _corpse;
         private ArcanumObjectId _character;
@@ -172,8 +173,9 @@ namespace Arcanum.Runtime.UI
             CombatUiController combat = null)
         {
             _session = session ?? throw new ArgumentNullException(nameof(session));
+            _saveOperations = saveOperations ?? session.SaveSlots;
             Combat = combat ?? new CombatUiController(session);
-            SaveLoad = new SaveLoadPanelController(saveOperations ?? session.SaveSlots);
+            SaveLoad = new SaveLoadPanelController(_saveOperations);
             Screen = session.PlayerState == null ? GameUiScreen.MainMenu : GameUiScreen.None;
         }
 
@@ -218,7 +220,7 @@ namespace Arcanum.Runtime.UI
             SelectedItem = default;
             SelectedWorldTarget = default;
             if (screen != GameUiScreen.Corpse) _corpse = default;
-            _character = screen == GameUiScreen.Character ? Player : default;
+            _character = screen is GameUiScreen.Character or GameUiScreen.Skills ? Player : default;
             Feedback = string.Empty;
             if (screen == GameUiScreen.SaveLoad) SaveLoad.Open(SaveLoadPanelMode.Save);
             _audio?.PresentInterface(screen is GameUiScreen.Journal or GameUiScreen.Map
@@ -348,6 +350,103 @@ namespace Arcanum.Runtime.UI
             if (HasPlayer) CreationDraft = null;
             if (wasOpen) _audio?.PresentInterface(InterfaceAudioCue.WindowClose);
         }
+
+        public void ShowFeedback(string message) => Feedback = message ?? string.Empty;
+
+        public bool AutoSave()
+        {
+            SessionSaveSlotResult result = _saveOperations.SaveSlot("auto");
+            return Complete(result.Succeeded, result.Succeeded ? "Auto-saved." : result.Message ?? result.Failure.ToString());
+        }
+
+        public bool AutoLoad()
+        {
+            SessionSaveSlotResult result = _saveOperations.LoadSlot("auto");
+            if (result.Succeeded) Refresh();
+            return Complete(result.Succeeded, result.Succeeded ? "Auto-save loaded." : result.Message ?? result.Failure.ToString());
+        }
+
+        public bool ToggleCombatMode()
+        {
+            CombatResult result = _session.Combat.ToggleMode(Player);
+            Combat.Refresh();
+            return Complete(result.Succeeded, result.Succeeded
+                ? $"Combat mode: {_session.Combat.Mode}." : result.Failure.ToString());
+        }
+
+        public bool ToggleAttackTalkMode()
+        {
+            if (_session.Combat.IsActive)
+            {
+                CombatResult ended = _session.Combat.EndCombat(Player);
+                Combat.Refresh();
+                return Complete(ended.Succeeded, ended.Succeeded ? "Talk mode." : ended.Failure.ToString());
+            }
+            CursorMode = CursorMode == GameUiCursorMode.Attack ? GameUiCursorMode.Default : GameUiCursorMode.Attack;
+            Feedback = CursorMode == GameUiCursorMode.Attack ? "Attack mode." : "Talk mode.";
+            return true;
+        }
+
+        public bool StartAttack(ArcanumObjectId target, bool forceAttack)
+        {
+            if (!target.IsPersistent) return Reject("Select a valid attack target.");
+            if (!_session.Combat.IsActive)
+            {
+                CombatResult started = _session.Combat.StartCombat(Player, target, CombatMode.TurnBased, forceAttack);
+                if (!started.Succeeded) return Reject(started.Failure.ToString());
+            }
+            Combat.Refresh();
+            bool selected = Combat.SelectTarget(target);
+            if (selected) CursorMode = GameUiCursorMode.Attack;
+            return selected;
+        }
+
+        public bool AssignQuickSlotItem(int index, ArcanumObjectId item)
+        {
+            bool assigned = _session.Shortcuts.AssignItem(index, item);
+            return Complete(assigned, assigned ? $"Assigned item to slot {SlotLabel(index)}."
+                : "That item cannot be assigned.");
+        }
+
+        public bool AssignQuickSlotSpell(int index, int spellId)
+        {
+            bool assigned = _session.Shortcuts.AssignSpell(index, spellId);
+            return Complete(assigned, assigned ? $"Assigned spell to slot {SlotLabel(index)}."
+                : "That spell cannot be assigned.");
+        }
+
+        public bool ActivateQuickSlot(int index)
+        {
+            QuickSlotBinding binding = _session.Shortcuts.Get(index);
+            bool succeeded;
+            switch (binding.Kind)
+            {
+                case QuickSlotKind.Item when _session.Shortcuts.TryResolveItem(index, out ArcanumObjectId item):
+                    if (!_session.TryGetObjectState(item, out PersistentObjectState state))
+                        return Reject("The assigned item is unavailable.");
+                    succeeded = PhaseOneTechnologyCatalog.TryGetItem(state.PrototypeNumber, out _)
+                        ? UseTechnology(item, Player)
+                        : WorldMapSessionCoordinator.TryGetNaturalWornLocation(state, out _) && Equip(item);
+                    break;
+                case QuickSlotKind.Spell when PhaseOneSpellCatalog.TryGet(binding.SourceId, out SpellDefinition spell):
+                    if (spell.AllowsSelf) succeeded = CastSpell(binding.SourceId, Player);
+                    else { BeginSpellTargeting(binding.SourceId); succeeded = true; }
+                    break;
+                case QuickSlotKind.Empty:
+                    return Reject($"Quick slot {SlotLabel(index)} is empty.");
+                default:
+                    return Reject("The assigned action is unavailable.");
+            }
+            if (succeeded) _session.Shortcuts.MarkActivated(index);
+            return succeeded;
+        }
+
+        public bool ActivateRecentAction()
+            => _session.Shortcuts.ActiveSlot >= 0
+                ? ActivateQuickSlot(_session.Shortcuts.ActiveSlot)
+                : Reject("No active action has been used yet.");
+
+        private static string SlotLabel(int index) => index == 9 ? "0" : (index + 1).ToString();
 
         public void RebuildPresentation()
         {

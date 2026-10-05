@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using Arcanum.Formats.Objects;
 using Arcanum.Runtime.Campaign;
@@ -10,6 +11,7 @@ using Arcanum.Runtime.Creation;
 using Arcanum.Runtime.Dialogue;
 using Arcanum.Runtime.Economy;
 using Arcanum.Runtime.Magic;
+using Arcanum.Runtime.Party;
 using Arcanum.Runtime.Save;
 using Arcanum.Runtime.Technology;
 using Arcanum.Runtime.World;
@@ -22,7 +24,7 @@ namespace Arcanum.Runtime.UI
     /// selection only; <see cref="GameUiController"/> delegates every gameplay command to established services.
     /// </summary>
     [RequireComponent(typeof(WorldMapSessionCoordinator), typeof(WorldObjectSectorLoader), typeof(PlayerInputGate))]
-    public sealed class ProductionGameUiPresenter : MonoBehaviour
+    public sealed class ProductionGameUiPresenter : MonoBehaviour, IProductionKeyboardCommands
     {
         public const float ReferenceWidth = 1024f;
         public const float ReferenceHeight = 768f;
@@ -37,6 +39,23 @@ namespace Arcanum.Runtime.UI
         private Rect _panelRect;
         private bool _showHud = true;
         private bool _interactionSubscribed;
+        private int _quickSlotAssignment;
+        private readonly ProductionKeyboardController _keyboard = new();
+        private static readonly KeyCode[] DownKeys =
+        {
+            KeyCode.Space, KeyCode.I, KeyCode.C, KeyCode.M, KeyCode.T, KeyCode.K, KeyCode.L, KeyCode.W,
+            KeyCode.O, KeyCode.R, KeyCode.A, KeyCode.S, KeyCode.F, KeyCode.V, KeyCode.Return,
+            KeyCode.KeypadEnter, KeyCode.F12, KeyCode.Numlock, KeyCode.Comma, KeyCode.Period, KeyCode.Slash,
+            KeyCode.Alpha0, KeyCode.Alpha1, KeyCode.Alpha2, KeyCode.Alpha3, KeyCode.Alpha4,
+            KeyCode.Alpha5, KeyCode.Alpha6, KeyCode.Alpha7, KeyCode.Alpha8, KeyCode.Alpha9,
+        };
+        private static readonly KeyCode[] UpKeys =
+        {
+            KeyCode.Escape, KeyCode.F1, KeyCode.F2, KeyCode.F3, KeyCode.F4, KeyCode.F5, KeyCode.F6,
+            KeyCode.F7, KeyCode.F8, KeyCode.E, KeyCode.Home, KeyCode.Comma, KeyCode.Period, KeyCode.Slash,
+        };
+        private static readonly KeyCode[] HeldKeys =
+            { KeyCode.UpArrow, KeyCode.DownArrow, KeyCode.LeftArrow, KeyCode.RightArrow };
 
         private GameUiController _controller;
         public GameUiController Controller
@@ -51,6 +70,7 @@ namespace Arcanum.Runtime.UI
         public float PresentationScale => Mathf.Clamp(Mathf.Min(Screen.width / ReferenceWidth,
             Screen.height / ReferenceHeight), .75f, 1.5f);
         public bool IsInputBlocked => Controller?.IsModalOpen == true;
+        public ProductionKeyboardController Keyboard => _keyboard;
 
         private void Awake()
             => BindProductionPresentation();
@@ -98,32 +118,26 @@ namespace Arcanum.Runtime.UI
             Controller.Refresh();
             SyncInputGate();
 
-            if (Input.GetKeyDown(KeyCode.F10)) _showHud = !_showHud;
-            if (Input.GetKeyDown(KeyCode.Escape))
-            {
-                if (Controller.Screen == GameUiScreen.Dialogue) Controller.CancelDialogue();
-                else if (Controller.SaveLoad.Confirmation != SaveLoadConfirmation.None)
-                    Controller.SaveLoad.CancelConfirmation();
-                else Controller.Close();
-                SyncInputGate();
-                return;
-            }
+            if (Input.GetKeyDown(KeyCode.F10)) _showHud = !_showHud; // OpenArcanum-only HUD diagnostic
+            _keyboard.SetModifiers(
+                Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl),
+                Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift),
+                Input.GetKey(KeyCode.LeftAlt) || Input.GetKey(KeyCode.RightAlt));
+            var context = new ProductionKeyboardContext(Controller.Screen, Controller.HasPlayer,
+                Controller.Screen == GameUiScreen.CharacterCreation, _session.Combat.IsActive, _session.Combat.Mode);
+            foreach (KeyCode key in UpKeys)
+                if (Input.GetKeyUp(key)) _keyboard.Dispatch(key, ProductionKeyPhase.Up, context, this);
+            foreach (KeyCode key in DownKeys)
+                if (Input.GetKeyDown(key)) _keyboard.Dispatch(key, ProductionKeyPhase.Down, context, this);
+            foreach (KeyCode key in HeldKeys)
+                if (Input.GetKey(key)) _keyboard.Dispatch(key, ProductionKeyPhase.Held, context, this);
 
-            HandleToggle(KeyCode.I, GameUiScreen.Inventory);
-            HandleToggle(KeyCode.C, GameUiScreen.Character);
-            HandleToggle(KeyCode.M, GameUiScreen.Magic);
-            HandleToggle(KeyCode.T, GameUiScreen.Technology);
-            HandleToggle(KeyCode.K, GameUiScreen.Crafting);
-            HandleToggle(KeyCode.L, GameUiScreen.Journal);
-            HandleToggle(KeyCode.W, GameUiScreen.Map);
-            HandleToggle(KeyCode.P, GameUiScreen.Party);
+            HandleToggle(KeyCode.P, GameUiScreen.Party); // non-retail OpenArcanum convenience
             if (Input.GetKeyDown(KeyCode.B))
             {
                 Open(GameUiScreen.Merchant);
                 Controller.BeginMerchantTargeting();
             }
-            if (Input.GetKeyDown(KeyCode.F6)) Controller.OpenSaveLoad(SaveLoadPanelMode.Save);
-
             if (Controller.Screen == GameUiScreen.Dialogue)
                 for (int index = 0; index < Controller.Dialogue.AvailableResponses.Count && index < 9; index++)
                     if (Input.GetKeyDown((KeyCode)((int)KeyCode.Alpha1 + index)))
@@ -131,6 +145,103 @@ namespace Arcanum.Runtime.UI
 
             HandleWorldPointer();
             SyncInputGate();
+        }
+
+        void IProductionKeyboardCommands.Escape()
+        {
+            if (Controller.Screen == GameUiScreen.Dialogue) Controller.CancelDialogue();
+            else if (Controller.SaveLoad.Confirmation != SaveLoadConfirmation.None)
+                Controller.SaveLoad.CancelConfirmation();
+            else if (Controller.IsModalOpen) Controller.Close();
+            else Open(GameUiScreen.MainMenu);
+        }
+
+        void IProductionKeyboardCommands.ToggleScreen(GameUiScreen screen)
+        {
+            if (Controller.Screen == screen) Controller.Close(); else Open(screen);
+        }
+
+        void IProductionKeyboardCommands.CloseInterface() => Controller.Close();
+        void IProductionKeyboardCommands.ToggleCombatMode() => Controller.ToggleCombatMode();
+        void IProductionKeyboardCommands.EndTurn() => Controller.Combat.EndTurn();
+        void IProductionKeyboardCommands.ToggleAttackTalkMode() => Controller.ToggleAttackTalkMode();
+        void IProductionKeyboardCommands.ActivateQuickSlot(int index) => Controller.ActivateQuickSlot(index);
+        void IProductionKeyboardCommands.ActivateRecentAction() => Controller.ActivateRecentAction();
+        void IProductionKeyboardCommands.SetCalledLocation(CombatCalledLocation location)
+            => Controller.Combat.SetCalledLocation(location);
+        void IProductionKeyboardCommands.AutoSave() => Controller.AutoSave();
+        void IProductionKeyboardCommands.AutoLoad() => Controller.AutoLoad();
+        void IProductionKeyboardCommands.ShowVersion()
+            => Controller.ShowFeedback($"OpenArcanum {Application.version}");
+        void IProductionKeyboardCommands.Unsupported(string sourceAction)
+            => Controller.ShowFeedback($"{sourceAction} is not available in the current runtime.");
+
+        void IProductionKeyboardCommands.CaptureScreenshot()
+        {
+            string directory = Path.Combine(Application.persistentDataPath, "Screenshots");
+            Directory.CreateDirectory(directory);
+            string path = Path.Combine(directory, $"OpenArcanum-{DateTime.Now:yyyyMMdd-HHmmss}.png");
+            ScreenCapture.CaptureScreenshot(path);
+            Controller.ShowFeedback($"Screenshot saved: {path}");
+        }
+
+        void IProductionKeyboardCommands.IssuePartyOrder(int sourceIndex)
+        {
+            if (sourceIndex < 0 || sourceIndex > 5) return;
+            PartyOrder order = (PartyOrder)sourceIndex;
+            Vector2Int? location = null;
+            ArcanumObjectId target = default;
+            if (order == PartyOrder.Walk && TryGetPointerWorld(out Vector3 world))
+                location = WorldToGlobalTile(world);
+            if (order == PartyOrder.Attack && TryGetPointerWorld(out world))
+                WorldObjectTargetSelector.TrySelectCombatTarget(_loader.SpriteOwners, world, out target);
+            bool accepted = _session.Party.IssueOrder(order, location, target);
+            if (accepted && order == PartyOrder.Attack) Controller.StartAttack(target, true);
+            if (accepted && order == PartyOrder.BackOff && _session.Combat.IsActive)
+                foreach (PartyMember member in _session.Party.Members.ToArray())
+                    if (_session.Combat.IsParticipantEngaged(member.Identity))
+                        _session.Combat.RemoveParticipant(member.Identity);
+            Controller.ShowFeedback(accepted ? $"Followers: {order}." : $"Followers cannot {order} here.");
+        }
+
+        void IProductionKeyboardCommands.CenterCamera()
+        {
+            Camera camera = Camera.main;
+            if (camera == null || _session.PlayerState == null) return;
+            ArcanumObjectId identity = _session.PlayerState.Identity;
+            if (_session.Combat.IsActive && _session.Combat.Mode == CombatMode.TurnBased
+                && _session.TryGetLoadedObject(identity, out WorldObject player)
+                && Vector2.Distance(camera.transform.position, player.transform.position) < .05f)
+                identity = _session.Combat.CurrentParticipant;
+            if (!_session.TryGetLoadedObject(identity, out WorldObject target)) return;
+            Vector3 position = target.transform.position;
+            position.z = camera.transform.position.z;
+            camera.transform.position = position;
+        }
+
+        void IProductionKeyboardCommands.ScrollCamera(Vector2 direction)
+        {
+            Camera camera = Camera.main;
+            if (camera == null) return;
+            camera.transform.position += (Vector3)(direction.normalized * (12f * Time.unscaledDeltaTime));
+        }
+
+        private bool TryGetPointerWorld(out Vector3 world)
+        {
+            world = default;
+            Camera camera = Camera.main;
+            if (camera == null || _loader == null) return false;
+            Vector3 screen = Input.mousePosition;
+            screen.z = Mathf.Abs(camera.transform.position.z - _loader.transform.position.z);
+            world = camera.ScreenToWorldPoint(screen);
+            return true;
+        }
+
+        private Vector2Int WorldToGlobalTile(Vector3 world)
+        {
+            Vector2Int local = IsoProjection.WorldToTile(_loader.transform.InverseTransformPoint(world), _loader.PixelsPerUnit);
+            return SectorCoordinate.TryParse(_session.SelectedSector, out SectorCoordinate sector)
+                ? Vector2Int.RoundToInt(sector.ToGlobal(local)) : local;
         }
 
         internal void EnsureInteractionSubscription()
@@ -222,7 +333,8 @@ namespace Arcanum.Runtime.UI
             HudButton("CHAR [C]", GameUiScreen.Character);
             HudButton("MAGIC [M]", GameUiScreen.Magic);
             HudButton("TECH [T]", GameUiScreen.Technology);
-            HudButton("CRAFT [K]", GameUiScreen.Crafting);
+            HudButton("SKILLS [K]", GameUiScreen.Skills);
+            HudButton("CRAFT", GameUiScreen.Crafting);
             HudButton("LOG [L]", GameUiScreen.Journal);
             GUILayout.EndHorizontal();
             GUILayout.BeginHorizontal();
@@ -230,7 +342,7 @@ namespace Arcanum.Runtime.UI
             HudButton("PARTY [P]", GameUiScreen.Party);
             if (GUILayout.Button("BARTER [B]", GUILayout.Height(30f * scale)))
             { Open(GameUiScreen.Merchant); Controller.BeginMerchantTargeting(); }
-            if (GUILayout.Button("SAVE/LOAD [F6]", GUILayout.Height(30f * scale)))
+            if (GUILayout.Button("SAVE/LOAD", GUILayout.Height(30f * scale)))
                 Controller.OpenSaveLoad(SaveLoadPanelMode.Save);
             GUILayout.EndHorizontal();
 
@@ -309,9 +421,11 @@ namespace Arcanum.Runtime.UI
                 case GameUiScreen.CharacterCreation: DrawCharacterCreation(); break;
                 case GameUiScreen.Inventory: DrawInventory(); break;
                 case GameUiScreen.Character: DrawCharacter(); break;
+                case GameUiScreen.Skills: DrawSkills(); break;
                 case GameUiScreen.Magic: DrawMagic(); break;
                 case GameUiScreen.Technology: DrawTechnology(); break;
                 case GameUiScreen.Crafting: DrawCrafting(); break;
+                case GameUiScreen.Options: DrawOptions(); break;
                 case GameUiScreen.Journal: DrawJournal(); break;
                 case GameUiScreen.Map: DrawMap(); break;
                 case GameUiScreen.Party: DrawParty(); break;
@@ -496,11 +610,14 @@ namespace Arcanum.Runtime.UI
 
         private void DrawInventory()
         {
+            DrawQuickSlotAssignmentPicker();
             foreach (GameUiItemView item in Controller.ProjectInventory())
             {
                 GUILayout.BeginHorizontal(GUI.skin.box);
                 GUILayout.Label($"{item.Name} x{item.Quantity}  [{item.Weight} st]", GUILayout.ExpandWidth(true));
                 if (GUILayout.Button("SELECT", GUILayout.Width(76f))) Controller.SelectItem(item.Identity);
+                if (GUILayout.Button("BIND", GUILayout.Width(62f)))
+                    Controller.AssignQuickSlotItem(_quickSlotAssignment, item.Identity);
                 if (item.IsEquipped)
                 {
                     GUILayout.Label(item.WornLocation.ToString(), GUILayout.Width(86f));
@@ -558,8 +675,25 @@ namespace Arcanum.Runtime.UI
             GUILayout.EndHorizontal();
         }
 
+        private void DrawSkills()
+        {
+            GameUiCharacterView view = Controller.ProjectCharacter();
+            if (view == null) { GUILayout.Label("No active character."); return; }
+            GUILayout.Label($"{view.Name} — character points {view.CharacterPoints}");
+            foreach (GameUiSkillView skill in view.Skills)
+            {
+                GUILayout.BeginHorizontal(GUI.skin.box);
+                GUILayout.Label($"{skill.Skill}: {skill.EffectiveRank}  {skill.Training}", GUILayout.ExpandWidth(true));
+                GUI.enabled = view.CharacterPoints > 0;
+                if (GUILayout.Button("+", GUILayout.Width(34f))) Controller.IncreaseSkill(skill.Skill);
+                GUI.enabled = true;
+                GUILayout.EndHorizontal();
+            }
+        }
+
         private void DrawMagic()
         {
+            DrawQuickSlotAssignmentPicker();
             GUILayout.Label("Known spells and maintained effects");
             foreach (GameUiSpellView spell in Controller.ProjectSpells())
             {
@@ -567,6 +701,8 @@ namespace Arcanum.Runtime.UI
                 GUILayout.Label($"{spell.Definition.Name} — {spell.Definition.College} {spell.Definition.Rank} "
                               + $"— fatigue {spell.Definition.BaseFatigueCost}", GUILayout.ExpandWidth(true));
                 GUI.enabled = spell.Learned;
+                if (GUILayout.Button("BIND", GUILayout.Width(62f)))
+                    Controller.AssignQuickSlotSpell(_quickSlotAssignment, spell.Definition.Id);
                 if (spell.Definition.AllowsSelf && GUILayout.Button("SELF", GUILayout.Width(64f)))
                     Controller.CastSpell(spell.Definition.Id, Controller.Player);
                 if (GUILayout.Button("TARGET", GUILayout.Width(72f)))
@@ -581,6 +717,33 @@ namespace Arcanum.Runtime.UI
                 if (GUILayout.Button("CANCEL", GUILayout.Width(78f))) Controller.CancelEffect(effect.Id);
                 GUILayout.EndHorizontal();
             }
+        }
+
+        private void DrawQuickSlotAssignmentPicker()
+        {
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("Assign quick slot:", GUILayout.Width(120f));
+            for (int index = 0; index < ProductionShortcutState.SlotCount; index++)
+            {
+                int slot = index;
+                GUI.enabled = _quickSlotAssignment != slot;
+                if (GUILayout.Button(slot == 9 ? "0" : (slot + 1).ToString(), GUILayout.Width(30f)))
+                    _quickSlotAssignment = slot;
+            }
+            GUI.enabled = true;
+            GUILayout.EndHorizontal();
+        }
+
+        private void DrawOptions()
+        {
+            GUILayout.Label("Presentation options");
+            GUILayout.BeginHorizontal();
+            GUILayout.Label($"Master volume: {Mathf.RoundToInt(AudioListener.volume * 100f)}%", GUILayout.Width(180f));
+            AudioListener.volume = GUILayout.HorizontalSlider(AudioListener.volume, 0f, 1f);
+            GUILayout.EndHorizontal();
+            bool fullScreen = GUILayout.Toggle(Screen.fullScreen, "Fullscreen");
+            if (fullScreen != Screen.fullScreen) Screen.fullScreen = fullScreen;
+            GUILayout.Label("Input rebinding is not yet exposed; retail default bindings are active.", GUI.skin.box);
         }
 
         private void DrawTechnology()
@@ -816,9 +979,11 @@ namespace Arcanum.Runtime.UI
             GameUiScreen.CharacterCreation => "CHARACTER CREATION",
             GameUiScreen.Inventory => "INVENTORY",
             GameUiScreen.Character => "CHARACTER",
+            GameUiScreen.Skills => "SKILLS",
             GameUiScreen.Magic => "MAGIC",
             GameUiScreen.Technology => "TECHNOLOGY",
             GameUiScreen.Crafting => "SCHEMATICS",
+            GameUiScreen.Options => "OPTIONS",
             GameUiScreen.Journal => "LOGBOOK",
             GameUiScreen.Map => "WORLD MAP",
             GameUiScreen.Party => "FOLLOWERS",

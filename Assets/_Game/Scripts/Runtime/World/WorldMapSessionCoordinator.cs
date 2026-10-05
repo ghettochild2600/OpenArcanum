@@ -14,6 +14,7 @@ using Arcanum.World;
 using Arcanum.Runtime.Save;
 using Arcanum.Runtime.Combat;
 using Arcanum.Runtime.Party;
+using Arcanum.Runtime.UI;
 using Arcanum.Runtime.Magic;
 using Arcanum.Runtime.Technology;
 using Arcanum.Runtime.Economy;
@@ -65,6 +66,7 @@ namespace Arcanum.Runtime.World
         private CombatStateService _combat;
         private DeathConsequenceService _deathConsequences;
         private PartyStateService _party;
+        private ProductionShortcutState _shortcuts;
         private MagicStateService _magic;
         private TechnologyStateService _technology;
         private CraftingStateService _crafting;
@@ -112,6 +114,7 @@ namespace Arcanum.Runtime.World
         public DeathConsequenceService DeathConsequences
             => _deathConsequences ??= new DeathConsequenceService(this);
         public PartyStateService Party => _party ??= new PartyStateService(this);
+        public ProductionShortcutState Shortcuts => _shortcuts ??= new ProductionShortcutState(this);
         public SourceTimeService SourceTime => _sourceTime ??= new SourceTimeService();
         public MagicStateService Magic => _magic ??= new MagicStateService(this);
         public TechnologyStateService Technology => _technology ??= new TechnologyStateService(this);
@@ -2019,6 +2022,24 @@ namespace Arcanum.Runtime.World
             return true;
         }
 
+        /// <summary>Authoritative bounded Alt-drag for a nearby dead critter; identity/inventory/death stay intact.</summary>
+        public bool TryDragCorpse(ArcanumObjectId actor, ArcanumObjectId corpse, Vector2Int destinationLocal)
+        {
+            if (_combat?.IsActive == true || PlayerState == null || actor != PlayerState.Identity
+                || !_states.TryGetValue(corpse, out PersistentObjectState state)
+                || state.Type != ObjectType.Npc || state.Placement.Kind != ObjectPlacementKind.World
+                || state.Placement.Sector != SelectedSector || !Vitality.TryGet(corpse, out _)
+                || !Vitality.IsDead(corpse) || !SectorCoordinate.TryParse(SelectedSector, out SectorCoordinate sector))
+                return false;
+            Vector2 corpseGlobal = sector.ToGlobal(state.Placement.TilePosition);
+            Vector2 destinationGlobal = sector.ToGlobal(destinationLocal);
+            if (!InteractionRangeRules.IsWithin(PlayerState.MapPosition, corpseGlobal,
+                    InteractionRangeRules.CorpseLootRange)
+                || !InteractionRangeRules.IsWithin(PlayerState.MapPosition, destinationGlobal,
+                    InteractionRangeRules.CorpseLootRange)) return false;
+            return RelocateWorldObject(corpse, SelectedSector, destinationLocal);
+        }
+
         public void UnloadSector(string sector)
         {
             if (sector == null || !_loaded.TryGetValue(sector, out var bindings)) return;
@@ -2075,6 +2096,7 @@ namespace Arcanum.Runtime.World
             _combat = null;
             _deathConsequences = null;
             _party = null;
+            _shortcuts = null;
             _magic = null;
             _technology = null;
             _crafting = null;
@@ -2112,6 +2134,7 @@ namespace Arcanum.Runtime.World
             _derivedStats = plan.DerivedStats;
             _campaign = plan.Campaign;
             _party = new PartyStateService(this);
+            _shortcuts = new ProductionShortcutState(this);
             _magic = null;
             _technology = null;
             _crafting = null;

@@ -25,7 +25,7 @@ internal static class M3DStackValidation
     private static int _errors;
     private static bool _tracking;
 
-    [MenuItem("OpenArcanum/M3D/Prepare Real Stack Click _F10")]
+    [MenuItem("OpenArcanum/M3D/Prepare Real Stack Click")]
     private static void PreparePhysicalClick()
     {
         if (!Application.isPlaying) throw new InvalidOperationException("Enter Play mode first.");
@@ -34,7 +34,7 @@ internal static class M3DStackValidation
         loader.StartCoroutine(Prepare(loader));
     }
 
-    [MenuItem("OpenArcanum/M3D/Validate Real Stack Lifecycle _F11")]
+    [MenuItem("OpenArcanum/M3D/Validate Real Stack Lifecycle")]
     private static void ValidatePhysicalClick()
     {
         if (!Application.isPlaying) throw new InvalidOperationException("Enter Play mode first.");

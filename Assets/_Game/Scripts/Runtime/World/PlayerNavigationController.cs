@@ -16,6 +16,7 @@ namespace Arcanum.Runtime.World
     {
         private const int StandAnimation = 0;
         private const int WalkAnimation = 1;
+        private const int RunAnimation = 2;
 
         [SerializeField] private string playerObjectId;
 
@@ -37,6 +38,7 @@ namespace Arcanum.Runtime.World
         public Vector2Int? Destination { get; private set; }
         public Vector2Int? GlobalDestination => _loader?.Session.PlayerState?.Destination;
         public IReadOnlyList<Vector2Int> Route => _route;
+        public bool RunRequested { get; private set; }
         public event Action DestinationRequested;
 
         private void Awake() => _loader = GetComponent<WorldObjectSectorLoader>();
@@ -72,7 +74,7 @@ namespace Arcanum.Runtime.World
             if (facingBefore >= 0 && facingBefore != _facing)
             {
                 _facing = facingBefore;
-                ApplyState(_follower.Position, WalkAnimation, true);
+                ApplyState(_follower.Position, MovementAnimation, true);
             }
 
             _passiveTransitionTriggered = false;
@@ -82,12 +84,12 @@ namespace Arcanum.Runtime.World
             if (facingAfter >= 0) _facing = facingAfter;
             if (moving)
             {
-                ApplyState(_follower.Position, WalkAnimation, true);
+                ApplyState(_follower.Position, MovementAnimation, true);
                 return;
             }
             if (_pendingBoundary.HasValue)
             {
-                ApplyState(_follower.Position, WalkAnimation, true);
+                ApplyState(_follower.Position, MovementAnimation, true);
                 CompleteBoundaryTransition();
                 return;
             }
@@ -99,7 +101,7 @@ namespace Arcanum.Runtime.World
         private bool OnRouteTileEntered(Vector2Int tile, int facing)
         {
             if (facing >= 0) _facing = facing;
-            ApplyState(tile, WalkAnimation, true);
+            ApplyState(tile, MovementAnimation, true);
             _passiveTransitionTriggered = TryActivatePassiveJump();
             return _passiveTransitionTriggered;
         }
@@ -150,6 +152,10 @@ namespace Arcanum.Runtime.World
                 || !SectorCoordinate.TryParse(_loader.Session.SelectedSector, out SectorCoordinate sector)) return false;
             return TrySetGlobalDestination(Vector2Int.RoundToInt(sector.ToGlobal(destination)));
         }
+
+        public void SetRunIntent(bool running) => RunRequested = running;
+
+        private int MovementAnimation => RunRequested ? RunAnimation : WalkAnimation;
 
         /// <summary>Requests one final destination in source map-global tile coordinates.</summary>
         public bool TrySetGlobalDestination(Vector2Int destination)
@@ -210,7 +216,7 @@ namespace Arcanum.Runtime.World
                 return true;
             }
             _facing = _follower.Facing;
-            ApplyState(_follower.Position, WalkAnimation, true);
+            ApplyState(_follower.Position, MovementAnimation, true);
             return true;
         }
 
@@ -220,7 +226,7 @@ namespace Arcanum.Runtime.World
             CrossSectorBoundaryPlanner.Plan plan = _pendingBoundary.Value;
             string previousSector = _loader.Session.SelectedSector;
             Vector2 previousLocal = Player.TilePosition;
-            uint crossingArt = CritterArtResolver.WithAnimRotation(Player.ArtId, WalkAnimation, plan.Rotation)
+            uint crossingArt = CritterArtResolver.WithAnimRotation(Player.ArtId, MovementAnimation, plan.Rotation)
                                & ~(0x1Fu << 14);
 
             if (!_loader.Session.TryTransitionPlayer(plan.TargetSector.Path, plan.EntryTile, crossingArt)

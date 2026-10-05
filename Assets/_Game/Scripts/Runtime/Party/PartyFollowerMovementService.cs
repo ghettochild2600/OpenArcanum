@@ -21,7 +21,10 @@ namespace Arcanum.Runtime.Party
     /// <summary>One deterministic source follow step over production sector navigation.</summary>
     public sealed class PartyFollowerMovementService
     {
-        public const int DesiredRange = 4;
+        public const int SourceCloseRange = 2;
+        public const int SourceFollowRange = 4;
+        public const int SourceSpreadRange = 8;
+        public const int DesiredRange = SourceFollowRange;
         private readonly WorldMapSessionCoordinator _world;
         private readonly DeterministicTilePathfinder _pathfinder = new();
         private readonly List<Vector2Int> _route = new();
@@ -57,6 +60,7 @@ namespace Arcanum.Runtime.Party
         {
             route?.Clear();
             if (_world.Combat.IsActive) return FollowerMoveResult.CombatActive;
+            if (!_world.Party.FollowingEnabled) return FollowerMoveResult.Unavailable;
             if (!_world.Party.CanAccompany(follower) || map == null
                 || !_world.TryGetLoadedObject(follower, out WorldObject followerRuntime)
                 || _world.PlayerState == null
@@ -68,14 +72,21 @@ namespace Arcanum.Runtime.Party
 
             Vector2Int start = followerRuntime.Tile;
             Vector2Int leader = leaderRuntime.Tile;
-            if (Distance(start, leader) <= DesiredRange) return FollowerMoveResult.InRange;
+            int desiredRange = _world.Party.DesiredFollowRange;
+            if (_world.Party.OrderedLocation.HasValue
+                && SectorCoordinate.TryParse(_world.SelectedSector, out SectorCoordinate sector))
+            {
+                leader = sector.ToLocal(_world.Party.OrderedLocation.Value);
+                desiredRange = 0;
+            }
+            if (Distance(start, leader) <= desiredRange) return FollowerMoveResult.InRange;
 
             var candidates = new List<Vector2Int>();
-            for (int y = leader.y - DesiredRange; y <= leader.y + DesiredRange; y++)
-            for (int x = leader.x - DesiredRange; x <= leader.x + DesiredRange; x++)
+            for (int y = leader.y - desiredRange; y <= leader.y + desiredRange; y++)
+            for (int x = leader.x - desiredRange; x <= leader.x + desiredRange; x++)
             {
                 var tile = new Vector2Int(x, y);
-                if (Distance(tile, leader) > DesiredRange || !map.Contains(tile) || !map.IsWalkable(tile)
+                if (Distance(tile, leader) > desiredRange || !map.Contains(tile) || !map.IsWalkable(tile)
                     || map.IsOccupiedByOther(follower, tile)) continue;
                 candidates.Add(tile);
             }

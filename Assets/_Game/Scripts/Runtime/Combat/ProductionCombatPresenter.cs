@@ -29,15 +29,6 @@ namespace Arcanum.Runtime.Combat
         {
             EnsureController();
             Controller.Refresh();
-            if (!Controller.IsVisible || _inputGate != null && _inputGate.IsBlocked) return;
-            if (Input.GetKeyDown(KeyCode.E) && Controller.Mode == CombatMode.TurnBased)
-                Controller.EndTurn();
-            if (Input.GetKeyDown(KeyCode.Comma))
-                Controller.SetCalledLocation(CombatCalledLocation.Head);
-            if (Input.GetKeyDown(KeyCode.Period))
-                Controller.SetCalledLocation(CombatCalledLocation.Leg);
-            if (Input.GetKeyDown(KeyCode.Slash))
-                Controller.SetCalledLocation(CombatCalledLocation.Arm);
         }
 
         /// <summary>Consumes ordinary world clicks while combat is active and converts only critters to identity.</summary>
