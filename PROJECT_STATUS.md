@@ -55,6 +55,10 @@ player-facing manual save/load presentation, M7A bounded passive local map trans
   save/load strictly as projections and commands over M1-M12B authority. **DONE M12D — Audio:** one central
   presentation bridge now resolves retail WAV/MP3 resources and source sound/scheme/dialogue rules for UI, world,
   combat, magic, technology, voice, music, and ambience without owning gameplay or changing Save V1.
+  **DONE UI-C — Source-Faithful Gameplay HUD:** the production gameplay path now renders the retail ID 3 alpha HUD,
+  source vials/lens/controls/quick slots, and existing M12C/M8I projections over the unchanged controller/session
+  authority; the generic HUD grid is suppressed, the world remains interactive behind the authentic aperture, and
+  Original/Enhanced fallback uses the shared UI-A skin runtime.
   **DONE M13A opening crash-site compatibility pass and bounded user follow-ups:** authentic Virgil dialogue 1324
   now includes generic source `mm`, `ss`, `ia`, `ce`, and `wa` semantics; source heartbeat initialization reconstructs
   the additional crash-site casualties without replaying death rewards/consequences; the production PC and generic
@@ -2523,13 +2527,38 @@ diff --check` was clean.
 
 See [`documentation_unity/ui/ui-b-main-menu-reconstruction.md`](documentation_unity/ui/ui-b-main-menu-reconstruction.md).
 
+## UI-C Source-Faithful Gameplay HUD Reconstruction Baseline (2026-10-05)
+
+UI-C is complete. One production `RetailGameplayHudView` now resolves the authentic retail ID 3 800 x 600 alpha
+composition, IDs 20/18/19 for empty/health/fatigue vials, ID 354 for the message lens, ID 27 for dynamic bitmap text,
+the source management/combat button families, and ten source quick-slot backgrounds. Health, fatigue, equipment,
+ammunition, AP, readiness, combat state, messages, and shortcut bindings remain read-only projections of completed
+M3/M4/M8/M12C authority. Source controls send commands through the same `GameUiController`; no gameplay or modal
+authority was duplicated.
+
+The authentic top/world/bottom regions are `(0,0,800,41)`, `(0,41,800,400)`, and `(0,441,800,159)`. The camera
+renders full-screen behind the source alpha, so widescreen displays expose additional world without stretching the
+fixed ornament. Only actual top/bottom interface bands block pointer-to-world input. Character, Logbook, Map,
+Inventory, Combat, Skills, Spells, and Schematics use their source controls; the generic Party, Barter, Save/Load,
+Technology, and duplicate Craft convenience buttons are absent while their existing source-correct/controller and
+keyboard access paths remain available.
+
+Focused UI-C validation passed **33/33**. Directly affected UI-A, M12C, M8I, Player Navigation, keyboard, and UI-B
+regressions passed **23/23**, **18/18**, **17/17**, **21/21**, **23/23**, and **22/22**. The complete EditMode suite
+passed **1169/1169**, with **0 failed, 0 skipped, and 0 inconclusive**. Physical Play Mode proved fresh crash-site New
+Game, source HUD/vitals/equipment/message projection, world click-to-move through the aperture, the authentic
+Inventory route, real number-key quick-slot activation, live turn-based combat projection, one presenter/controller/
+EventSystem, generated exact-4x Enhanced selection with fallback, Original return, and 800 x 600/1080p/1440p/4K
+mapping. Unity compilation was clean; the final Console was 0 logs/warnings/errors and `git diff --check` was clean.
+
+See [`documentation_unity/ui/ui-c-gameplay-hud-reconstruction.md`](documentation_unity/ui/ui-c-gameplay-hud-reconstruction.md).
+
 ## Next Recommended Milestone
 
 M9A, M9B, M10A, M10B, M11A, M11B, M11C, M12B, M12C, M12D, and the bounded M13A opening pass are formally closed.
-The source-authentic keyboard compatibility follow-up, UI-A common runtime, and UI-B source-faithful Main Menu are
-also closed. The recommended bounded next milestone is **UI-C — Gameplay HUD presentation**: replace only the generic
-production HUD with the source-backed center composition and source-proven widescreen anchors while reusing existing
-M12C/M8I projections, commands, input precedence, and gameplay authority. Do not include Character Creation,
-Inventory, Save/Load, Options, other screens, gameplay authority, or production Enhanced artwork. UI-C has not
-started. Continue M13A only from concrete user-discovered campaign defects; do not start an autonomous campaign
-playthrough.
+The source-authentic keyboard compatibility follow-up, UI-A common runtime, UI-B source-faithful Main Menu, and UI-C
+source-faithful Gameplay HUD are also closed. The recommended bounded next milestone is **UI-D — Character Creation
+presentation**: replace only the generic Character Creation view with source-backed M12B/M12C presentation while
+preserving all completed creation rules and commands. Do not include Inventory/Paper Doll, Character management,
+other screens, new gameplay authority, or production Enhanced artwork. UI-D has not started. Continue M13A only from
+concrete user-discovered campaign defects; do not start an autonomous campaign playthrough.

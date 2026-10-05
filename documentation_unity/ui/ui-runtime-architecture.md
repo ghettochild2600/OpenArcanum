@@ -3,9 +3,10 @@
 ## Status and boundary
 
 UI-A — Common UI Runtime / Skin Resolver completed on 2026-10-04. UI-B — Source-Faithful Main Menu Reconstruction
-then became the first production consumer. The existing M12C `GameUiController`, view-model projections, command
-routing, input precedence, modal state, and gameplay authority remain intact. UI-B replaces only the disposable Main
-Menu view; the other placeholder views remain. Neither milestone contains production Enhanced artwork.
+then became the first production consumer, followed by UI-C — Source-Faithful Gameplay HUD Reconstruction on
+2026-10-05. The existing M12C `GameUiController`, view-model projections, command routing, input precedence, modal
+state, and gameplay authority remain intact. UI-B and UI-C replace only their disposable presentation views; the
+remaining placeholder management views remain. None of these milestones contains production Enhanced artwork.
 
 The migration rule for UI-B onward is:
 
@@ -126,9 +127,29 @@ fallback, state/geometry preservation across Original -> Enhanced -> Original, o
 New Game/Load/Options routes, bounded unsupported branches, retail cursor hotspot, and centered 1080p/1440p/4K output.
 See [`ui-b-main-menu-reconstruction.md`](ui-b-main-menu-reconstruction.md).
 
-## Exact UI-C boundary
+## UI-C production consumer
 
-UI-C should replace only the production Gameplay HUD presentation with the source-backed center composition and
-source-proven widescreen anchors. It must reuse existing M12C/M8I projections, command routes, modal/input precedence,
-and gameplay authority. It must not migrate Character Creation, Inventory, Save/Load, Options, other screens, or
-generate production remastered artwork. UI-C has not started.
+`RetailGameplayHudView` is attached once to the existing `ProductionGameUiPresenter`. It resolves retail ID 3 as the
+complete alpha-backed 800 x 600 composition, IDs 20/18/19 for the two source vials, ID 354 for the message lens, ID 27
+for dynamic bitmap text, the source management/combat button families, and the ten source quick-slot backgrounds. It
+projects the same M12C/M8I state and sends commands through the same controller; it owns no vitality, equipment,
+combat, shortcut, modal, or screen state.
+
+The camera remains full-screen behind the transparent source composition. Only the real top and bottom interface
+bands block world input, so the middle aperture and widescreen side world remain interactive. The persistent
+EventSystem is parented outside the transient Main Menu canvas. Source-view availability suppresses the old generic
+HUD only; every management modal remains on its existing authority and presentation path.
+
+UI-C passed 33/33 focused tests. Directly affected UI-A, M12C, M8I, Player Navigation, keyboard, and UI-B regressions
+passed 23/23, 18/18, 17/17, 21/21, 23/23, and 22/22. The complete EditMode suite passed 1169/1169. Physical Play Mode
+proved fresh crash-site New Game, source-vial/projection state, the authentic Inventory route, keyboard quick-slot
+activation, live combat state, world click-to-move through the aperture, generated exact-4x Enhanced selection,
+Original fallback/return, 800 x 600/1080p/1440p/4K mapping, and unique presenter/EventSystem lifetime. Compilation
+was clean and final Console was 0/0/0. See
+[`ui-c-gameplay-hud-reconstruction.md`](ui-c-gameplay-hud-reconstruction.md).
+
+## Exact UI-D boundary
+
+UI-D should replace only the source-faithful Character Creation presentation over completed M12B/M12C rules and
+commands. It must not redesign creation rules, migrate Inventory/Paper Doll or Character management, create gameplay
+authority, or generate production remastered artwork.

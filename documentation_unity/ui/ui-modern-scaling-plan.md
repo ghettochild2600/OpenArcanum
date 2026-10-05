@@ -68,6 +68,11 @@ grow horizontally. Center-bound groups such as the lens/message/quick slots stay
 edge groups anchor to their corresponding safe edges. Additional width displays world, not duplicated buttons,
 stretched ornament, or hidden pillars.
 
+UI-C now applies the source-compatible form of this rule in production. Retail ID 3 is preserved as one centered,
+un-stretched alpha composition, with the full-screen world camera visible through its authentic middle aperture and
+the extra widescreen side area. Dynamic vials, counters, lens text, controls, and slots remain registered in the
+source 800 x 600 coordinate space. Only the actual source top and bottom bands consume pointer input.
+
 Combat reuses the same root. AP/readiness/called-shot/target state appears in its source regions. Entering combat or
 switching graphics mode cannot rebuild authority or alter current turn/AP.
 
@@ -152,3 +157,9 @@ Development proof objects are transient and never part of production presentatio
 
 UI-B applies that architecture to the first production screen. The retail Main Menu remains one centered, un-stretched
 4:3 composition at those same resolutions; no resolution-specific hierarchy or production Enhanced asset exists.
+
+UI-C applies the same transform to the production gameplay HUD. At 800 x 600, 1920 x 1080, 2560 x 1440, and
+3840 x 2160 the source art remains respectively 800 x 600, 1440 x 1080, 1920 x 1440, and 2880 x 2160. The camera
+continues across the full display behind source alpha, so extra width is useful world space rather than ornament
+stretching. A generated 3200 x 2400 ID 3 fixture changed only pixel density and retained every logical rectangle and
+hit target; missing Enhanced frames fell back to Original independently.
