@@ -403,10 +403,15 @@ internal static class RetailUiReferenceExporter
             screen = "Common / Typography";
             role = "bitmap font or glyph set";
         }
-        else if (name == "intrface" || name.Contains("vial") || name.Contains("hotkey") || name.Contains("ammo_icon"))
+        else if (name == "inttop" || name == "intbotom" || name.Contains("vial") || name.Contains("hotkey") || name.Contains("ammo_icon"))
         {
             screen = "Gameplay HUD";
             role = "HUD presentation";
+        }
+        else if (name == "intrface")
+        {
+            screen = "unknown / legacy composite candidate";
+            role = "unproven composite/reference asset";
         }
 
         if (screen == null) return;

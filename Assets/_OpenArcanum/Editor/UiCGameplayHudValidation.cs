@@ -97,9 +97,14 @@ namespace OpenArcanum.Editor
                 view.Synchronize(true);
                 Check(session.SelectedSector.Contains("arcanum1-024-fixed"),
                     "validation remains in the crash-site START_MAP");
-                Check(view.IsVisible && view.BackgroundAsset?.Key.SourceId == 3
-                                     && view.BackgroundAsset.LogicalSize == new Vector2Int(800, 600),
-                    "source 3 supplies the active 800x600 gameplay composition");
+                Check(view.IsVisible && view.TopAsset?.Key.SourceId == 185
+                                     && view.TopAsset.LogicalSize == new Vector2Int(800, 41)
+                                     && view.BottomAsset?.Key.SourceId == 184
+                                     && view.BottomAsset.LogicalSize == new Vector2Int(800, 159),
+                    "source 185/184 supply the active top/bottom gameplay windows");
+                Check(!view.GetComponentsInChildren<SourceUiImage>(true)
+                        .Any(value => value.CurrentAsset?.Key.SourceId == 3),
+                    "legacy/unknown source 3 composite is not production HUD authority");
                 Check(Object.FindObjectsByType<RetailGameplayHudView>(FindObjectsSortMode.None).Length == 1,
                     "exactly one retail gameplay HUD presenter");
                 Check(Object.FindObjectsByType<ProductionGameUiPresenter>(FindObjectsSortMode.None).Length == 1,
@@ -167,47 +172,56 @@ namespace OpenArcanum.Editor
                 var retail = RetailUiAssetResolver.CreateProduction();
                 var enhanced = new EnhancedUiAssetResolver(fixtureRoot, _ => { });
                 fixtureSkin = new UiSkinResolver(retail, enhanced);
-                Check(retail.TryResolve(new UiAssetKey(3), out UiResolvedAsset original),
-                    "retail HUD frame resolves for Enhanced proof");
-                WriteFixture(enhanced.GetReplacementPath(original), original.LogicalSize * 4);
+                UiResolvedAsset originalTop = null;
+                UiResolvedAsset originalBottom = null;
+                Check(retail.TryResolve(new UiAssetKey(185), out originalTop),
+                    "retail top HUD strip resolves for Enhanced proof");
+                Check(retail.TryResolve(new UiAssetKey(184), out originalBottom),
+                    "retail bottom HUD strip resolves for Enhanced proof");
+                WriteFixture(enhanced.GetReplacementPath(originalTop), originalTop.LogicalSize * 4);
+                WriteFixture(enhanced.GetReplacementPath(originalBottom), originalBottom.LogicalSize * 4);
                 view.Bind(controller, session, screen => controller.Open(screen), fixtureSkin);
                 OpenArcanumGraphicsSettings.SetRuntimeMode(GraphicsMode.Enhanced);
                 view.Synchronize(true);
-                Check(view.BackgroundAsset?.ResolvedSkin == UiAssetSkin.Enhanced
-                      && view.BackgroundAsset.Texture.width == 3200
-                      && view.BackgroundAsset.Texture.height == 2400,
-                    "generated exact-4x Enhanced HUD frame appears");
+                Check(view.TopAsset?.ResolvedSkin == UiAssetSkin.Enhanced
+                      && view.TopAsset.Texture.width == 3200
+                      && view.TopAsset.Texture.height == 164
+                      && view.BottomAsset?.ResolvedSkin == UiAssetSkin.Enhanced
+                      && view.BottomAsset.Texture.width == 3200
+                      && view.BottomAsset.Texture.height == 636,
+                    "generated exact-4x Enhanced HUD strips appear at source-native geometry");
                 Check(view.QuickSlots[0].Kind == QuickSlotKind.Spell
                       && session.PlayerState.Identity == ProductionPlayerLifecycle.DefaultPlayerIdentity,
                     "skin rebuild preserves controller/session/slot authority");
                 OpenArcanumGraphicsSettings.SetRuntimeMode(GraphicsMode.Original);
                 view.Synchronize(true);
-                Check(view.BackgroundAsset?.ResolvedSkin == UiAssetSkin.Original,
+                Check(view.TopAsset?.ResolvedSkin == UiAssetSkin.Original
+                      && view.BottomAsset?.ResolvedSkin == UiAssetSkin.Original,
                     "Original retail HUD returns without state loss");
 
                 foreach ((int width, int height) in new[]
                          {
-                             (800, 600), (1920, 1080), (2560, 1440), (3840, 2160),
-                             (1920, 1200), (3440, 1440), (600, 900), (1024, 512),
+                             (800, 600), (1024, 768), (1920, 1080), (2560, 1440), (3840, 2160),
                          })
                 {
-                    UiLogicalMapping mapping = UiLogicalMapping.ForResolution(width, height);
-                    Rect composition = mapping.LogicalToScreen(new Rect(0, 0, 800, 600));
+                    Rect top = RetailGameplayHudLayout.TopScreenRect(width, height);
+                    Rect bottom = RetailGameplayHudLayout.BottomScreenRect(width, height);
                     Rect viewport = RetailGameplayHudLayout.GameplayCameraViewport(width, height);
-                    Check(Mathf.Approximately(composition.width / composition.height, 4f / 3f)
-                          && composition.xMin >= -.001f && composition.yMin >= -.001f
-                          && composition.xMax <= width + .001f && composition.yMax <= height + .001f
+                    Check(top.width == 800f && top.height == 41f && top.y == 0f
+                          && bottom.width == 800f && bottom.height == 159f
+                          && Mathf.Approximately(bottom.y, height - 159f)
+                          && Mathf.Approximately(top.x, (width - 800f) * .5f)
+                          && Mathf.Approximately(bottom.x, top.x)
                           && viewport == new Rect(0f, 0f, 1f, 1f),
-                        $"{width}x{height} preserves fixed HUD art and world behind source alpha");
+                        $"{width}x{height} uses native HRP top/bottom gravity and full-screen world");
                 }
 
                 RetailMainMenuCursorView cursor = view.GetComponentsInChildren<RetailMainMenuCursorView>(true)
                     .Single(value => value.name == "Retail Gameplay Cursor" && value.gameObject.activeInHierarchy);
-                SourceUiPresentationRoot presentation = Require(
-                    cursor.GetComponentInParent<SourceUiPresentationRoot>(), "source UI presentation root");
-                Check(cursor.transform.parent == presentation.GetLayer(SourceUiLayer.Cursor)
-                      && cursor.transform.IsChildOf(presentation.ReferenceSurface),
-                    "source cursor shares the HUD reference transform and hotspot mapping");
+                Check(cursor.transform.parent.name == "Retail Gameplay Cursor Layer"
+                      && Mathf.Approximately(cursor.transform.lossyScale.x, 1f)
+                      && Mathf.Approximately(cursor.transform.lossyScale.y, 1f),
+                    "source cursor uses native full-screen pointer mapping and hotspot geometry");
 
                 view.Bind(controller, session, screen => controller.Open(screen));
                 view.Synchronize(true);
@@ -219,12 +233,12 @@ namespace OpenArcanum.Editor
                     "rebuild leaves one HUD, one gameplay cursor, and one EventSystem");
 
                 Debug.Log("UI-C PHYSICAL VALIDATION: PASS; fresh New Game=crash-site START_MAP 1; "
-                          + "source HUD=3; top=800x41; world=800x400; bottom=800x159; "
+                          + "source HUD=185 top 800x41 + 184 bottom 800x159; world=full-screen; "
                           + "vitals/equipment/message=authoritative; source Inventory route=PASS; "
                           + "quick slot spell activation=PASS; combat state=PASS; "
-                          + "skin=Original>Enhanced exact-4x>Original; "
-                          + "resolutions=800x600/1080p/1440p/4K/16:10/ultrawide/tall/free-aspect; "
-                          + "cursor=shared scaled reference transform; "
+                          + "skin=Original>Enhanced exact-4x strips>Original; "
+                          + "resolutions=800x600/1024x768/1080p/1440p/4K native HRP gravity; "
+                          + "cursor=native full-screen mapping; "
                           + "presenters=1; EventSystems=1. Play Mode remains open at the crash site for visual proof.");
             }
             finally

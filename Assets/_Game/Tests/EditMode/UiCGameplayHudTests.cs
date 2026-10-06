@@ -70,11 +70,13 @@ namespace Arcanum.Formats.Tests
         [Test]
         public void RetailHudAssetsResolveFromSourceData()
         {
-            int[] ids = { 3, 17, 18, 19, 20, 169, 172, 173, 181, 186, 187, 193, 251, 354, 470, 471, 472, 473 };
+            int[] ids = { 3, 17, 18, 19, 20, 169, 172, 173, 181, 184, 185, 186, 187, 193, 251, 354, 470, 471, 472, 473 };
             foreach (int id in ids)
                 Assert.That(_retail.TryResolve(new UiAssetKey(id), out _), Is.True, $"source id {id}");
-            Assert.That(_retail.TryResolve(new UiAssetKey(3), out UiResolvedAsset frame), Is.True);
-            Assert.That(frame.LogicalSize, Is.EqualTo(new Vector2Int(800, 600)));
+            Assert.That(Original(RetailGameplayHudLayout.TopSourceId).LogicalSize,
+                Is.EqualTo(new Vector2Int(800, 41)));
+            Assert.That(Original(RetailGameplayHudLayout.BottomSourceId).LogicalSize,
+                Is.EqualTo(new Vector2Int(800, 159)));
         }
 
         [Test]
@@ -84,6 +86,26 @@ namespace Arcanum.Formats.Tests
             Assert.That(RetailGameplayHudLayout.WorldViewport, Is.EqualTo(new Rect(0, 41, 800, 400)));
             Assert.That(RetailGameplayHudLayout.BottomInterface, Is.EqualTo(new Rect(0, 441, 800, 159)));
             Assert.That(RetailGameplayHudLayout.MessageWindow, Is.EqualTo(new Rect(196, 492, 410, 107)));
+            Assert.That(RetailGameplayHudLayout.BottomWindowLocal(RetailGameplayHudLayout.MessageWindow),
+                Is.EqualTo(new Rect(196, 51, 410, 107)));
+        }
+
+        [TestCase(800, 600, 0, 0, 441)]
+        [TestCase(1024, 768, 112, 0, 609)]
+        [TestCase(1920, 1080, 560, 0, 921)]
+        [TestCase(2560, 1440, 880, 0, 1281)]
+        [TestCase(3840, 2160, 1520, 0, 2001)]
+        [TestCase(1280, 720, 240, 0, 561)]
+        [TestCase(1600, 1200, 400, 0, 1041)]
+        [TestCase(1920, 1200, 560, 0, 1041)]
+        [TestCase(3440, 1440, 1320, 0, 1281)]
+        public void SourceWindowsUseNativeHrpGravityPositioning(
+            int width, int height, float expectedX, float expectedTopY, float expectedBottomY)
+        {
+            Assert.That(RetailGameplayHudLayout.TopScreenRect(width, height),
+                Is.EqualTo(new Rect(expectedX, expectedTopY, 800, 41)));
+            Assert.That(RetailGameplayHudLayout.BottomScreenRect(width, height),
+                Is.EqualTo(new Rect(expectedX, expectedBottomY, 800, 159)));
         }
 
         [Test]
@@ -109,7 +131,10 @@ namespace Arcanum.Formats.Tests
         {
             GameUiHudView projection = _controller.ProjectHud();
             Assert.That(_view.IsVisible, Is.True);
-            Assert.That(_view.BackgroundAsset.Key.SourceId, Is.EqualTo(3));
+            Assert.That(_view.TopAsset.Key.SourceId, Is.EqualTo(185));
+            Assert.That(_view.BottomAsset.Key.SourceId, Is.EqualTo(184));
+            Assert.That(_root.GetComponentsInChildren<SourceUiImage>(true)
+                .Any(value => value.CurrentAsset?.Key.SourceId == 3), Is.False);
             Assert.That(_view.LastProjection.HitPoints, Is.EqualTo(projection.HitPoints));
             Assert.That(_view.LastProjection.Fatigue, Is.EqualTo(projection.Fatigue));
             Assert.That(Object.FindObjectsByType<RetailGameplayHudView>(FindObjectsSortMode.None), Has.Length.EqualTo(1));
@@ -179,41 +204,23 @@ namespace Arcanum.Formats.Tests
             Assert.That(_session.States.Count, Is.EqualTo(states));
         }
 
-        [TestCase(800, 600, 1f, 0f, 0f)]
-        [TestCase(1920, 1080, 1.8f, 240f, 0f)]
-        [TestCase(2560, 1440, 2.4f, 320f, 0f)]
-        [TestCase(3840, 2160, 3.6f, 480f, 0f)]
-        [TestCase(1920, 1200, 2f, 160f, 0f)]
-        [TestCase(3440, 1440, 2.4f, 760f, 0f)]
-        [TestCase(600, 900, .75f, 0f, 225f)]
-        [TestCase(1024, 512, .85333335f, 170.66667f, 0f)]
-        public void HudRemainsCenteredVisibleAndUndistortedAtArbitraryResolutions(
-            int width, int height, float scale, float originX, float originY)
+        [Test]
+        public void DynamicChildrenRegisterToTheirSourceOwnedWindow()
         {
-            UiLogicalMapping mapping = UiLogicalMapping.ForResolution(width, height);
-            Rect hud = mapping.LogicalToScreen(new Rect(0, 0, 800, 600));
-            Assert.That(mapping.Scale, Is.EqualTo(scale).Within(.0001f));
-            Assert.That(hud.x, Is.EqualTo(originX).Within(.0001f));
-            Assert.That(hud.y, Is.EqualTo(originY).Within(.0001f));
-            Assert.That(hud.xMin, Is.GreaterThanOrEqualTo(-.0001f));
-            Assert.That(hud.yMin, Is.GreaterThanOrEqualTo(-.0001f));
-            Assert.That(hud.xMax, Is.LessThanOrEqualTo(width + .0001f));
-            Assert.That(hud.yMax, Is.LessThanOrEqualTo(height + .0001f));
-            Assert.That(hud.width / hud.height, Is.EqualTo(4f / 3f).Within(.0001f));
-            Assert.That(mapping.GameplayWorldScreenRect.width, Is.EqualTo(width));
-        }
-
-        [TestCase(1920, 1080, -100f, 300f)]
-        [TestCase(3440, 1440, -250f, 300f)]
-        [TestCase(600, 900, 400f, -120f)]
-        public void LogicalAndPhysicalCoordinatesRoundTripInsideAndOutsideTheSourceSurface(
-            int width, int height, float logicalX, float logicalY)
-        {
-            UiLogicalMapping mapping = UiLogicalMapping.ForResolution(width, height);
-            var logical = new Vector2(logicalX, logicalY);
-            Vector2 physical = mapping.LogicalToScreen(logical);
-            Assert.That(mapping.ScreenToLogical(physical).x, Is.EqualTo(logical.x).Within(.0001f));
-            Assert.That(mapping.ScreenToLogical(physical).y, Is.EqualTo(logical.y).Within(.0001f));
+            Transform top = _root.GetComponentsInChildren<Transform>(true)
+                .Single(value => value.name == "Retail Top HUD Window");
+            Transform bottom = _root.GetComponentsInChildren<Transform>(true)
+                .Single(value => value.name == "Retail Bottom HUD Window");
+            Assert.That(_root.GetComponentsInChildren<Button>(true).Single(value => value.name == "Inventory")
+                .transform.parent, Is.EqualTo(top));
+            Assert.That(_root.GetComponentsInChildren<Button>(true).Single(value => value.name == "Combat")
+                .transform.parent, Is.EqualTo(bottom));
+            Assert.That(_root.GetComponentsInChildren<Button>(true).Single(value => value.name == "Quick Slot 1")
+                .transform.parent, Is.EqualTo(bottom));
+            Assert.That(_root.GetComponentsInChildren<SourceUiImage>(true)
+                .Single(value => value.name == "Health Empty Vial").transform.parent, Is.EqualTo(bottom));
+            Assert.That(_root.GetComponentsInChildren<SourceUiImage>(true)
+                .Single(value => value.name == "Message Lens").transform.parent, Is.EqualTo(bottom));
         }
 
         [TestCase(800, 600)]
@@ -238,30 +245,28 @@ namespace Arcanum.Formats.Tests
         }
 
         [Test]
-        public void GameplayCursorUsesTheSameScaledReferenceSurfaceAsTheHud()
+        public void GameplayCursorUsesNativeFullScreenMappingWithSourceHotspot()
         {
-            SourceUiPresentationRoot presentation = _root.GetComponentInChildren<SourceUiPresentationRoot>(true);
             RetailMainMenuCursorView cursor = _root.GetComponentsInChildren<RetailMainMenuCursorView>(true)
                 .Single(value => value.name == "Retail Gameplay Cursor");
-            presentation.ApplyResolution(new Vector2Int(1920, 1080));
-
-            Assert.That(cursor.transform.parent, Is.EqualTo(presentation.GetLayer(SourceUiLayer.Cursor)));
-            Assert.That(cursor.transform.IsChildOf(presentation.ReferenceSurface), Is.True);
-            Assert.That(cursor.transform.lossyScale.x, Is.EqualTo(1.8f).Within(.0001f));
-            Assert.That(cursor.transform.lossyScale.y, Is.EqualTo(1.8f).Within(.0001f));
+            Assert.That(cursor.transform.parent.name, Is.EqualTo("Retail Gameplay Cursor Layer"));
+            Assert.That(cursor.transform.lossyScale.x, Is.EqualTo(1f).Within(.0001f));
+            Assert.That(cursor.transform.lossyScale.y, Is.EqualTo(1f).Within(.0001f));
             Assert.That(cursor.CurrentAsset.LogicalSize, Is.EqualTo(new Vector2Int(24, 27)));
         }
 
-        [Test]
-        public void EnhancedFrameUsesExactFourTimesPixelsWithIdenticalLogicalGeometry()
+        [TestCase(184, 3200, 636)]
+        [TestCase(185, 3200, 164)]
+        public void EnhancedHudStripUsesExactFourTimesPixelsWithIdenticalLogicalGeometry(
+            int sourceId, int textureWidth, int textureHeight)
         {
-            UiResolvedAsset original = Original(3);
+            UiResolvedAsset original = Original(sourceId);
             WriteFixture(original, original.LogicalSize * 4);
             _skin.InvalidatePresentation();
             Assert.That(_skin.TryResolve(original.Key, UiAssetSkin.Enhanced, out UiResolvedAsset enhanced), Is.True);
             Assert.That(enhanced.ResolvedSkin, Is.EqualTo(UiAssetSkin.Enhanced));
-            Assert.That(enhanced.Texture.width, Is.EqualTo(3200));
-            Assert.That(enhanced.Texture.height, Is.EqualTo(2400));
+            Assert.That(enhanced.Texture.width, Is.EqualTo(textureWidth));
+            Assert.That(enhanced.Texture.height, Is.EqualTo(textureHeight));
             Assert.That(enhanced.LogicalSize, Is.EqualTo(original.LogicalSize));
         }
 
@@ -301,8 +306,8 @@ namespace Arcanum.Formats.Tests
             _view.Synchronize(true);
 
             Assert.That(_view.IsAvailable, Is.True);
-            Assert.That(_view.BackgroundAsset, Is.Not.Null);
-            Assert.That(_view.BackgroundAsset.Key.SourceId, Is.EqualTo(3));
+            Assert.That(_view.TopAsset?.Key.SourceId, Is.EqualTo(185));
+            Assert.That(_view.BottomAsset?.Key.SourceId, Is.EqualTo(184));
             Assert.That(_view.LastProjection, Is.Not.Null);
         }
 

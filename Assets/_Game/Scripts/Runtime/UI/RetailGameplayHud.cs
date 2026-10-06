@@ -9,10 +9,15 @@ using Object = UnityEngine.Object;
 
 namespace Arcanum.Runtime.UI
 {
-    /// <summary>Source-backed UI-C geometry. Every rectangle is expressed in retail top-left 800x600 pixels.</summary>
+    /// <summary>
+    /// Source-backed UI-C geometry. Source coordinates remain the retail 800x600 coordinate space, while the
+    /// production windows follow <c>iso_interface_create</c>: native 800-pixel art centered horizontally, with ID 185
+    /// anchored to the top and ID 184 anchored to the bottom.
+    /// </summary>
     public static class RetailGameplayHudLayout
     {
-        public const int BackgroundSourceId = 3;
+        public const int TopSourceId = 185;
+        public const int BottomSourceId = 184;
         public const int MessageWindowSourceId = 354;
         public const int HealthLiquidSourceId = 18;
         public const int FatigueLiquidSourceId = 19;
@@ -53,19 +58,45 @@ namespace Arcanum.Runtime.UI
         {
             if (width <= 0) throw new ArgumentOutOfRangeException(nameof(width));
             if (height <= 0) throw new ArgumentOutOfRangeException(nameof(height));
-            // Source ID 3 contains real alpha cut-outs inside both interface bands. The world camera therefore
-            // remains full-screen behind the composition; opaque source pixels conceal it while alpha apertures
-            // reveal it. Input is still bounded by the audited 41/400/159 interaction partition.
+            // The source creates both interface windows over the ISO window. The world therefore remains full-screen
+            // and naturally expands around/between the native-sized HUD strips at high resolutions.
             return new Rect(0f, 0f, 1f, 1f);
         }
 
+        public static Rect TopScreenRect(int width, int height)
+        {
+            ValidateResolution(width, height);
+            return new Rect((width - TopInterface.width) * .5f, 0f,
+                TopInterface.width, TopInterface.height);
+        }
+
+        public static Rect BottomScreenRect(int width, int height)
+        {
+            ValidateResolution(width, height);
+            return new Rect((width - BottomInterface.width) * .5f, height - BottomInterface.height,
+                BottomInterface.width, BottomInterface.height);
+        }
+
+        public static Rect TopWindowLocal(Rect sourceRect)
+            => new Rect(sourceRect.x - TopInterface.x, sourceRect.y - TopInterface.y,
+                sourceRect.width, sourceRect.height);
+
+        public static Rect BottomWindowLocal(Rect sourceRect)
+            => new Rect(sourceRect.x - BottomInterface.x, sourceRect.y - BottomInterface.y,
+                sourceRect.width, sourceRect.height);
+
         public static bool ContainsInterfacePoint(Vector2 screenBottomLeft, int width, int height)
         {
-            UiLogicalMapping mapping = UiLogicalMapping.ForResolution(width, height);
+            ValidateResolution(width, height);
             Vector2 topLeft = new Vector2(screenBottomLeft.x, height - screenBottomLeft.y);
-            if (!mapping.ReferenceScreenRect.Contains(topLeft)) return false;
-            Vector2 logical = mapping.ScreenToLogical(topLeft);
-            return TopInterface.Contains(logical) || BottomInterface.Contains(logical);
+            return TopScreenRect(width, height).Contains(topLeft)
+                   || BottomScreenRect(width, height).Contains(topLeft);
+        }
+
+        private static void ValidateResolution(int width, int height)
+        {
+            if (width <= 0) throw new ArgumentOutOfRangeException(nameof(width));
+            if (height <= 0) throw new ArgumentOutOfRangeException(nameof(height));
         }
     }
 
@@ -90,8 +121,11 @@ namespace Arcanum.Runtime.UI
         private UiSkinResolver _resolver;
         private bool _ownsResolver;
         private GameObject _canvasRoot;
-        private SourceUiPresentationRoot _presentation;
-        private SourceUiImage _background;
+        private RectTransform _topWindow;
+        private RectTransform _bottomWindow;
+        private RectTransform _cursorLayer;
+        private SourceUiImage _topBackground;
+        private SourceUiImage _bottomBackground;
         private Image _healthLiquid;
         private Image _fatigueLiquid;
         private SourceUiBitmapText _healthText;
@@ -109,7 +143,8 @@ namespace Arcanum.Runtime.UI
 
         public bool IsAvailable => _resolver != null && _canvasRoot != null;
         public bool IsVisible => IsAvailable && _canvasRoot.activeSelf;
-        public UiResolvedAsset BackgroundAsset => _background != null ? _background.CurrentAsset : null;
+        public UiResolvedAsset TopAsset => _topBackground != null ? _topBackground.CurrentAsset : null;
+        public UiResolvedAsset BottomAsset => _bottomBackground != null ? _bottomBackground.CurrentAsset : null;
         public IReadOnlyList<RetailQuickSlotPresentation> QuickSlots => _slots;
         public float HealthFill { get; private set; }
         public float FatigueFill { get; private set; }
@@ -183,57 +218,78 @@ namespace Arcanum.Runtime.UI
         {
             _canvasRoot = new GameObject("Source-Faithful Gameplay HUD",
                 typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster),
-                typeof(SourceUiPresentationRoot), typeof(SourceUiRuntime));
+                typeof(SourceUiRuntime));
             _canvasRoot.transform.SetParent(transform, worldPositionStays: false);
-            _presentation = _canvasRoot.GetComponent<SourceUiPresentationRoot>();
             _canvasRoot.GetComponent<SourceUiRuntime>().BindResolver(_resolver);
-            _canvasRoot.GetComponent<Canvas>().sortingOrder = 500;
-            RectTransform hud = _presentation.GetLayer(SourceUiLayer.Hud);
+            Canvas canvas = _canvasRoot.GetComponent<Canvas>();
+            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            canvas.sortingOrder = 500;
+            CanvasScaler scaler = _canvasRoot.GetComponent<CanvasScaler>();
+            scaler.uiScaleMode = CanvasScaler.ScaleMode.ConstantPixelSize;
+            scaler.scaleFactor = 1f;
+            scaler.referencePixelsPerUnit = 1f;
 
-            _background = AddImage("Retail HUD Frame", hud, new UiAssetKey(RetailGameplayHudLayout.BackgroundSourceId),
-                new Rect(0f, 0f, 800f, 600f), false);
-            AddInputBlocker("Top Interface Input", hud, RetailGameplayHudLayout.TopInterface);
-            AddInputBlocker("Bottom Interface Input", hud, RetailGameplayHudLayout.BottomInterface);
+            RectTransform canvasRect = (RectTransform)_canvasRoot.transform;
+            _topWindow = AddWindow("Retail Top HUD Window", canvasRect, top: true);
+            _bottomWindow = AddWindow("Retail Bottom HUD Window", canvasRect, top: false);
+            _cursorLayer = AddFullScreenLayer("Retail Gameplay Cursor Layer", canvasRect);
 
-            AddVial("Health Empty Vial", hud, new Rect(11f, 471f, 34f, 90f));
-            AddVial("Fatigue Empty Vial", hud, new Rect(751f, 472f, 34f, 90f));
-            _healthLiquid = AddLiquid("Health Liquid", hud, RetailGameplayHudLayout.HealthBar,
+            _topBackground = AddImage("Retail Top HUD Frame", _topWindow,
+                new UiAssetKey(RetailGameplayHudLayout.TopSourceId), new Rect(0f, 0f, 800f, 41f), false);
+            _bottomBackground = AddImage("Retail Bottom HUD Frame", _bottomWindow,
+                new UiAssetKey(RetailGameplayHudLayout.BottomSourceId), new Rect(0f, 0f, 800f, 159f), false);
+            AddInputBlocker("Top Interface Input", _topWindow, new Rect(0f, 0f, 800f, 41f));
+            AddInputBlocker("Bottom Interface Input", _bottomWindow, new Rect(0f, 0f, 800f, 159f));
+
+            AddVial("Health Empty Vial", _bottomWindow,
+                RetailGameplayHudLayout.BottomWindowLocal(new Rect(11f, 471f, 34f, 90f)));
+            AddVial("Fatigue Empty Vial", _bottomWindow,
+                RetailGameplayHudLayout.BottomWindowLocal(new Rect(751f, 472f, 34f, 90f)));
+            _healthLiquid = AddLiquid("Health Liquid", _bottomWindow,
+                RetailGameplayHudLayout.BottomWindowLocal(RetailGameplayHudLayout.HealthBar),
                 RetailGameplayHudLayout.HealthLiquidSourceId);
-            _fatigueLiquid = AddLiquid("Fatigue Liquid", hud, RetailGameplayHudLayout.FatigueBar,
+            _fatigueLiquid = AddLiquid("Fatigue Liquid", _bottomWindow,
+                RetailGameplayHudLayout.BottomWindowLocal(RetailGameplayHudLayout.FatigueBar),
                 RetailGameplayHudLayout.FatigueLiquidSourceId);
-            _healthText = AddText("Health Counter", hud, RetailGameplayHudLayout.HealthCounter, string.Empty,
+            _healthText = AddText("Health Counter", _bottomWindow,
+                RetailGameplayHudLayout.BottomWindowLocal(RetailGameplayHudLayout.HealthCounter), string.Empty,
                 RetailGameplayHudLayout.CounterFontSourceId);
-            _fatigueText = AddText("Fatigue Counter", hud, RetailGameplayHudLayout.FatigueCounter, string.Empty,
+            _fatigueText = AddText("Fatigue Counter", _bottomWindow,
+                RetailGameplayHudLayout.BottomWindowLocal(RetailGameplayHudLayout.FatigueCounter), string.Empty,
                 RetailGameplayHudLayout.CounterFontSourceId);
 
-            AddImage("Message Lens", hud, new UiAssetKey(RetailGameplayHudLayout.MessageWindowSourceId),
-                RetailGameplayHudLayout.MessageWindow, false);
-            RectTransform textClip = AddRect("Message Text Clip", hud, RetailGameplayHudLayout.MessageText);
+            AddImage("Message Lens", _bottomWindow, new UiAssetKey(RetailGameplayHudLayout.MessageWindowSourceId),
+                RetailGameplayHudLayout.BottomWindowLocal(RetailGameplayHudLayout.MessageWindow), false);
+            RectTransform textClip = AddRect("Message Text Clip", _bottomWindow,
+                RetailGameplayHudLayout.BottomWindowLocal(RetailGameplayHudLayout.MessageText));
             textClip.gameObject.AddComponent<RectMask2D>();
             _messageLineOne = AddText("Message", textClip, new Rect(4f, 5f, 375f, 14f), string.Empty,
                 RetailGameplayHudLayout.CounterFontSourceId);
             _messageLineTwo = AddText("Combat State", textClip, new Rect(4f, 25f, 375f, 14f), string.Empty,
                 RetailGameplayHudLayout.CounterFontSourceId);
 
-            _ammoImage = AddImage("Ammo", hud, new UiAssetKey(251), RetailGameplayHudLayout.AmmoButton, false);
-            _ammoText = AddText("Ammo Counter", hud, new Rect(99f, 512f, 38f, 14f), string.Empty,
+            _ammoImage = AddImage("Ammo", _bottomWindow, new UiAssetKey(251),
+                RetailGameplayHudLayout.BottomWindowLocal(RetailGameplayHudLayout.AmmoButton), false);
+            _ammoText = AddText("Ammo Counter", _bottomWindow,
+                RetailGameplayHudLayout.BottomWindowLocal(new Rect(99f, 512f, 38f, 14f)), string.Empty,
                 RetailGameplayHudLayout.CounterFontSourceId);
 
-            AddScreenButton("Character", hud, 169, 4f, 2f, GameUiScreen.Character);
-            AddScreenButton("Logbook", hud, 187, 41f, 2f, GameUiScreen.Journal);
-            AddScreenButton("Map", hud, 193, 78f, 2f, GameUiScreen.Map);
-            AddScreenButton("Inventory", hud, 186, 115f, 2f, GameUiScreen.Inventory);
-            AddScreenButton("Skills", hud, 472, 693f, 456f, GameUiScreen.Skills);
-            AddScreenButton("Spells", hud, 473, 649f, 494f, GameUiScreen.Magic);
-            _combatButton = AddButton("Combat", hud, 470, 86f, 457f, () => _controller.ToggleCombatMode());
-            AddScreenButton("Schematics", hud, 471, 693f, 539f, GameUiScreen.Crafting);
+            AddScreenButton("Character", _topWindow, 169, 4f, 2f, GameUiScreen.Character);
+            AddScreenButton("Logbook", _topWindow, 187, 41f, 2f, GameUiScreen.Journal);
+            AddScreenButton("Map", _topWindow, 193, 78f, 2f, GameUiScreen.Map);
+            AddScreenButton("Inventory", _topWindow, 186, 115f, 2f, GameUiScreen.Inventory);
+            AddScreenButton("Skills", _bottomWindow, 472, 693f, 456f - 441f, GameUiScreen.Skills);
+            AddScreenButton("Spells", _bottomWindow, 473, 649f, 494f - 441f, GameUiScreen.Magic);
+            _combatButton = AddButton("Combat", _bottomWindow, 470, 86f, 457f - 441f,
+                () => _controller.ToggleCombatMode());
+            AddScreenButton("Schematics", _bottomWindow, 471, 693f, 539f - 441f, GameUiScreen.Crafting);
 
-            for (int index = 0; index < 10; index++) AddQuickSlot(hud, index);
+            for (int index = 0; index < 10; index++) AddQuickSlot(_bottomWindow, index);
 
             var cursor = new GameObject("Retail Gameplay Cursor",
                 typeof(RectTransform), typeof(Image), typeof(SourceUiImage), typeof(RetailMainMenuCursorView));
-            cursor.transform.SetParent(_presentation.GetLayer(SourceUiLayer.Cursor), worldPositionStays: false);
-            cursor.GetComponent<RetailMainMenuCursorView>().Bind(_presentation.ReferenceSurface, _resolver);
+            cursor.transform.SetParent(_cursorLayer, worldPositionStays: false);
+            cursor.GetComponent<RetailMainMenuCursorView>().Bind(canvasRect, _resolver);
 
             if (Object.FindFirstObjectByType<EventSystem>() == null)
             {
@@ -287,7 +343,7 @@ namespace Arcanum.Runtime.UI
                 typeof(RectTransform), typeof(Image), typeof(Button), typeof(SourceUiImage));
             RectTransform rect = go.GetComponent<RectTransform>();
             rect.SetParent(parent, worldPositionStays: false);
-            Place(rect, new Rect(RetailGameplayHudLayout.QuickSlotX[index], 445f, size.x, size.y));
+            Place(rect, new Rect(RetailGameplayHudLayout.QuickSlotX[index], 445f - 441f, size.x, size.y));
             go.GetComponent<SourceUiImage>().Bind(_resolver, new UiAssetKey(sourceId));
             Button button = go.GetComponent<Button>();
             button.transition = Selectable.Transition.None;
@@ -361,6 +417,30 @@ namespace Arcanum.Runtime.UI
             return rect;
         }
 
+        private static RectTransform AddWindow(string name, RectTransform parent, bool top)
+        {
+            var go = new GameObject(name, typeof(RectTransform));
+            RectTransform rect = go.GetComponent<RectTransform>();
+            rect.SetParent(parent, worldPositionStays: false);
+            rect.anchorMin = rect.anchorMax = top ? new Vector2(.5f, 1f) : new Vector2(.5f, 0f);
+            rect.pivot = top ? new Vector2(.5f, 1f) : new Vector2(.5f, 0f);
+            rect.anchoredPosition = Vector2.zero;
+            rect.sizeDelta = top ? RetailGameplayHudLayout.TopInterface.size : RetailGameplayHudLayout.BottomInterface.size;
+            return rect;
+        }
+
+        private static RectTransform AddFullScreenLayer(string name, RectTransform parent)
+        {
+            var go = new GameObject(name, typeof(RectTransform));
+            RectTransform rect = go.GetComponent<RectTransform>();
+            rect.SetParent(parent, worldPositionStays: false);
+            rect.anchorMin = Vector2.zero;
+            rect.anchorMax = Vector2.one;
+            rect.offsetMin = Vector2.zero;
+            rect.offsetMax = Vector2.zero;
+            return rect;
+        }
+
         private static void Place(RectTransform rect, Rect sourceRect)
         {
             rect.anchorMin = rect.anchorMax = new Vector2(0f, 1f);
@@ -428,8 +508,11 @@ namespace Arcanum.Runtime.UI
             _resolver = null;
             _ownsResolver = false;
             _canvasRoot = null;
-            _presentation = null;
-            _background = null;
+            _topWindow = null;
+            _bottomWindow = null;
+            _cursorLayer = null;
+            _topBackground = null;
+            _bottomBackground = null;
             _healthLiquid = null;
             _fatigueLiquid = null;
             _healthText = null;
