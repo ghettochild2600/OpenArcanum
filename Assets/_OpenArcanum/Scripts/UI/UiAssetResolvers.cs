@@ -30,7 +30,10 @@ namespace OpenArcanum.UI
             new Dictionary<UiAssetKey, UiResolvedAsset>();
         private readonly Dictionary<string, MesFile> _messageTables =
             new Dictionary<string, MesFile>(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<uint, RetailItemArtAsset> _inventoryItems =
+            new Dictionary<uint, RetailItemArtAsset>();
         private readonly HashSet<string> _reported = new HashSet<string>(StringComparer.Ordinal);
+        private ItemArtResolver _itemArt;
         private bool _disposed;
 
         public int CachedFrameCount => _frames.Count;
@@ -168,6 +171,59 @@ namespace OpenArcanum.UI
             return table.TryGet(key, out value);
         }
 
+        /// <summary>
+        /// Resolves a retained source inventory AID through the retail item MES tables. Inventory pixels remain
+        /// presentation-only; ownership, placement, equipment, and shortcut state continue to come from runtime
+        /// services.
+        /// </summary>
+        public bool TryResolveInventoryItem(uint artId, out RetailItemArtAsset asset)
+        {
+            ThrowIfDisposed();
+            if (_inventoryItems.TryGetValue(artId, out asset) && asset?.Sprite != null) return true;
+            asset = null;
+            try
+            {
+                _itemArt ??= new ItemArtResolver(
+                    ReadMes("art/item/item_ground.mes"),
+                    ReadMes("art/item/item_inven.mes"),
+                    ReadMes("art/item/item_paper.mes"),
+                    ReadMes("art/item/item_schematic.mes"));
+                string path = _itemArt.Resolve(artId);
+                if (string.IsNullOrEmpty(path) || !_vfs.Exists(path)) return false;
+                ArtFile art = ArtReader.Read(_vfs.ReadAllBytes(path));
+                if (art.Palettes.Count == 0 || art.Rotations.Count == 0
+                    || art.Rotations[0].Frames.Length == 0) return false;
+                ArtFrame frame = art.Rotations[0].Frames[0];
+                Texture2D texture = ArtTextureFactory.CreateTexture(frame, art.Palettes[0]);
+                texture.name = $"UI_Inventory_{artId:X8}";
+                texture.filterMode = FilterMode.Point;
+                texture.wrapMode = TextureWrapMode.Clamp;
+                Sprite sprite = Sprite.Create(texture, new Rect(0f, 0f, texture.width, texture.height),
+                    Pivot(frame), 1f, 0, SpriteMeshType.FullRect);
+                sprite.name = texture.name;
+                asset = new RetailItemArtAsset(artId, path, texture, sprite,
+                    new Vector2Int(frame.Width, frame.Height));
+                _inventoryItems[artId] = asset;
+                return true;
+            }
+            catch (Exception exception)
+            {
+                string message = $"OpenArcanum UI: inventory item 0x{artId:X8} unavailable: {exception.Message}.";
+                if (_reported.Add(message)) _diagnostic(message);
+                return false;
+            }
+        }
+
+        private MesFile ReadMes(string path)
+        {
+            string normalized = DatFileEntry.Normalize(path);
+            if (_messageTables.TryGetValue(normalized, out MesFile table)) return table;
+            if (!_vfs.Exists(normalized)) return null;
+            table = MesReader.Read(_vfs.ReadAllBytes(normalized));
+            _messageTables.Add(normalized, table);
+            return table;
+        }
+
         private bool TryGetSource(int sourceId, out DecodedSource source)
         {
             if (_sources.TryGetValue(sourceId, out source)) return source != null;
@@ -246,6 +302,12 @@ namespace OpenArcanum.UI
                 Destroy(asset?.Texture);
             }
             _frames.Clear();
+            foreach (RetailItemArtAsset asset in _inventoryItems.Values)
+            {
+                Destroy(asset?.Sprite);
+                Destroy(asset?.Texture);
+            }
+            _inventoryItems.Clear();
             _sources.Clear();
             _messageTables.Clear();
             _vfs.Dispose();
@@ -267,6 +329,25 @@ namespace OpenArcanum.UI
                 Path = path;
                 Art = art;
             }
+        }
+    }
+
+    public sealed class RetailItemArtAsset
+    {
+        public uint ArtId { get; }
+        public string SourcePath { get; }
+        public Texture2D Texture { get; }
+        public Sprite Sprite { get; }
+        public Vector2Int LogicalSize { get; }
+
+        internal RetailItemArtAsset(uint artId, string sourcePath, Texture2D texture, Sprite sprite,
+            Vector2Int logicalSize)
+        {
+            ArtId = artId;
+            SourcePath = sourcePath;
+            Texture = texture;
+            Sprite = sprite;
+            LogicalSize = logicalSize;
         }
     }
 

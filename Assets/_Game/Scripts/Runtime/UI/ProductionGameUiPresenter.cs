@@ -37,6 +37,7 @@ namespace Arcanum.Runtime.UI
         private ProductionCombatPresenter _legacyCombat;
         private RetailMainMenuView _retailMainMenu;
         private RetailGameplayHudView _retailGameplayHud;
+        private RetailInventoryEquipmentView _retailInventory;
         private Vector2 _scroll;
         private Rect _panelRect;
         private bool _showHud = true;
@@ -92,6 +93,9 @@ namespace Arcanum.Runtime.UI
             _retailGameplayHud = GetComponent<RetailGameplayHudView>()
                                  ?? gameObject.AddComponent<RetailGameplayHudView>();
             _retailGameplayHud.Bind(_controller, _session, Open);
+            _retailInventory = GetComponent<RetailInventoryEquipmentView>()
+                               ?? gameObject.AddComponent<RetailInventoryEquipmentView>();
+            _retailInventory.Bind(_controller, _session, _retailGameplayHud.Resolver);
             DisableLegacyPresenters();
         }
 
@@ -127,6 +131,7 @@ namespace Arcanum.Runtime.UI
 
             _retailMainMenu?.Synchronize();
             _retailGameplayHud?.Synchronize(_showHud);
+            _retailInventory?.Synchronize();
             if (Controller.Screen == GameUiScreen.MainMenu && _retailMainMenu?.IsAvailable == true)
                 return;
 
@@ -304,6 +309,7 @@ namespace Arcanum.Runtime.UI
 
         internal bool PointerOverInterface(Vector3 mouse)
         {
+            if (_retailInventory?.ContainsScreenPoint(mouse) == true) return true;
             if (_retailGameplayHud?.ContainsScreenPoint(mouse) == true) return true;
             Vector2 guiPoint = new(mouse.x, Screen.height - mouse.y);
             if (_retailGameplayHud?.IsAvailable == true) return _panelRect.Contains(guiPoint);
@@ -317,11 +323,14 @@ namespace Arcanum.Runtime.UI
             Controller.Refresh();
             _retailMainMenu?.Synchronize();
             _retailGameplayHud?.Synchronize(_showHud);
+            _retailInventory?.Synchronize();
             bool sourceMainMenu = Controller.Screen == GameUiScreen.MainMenu
                                   && _retailMainMenu?.IsAvailable == true;
+            bool sourceInventory = Controller.Screen == GameUiScreen.Inventory
+                                   && _retailInventory?.IsAvailable == true;
             GUI.depth = -120;
             if (_showHud && _retailGameplayHud?.IsAvailable != true) DrawHud();
-            if (Controller.IsModalOpen && !sourceMainMenu) DrawScreen();
+            if (Controller.IsModalOpen && !sourceMainMenu && !sourceInventory) DrawScreen();
             DrawCursorLabel();
         }
 

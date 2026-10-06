@@ -94,6 +94,9 @@ namespace OpenArcanum.Editor
 
                 RetailGameplayHudView view = Require(Object.FindFirstObjectByType<RetailGameplayHudView>(),
                     "retail gameplay HUD");
+                RetailInventoryEquipmentView inventoryView = Require(
+                    Object.FindFirstObjectByType<RetailInventoryEquipmentView>(),
+                    "retail inventory/equipment view");
                 view.Synchronize(true);
                 Check(session.SelectedSector.Contains("arcanum1-024-fixed"),
                     "validation remains in the crash-site START_MAP");
@@ -112,6 +115,20 @@ namespace OpenArcanum.Editor
                 Check(Object.FindObjectsByType<EventSystem>(FindObjectsSortMode.None).Length == 1
                       && Object.FindFirstObjectByType<EventSystem>().isActiveAndEnabled,
                     "one persistent active EventSystem serves the HUD");
+                SourceUiImage[] maintainedSlots = view.GetComponentsInChildren<SourceUiImage>(true)
+                    .Where(value => value.name.StartsWith("Maintained Spell Slot", StringComparison.Ordinal))
+                    .OrderBy(value => value.name).ToArray();
+                Check(maintainedSlots.Length == 5
+                      && maintainedSlots.All(value => value.CurrentAsset != null)
+                      && maintainedSlots.All(value => value.Key.SourceId is >= 188 and <= 192
+                                                       or >= 628 and <= 632),
+                    "all five top-strip apertures are filled by source maintained-spell slot/plug art");
+                SourceUiBitmapText healthCounter = view.GetComponentsInChildren<SourceUiBitmapText>(true)
+                    .Single(value => value.name == "Health Counter Text");
+                Check(healthCounter.FontSourceId == 171 && healthCounter.Text.Length == 3
+                      && healthCounter.transform.parent.GetComponent<Image>().color == Color.black
+                      && ((RectTransform)healthCounter.transform).anchoredPosition == Vector2.zero,
+                    "health/fatigue counter route uses source Cloister 18, black backing, zero padding, and centering");
 
                 GameUiHudView hud = controller.ProjectHud();
                 Check(hud != null && view.LastProjection.HitPoints == hud.HitPoints
@@ -129,10 +146,57 @@ namespace OpenArcanum.Editor
                 Button inventory = FindButton("Inventory");
                 inventory.onClick.Invoke();
                 view.Synchronize(true);
-                Check(controller.Screen == GameUiScreen.Inventory && !view.IsVisible,
-                    "source inventory control routes to existing M12C screen");
+                inventoryView.Synchronize();
+                Check(controller.Screen == GameUiScreen.Inventory && view.IsVisible && inventoryView.IsVisible,
+                    "source inventory control opens the 800x400 big window between persistent HUD strips");
+                Check(inventoryView.PaperDollAsset?.Key.SourceId == 223
+                      && inventoryView.InventoryAsset?.Key.SourceId == 221
+                      && inventoryView.WindowTransform.sizeDelta == new Vector2(800f, 400f)
+                      && inventoryView.WindowTransform.anchoredPosition == new Vector2(0f, 59f),
+                    "ordinary Inventory mode composes source pdoll 223 plus inventor 221 at source HRP geometry");
+                Check(inventoryView.ProjectedItems.Count > 0
+                      && inventoryView.DynamicItemCount == inventoryView.ProjectedItems.Count,
+                    "fresh authentic character inventory presents every authoritative starting item once");
+
+                GameUiItemView proofItem = inventoryView.ProjectedItems
+                    .FirstOrDefault(value => !value.IsEquipped)
+                    ?? inventoryView.ProjectedItems.First();
+                if (proofItem.IsEquipped)
+                {
+                    Check(controller.Unequip(proofItem.WornLocation.Value),
+                        "authentic equipped item moves to the inventory grid through M3C authority");
+                    inventoryView.Synchronize();
+                    proofItem = inventoryView.ProjectedItems.Single(value => value.Identity == proofItem.Identity);
+                }
+                Button itemButton = FindButton("Item " + proofItem.Identity.Key);
+                itemButton.onClick.Invoke();
+                inventoryView.Synchronize();
+                Check(controller.SelectedItem == proofItem.Identity,
+                    "source inventory item click selects retained object identity through GameUiController");
+                Button quickSlot = FindButton("Quick Slot 1");
+                quickSlot.onClick.Invoke();
+                view.Synchronize(true);
+                Check(session.Shortcuts.Get(0).Kind == QuickSlotKind.Item
+                      && session.Shortcuts.Get(0).PreferredItem == proofItem.Identity,
+                    "selected inventory item binds through the source quick-slot target and shortcut authority");
+                if (WorldMapSessionCoordinator.TryGetNaturalWornLocation(
+                        session.States[proofItem.Identity], out WornLocation proofLocation))
+                {
+                    Check(controller.Equip(proofItem.Identity),
+                        "authentic inventory item equips through existing M3C transaction authority");
+                    inventoryView.Synchronize();
+                    Check(inventoryView.ProjectedItems.Single(value => value.Identity == proofItem.Identity)
+                                  .WornLocation.HasValue,
+                        "equipped item moves from grid to the exact source equipment-slot presentation");
+                    Check(controller.Unequip(proofLocation),
+                        "authentic equipped item returns through existing M3C unequip authority");
+                    inventoryView.Synchronize();
+                    Check(!inventoryView.ProjectedItems.Single(value => value.Identity == proofItem.Identity)
+                        .IsEquipped, "unequipped item returns to authoritative inventory-grid placement");
+                }
                 controller.Close();
                 view.Synchronize(true);
+                inventoryView.Synchronize();
                 Check(view.IsVisible, "closing management returns to the same gameplay HUD");
 
                 Check(controller.AssignQuickSlotSpell(0, PhaseOneSpellCatalog.StrengthOfEarth),
@@ -174,15 +238,26 @@ namespace OpenArcanum.Editor
                 fixtureSkin = new UiSkinResolver(retail, enhanced);
                 UiResolvedAsset originalTop = null;
                 UiResolvedAsset originalBottom = null;
+                UiResolvedAsset originalPaperDoll = null;
+                UiResolvedAsset originalInventory = null;
                 Check(retail.TryResolve(new UiAssetKey(185), out originalTop),
                     "retail top HUD strip resolves for Enhanced proof");
                 Check(retail.TryResolve(new UiAssetKey(184), out originalBottom),
                     "retail bottom HUD strip resolves for Enhanced proof");
+                Check(retail.TryResolve(new UiAssetKey(223), out originalPaperDoll),
+                    "retail paper-doll inventory panel resolves for Enhanced proof");
+                Check(retail.TryResolve(new UiAssetKey(221), out originalInventory),
+                    "retail inventory-grid panel resolves for Enhanced proof");
                 WriteFixture(enhanced.GetReplacementPath(originalTop), originalTop.LogicalSize * 4);
                 WriteFixture(enhanced.GetReplacementPath(originalBottom), originalBottom.LogicalSize * 4);
+                WriteFixture(enhanced.GetReplacementPath(originalPaperDoll), originalPaperDoll.LogicalSize * 4);
+                WriteFixture(enhanced.GetReplacementPath(originalInventory), originalInventory.LogicalSize * 4);
                 view.Bind(controller, session, screen => controller.Open(screen), fixtureSkin);
+                inventoryView.Bind(controller, session, fixtureSkin);
+                Check(controller.Open(GameUiScreen.Inventory), "inventory reopens for graphics rebuild proof");
                 OpenArcanumGraphicsSettings.SetRuntimeMode(GraphicsMode.Enhanced);
                 view.Synchronize(true);
+                inventoryView.Synchronize();
                 Check(view.TopAsset?.ResolvedSkin == UiAssetSkin.Enhanced
                       && view.TopAsset.Texture.width == 3200
                       && view.TopAsset.Texture.height == 164
@@ -190,14 +265,24 @@ namespace OpenArcanum.Editor
                       && view.BottomAsset.Texture.width == 3200
                       && view.BottomAsset.Texture.height == 636,
                     "generated exact-4x Enhanced HUD strips appear at source-native geometry");
+                Check(inventoryView.PaperDollAsset?.ResolvedSkin == UiAssetSkin.Enhanced
+                      && inventoryView.PaperDollAsset.Texture.width == 1432
+                      && inventoryView.PaperDollAsset.Texture.height == 1600
+                      && inventoryView.InventoryAsset?.ResolvedSkin == UiAssetSkin.Enhanced
+                      && inventoryView.InventoryAsset.Texture.width == 1768
+                      && inventoryView.InventoryAsset.Texture.height == 1600,
+                    "generated exact-4x Enhanced inventory panels preserve the 800x400 source geometry");
                 Check(view.QuickSlots[0].Kind == QuickSlotKind.Spell
                       && session.PlayerState.Identity == ProductionPlayerLifecycle.DefaultPlayerIdentity,
                     "skin rebuild preserves controller/session/slot authority");
                 OpenArcanumGraphicsSettings.SetRuntimeMode(GraphicsMode.Original);
                 view.Synchronize(true);
+                inventoryView.Synchronize();
                 Check(view.TopAsset?.ResolvedSkin == UiAssetSkin.Original
-                      && view.BottomAsset?.ResolvedSkin == UiAssetSkin.Original,
-                    "Original retail HUD returns without state loss");
+                      && view.BottomAsset?.ResolvedSkin == UiAssetSkin.Original
+                      && inventoryView.PaperDollAsset?.ResolvedSkin == UiAssetSkin.Original
+                      && inventoryView.InventoryAsset?.ResolvedSkin == UiAssetSkin.Original,
+                    "Original retail HUD and inventory return without state loss");
 
                 foreach ((int width, int height) in new[]
                          {
@@ -214,6 +299,11 @@ namespace OpenArcanum.Editor
                           && Mathf.Approximately(bottom.x, top.x)
                           && viewport == new Rect(0f, 0f, 1f, 1f),
                         $"{width}x{height} uses native HRP top/bottom gravity and full-screen world");
+                    Rect inventoryRect = RetailInventoryEquipmentLayout.ScreenRect(width, height);
+                    Check(inventoryRect.width == 800f && inventoryRect.height == 400f
+                          && Mathf.Approximately(inventoryRect.x, (width - 800f) * .5f)
+                          && Mathf.Approximately(inventoryRect.y, 41f + (height - 600f) * .5f),
+                        $"{width}x{height} keeps the source inventory big-window origin and geometry");
                 }
 
                 RetailMainMenuCursorView cursor = view.GetComponentsInChildren<RetailMainMenuCursorView>(true)
@@ -224,22 +314,27 @@ namespace OpenArcanum.Editor
                     "source cursor uses native full-screen pointer mapping and hotspot geometry");
 
                 view.Bind(controller, session, screen => controller.Open(screen));
+                inventoryView.Bind(controller, session, view.Resolver);
+                controller.Open(GameUiScreen.Inventory);
                 view.Synchronize(true);
+                inventoryView.Synchronize();
                 yield return null;
                 Check(Object.FindObjectsByType<RetailGameplayHudView>(FindObjectsSortMode.None).Length == 1
                       && Object.FindObjectsByType<RetailMainMenuCursorView>(FindObjectsSortMode.None)
                           .Count(value => value.name == "Retail Gameplay Cursor") == 1
+                      && Object.FindObjectsByType<RetailInventoryEquipmentView>(FindObjectsSortMode.None).Length == 1
                       && Object.FindObjectsByType<EventSystem>(FindObjectsSortMode.None).Length == 1,
-                    "rebuild leaves one HUD, one gameplay cursor, and one EventSystem");
+                    "rebuild leaves one HUD, one inventory, one gameplay cursor, and one EventSystem");
 
-                Debug.Log("UI-C PHYSICAL VALIDATION: PASS; fresh New Game=crash-site START_MAP 1; "
+                Debug.Log("UI-C.3/UI-E.1 PHYSICAL VALIDATION: PASS; fresh New Game=crash-site START_MAP 1; "
                           + "source HUD=185 top 800x41 + 184 bottom 800x159; world=full-screen; "
-                          + "vitals/equipment/message=authoritative; source Inventory route=PASS; "
+                          + "counter=Cloister18/three-digit/centered; maintained apertures=5/5 source-filled; "
+                          + "source Inventory=223+221/800x400; grid/equip/unequip/selection/bind=PASS; "
                           + "quick slot spell activation=PASS; combat state=PASS; "
-                          + "skin=Original>Enhanced exact-4x strips>Original; "
-                          + "resolutions=800x600/1024x768/1080p/1440p/4K native HRP gravity; "
+                          + "skin=Original>Enhanced exact-4x HUD+inventory>Original; "
+                          + "resolutions=800x600/1024x768/1080p/1440p/4K native HRP HUD+inventory; "
                           + "cursor=native full-screen mapping; "
-                          + "presenters=1; EventSystems=1. Play Mode remains open at the crash site for visual proof.");
+                          + "presenters=1; EventSystems=1. Play Mode remains open with Inventory visible for visual proof.");
             }
             finally
             {
