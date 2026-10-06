@@ -8,6 +8,9 @@ The project is an unofficial, non-commercial fan effort. No original Arcanum ret
 and users must supply their own game files. Major runtime and gameplay systems are implemented, but campaign
 compatibility, source-faithful interface reconstruction, and visual fidelity remain active work.
 
+**Status:** Active development. Major engine systems are operational, but full campaign compatibility and
+source-faithful presentation are still in progress.
+
 ## Current status
 
 Production New Game reaches the original campaign start, and the opening area is playable through the implemented
@@ -21,16 +24,16 @@ The detailed implementation and validation record is maintained in [PROJECT_STAT
 ## Implemented systems
 
 - **World:** retail map and sector loading, adjacent-sector streaming, terrain, walls, doors, world objects, local
-  transitions, and bounded world-map travel.
+  transitions, and world-map travel.
 - **Characters:** attributes, skills, vitality and fatigue, derived statistics, experience and leveling, alignment
-  and aptitude, Character Creation authority, and production New Game.
+  and aptitude, character creation, and New Game initialization.
 - **Movement and interaction:** click-to-move pathfinding, portals, containers, containment, inventory and equipment,
   pickup and drop, and corpse looting.
 - **Combat:** turn-based and real-time scheduling, melee, ranged weapons and ammunition, line of fire, cover, called
   locations, critical results, defeat, death, corpses, and experience rewards.
-- **NPCs and party:** bounded combat AI, followers, recruitment and dismissal, follower orders, travel, and combat
+- **NPCs and party:** combat AI, followers, recruitment and dismissal, follower orders, travel, and combat
   integration.
-- **Narrative:** dialogue, quests, journal projection, campaign state, and trainer integration.
+- **Narrative:** dialogue, quests, journal support, campaign state, and trainer integration.
 - **Game systems:** core magic and technology runtimes, vendors and economy, reaction, reputation and faction state,
   and crafting and schematics.
 - **Persistence:** versioned session saves, save slots, manual save/load, and dedicated auto-save/auto-load controls.
@@ -42,12 +45,12 @@ mean that every original quest, script, spell, item, or campaign edge case is al
 
 ## Current focus
 
-Near-term work is deliberately source-driven:
+Near-term work is source-driven:
 
-- physically closing gameplay-HUD visual fidelity at 800×600, 1080p, 1440p, and 4K;
-- reconstructing the Character Creation presentation after that review closes;
-- resolving campaign incompatibilities found through actual play; and
-- filling proven world-presentation gaps without changing gameplay authority.
+- finishing gameplay-HUD visual-fidelity validation at 800×600, 1080p, 1440p, and 4K;
+- reconstructing the Character Creation interface after the HUD review is complete;
+- resolving campaign incompatibilities discovered through actual play; and
+- implementing source-confirmed world-presentation features without changing gameplay authority.
 
 Known presentation gaps include production roof rendering and fading, source compositor ordering, day/night ambient
 presentation, retail shadow sprites, equipment-driven critter appearance, and placed light/additive/nocturnal
@@ -72,9 +75,10 @@ mode.
 
 1. Clone this repository.
 2. Open the repository root as a Unity project with Unity 6000.0.71f1.
-3. At the project root, create a local `GameData/` directory or junction that points to the retail installation's
-   `Arcanum` directory. Its root must contain `Arcanum1.dat` through `Arcanum4.dat`, and it must include
-   `modules/Arcanum.dat`. `GameData/` is ignored by Git and must remain local.
+3. At the project root, create a local `GameData/` directory containing the required retail Arcanum data, or create a
+   directory junction named `GameData` that targets your retail installation's `Arcanum` directory. Its root must
+   contain `Arcanum1.dat` through `Arcanum4.dat`, and it must include `modules/Arcanum.dat`. `GameData/` is ignored by
+   Git and must remain local.
 4. Open `Assets/_Game/Scenes/OpenArcanum.unity`.
 5. Enter Play Mode.
 6. Choose **Single Player → New Game**, create a character, and begin the game.
@@ -107,10 +111,10 @@ risk. Retail data is used locally for research and execution and is never part o
 ## Project lineage
 
 OpenArcanum builds on earlier Unity Arcanum work from
-[Suvitruf/unity-arcanum](https://github.com/Suvitruf/unity-arcanum). That project is retained as a direct Git
-ancestor. OpenArcanum has since substantially expanded the production runtime integration, gameplay systems, tests,
-documentation, user interface, and campaign-compatibility work. This lineage statement does not imply endorsement
-or an active collaboration with the upstream author.
+[Suvitruf/unity-arcanum](https://github.com/Suvitruf/unity-arcanum). That work is preserved in this repository's Git
+history as a direct ancestor. OpenArcanum has since substantially expanded the runtime integration, gameplay systems,
+automated testing, documentation, user interface, and campaign-compatibility work. This attribution does not imply
+endorsement or active collaboration with the upstream author.
 
 See [NOTICE.md](NOTICE.md) for attribution and reference acknowledgements.
 
