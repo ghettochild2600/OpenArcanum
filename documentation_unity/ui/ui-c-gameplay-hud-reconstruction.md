@@ -2,9 +2,10 @@
 
 ## Status
 
-UI-C implementation and automated validation completed on 2026-10-05, but visual-fidelity acceptance is **reopened
-and pending**. The current production source HUD must be physically reviewed at 800×600, 1920×1080, 2560×1440, and
-3840×2160 and must show no clipping or misalignment before UI-C is closed again. The normal production gameplay view
+UI-C implementation, automated validation, and the UI-C.1 physical-fidelity closure completed on 2026-10-05. The
+production source HUD was physically reviewed at 800×600, 1920×1080, 2560×1440, 3840×2160, 1920×1200,
+3440×1440, tall/narrow, and live Free Aspect sizes without clipping, non-uniform stretch, or source-element drift.
+The normal production gameplay view
 uses one source-backed retail HUD over the existing `GameUiController`, `CombatUiController`, quick-slot service, and
 session coordinator. The previous generic IMGUI button matrix is suppressed whenever the retail view is available.
 No gameplay, inventory, combat, vitality, equipment, shortcut, screen, or modal authority moved into presentation.
@@ -171,3 +172,56 @@ crash-site/adjacent-sector interaction proof.
 
 The exact recommended UI-D boundary is one source-faithful **Character Creation presentation** over the completed
 M12B/M12C authority. It must not redesign creation rules or absorb Inventory, Character management, or another screen.
+
+## UI-C.1 — Physical Fidelity / Aspect-Safe Closure
+
+The direct rendered review confirmed that the existing UI-A root contract was already correct: the fixed source
+surface uses `scale = min(displayWidth / 800, displayHeight / 600)`, stays centered, and never stretches on one axis.
+At 4:3 it fills the display. At wider 16:9, 16:10, and ultrawide targets it remains centered while the full-screen
+world camera is visible laterally through areas not occupied by opaque source art. At tall/narrow or very small Free
+Aspect sizes it scales down uniformly and letterboxes rather than clipping primary controls. The authentic logical
+world aperture remains `(0,41,800,400)` within ID 3 while the camera itself continues to render the complete physical
+target. Live Game-view resizing rebuilt the mapping without child drift, duplicate canvases, duplicate HUD
+presenters, duplicate controller presenters, or duplicate EventSystems.
+
+The proven defect was narrower than the reopened concern: `Retail Gameplay Cursor` was parented to the full unscaled
+canvas and bound to that canvas for pointer conversion, while ID 3 and every other source component lived below the
+centered, uniformly scaled 800×600 reference surface. At non-800×600 sizes the cursor could therefore drift from the
+source HUD and interaction point. The cursor is now parented to the shared cursor layer and bound to the same
+`SourceReference800x600` transform as the HUD. No root scaling, camera, controller, raycast, or gameplay authority was
+changed. Earlier tests covered root/HUD rectangles but did not assert the gameplay cursor's parent, reference surface,
+or physical scale; the focused suite now protects those relationships and round-trips arbitrary physical/logical
+coordinates inside and outside the fixed composition.
+
+Local-only PNG captures were taken from the existing Editor after waiting for the Game view and `LateUpdate` mapping
+to settle. They covered 800×600, 1920×1080, 2560×1440, 3840×2160, 1920×1200, and 3440×1440; retail pixels stayed
+under ignored `Temp/UICValidation` and were not committed. Direct inspection found the complete top and bottom bands,
+all ten slots, assigned slot 1, both vials, counters, controls, message lens/text, and cursor source-registered at every
+target. A second 800×600 capture set exercised full, half, 1-point, and zero health/fatigue through M4B authority and
+confirmed upward fill, the bounded neck overlap, glass clipping, no bleed, and identical registration. An initially
+bad 800×600 capture was traced to taking the screenshot before the selected Game-view size had propagated; after
+three settled frames its runtime and mapping both reported 800×600 at scale 1 and the rendered composition matched
+the golden geometry.
+
+The production Play Mode proof again created a source-valid PC, entered START_MAP 1 at the crash site, opened and
+closed Inventory through the authentic source control, assigned and activated Strength of Earth through slot 1,
+entered and ended combat against an authentic loaded NPC, and switched Original -> generated exact-4× Enhanced ->
+Original. Presentation rebuilds preserved the controller/session, authoritative vitals, equipment, shortcut, and
+combat state. The full camera backing, transparent aperture, widened world, pointer conversion, source-band blocking,
+and existing world interaction routes remained intact; Player Navigation/Input regression coverage protects
+click-to-move and world-object/corpse/NPC/portal dispatch, while the new arbitrary-aspect round trips protect left and
+right extended-world coordinate conversion. Missing Enhanced frames continued to fall back independently to
+Original with identical logical geometry and hit regions.
+
+Final validation results were:
+
+- UI-C focused: **42/42**.
+- UI-A: **23/23**; M12C: **18/18**; Player Navigation/Input: **21/21**; Production Keyboard: **23/23**; UI-B:
+  **22/22**.
+- M8I was not rerun because combat-HUD routing and authority did not change.
+- Complete EditMode: **1178/1178**, with 0 failed, 0 skipped, and 0 inconclusive.
+- Unity compilation: clean. Final cleared Console: 0 warnings and 0 errors. `git diff --check`: clean.
+
+No remaining UI-C clipping, registration, scale, cursor, or aspect defect was observed. Broader ammunition families,
+Fate/Sleep, party/status regions, cooldown/drag art, and rare HUD audio remain the already documented source/authority
+ambiguities; they are not UI-C.1 defects. UI-C is therefore complete. UI-D remains unstarted.
