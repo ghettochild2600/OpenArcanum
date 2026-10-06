@@ -8,6 +8,15 @@ merge. The audit grades every major gameplay domain, separates parsers/demos fro
 safe/adapt/avoid reuse boundaries, and defines a dependency-ordered M1–M13 roadmap. See
 [`documentation_unity/upstream-gameplay-parity-audit.md`](documentation_unity/upstream-gameplay-parity-audit.md).
 
+## External `unity-arcanum` Comparison Audit (2026-10-05)
+
+The current public `Suvitruf/unity-arcanum` commit remains a direct ancestor of this branch. All 100 published C#
+files and all 17 published Markdown documents are already present locally; no auditable category-2 implementation was
+found. Source-backed category-4 evidence identifies bounded visual follow-ups for production roofs/fading, compositor
+ordering, day/night tint, placed lights/blends/nocturnal scenery, source shadow sprites, and equipment-driven critter
+appearance. README-only claims were not treated as authority. See
+[`documentation_unity/external/unity-arcanum-comparison-audit.md`](documentation_unity/external/unity-arcanum-comparison-audit.md).
+
 ## Current Objective
 
 M1 traversal, the bounded M2 interaction/SAP_USE kernel, M3A-M3E inventory/command/equipment/stack/capacity state,
@@ -55,7 +64,8 @@ player-facing manual save/load presentation, M7A bounded passive local map trans
   save/load strictly as projections and commands over M1-M12B authority. **DONE M12D — Audio:** one central
   presentation bridge now resolves retail WAV/MP3 resources and source sound/scheme/dialogue rules for UI, world,
   combat, magic, technology, voice, music, and ambience without owning gameplay or changing Save V1.
-  **DONE UI-C — Source-Faithful Gameplay HUD:** the production gameplay path now renders the retail ID 3 alpha HUD,
+  **UI-C IMPLEMENTED / VISUAL-FIDELITY PENDING — Source-Faithful Gameplay HUD:** the production gameplay path now
+  renders the retail ID 3 alpha HUD,
   source vials/lens/controls/quick slots, and existing M12C/M8I projections over the unchanged controller/session
   authority; the generic HUD grid is suppressed, the world remains interactive behind the authentic aperture, and
   Original/Enhanced fallback uses the shared UI-A skin runtime.
@@ -2527,10 +2537,13 @@ diff --check` was clean.
 
 See [`documentation_unity/ui/ui-b-main-menu-reconstruction.md`](documentation_unity/ui/ui-b-main-menu-reconstruction.md).
 
-## UI-C Source-Faithful Gameplay HUD Reconstruction Baseline (2026-10-05)
+## UI-C Source-Faithful Gameplay HUD Implementation Baseline / Visual-Fidelity Pending (2026-10-05)
 
-UI-C is complete. One production `RetailGameplayHudView` now resolves the authentic retail ID 3 800 x 600 alpha
-composition, IDs 20/18/19 for empty/health/fatigue vials, ID 354 for the message lens, ID 27 for dynamic bitmap text,
+UI-C implementation and automated validation are complete, but visual-fidelity acceptance is reopened and pending.
+The current production source HUD must be physically reviewed at 800×600, 1920×1080, 2560×1440, and 3840×2160 and
+must show no clipping or misalignment before UI-C is closed again. One production `RetailGameplayHudView` now resolves
+the authentic retail ID 3 800 x 600 alpha composition, IDs 20/18/19 for empty/health/fatigue vials, ID 354 for the
+message lens, ID 27 for dynamic bitmap text,
 the source management/combat button families, and ten source quick-slot backgrounds. Health, fatigue, equipment,
 ammunition, AP, readiness, combat state, messages, and shortcut bindings remain read-only projections of completed
 M3/M4/M8/M12C authority. Source controls send commands through the same `GameUiController`; no gameplay or modal
@@ -2545,20 +2558,23 @@ keyboard access paths remain available.
 
 Focused UI-C validation passed **33/33**. Directly affected UI-A, M12C, M8I, Player Navigation, keyboard, and UI-B
 regressions passed **23/23**, **18/18**, **17/17**, **21/21**, **23/23**, and **22/22**. The complete EditMode suite
-passed **1169/1169**, with **0 failed, 0 skipped, and 0 inconclusive**. Physical Play Mode proved fresh crash-site New
+passed **1169/1169**, with **0 failed, 0 skipped, and 0 inconclusive**. The recorded physical Play Mode pass proved
+fresh crash-site New
 Game, source HUD/vitals/equipment/message projection, world click-to-move through the aperture, the authentic
 Inventory route, real number-key quick-slot activation, live turn-based combat projection, one presenter/controller/
 EventSystem, generated exact-4x Enhanced selection with fallback, Original return, and 800 x 600/1080p/1440p/4K
-mapping. Unity compilation was clean; the final Console was 0 logs/warnings/errors and `git diff --check` was clean.
+mapping through the validator. Unity compilation was clean; the final Console was 0 logs/warnings/errors and `git
+diff --check` was clean. Those results do not replace the newly required direct visual review of the current HUD at
+each target resolution.
 
 See [`documentation_unity/ui/ui-c-gameplay-hud-reconstruction.md`](documentation_unity/ui/ui-c-gameplay-hud-reconstruction.md).
 
 ## Next Recommended Milestone
 
 M9A, M9B, M10A, M10B, M11A, M11B, M11C, M12B, M12C, M12D, and the bounded M13A opening pass are formally closed.
-The source-authentic keyboard compatibility follow-up, UI-A common runtime, UI-B source-faithful Main Menu, and UI-C
-source-faithful Gameplay HUD are also closed. The recommended bounded next milestone is **UI-D — Character Creation
-presentation**: replace only the generic Character Creation view with source-backed M12B/M12C presentation while
-preserving all completed creation rules and commands. Do not include Inventory/Paper Doll, Character management,
-other screens, new gameplay authority, or production Enhanced artwork. UI-D has not started. Continue M13A only from
-concrete user-discovered campaign defects; do not start an autonomous campaign playthrough.
+The source-authentic keyboard compatibility follow-up, UI-A common runtime, and UI-B source-faithful Main Menu are
+closed. UI-C implementation is complete but visual-fidelity acceptance is reopened. The next bounded work is a direct
+physical review of the current production HUD at 800×600, 1920×1080, 2560×1440, and 3840×2160, with fixes limited to
+proven clipping or misalignment. **UI-D — Character Creation presentation** has not started and should not begin until
+UI-C is visually closed again. Continue M13A only from concrete user-discovered campaign defects; do not start an
+autonomous campaign playthrough.

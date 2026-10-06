@@ -2,10 +2,12 @@
 
 ## Status
 
-UI-C completed on 2026-10-05. The normal production gameplay view now uses one source-backed retail HUD over the
-existing `GameUiController`, `CombatUiController`, quick-slot service, and session coordinator. The previous generic
-IMGUI button matrix is suppressed whenever the retail view is available. No gameplay, inventory, combat, vitality,
-equipment, shortcut, screen, or modal authority moved into presentation.
+UI-C implementation and automated validation completed on 2026-10-05, but visual-fidelity acceptance is **reopened
+and pending**. The current production source HUD must be physically reviewed at 800×600, 1920×1080, 2560×1440, and
+3840×2160 and must show no clipping or misalignment before UI-C is closed again. The normal production gameplay view
+uses one source-backed retail HUD over the existing `GameUiController`, `CombatUiController`, quick-slot service, and
+session coordinator. The previous generic IMGUI button matrix is suppressed whenever the retail view is available.
+No gameplay, inventory, combat, vitality, equipment, shortcut, screen, or modal authority moved into presentation.
 
 No retail pixels or production Enhanced assets were committed. Original mode resolves retail ART from `GameData`
 through the UI-A resolver. The only Enhanced pixels used for validation were generated in the system temporary
@@ -138,8 +140,8 @@ Targeted regressions were limited to production code touched by UI-C:
 The complete EditMode suite passed **1169/1169**, with 0 failed, 0 skipped, and 0 inconclusive. Unity compilation was
 clean. Final Console was cleared and rechecked at 0 logs, 0 warnings, and 0 errors. `git diff --check` was clean.
 
-Physical Play Mode used the existing Unity Editor and `Assets/_Game/Scenes/OpenArcanum.unity`. A fresh source-valid
-New Game reached START_MAP 1 at the crash site. It proved the recognizable retail ID 3 HUD, absence of the generic
+The recorded physical Play Mode pass used the existing Unity Editor and `Assets/_Game/Scenes/OpenArcanum.unity`. A
+fresh source-valid New Game reached START_MAP 1 at the crash site. It proved the recognizable retail ID 3 HUD, absence of the generic
 button grid, authoritative health/fatigue/equipment/message state, the transparent world aperture, one presenter,
 one controller presenter, and one active EventSystem. The real Inventory source button opened the existing Inventory
 screen and the real `I` shortcut returned to the same HUD. A real world click moved the PC across a sector boundary
@@ -147,7 +149,9 @@ without the HUD stealing input. A learned Strength of Earth binding appeared in 
 it through existing magic/fatigue authority. An authentic loaded crash-site NPC drove the existing M8 turn-based
 combat route and the source lens reflected live combat mode/AP/readiness; M8I and keyboard regressions cover End Turn
 and real-time command routing without adding a non-source control. Original -> generated exact-4x Enhanced -> Original
-and 800 x 600/1080p/1440p/4K all passed. The validator itself emitted 0 warnings and 0 errors.
+and 800 x 600/1080p/1440p/4K validator checks all passed. Those programmatic mappings and the earlier run do not close
+the newly reopened visual-fidelity gate: the current rendered HUD still requires direct human review at every target
+resolution for clipping and alignment. The validator itself emitted 0 warnings and 0 errors.
 
 No pickup was required for the HUD proof because UI-C does not own inventory mutation and the relevant equipment,
 ammunition, slot, and Inventory routes were proved directly. Campaign progression did not continue beyond the bounded
