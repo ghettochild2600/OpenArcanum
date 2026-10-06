@@ -232,8 +232,8 @@ namespace Arcanum.Runtime.UI
 
             var cursor = new GameObject("Retail Gameplay Cursor",
                 typeof(RectTransform), typeof(Image), typeof(SourceUiImage), typeof(RetailMainMenuCursorView));
-            cursor.transform.SetParent(_canvasRoot.transform, worldPositionStays: false);
-            cursor.GetComponent<RetailMainMenuCursorView>().Bind((RectTransform)_canvasRoot.transform, _resolver);
+            cursor.transform.SetParent(_presentation.GetLayer(SourceUiLayer.Cursor), worldPositionStays: false);
+            cursor.GetComponent<RetailMainMenuCursorView>().Bind(_presentation.ReferenceSurface, _resolver);
 
             if (Object.FindFirstObjectByType<EventSystem>() == null)
             {

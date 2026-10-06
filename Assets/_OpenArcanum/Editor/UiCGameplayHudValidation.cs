@@ -185,28 +185,46 @@ namespace OpenArcanum.Editor
                 Check(view.BackgroundAsset?.ResolvedSkin == UiAssetSkin.Original,
                     "Original retail HUD returns without state loss");
 
-                foreach ((int width, int height) in new[] { (800, 600), (1920, 1080), (2560, 1440), (3840, 2160) })
+                foreach ((int width, int height) in new[]
+                         {
+                             (800, 600), (1920, 1080), (2560, 1440), (3840, 2160),
+                             (1920, 1200), (3440, 1440), (600, 900), (1024, 512),
+                         })
                 {
                     UiLogicalMapping mapping = UiLogicalMapping.ForResolution(width, height);
                     Rect composition = mapping.LogicalToScreen(new Rect(0, 0, 800, 600));
                     Rect viewport = RetailGameplayHudLayout.GameplayCameraViewport(width, height);
                     Check(Mathf.Approximately(composition.width / composition.height, 4f / 3f)
+                          && composition.xMin >= -.001f && composition.yMin >= -.001f
+                          && composition.xMax <= width + .001f && composition.yMax <= height + .001f
                           && viewport == new Rect(0f, 0f, 1f, 1f),
                         $"{width}x{height} preserves fixed HUD art and world behind source alpha");
                 }
+
+                RetailMainMenuCursorView cursor = view.GetComponentsInChildren<RetailMainMenuCursorView>(true)
+                    .Single(value => value.name == "Retail Gameplay Cursor" && value.gameObject.activeInHierarchy);
+                SourceUiPresentationRoot presentation = Require(
+                    cursor.GetComponentInParent<SourceUiPresentationRoot>(), "source UI presentation root");
+                Check(cursor.transform.parent == presentation.GetLayer(SourceUiLayer.Cursor)
+                      && cursor.transform.IsChildOf(presentation.ReferenceSurface),
+                    "source cursor shares the HUD reference transform and hotspot mapping");
 
                 view.Bind(controller, session, screen => controller.Open(screen));
                 view.Synchronize(true);
                 yield return null;
                 Check(Object.FindObjectsByType<RetailGameplayHudView>(FindObjectsSortMode.None).Length == 1
+                      && Object.FindObjectsByType<RetailMainMenuCursorView>(FindObjectsSortMode.None)
+                          .Count(value => value.name == "Retail Gameplay Cursor") == 1
                       && Object.FindObjectsByType<EventSystem>(FindObjectsSortMode.None).Length == 1,
-                    "rebuild leaves one HUD and one EventSystem");
+                    "rebuild leaves one HUD, one gameplay cursor, and one EventSystem");
 
                 Debug.Log("UI-C PHYSICAL VALIDATION: PASS; fresh New Game=crash-site START_MAP 1; "
                           + "source HUD=3; top=800x41; world=800x400; bottom=800x159; "
                           + "vitals/equipment/message=authoritative; source Inventory route=PASS; "
                           + "quick slot spell activation=PASS; combat state=PASS; "
-                          + "skin=Original>Enhanced exact-4x>Original; resolutions=800x600/1080p/1440p/4K; "
+                          + "skin=Original>Enhanced exact-4x>Original; "
+                          + "resolutions=800x600/1080p/1440p/4K/16:10/ultrawide/tall/free-aspect; "
+                          + "cursor=shared scaled reference transform; "
                           + "presenters=1; EventSystems=1. Play Mode remains open at the crash site for visual proof.");
             }
             finally

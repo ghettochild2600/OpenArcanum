@@ -179,18 +179,41 @@ namespace Arcanum.Formats.Tests
             Assert.That(_session.States.Count, Is.EqualTo(states));
         }
 
-        [TestCase(1920, 1080, 1.8f, 240f)]
-        [TestCase(2560, 1440, 2.4f, 320f)]
-        [TestCase(3840, 2160, 3.6f, 480f)]
-        public void HudRemainsCenteredAndUndistortedAtModernResolutions(
-            int width, int height, float scale, float originX)
+        [TestCase(800, 600, 1f, 0f, 0f)]
+        [TestCase(1920, 1080, 1.8f, 240f, 0f)]
+        [TestCase(2560, 1440, 2.4f, 320f, 0f)]
+        [TestCase(3840, 2160, 3.6f, 480f, 0f)]
+        [TestCase(1920, 1200, 2f, 160f, 0f)]
+        [TestCase(3440, 1440, 2.4f, 760f, 0f)]
+        [TestCase(600, 900, .75f, 0f, 225f)]
+        [TestCase(1024, 512, .85333335f, 170.66667f, 0f)]
+        public void HudRemainsCenteredVisibleAndUndistortedAtArbitraryResolutions(
+            int width, int height, float scale, float originX, float originY)
         {
             UiLogicalMapping mapping = UiLogicalMapping.ForResolution(width, height);
             Rect hud = mapping.LogicalToScreen(new Rect(0, 0, 800, 600));
             Assert.That(mapping.Scale, Is.EqualTo(scale).Within(.0001f));
             Assert.That(hud.x, Is.EqualTo(originX).Within(.0001f));
+            Assert.That(hud.y, Is.EqualTo(originY).Within(.0001f));
+            Assert.That(hud.xMin, Is.GreaterThanOrEqualTo(-.0001f));
+            Assert.That(hud.yMin, Is.GreaterThanOrEqualTo(-.0001f));
+            Assert.That(hud.xMax, Is.LessThanOrEqualTo(width + .0001f));
+            Assert.That(hud.yMax, Is.LessThanOrEqualTo(height + .0001f));
             Assert.That(hud.width / hud.height, Is.EqualTo(4f / 3f).Within(.0001f));
             Assert.That(mapping.GameplayWorldScreenRect.width, Is.EqualTo(width));
+        }
+
+        [TestCase(1920, 1080, -100f, 300f)]
+        [TestCase(3440, 1440, -250f, 300f)]
+        [TestCase(600, 900, 400f, -120f)]
+        public void LogicalAndPhysicalCoordinatesRoundTripInsideAndOutsideTheSourceSurface(
+            int width, int height, float logicalX, float logicalY)
+        {
+            UiLogicalMapping mapping = UiLogicalMapping.ForResolution(width, height);
+            var logical = new Vector2(logicalX, logicalY);
+            Vector2 physical = mapping.LogicalToScreen(logical);
+            Assert.That(mapping.ScreenToLogical(physical).x, Is.EqualTo(logical.x).Within(.0001f));
+            Assert.That(mapping.ScreenToLogical(physical).y, Is.EqualTo(logical.y).Within(.0001f));
         }
 
         [TestCase(800, 600)]
@@ -212,6 +235,21 @@ namespace Arcanum.Formats.Tests
             Assert.That(RetailGameplayHudLayout.ContainsInterfacePoint(new Vector2(960, 1070), 1920, 1080), Is.True);
             Assert.That(RetailGameplayHudLayout.ContainsInterfacePoint(new Vector2(960, 500), 1920, 1080), Is.False);
             Assert.That(RetailGameplayHudLayout.ContainsInterfacePoint(new Vector2(30, 20), 1920, 1080), Is.False);
+        }
+
+        [Test]
+        public void GameplayCursorUsesTheSameScaledReferenceSurfaceAsTheHud()
+        {
+            SourceUiPresentationRoot presentation = _root.GetComponentInChildren<SourceUiPresentationRoot>(true);
+            RetailMainMenuCursorView cursor = _root.GetComponentsInChildren<RetailMainMenuCursorView>(true)
+                .Single(value => value.name == "Retail Gameplay Cursor");
+            presentation.ApplyResolution(new Vector2Int(1920, 1080));
+
+            Assert.That(cursor.transform.parent, Is.EqualTo(presentation.GetLayer(SourceUiLayer.Cursor)));
+            Assert.That(cursor.transform.IsChildOf(presentation.ReferenceSurface), Is.True);
+            Assert.That(cursor.transform.lossyScale.x, Is.EqualTo(1.8f).Within(.0001f));
+            Assert.That(cursor.transform.lossyScale.y, Is.EqualTo(1.8f).Within(.0001f));
+            Assert.That(cursor.CurrentAsset.LogicalSize, Is.EqualTo(new Vector2Int(24, 27)));
         }
 
         [Test]
