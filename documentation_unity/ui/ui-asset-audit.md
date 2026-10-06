@@ -90,8 +90,10 @@ indicator, icon, scrollbar, and dialogue assets. The rerun produced the same 846
 - Health vial: `(14,472,28,88)`; fatigue vial: `(754,473,28,88)`.
 - Ten quick slots begin at y=445, x=`198,237,276,315,354,418,456,495,534,573`.
 
-The retail `intrface.art` is an 800 x 600 authored frame with a transparent world aperture and integrated bottom
-controls. It is not equivalent to the current generic button strip.
+The original runtime creates two gameplay-interface windows: ID 185 `inttop` at native 800 x 41 with
+center-horizontal/top gravity, and ID 184 `intbotom` at native 800 x 159 with center-horizontal/bottom gravity.
+`intrface.art` (ID 3) decodes as an 800 x 600 composite-looking asset, but no literal creation call for ID 3 exists
+in the audited `arcanum-ce/src` tree. Its runtime role is therefore unproven and it is not production HUD authority.
 
 ### Main Menu
 

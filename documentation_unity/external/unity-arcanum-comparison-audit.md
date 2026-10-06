@@ -445,22 +445,20 @@ itself.
   retail gameplay HUD implementation. Other modal screens remain explicitly scheduled source-presentation work.
 - **Source evidence:** Retail interface ART/MES and locally exported metadata are authoritative. The public comparison
   project contributes no additional UI archaeology beyond the same ART decoder and demos.
-- **Gap:** No external UI implementation to adopt. Separately, UI-C's visual-fidelity acceptance is now reopened
-  pending direct review of the current source HUD at 800×600, 1920×1080, 2560×1440, and 3840×2160 with no clipping or
-  misalignment.
-- **Action recommended:** Yes for the existing UI-C acceptance gate, not because of the comparison repository.
-- **Priority:** P1 before declaring UI-C visually closed or beginning UI-D.
-- **Exact OpenArcanum follow-up boundary:** Physically review the current production HUD at the four target
-  resolutions in Original mode, including world aperture, top/bottom bands, vials, message lens/text, quick slots,
-  controls, cursor, and live state changes. Correct only proven clipping/misalignment in UI-C presentation; do not
-  alter gameplay authority or begin another screen.
+- **Gap:** No external UI implementation to adopt. The separate UI-C acceptance gate was subsequently closed by
+  UI-C.2 after source audit corrected production to native ID 185 top and ID 184 bottom windows and physical review
+  passed at 800×600, 1024×768, 1920×1080, 2560×1440, and 3840×2160.
+- **Action recommended:** No further action from this comparison item. UI-C.2 records the authoritative correction.
+- **Priority:** Closed.
+- **Exact OpenArcanum follow-up boundary:** None. Future UI work must start from a separately authorized screen and
+  must not reopen the unproven ID 3 composite as gameplay authority without new source evidence.
 
 ## Recommended follow-up order
 
 This audit does not authorize implementation. If the user separately starts visual-fidelity work, the bounded order
 supported by original-engine evidence is:
 
-1. Close the reopened UI-C physical target-resolution review and only its proven layout defects.
+1. UI-C physical target-resolution review and its proven composition defect are closed by UI-C.2.
 2. Audit/close source world compositor ordering with representative overlaps.
 3. Add the production roof layer and source fade behavior.
 4. Connect existing source time and sector schemes to ambient day/night presentation.

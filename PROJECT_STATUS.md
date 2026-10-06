@@ -64,11 +64,11 @@ player-facing manual save/load presentation, M7A bounded passive local map trans
   save/load strictly as projections and commands over M1-M12B authority. **DONE M12D — Audio:** one central
   presentation bridge now resolves retail WAV/MP3 resources and source sound/scheme/dialogue rules for UI, world,
   combat, magic, technology, voice, music, and ambience without owning gameplay or changing Save V1.
-  **DONE UI-C / UI-C.1 — Source-Faithful Gameplay HUD:** the production gameplay path now
-  renders the retail ID 3 alpha HUD,
-  source vials/lens/controls/quick slots, and existing M12C/M8I projections over the unchanged controller/session
-  authority; the generic HUD grid is suppressed, the world remains interactive behind the authentic aperture, and
-  Original/Enhanced fallback uses the shared UI-A skin runtime.
+  **DONE UI-C / UI-C.2 — Source-Faithful Gameplay HUD:** the production gameplay path now renders the source-proven
+  native ID 185 top window and ID 184 bottom window, source vials/lens/controls/quick slots, and existing M12C/M8I
+  projections over unchanged controller/session authority. The generic HUD grid is suppressed; the world remains
+  full-screen and interactive between/around the two centered strips; Original/Enhanced fallback uses the shared
+  UI-A skin runtime. ID 3 remains an unproven legacy/composite candidate and is not production authority.
   **DONE M13A opening crash-site compatibility pass and bounded user follow-ups:** authentic Virgil dialogue 1324
   now includes generic source `mm`, `ss`, `ia`, `ce`, and `wa` semantics; source heartbeat initialization reconstructs
   the additional crash-site casualties without replaying death rewards/consequences; the production PC and generic
@@ -2495,7 +2495,8 @@ logical typography roles. It owns no controller, screen, modal, input, command, 
 Main Menu/HUD/screens remain available and no production Enhanced artwork was generated.
 
 Focused UI-A validation passed **23/23**. Physical Play Mode retained the production placeholder Main Menu and one
-controller/presenter, resolved real retail ID 137 button, ID 3 HUD, ID 11 icon, ID 238 scrollbar cap, and ID 1 cursor,
+controller/presenter, resolved real retail ID 137 button, then-unclassified ID 3 composite candidate, ID 11 icon,
+ID 238 scrollbar cap, and ID 1 cursor,
 loaded a temporary generated exact-4x checker only in Enhanced mode, proved missing-frame fallback, and completed
 Original -> Enhanced -> Original without geometry, gameplay, modal, or screen mutation. The 1920 x 1080,
 2560 x 1440, and 3840 x 2160 logical mappings passed. The physical proof emitted **0 warnings and 0 errors**.
@@ -2537,39 +2538,39 @@ diff --check` was clean.
 
 See [`documentation_unity/ui/ui-b-main-menu-reconstruction.md`](documentation_unity/ui/ui-b-main-menu-reconstruction.md).
 
-## UI-C Source-Faithful Gameplay HUD / UI-C.1 Physical-Fidelity Closure (2026-10-05)
+## UI-C Source-Faithful Gameplay HUD / UI-C.2 Source-Composition Correction (2026-10-05)
 
-UI-C and the reopened UI-C.1 visual-fidelity acceptance are complete. The production source HUD was physically
-reviewed at exact 800×600, 1920×1080, 2560×1440, 3840×2160, 1920×1200, 3440×1440, tall/narrow, and live Free Aspect
-sizes without clipping, stretch, or source-element drift. One production `RetailGameplayHudView` resolves
-the authentic retail ID 3 800 x 600 alpha composition, IDs 20/18/19 for empty/health/fatigue vials, ID 354 for the
-message lens, ID 27 for dynamic bitmap text,
-the source management/combat button families, and ten source quick-slot backgrounds. Health, fatigue, equipment,
-ammunition, AP, readiness, combat state, messages, and shortcut bindings remain read-only projections of completed
-M3/M4/M8/M12C authority. Source controls send commands through the same `GameUiController`; no gameplay or modal
-authority was duplicated.
+UI-C.2 supersedes the rejected UI-C.1 composition claim. Complete `arcanum-ce/src` call-site review proves that
+`iso_interface_create` creates ID 185 `inttop` as an 800 x 41 window and ID 184 `intbotom` as an 800 x 159 window.
+`hrp.c` applies center-horizontal/top and center-horizontal/bottom gravity respectively; it translates these windows
+but does not scale them. No literal ID 3 interface-creation call or source-name reference exists in the audited tree.
+ID 3 still resolves as an 800 x 600 composite-looking asset, but decoded appearance alone is not runtime authority.
 
-The authentic top/world/bottom regions are `(0,0,800,41)`, `(0,41,800,400)`, and `(0,441,800,159)`. The camera
-renders full-screen behind the source alpha, so widescreen displays expose additional world without stretching the
-fixed ornament. Only actual top/bottom interface bands block pointer-to-world input. Character, Logbook, Map,
-Inventory, Combat, Skills, Spells, and Schematics use their source controls; the generic Party, Barter, Save/Load,
-Technology, and duplicate Craft convenience buttons are absent while their existing source-correct/controller and
-keyboard access paths remain available.
+Production `RetailGameplayHudView` now follows that two-window path. Both strips stay at native physical size,
+center horizontally, and anchor to the physical top/bottom. Top controls remain local to ID 185. Vials, counters,
+message lens/text, bottom controls, and all ten quick slots remain local to ID 184 after subtracting its source y=441
+origin. The camera and cursor use the full physical display. Only the two actual window rectangles block world input.
+Health, fatigue, equipment, ammunition, AP, readiness, combat state, messages, and shortcut bindings remain read-only
+projections of completed M3/M4/M8/M12C authority; no gameplay or modal authority moved into presentation.
 
-The reopened pass found one real defect: the gameplay cursor used the unscaled full canvas instead of the shared
-centered 800×600 reference transform. It now uses the common cursor layer/reference surface; root scaling and gameplay
-authority were unchanged. Full/partial/almost-empty/empty health and fatigue, all ten slots, message lens/text, top and
-bottom controls, the aperture, cursor, and lateral widescreen world were inspected in local-only captures. Focused
-UI-C validation passed **42/42**. Directly affected UI-A, M12C, Player Navigation, keyboard, and UI-B regressions
-passed **23/23**, **18/18**, **21/21**, **23/23**, and **22/22**. M8I was not rerun because combat-HUD routing did not
-change. The complete EditMode suite passed **1178/1178**, with **0 failed, 0 skipped, and 0 inconclusive**. The recorded
-physical Play Mode pass proved
-fresh crash-site New
-Game, source HUD/vitals/equipment/message projection, world click-to-move through the aperture, the authentic
-Inventory route, real number-key quick-slot activation, live turn-based combat projection, one presenter/controller/
-EventSystem, generated exact-4x Enhanced selection with fallback, Original return, and 800 x 600/1080p/1440p/4K
-mapping through the validator. Unity compilation was clean; the final cleared Console had 0 warnings/errors and `git
-diff --check` was clean. UI-C has no remaining observed clipping, registration, scale, cursor, or aspect defect.
+Physical Play Mode used the existing Editor and production crash-site path. Direct review passed at exact 800×600,
+1024×768, 1920×1080, 2560×1440, and 3840×2160: both source strips were centered, unclipped, and unscaled while the
+world expanded around them. The authentic Inventory button opened the existing screen, the world area accepted the
+gameplay pointer after leaving attack mode, and one presenter/controller/EventSystem remained. Generated temporary
+exact-4x ID 185/184 fixtures selected in Enhanced mode and Original returned without state or geometry changes.
+The existing M12C production physical validator also passed end-to-end and exercised authentic Virgil dialogue entry
+and response selection through the separate modal route without adding dialogue geometry or state to the gameplay HUD.
+Local-only captures and the comparison corpus remained under ignored `Temp/UIC2Validation`; no retail pixels were
+committed. Visual comparison against unmodified retail 800 x 600 references confirmed the top/bottom silhouettes,
+vials, quick slots, message lens, and control registration; the former oversized ID 3 composition was absent.
+
+Focused UI-C validation passed **42/42**. Directly affected M12C, Player Navigation, and keyboard regressions passed
+**18/18**, **21/21**, and **23/23**. UI-A, UI-B, and M8I were not rerun because shared fixed-surface mapping, Main Menu
+runtime, and combat-HUD routing did not change. The complete EditMode suite passed **1178/1178**, with **0 failed, 0
+skipped, and 0 inconclusive**. Unity compilation was clean; the final cleared Console had 0 warnings/errors and `git
+diff --check` was clean. The M12C physical pass confirmed dialogue entry remained isolated from the gameplay HUD
+through the existing modal route. UI-C.2 is complete with no observed clipping, registration, native-positioning,
+cursor, or input defect.
 
 See [`documentation_unity/ui/ui-c-gameplay-hud-reconstruction.md`](documentation_unity/ui/ui-c-gameplay-hud-reconstruction.md).
 
@@ -2577,6 +2578,6 @@ See [`documentation_unity/ui/ui-c-gameplay-hud-reconstruction.md`](documentation
 
 M9A, M9B, M10A, M10B, M11A, M11B, M11C, M12B, M12C, M12D, and the bounded M13A opening pass are formally closed.
 The source-authentic keyboard compatibility follow-up, UI-A common runtime, UI-B source-faithful Main Menu, and UI-C
-source-faithful Gameplay HUD including UI-C.1 physical-fidelity closure are closed. The next bounded presentation
+source-faithful Gameplay HUD including UI-C.2 source-composition correction are closed. The next bounded presentation
 milestone is **UI-D — Character Creation presentation**; it has not started. Continue M13A only from concrete
 user-discovered campaign defects; do not start an autonomous campaign playthrough.

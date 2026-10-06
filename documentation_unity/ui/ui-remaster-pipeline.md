@@ -25,7 +25,8 @@ Canonical Enhanced identity:
 
 Examples:
 
-- `HDAssets/ui/by-source-id/0003-intrface/p00-r00-f000.png`
+- `HDAssets/ui/by-source-id/0184-intbotom/p00-r00-f000.png`
+- `HDAssets/ui/by-source-id/0185-inttop/p00-r00-f000.png`
 - `HDAssets/ui/by-source-id/0137-lilgrnbut/p00-r00-f000.png`
 - `HDAssets/ui/by-source-id/0354-dialoguewindow/p00-r00-f000.png`
 
