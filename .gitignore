@@ -33,3 +33,9 @@ crashlytics-build.properties
 /GameData/
 
 /HDAssets/
+
+/UIReference/
+
+/output/
+
+/tmp/
