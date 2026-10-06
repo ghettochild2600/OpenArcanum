@@ -22,7 +22,8 @@ namespace Arcanum.Runtime.UI
         public const int HealthLiquidSourceId = 18;
         public const int FatigueLiquidSourceId = 19;
         public const int EmptyVialSourceId = 20;
-        public const int CounterFontSourceId = 27;
+        public const int TextFontSourceId = 27;
+        public const int CounterFontSourceId = 171;
 
         public static readonly Rect TopInterface = new Rect(0f, 0f, 800f, 41f);
         public static readonly Rect WorldViewport = new Rect(0f, 41f, 800f, 400f);
@@ -39,6 +40,8 @@ namespace Arcanum.Runtime.UI
             { 173, 174, 175, 176, 177, 178, 179, 180, 181, 172 };
         public static readonly float[] QuickSlotX =
             { 198f, 237f, 276f, 315f, 354f, 418f, 456f, 495f, 534f, 573f };
+        public static readonly int[] MaintainedSpellOpenSourceIds = { 188, 189, 190, 191, 192 };
+        public static readonly int[] MaintainedSpellPluggedSourceIds = { 628, 629, 630, 631, 632 };
 
         /// <summary>
         /// The retail blitter keeps an eight-pixel liquid overlap under the vial neck. Zero remains genuinely empty;
@@ -136,6 +139,7 @@ namespace Arcanum.Runtime.UI
         private SourceUiImage _ammoImage;
         private readonly SourceUiBitmapText[] _slotLabels = new SourceUiBitmapText[10];
         private readonly RetailQuickSlotPresentation[] _slots = new RetailQuickSlotPresentation[10];
+        private readonly SourceUiImage[] _maintainedSpellSlots = new SourceUiImage[5];
         private SourceUiButton _combatButton;
         private Camera _managedCamera;
         private Rect _originalCameraRect;
@@ -143,6 +147,7 @@ namespace Arcanum.Runtime.UI
 
         public bool IsAvailable => _resolver != null && _canvasRoot != null;
         public bool IsVisible => IsAvailable && _canvasRoot.activeSelf;
+        public UiSkinResolver Resolver => _resolver;
         public UiResolvedAsset TopAsset => _topBackground != null ? _topBackground.CurrentAsset : null;
         public UiResolvedAsset BottomAsset => _bottomBackground != null ? _bottomBackground.CurrentAsset : null;
         public IReadOnlyList<RetailQuickSlotPresentation> QuickSlots => _slots;
@@ -180,7 +185,8 @@ namespace Arcanum.Runtime.UI
         public void Synchronize(bool show)
         {
             if (!IsAvailable || _controller == null) return;
-            bool visible = show && _controller.HasPlayer && _controller.Screen == GameUiScreen.None;
+            bool visible = show && _controller.HasPlayer
+                                && _controller.Screen is GameUiScreen.None or GameUiScreen.Inventory;
             if (_canvasRoot.activeSelf != visible) _canvasRoot.SetActive(visible);
             ManageWorldViewport(visible);
             if (!visible) return;
@@ -193,8 +199,9 @@ namespace Arcanum.Runtime.UI
                 LastProjection.Fatigue, LastProjection.MaximumFatigue);
             _healthLiquid.fillAmount = HealthFill;
             _fatigueLiquid.fillAmount = FatigueFill;
-            SetText(_healthText, Mathf.Max(0, LastProjection.HitPoints).ToString(), SourceText);
-            SetText(_fatigueText, Mathf.Max(0, LastProjection.Fatigue).ToString(), SourceText);
+            SetCounter(_healthText, Mathf.Max(0, LastProjection.HitPoints));
+            SetCounter(_fatigueText, Mathf.Max(0, LastProjection.Fatigue));
+            RefreshMaintainedSpellSlots(LastProjection.MaintainedSpellSlotCapacity);
 
             string feedback = string.IsNullOrWhiteSpace(_controller.Feedback)
                 ? LastProjection.Weapon : _controller.Feedback;
@@ -241,6 +248,11 @@ namespace Arcanum.Runtime.UI
             AddInputBlocker("Top Interface Input", _topWindow, new Rect(0f, 0f, 800f, 41f));
             AddInputBlocker("Bottom Interface Input", _bottomWindow, new Rect(0f, 0f, 800f, 159f));
 
+            for (int index = 0; index < _maintainedSpellSlots.Length; index++)
+                _maintainedSpellSlots[index] = AddImage($"Maintained Spell Slot {index + 1}", _topWindow,
+                    new UiAssetKey(RetailGameplayHudLayout.MaintainedSpellPluggedSourceIds[index]),
+                    new Rect(280f + 50f * index, 2f, 35f, 35f), false);
+
             AddVial("Health Empty Vial", _bottomWindow,
                 RetailGameplayHudLayout.BottomWindowLocal(new Rect(11f, 471f, 34f, 90f)));
             AddVial("Fatigue Empty Vial", _bottomWindow,
@@ -251,12 +263,10 @@ namespace Arcanum.Runtime.UI
             _fatigueLiquid = AddLiquid("Fatigue Liquid", _bottomWindow,
                 RetailGameplayHudLayout.BottomWindowLocal(RetailGameplayHudLayout.FatigueBar),
                 RetailGameplayHudLayout.FatigueLiquidSourceId);
-            _healthText = AddText("Health Counter", _bottomWindow,
-                RetailGameplayHudLayout.BottomWindowLocal(RetailGameplayHudLayout.HealthCounter), string.Empty,
-                RetailGameplayHudLayout.CounterFontSourceId);
-            _fatigueText = AddText("Fatigue Counter", _bottomWindow,
-                RetailGameplayHudLayout.BottomWindowLocal(RetailGameplayHudLayout.FatigueCounter), string.Empty,
-                RetailGameplayHudLayout.CounterFontSourceId);
+            _healthText = AddCounter("Health Counter", _bottomWindow,
+                RetailGameplayHudLayout.BottomWindowLocal(RetailGameplayHudLayout.HealthCounter));
+            _fatigueText = AddCounter("Fatigue Counter", _bottomWindow,
+                RetailGameplayHudLayout.BottomWindowLocal(RetailGameplayHudLayout.FatigueCounter));
 
             AddImage("Message Lens", _bottomWindow, new UiAssetKey(RetailGameplayHudLayout.MessageWindowSourceId),
                 RetailGameplayHudLayout.BottomWindowLocal(RetailGameplayHudLayout.MessageWindow), false);
@@ -264,15 +274,15 @@ namespace Arcanum.Runtime.UI
                 RetailGameplayHudLayout.BottomWindowLocal(RetailGameplayHudLayout.MessageText));
             textClip.gameObject.AddComponent<RectMask2D>();
             _messageLineOne = AddText("Message", textClip, new Rect(4f, 5f, 375f, 14f), string.Empty,
-                RetailGameplayHudLayout.CounterFontSourceId);
+                RetailGameplayHudLayout.TextFontSourceId);
             _messageLineTwo = AddText("Combat State", textClip, new Rect(4f, 25f, 375f, 14f), string.Empty,
-                RetailGameplayHudLayout.CounterFontSourceId);
+                RetailGameplayHudLayout.TextFontSourceId);
 
             _ammoImage = AddImage("Ammo", _bottomWindow, new UiAssetKey(251),
                 RetailGameplayHudLayout.BottomWindowLocal(RetailGameplayHudLayout.AmmoButton), false);
             _ammoText = AddText("Ammo Counter", _bottomWindow,
                 RetailGameplayHudLayout.BottomWindowLocal(new Rect(99f, 512f, 38f, 14f)), string.Empty,
-                RetailGameplayHudLayout.CounterFontSourceId);
+                RetailGameplayHudLayout.TextFontSourceId);
 
             AddScreenButton("Character", _topWindow, 169, 4f, 2f, GameUiScreen.Character);
             AddScreenButton("Logbook", _topWindow, 187, 41f, 2f, GameUiScreen.Journal);
@@ -315,7 +325,8 @@ namespace Arcanum.Runtime.UI
 
         private void AddScreenButton(string name, RectTransform parent, int sourceId, float x, float y,
             GameUiScreen screen)
-            => AddButton(name, parent, sourceId, x, y, () => _openScreen(screen));
+            => AddButton(name, parent, sourceId, x, y,
+                () => { if (_controller.Screen == screen) _controller.Close(); else _openScreen(screen); });
 
         private SourceUiButton AddButton(string name, RectTransform parent, int sourceId, float x, float y,
             Action clicked)
@@ -348,9 +359,15 @@ namespace Arcanum.Runtime.UI
             Button button = go.GetComponent<Button>();
             button.transition = Selectable.Transition.None;
             int captured = index;
-            button.onClick.AddListener(() => _controller.ActivateQuickSlot(captured));
+            button.onClick.AddListener(() =>
+            {
+                if (_controller.Screen == GameUiScreen.Inventory && !_controller.SelectedItem.IsNull)
+                    _controller.AssignQuickSlotItem(captured, _controller.SelectedItem);
+                else
+                    _controller.ActivateQuickSlot(captured);
+            });
             _slotLabels[index] = AddText("Binding", rect, new Rect(5f, 5f, size.x - 6f, size.y - 6f),
-                string.Empty, RetailGameplayHudLayout.CounterFontSourceId);
+                string.Empty, RetailGameplayHudLayout.TextFontSourceId);
             _slots[index] = new RetailQuickSlotPresentation { Index = index };
         }
 
@@ -375,6 +392,22 @@ namespace Arcanum.Runtime.UI
                     _ => string.Empty,
                 };
                 SetText(_slotLabels[index], label, slot.Active ? SelectedText : SourceText);
+            }
+        }
+
+        private void RefreshMaintainedSpellSlots(int capacity)
+        {
+            capacity = Mathf.Clamp(capacity, 0, _maintainedSpellSlots.Length);
+            for (int index = 0; index < _maintainedSpellSlots.Length; index++)
+            {
+                bool open = index < capacity;
+                SourceUiImage slot = _maintainedSpellSlots[index];
+                slot.SetKey(new UiAssetKey(open
+                    ? RetailGameplayHudLayout.MaintainedSpellOpenSourceIds[index]
+                    : RetailGameplayHudLayout.MaintainedSpellPluggedSourceIds[index]));
+                Place((RectTransform)slot.transform, open
+                    ? new Rect(281f + 50f * index, 3f, 32f, 32f)
+                    : new Rect(280f + 50f * index, 2f, 35f, 35f));
             }
         }
 
@@ -405,6 +438,18 @@ namespace Arcanum.Runtime.UI
             RectTransform rect = AddRect(name, parent, sourceRect);
             var bitmap = rect.gameObject.AddComponent<SourceUiBitmapText>();
             bitmap.Bind(_resolver, value, SourceText, fontSourceId);
+            return bitmap;
+        }
+
+        private SourceUiBitmapText AddCounter(string name, RectTransform parent, Rect sourceRect)
+        {
+            RectTransform frame = AddRect(name, parent, sourceRect);
+            Image backing = frame.gameObject.AddComponent<Image>();
+            backing.color = Color.black;
+            backing.raycastTarget = false;
+            RectTransform textRect = AddRect(name + " Text", frame, new Rect(0f, 0f, 0f, 0f));
+            var bitmap = textRect.gameObject.AddComponent<SourceUiBitmapText>();
+            bitmap.Bind(_resolver, string.Empty, SourceText, RetailGameplayHudLayout.CounterFontSourceId);
             return bitmap;
         }
 
@@ -484,6 +529,17 @@ namespace Arcanum.Runtime.UI
             else text.SetTint(tint);
         }
 
+        private void SetCounter(SourceUiBitmapText text, int value)
+        {
+            SetText(text, value.ToString("D3"), SourceText);
+            RectTransform rect = (RectTransform)text.transform;
+            rect.anchorMin = rect.anchorMax = new Vector2(.5f, .5f);
+            rect.pivot = new Vector2(.5f, .5f);
+            rect.anchoredPosition = Vector2.zero;
+            // Source centers the measured Cloister 18 bitmap string inside the exact counter box.
+            rect.sizeDelta = text.LogicalSize;
+        }
+
         private static UiSkinResolver GetResolver(SourceUiBitmapText text)
         {
             SourceUiRuntime runtime = text.GetComponentInParent<SourceUiRuntime>();
@@ -522,6 +578,7 @@ namespace Arcanum.Runtime.UI
             _ammoText = null;
             _ammoImage = null;
             _combatButton = null;
+            Array.Clear(_maintainedSpellSlots, 0, _maintainedSpellSlots.Length);
             Array.Clear(_slotLabels, 0, _slotLabels.Length);
             Array.Clear(_slots, 0, _slots.Length);
             LastProjection = null;

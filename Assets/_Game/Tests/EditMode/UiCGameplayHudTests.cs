@@ -70,7 +70,8 @@ namespace Arcanum.Formats.Tests
         [Test]
         public void RetailHudAssetsResolveFromSourceData()
         {
-            int[] ids = { 3, 17, 18, 19, 20, 169, 172, 173, 181, 184, 185, 186, 187, 193, 251, 354, 470, 471, 472, 473 };
+            int[] ids = { 3, 17, 18, 19, 20, 169, 171, 172, 173, 181, 184, 185, 186, 187, 188,
+                192, 193, 251, 354, 470, 471, 472, 473, 628, 632 };
             foreach (int id in ids)
                 Assert.That(_retail.TryResolve(new UiAssetKey(id), out _), Is.True, $"source id {id}");
             Assert.That(Original(RetailGameplayHudLayout.TopSourceId).LogicalSize,
@@ -141,10 +142,13 @@ namespace Arcanum.Formats.Tests
         }
 
         [Test]
-        public void ModalScreenHidesHudWithoutChangingControllerAuthority()
+        public void InventoryKeepsHudVisibleButOtherModalScreensHideItWithoutChangingAuthority()
         {
             PersistentPlayerState player = _session.PlayerState;
             Assert.That(_controller.Open(GameUiScreen.Inventory), Is.True);
+            _view.Synchronize(true);
+            Assert.That(_view.IsVisible, Is.True);
+            Assert.That(_controller.Open(GameUiScreen.Character), Is.True);
             _view.Synchronize(true);
             Assert.That(_view.IsVisible, Is.False);
             Assert.That(_session.PlayerState, Is.SameAs(player));
@@ -159,6 +163,43 @@ namespace Arcanum.Formats.Tests
             Button button = _root.GetComponentsInChildren<Button>(true).Single(value => value.name == "Inventory");
             button.onClick.Invoke();
             Assert.That(_controller.Screen, Is.EqualTo(GameUiScreen.Inventory));
+            button.onClick.Invoke();
+            Assert.That(_controller.Screen, Is.EqualTo(GameUiScreen.None));
+        }
+
+        [Test]
+        public void CountersUseSourceCloisterFontZeroPaddingBlackBackingAndCenteredMeasuredText()
+        {
+            SourceUiBitmapText health = _root.GetComponentsInChildren<SourceUiBitmapText>(true)
+                .Single(value => value.name == "Health Counter Text");
+            Assert.That(health.FontSourceId, Is.EqualTo(171));
+            Assert.That(health.Text, Has.Length.EqualTo(3));
+            Assert.That(health.Text, Does.Match("^[0-9]{3}$"));
+            RectTransform textRect = (RectTransform)health.transform;
+            Assert.That(textRect.anchorMin, Is.EqualTo(new Vector2(.5f, .5f)));
+            Assert.That(textRect.anchorMax, Is.EqualTo(new Vector2(.5f, .5f)));
+            Assert.That(textRect.anchoredPosition, Is.EqualTo(Vector2.zero));
+            Image backing = health.transform.parent.GetComponent<Image>();
+            Assert.That(backing.color, Is.EqualTo(Color.black));
+            Assert.That(((RectTransform)backing.transform).sizeDelta,
+                Is.EqualTo(RetailGameplayHudLayout.HealthCounter.size));
+        }
+
+        [Test]
+        public void MaintainedSpellAperturesUseExactSourceOpenAndPluggedOverlays()
+        {
+            GameUiHudView projection = _controller.ProjectHud();
+            SourceUiImage[] slots = _root.GetComponentsInChildren<SourceUiImage>(true)
+                .Where(value => value.name.StartsWith("Maintained Spell Slot", StringComparison.Ordinal))
+                .OrderBy(value => value.name).ToArray();
+            Assert.That(slots, Has.Length.EqualTo(5));
+            for (int index = 0; index < slots.Length; index++)
+            {
+                bool open = index < projection.MaintainedSpellSlotCapacity;
+                Assert.That(slots[index].Key.SourceId, Is.EqualTo(open ? 188 + index : 628 + index));
+                Assert.That(((RectTransform)slots[index].transform).sizeDelta,
+                    Is.EqualTo(open ? new Vector2(32f, 32f) : new Vector2(35f, 35f)));
+            }
         }
 
         [TestCase("Character", GameUiScreen.Character)]
@@ -202,6 +243,18 @@ namespace Arcanum.Formats.Tests
             button.onClick.Invoke();
             Assert.That(_controller.Feedback, Does.Contain("empty"));
             Assert.That(_session.States.Count, Is.EqualTo(states));
+        }
+
+        [Test]
+        public void SelectedInventoryItemBindsThroughSourceQuickSlotTarget()
+        {
+            PersistentObjectState item = AddStack(3, 4);
+            Assert.That(_controller.Open(GameUiScreen.Inventory), Is.True);
+            Assert.That(_controller.SelectItem(item.Identity), Is.True);
+            Button button = _root.GetComponentsInChildren<Button>(true).Single(value => value.name == "Quick Slot 1");
+            button.onClick.Invoke();
+            Assert.That(_session.Shortcuts.Get(0).PreferredItem, Is.EqualTo(item.Identity));
+            Assert.That(_session.Shortcuts.Get(0).Kind, Is.EqualTo(QuickSlotKind.Item));
         }
 
         [Test]

@@ -42,6 +42,7 @@ namespace Arcanum.Runtime.UI
         public int ActionPoints { get; internal set; }
         public int MaximumActionPoints { get; internal set; }
         public string Readiness { get; internal set; }
+        public int MaintainedSpellSlotCapacity { get; internal set; }
         public IReadOnlyList<ActiveSpellEffect> ActiveEffects { get; internal set; }
     }
 
@@ -53,6 +54,8 @@ namespace Arcanum.Runtime.UI
         public string Name { get; internal set; }
         public int Quantity { get; internal set; }
         public long Weight { get; internal set; }
+        public uint? InventoryArtId { get; internal set; }
+        public InventoryFootprint InventoryFootprint { get; internal set; }
         public int InventoryLocation { get; internal set; }
         public WornLocation? WornLocation { get; internal set; }
         public bool IsEquipped => WornLocation.HasValue;
@@ -488,6 +491,8 @@ namespace Arcanum.Runtime.UI
                 ActionPoints = _session.Combat.IsActive ? _session.Combat.CurrentActionPoints : 0,
                 MaximumActionPoints = _session.Combat.IsActive ? _session.Combat.MaximumActionPoints : 0,
                 Readiness = readiness,
+                MaintainedSpellSlotCapacity = Math.Clamp(_session.Characters.GetEffectiveAttribute(
+                    Player, CharacterAttribute.Intelligence) / 4, 0, 5),
                 ActiveEffects = _session.Magic.ActiveEffects.Where(value => value.Target == Player).ToArray(),
             };
         }
@@ -846,6 +851,7 @@ namespace Arcanum.Runtime.UI
                 Identity = value.Identity, PrototypeNumber = value.PrototypeNumber, Type = value.Type,
                 Name = ItemName(value), Quantity = value.StackQuantity ?? 1,
                 Weight = _session.InventoryCapacity.GetTotalWeight(value.Identity),
+                InventoryArtId = value.InventoryArtId, InventoryFootprint = value.InventoryFootprint,
                 InventoryLocation = value.InventoryLocation,
                 WornLocation = value.Placement.Kind == ObjectPlacementKind.Equipped
                     ? value.Placement.WornLocation : null,
