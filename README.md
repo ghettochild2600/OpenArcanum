@@ -1,119 +1,134 @@
-# Arcanum — Unity Reimplementation
+# OpenArcanum
 
-A fan-made reimplementation of the engine behind **Arcanum: Of Steamworks and Magick Obscura** (Troika Games,
-2001), built from scratch in **Unity 6** (C#, URP/2D).
+OpenArcanum is a Unity 6 reimplementation and remastering project for *Arcanum: Of Steamworks and Magick Obscura*.
+It reconstructs the game on a modern runtime while loading maps, artwork, audio, scripts, and other content from a
+user's legitimate retail installation.
 
-It is a *clean-room* reimplementation in the spirit of projects like **OpenMW** and **OpenRA**: rather than
-modifying or redistributing the original game, it **reads the original game's own data files at runtime** —
-sprites, maps, dialog, prototypes, scripts — and runs them on a new, modern engine. Every file format was
-reverse-engineered and checked against the shipped data and the community decompilation.
+The project is an unofficial, non-commercial fan effort. No original Arcanum retail assets are distributed here,
+and users must supply their own game files. Major runtime and gameplay systems are implemented, but campaign
+compatibility, source-faithful interface reconstruction, and visual fidelity remain active work.
 
-To play this project you have to buy original game. You can do it on different platforms:
-- [Steam](https://store.steampowered.com/app/500810/Arcanum_Of_Steamworks_and_Magick_Obscura/)
-- [GOG](https://www.gog.com/en/game/arcanum_of_steamworks_and_magick_obscura)
+## Current status
 
-> ⚠️ **Work in progress.** This is an engine and systems project under active development — not a finished,
-> playable game. Expect rough edges, placeholders, and missing features.
+Production New Game reaches the original campaign start, and the opening area is playable through the implemented
+movement, interaction, combat, dialogue, party, and persistence systems. This is still a development project rather
+than a finished replacement for the retail executable: broader campaign behavior is being validated from real play,
+the gameplay HUD awaits final visual-fidelity review, and the Character Creation interface has not yet received its
+source-faithful presentation pass.
 
----
+The detailed implementation and validation record is maintained in [PROJECT_STATUS.md](PROJECT_STATUS.md).
 
-## 😺 Fan project
+## Implemented systems
 
-![Lighting](https://cdn.arcanum.aapanasik.com/github/point-light.gif)
+- **World:** retail map and sector loading, adjacent-sector streaming, terrain, walls, doors, world objects, local
+  transitions, and bounded world-map travel.
+- **Characters:** attributes, skills, vitality and fatigue, derived statistics, experience and leveling, alignment
+  and aptitude, Character Creation authority, and production New Game.
+- **Movement and interaction:** click-to-move pathfinding, portals, containers, containment, inventory and equipment,
+  pickup and drop, and corpse looting.
+- **Combat:** turn-based and real-time scheduling, melee, ranged weapons and ammunition, line of fire, cover, called
+  locations, critical results, defeat, death, corpses, and experience rewards.
+- **NPCs and party:** bounded combat AI, followers, recruitment and dismissal, follower orders, travel, and combat
+  integration.
+- **Narrative:** dialogue, quests, journal projection, campaign state, and trainer integration.
+- **Game systems:** core magic and technology runtimes, vendors and economy, reaction, reputation and faction state,
+  and crafting and schematics.
+- **Persistence:** versioned session saves, save slots, manual save/load, and dedicated auto-save/auto-load controls.
+- **Presentation:** source-backed audio, Original and Enhanced asset resolution, modern display mapping, and an
+  in-progress reconstruction of the retail interface.
 
-- This is an **unofficial, non-commercial fan project**, made out of love for the original game.
-- It is **not affiliated with, endorsed by, or associated with** Troika Games, Activision, Microsoft, or any current
-  rights holder of the *Arcanum* intellectual property. All trademarks and copyrights belong to their
-  respective owners.
-- **No original game assets are included** in this repository — no art, audio, text, maps, or data from
-  *Arcanum*. The project only contains C# source code and Unity assets. To run it you must **own a legitimate copy** of
-  *Arcanum* (e.g. from GOG or Steam); the engine loads the data from your own installation.
-- If you are a rights holder and have any concerns, please get in touch and they will be addressed promptly. I've tried to reach Activision and Microsoft several times, was ignored.
+Implemented means the bounded behavior recorded in the project documentation is present and tested. It does not
+mean that every original quest, script, spell, item, or campaign edge case is already supported.
 
----
+## Current focus
 
-## ✅ What works so far (partially)
+Near-term work is deliberately source-driven:
 
-A high level snapshot be subsystems:
+- physically closing gameplay-HUD visual fidelity at 800×600, 1080p, 1440p, and 4K;
+- reconstructing the Character Creation presentation after that review closes;
+- resolving campaign incompatibilities found through actual play; and
+- filling proven world-presentation gaps without changing gameplay authority.
 
-- **World** — streaming isometric maps, terrain/walls/doors/roofs, day–night lighting and shadows.
-- **Characters** — composite paper-doll sprites (race, gender, armour, shield, weapon), NPCs/monsters, animations.
-- **Movement & interaction** — click-to-move A\* pathfinding, doors, containers/loot, ground items, inventory
-  and equipment.
-- **Combat** — real-time *and* turn-based, action points, criticals/status, ranged + line-of-sight, death, XP,
-  level-up — driven by the original's real stats.
-- **Dialog, quests, party** — conversation system, journal, recruitable followers that fight alongside you.
+Known presentation gaps include production roof rendering and fading, source compositor ordering, day/night ambient
+presentation, retail shadow sprites, equipment-driven critter appearance, and placed light/additive/nocturnal
+presentation. These are not described as complete.
 
----
+## Original and Enhanced presentation
 
-## 📚 Documentation
+**Original** mode decodes presentation from the user's retail data. **Enhanced** mode may substitute optional
+replacement assets when an exact replacement exists, while retaining the same gameplay state, logical dimensions,
+pivots, hit regions, and timing. Missing or invalid replacements fall back independently to Original assets.
 
-Will be in 2 folders:
+The repository does not contain retail assets or a complete Enhanced asset set. Its committed default is Original
+mode.
 
-- [`documentation/`](documentation/) — **about the original Arcanum**: its data formats, engine systems, and
-  behaviours, reverse-engineered and written up for contributors (no engine-specific code).
-- [`documentation_unity/`](documentation_unity/) — **about this Unity reimplementation**: architecture, systems, and
-  how it's built.
+## Requirements
 
----
+- Unity **6000.0.71f1**.
+- A legitimate installation of *Arcanum: Of Steamworks and Magick Obscura*.
+- Windows for the currently validated development and play workflow. Other platforms are not yet claimed as tested.
 
-## 🗺️ Status & how this repo is updated
+## Getting started
 
-I work on this in my spare time, so updates come **from time to time** rather than on a schedule. The plan:
+1. Clone this repository.
+2. Open the repository root as a Unity project with Unity 6000.0.71f1.
+3. At the project root, create a local `GameData/` directory or junction that points to the retail installation's
+   `Arcanum` directory. Its root must contain `Arcanum1.dat` through `Arcanum4.dat`, and it must include
+   `modules/Arcanum.dat`. `GameData/` is ignored by Git and must remain local.
+4. Open `Assets/_Game/Scenes/OpenArcanum.unity`.
+5. Enter Play Mode.
+6. Choose **Single Player → New Game**, create a character, and begin the game.
 
-1. **Documentation first** — the reverse-engineering notes and system write-ups are being published and polished
-   first, so the knowledge is useful on its own.
-2. **Then code, module by module** — individual systems will be opened up as they reach a presentable state,
-   rather than all at once. I'll try cover it (when I can) with tests.
+Do not commit, upload, or redistribute anything from `GameData/`. Steam and GOG installs use the same project-local
+mount shape once their retail `Arcanum` directory is linked as `GameData/`; no game data is downloaded by this
+repository.
 
----
+## Controls
 
-## 🎯 Goals
+Left-click moves or interacts according to the active cursor. Common screens use their source keyboard shortcuts;
+combat supports attack mode, called-location modifiers, turn ending, and turn-based/real-time switching. See the
+[player launch and controls guide](documentation_unity/player-launch-guide.md) for the current bindings and known
+limitations.
 
-- The project is and will remain **free**.
-- If it ever reaches a state worth releasing — and if it's possible to do so properly — I'd love to put it on
-  **Steam**. In that case the aim would be to support the **Workshop** (mods/custom content) and **local
-  co-op**. These are aspirations, not promises — nothing here is guaranteed.
+## Documentation
 
----
+- [`documentation/`](documentation/) records research into the original engine, formats, and data behavior.
+- [`documentation_unity/`](documentation_unity/) records OpenArcanum architecture, implementation boundaries,
+  source audits, validation, and visual reconstruction work.
+- [PROJECT_STATUS.md](PROJECT_STATUS.md) is the current detailed roadmap and validation ledger.
 
-## 🛠️ Requirements
+## Development approach
 
-- **Unity 6000.0.0f1** (or newer) with URP.
-- A legitimate installation of the original **Arcanum** (the engine reads its data files; nothing copyrighted is
-  bundled here).
+OpenArcanum treats retail data and corroborated source behavior as authority. Gameplay state lives in bounded runtime
+services; Unity presentation observes that state and submits commands rather than owning game rules. Changes are
+checked with focused and regression tests, Unity compilation, and physical Play Mode validation appropriate to their
+risk. Retail data is used locally for research and execution and is never part of the repository.
 
----
+## Project lineage
 
-## 🙏 Credits & references
+OpenArcanum builds on earlier Unity Arcanum work from
+[Suvitruf/unity-arcanum](https://github.com/Suvitruf/unity-arcanum). That project is retained as a direct Git
+ancestor. OpenArcanum has since substantially expanded the production runtime integration, gameplay systems, tests,
+documentation, user interface, and campaign-compatibility work. This lineage statement does not imply endorsement
+or an active collaboration with the upstream author.
 
-- **Troika Games** — for *Arcanum: Of Steamworks and Magick Obscura*, the game this project exists out of love for.
-- [`arcanum-ce`](https://github.com/alexbatalov/arcanum-ce) and the `tig` library — the community decompilation
-  that made reverse-engineering the formats and behaviours possible.
+See [NOTICE.md](NOTICE.md) for attribution and reference acknowledgements.
 
----
+## AI-assisted development
 
-## 🤖 A note on AI
+AI coding tools assist with implementation, source archaeology, documentation, and testing. Their output is
+integrated against the project's source evidence, automated regression suite, and physical Unity validation rather
+than treated as behavioral authority.
 
-Parts of this project's code (and documentation) are written with the help of AI coding tools. Everything is
-reviewed, integrated, and tested by me before it lands — AI speeds up the work, but it isn't a substitute for
-understanding the engine or the original game's formats. It will not be possible to make this project in a reasonable time by 1 person.
+## Legal and asset policy
 
----
+OpenArcanum is unofficial, non-commercial, and not affiliated with or endorsed by Troika Games, Activision,
+Microsoft, or any other rights holder. *Arcanum* names, trademarks, software, and assets remain the property of their
+respective owners. The repository includes no original retail game data; each user must provide files from a
+legitimate copy. The project license applies only to the material covered by that license and grants no rights to
+Arcanum assets.
 
-## 📄 License
+## License
 
-The **source code** in this repository is released under its accompanying license (see `LICENSE`). This license
-covers *only this project's original code* — it does **not** grant any rights to *Arcanum* or its assets, which
-remain the property of their respective owners.
-
-## 💬 Support and community
-
-- **Join on Discord** — chat about the project, follow progress, ask questions, share ideas, or help
-  test: **[Discord](https://discord.gg/3aDtVmNRMY)**. Everyone curious about Arcanum or the
-  reimplementation is welcome.
-- **Support development** — this is a free, non-commercial labour of love built in my spare time. If you'd
-  like to help it move along faster, you can support me on
-  **[Patreon](https://www.patreon.com/apanasik)**. Entirely optional — it
-  funds the *time* spent on the engine, not the game itself (you still need your own legitimate copy of
-  *Arcanum*).
+The project code is provided under the inherited [MIT License](LICENSE), including its existing copyright notice.
+The preserved history and [NOTICE.md](NOTICE.md) describe the upstream lineage.
