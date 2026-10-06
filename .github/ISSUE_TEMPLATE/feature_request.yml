@@ -1,0 +1,45 @@
+name: Compatibility or feature request
+description: Propose missing original behavior, a source-fidelity improvement, or bounded project tooling.
+title: "[Request] "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Compatibility and source-fidelity needs take priority over speculative gameplay redesigns.
+  - type: textarea
+    id: gap
+    attributes:
+      label: Missing behavior or capability
+      description: What original behavior, compatibility gap, or project need should be addressed?
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Source evidence
+      description: Describe retail behavior, original data, arcanum-ce/tig evidence, or existing project documentation.
+    validations:
+      required: true
+  - type: textarea
+    id: boundary
+    attributes:
+      label: Proposed boundary
+      description: What is the smallest useful change, and what should remain deferred?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Include workarounds or reasons a redesign is unnecessary.
+  - type: checkboxes
+    id: policy
+    attributes:
+      label: Asset and scope check
+      options:
+        - label: This request does not require distributing original Arcanum retail assets.
+          required: true
+        - label: This request is compatible with preserving original gameplay unless explicitly justified.
+          required: true

@@ -1,0 +1,91 @@
+name: Bug report
+description: Report an OpenArcanum defect or original-game compatibility difference.
+title: "[Bug] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not attach retail game assets. A concise reproduction and comparison with original Arcanum are most useful.
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What is wrong, and when did you first observe it?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      placeholder: |
+        1. Start or load...
+        2. Travel to...
+        3. Interact with...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: Describe the expected OpenArcanum or verified retail behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: input
+    id: campaign_context
+    attributes:
+      label: Map, location, NPC, or quest
+      description: Add any campaign context that helps identify the source content.
+  - type: input
+    id: unity_version
+    attributes:
+      label: Unity version
+      placeholder: 6000.0.71f1
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: Windows 11
+    validations:
+      required: true
+  - type: dropdown
+    id: graphics_mode
+    attributes:
+      label: Graphics mode
+      options:
+        - Original
+        - Enhanced
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Console or log output
+      description: Paste relevant text. Remove credentials or private paths first.
+      render: shell
+  - type: textarea
+    id: media
+    attributes:
+      label: Screenshot or video
+      description: Attach media only if you have the right to share it; do not upload extracted retail assets.
+  - type: dropdown
+    id: save_available
+    attributes:
+      label: Reproduction save available
+      description: Do not upload a save until a maintainer confirms it is appropriate to share.
+      options:
+        - "No"
+        - "Yes"
+        - Not applicable
+    validations:
+      required: true
