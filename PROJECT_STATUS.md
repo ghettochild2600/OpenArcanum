@@ -2684,7 +2684,18 @@ M9A, M9B, M10A, M10B, M11A, M11B, M11C, M12B, M12C, M12D, and the bounded M13A o
 The source-authentic keyboard compatibility follow-up, UI-A common runtime, UI-B source-faithful Main Menu, bounded
 UI-C.5 implementation, and UI-E.1 Inventory/Equipment foundation are complete. UI-C overall remains open on the exact
 skill-action Fate and bed-authority blockers above. UI-D source-faithful Character Creation is complete with M12B
-authority unchanged. UI-E.2 Character/Skills reconstruction is complete with M4 authority unchanged. The next safe
-step is the read-only UI-F Dialogue/Journal/Party source audit; implementation should begin only after that audit
-defines exact ART identities, runtime compositions, ownership, and missing-authority boundaries.
+authority unchanged. UI-E.2 Character/Skills reconstruction is complete with M4 authority unchanged.
+
+The read-only UI-F Dialogue/Journal/Party source audit is complete. It corrects two earlier assumptions: ordinary
+dialogue is an NPC world bubble plus a five-line live-world response strip rather than an ornate portrait modal, and
+followers use a persistent six-slot left HUD stack rather than a modal Party screen. The exact Logbook book/tabs/page
+composition is bounded, but only Quests has a complete source projection. Party still needs portrait/poison projection
+and selected-follower command authority. See
+[`documentation_unity/ui/ui-f-dialogue-journal-party-audit.md`](documentation_unity/ui/ui-f-dialogue-journal-party-audit.md).
+
+The next safe implementation is **UI-F.1 — Source Dialogue Presentation** only: world-anchored NPC speech, the exact
+five-line `tc` response overlay, and source dialogue-mode input ownership over existing transactional dialogue,
+training, and audio authority. First physically confirm the registered ID 354 rotating-window role. Do not add
+portraits, use unproven ID 822, invent response scrolling, enable unsupported special transitions, start the Logbook,
+or start the follower HUD in that slice.
 Continue M13A only from concrete user-discovered campaign defects; do not start an autonomous campaign playthrough.

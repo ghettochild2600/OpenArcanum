@@ -148,8 +148,9 @@ drag/right-click affordances, stack labels, weight/gold text, and feedback.
 The World Map uses `(0,41,800,400)`, a map canvas `(150,52,501,365)`, a PC lens `(25,65,89,89)`, and authored
 compass/right-side controls. Local and world maps are distinct presentations. Inventory, world map, and main-menu
 source code convert mouse input through a centered 800 x 600 coordinate model. Journal uses a book spread and tabs;
-Schematics uses a discipline-tab book; Sleep and Fate use modal overlays; Dialogue has both a thin framed window and
-an ornate box family.
+Schematics uses a discipline-tab book; Sleep and Fate use modal overlays. The traced ordinary Dialogue path uses an
+NPC world text bubble plus the `tc` live-world response strip. ID 354 is registered as a lower-HUD dialogue/message
+rotating-window component, while ID 822 has no proven ordinary-dialogue runtime call path.
 
 ## Typography
 
@@ -166,9 +167,11 @@ redistribute retail font resources.
 
 ## Scalable component findings
 
-- ID 354 `dialoguewindow` is the strongest full 9-slice candidate: preserve an 8-pixel perimeter and treat 16 x 16
-  as the provisional minimum. It still requires edge-pattern visual QA before production import.
-- ID 822 `dialoguebox` is horizontally extensible only: preserve 16-pixel end caps; provisional minimum 32 x 136.
+- ID 354 `dialoguewindow` is source-registered at fixed retail lower-HUD geometry for message and dialogue rotating
+  windows. Treat it as fixed-size until its ordinary-dialogue role is physically confirmed; do not 9-slice it merely
+  because its edge pattern appears extensible.
+- ID 822 `dialoguebox` has no traced ordinary-dialogue runtime call path. Its filename and visual appearance do not
+  authorize production use or a 9-slice contract.
 - Scrollbar IDs 238/787/240 form an authored tiled assembly: fixed 11-pixel width, 5-pixel top, 1-pixel repeating
   middle, 7-pixel bottom, minimum height 12. They are not conventional four-direction 9-slices.
 - Full-screen/frame art, paper dolls, ornamental books, icon borders, and decorated panels remain fixed-size by
@@ -207,7 +210,7 @@ outside this audit.
 | UI-C | Authentic gameplay/combat HUD | M12C, M8I, inventory/magic/technology/journal/map commands | World-aperture expansion, quick slots, vials, combat state at all targets; Original/Enhanced parity commit |
 | UI-D | Retail Character Creation | M12B creation service and M12C commands | No horizontal scrolling; fixed editor/subpanels; validation at all targets; screen commit |
 | UI-E | Inventory, equipment, Character, Skills | M3/M4 and M12C projections/commands | Paper-doll hit regions, transfers/equip, modal/input parity; grouped screen commit |
-| UI-F | Dialogue, Journal, Party | M10/M9/M12C authorities | Modal precedence, reply/quest/party commands, source book/dialogue geometry; grouped commit |
+| UI-F | Dialogue, Journal, Party | M10/M9/M12C authorities plus bounded missing-data closure | Implement as separately gated Dialogue, quest-only Logbook shell, non-quest Logbook authority, follower authority, and follower-HUD slices; do not use one grouped skin commit |
 | UI-G | Magic, Technology, Crafting | M5/M11/M12C authorities | Source tabs/icons/readiness/feedback; no effect authority in presenter; grouped commit |
 | UI-H | Local Map and World Map | M7/M12C map/travel authority | Distinct map surfaces, marker/route controls, widescreen containment; grouped commit |
 | UI-I | Merchant, Save/Load, Options, secondary screens | M3/M6/M12C where available | Barter/save/options parity; Sleep/Fate only after runtime closure; grouped commit |
