@@ -68,7 +68,22 @@ namespace Arcanum.Runtime.UI
         public InventoryFootprint InventoryFootprint { get; internal set; }
         public int InventoryLocation { get; internal set; }
         public WornLocation? WornLocation { get; internal set; }
+        public int? AmmoItemType { get; internal set; }
         public bool IsEquipped => WornLocation.HasValue;
+    }
+
+    /// <summary>Authoritative values drawn by the ordinary source Inventory panel.</summary>
+    public sealed class GameUiInventorySummaryView
+    {
+        public long Weight { get; internal set; }
+        public int CarryCapacity { get; internal set; }
+        public int EncumbranceLevel { get; internal set; }
+        public int EncumbranceThreshold { get; internal set; }
+        public int Speed { get; internal set; }
+        public int TotalAttack { get; internal set; }
+        public int TotalDefense { get; internal set; }
+        public int Gold { get; internal set; }
+        public IReadOnlyList<int> Ammunition { get; internal set; }
     }
 
     public readonly struct GameUiAttributeView
@@ -192,6 +207,8 @@ namespace Arcanum.Runtime.UI
         private IGameAudioPresentation _audio;
         private int[] _acceptedCharacterAttributes;
         private int[] _acceptedCharacterSkills;
+        private int _acceptedHitPointPoints;
+        private int _acceptedFatiguePoints;
 
         public GameUiScreen Screen { get; private set; }
         public GameUiCursorMode CursorMode { get; private set; } = GameUiCursorMode.Default;
@@ -339,8 +356,7 @@ namespace Arcanum.Runtime.UI
             CreationDraft.Race = race;
             CreationDraft.Gender = gender;
             CharacterCreationCatalog catalog = _session.CharacterCreation.Catalog;
-            PortraitDefinition portrait = catalog?.Portraits.Values.FirstOrDefault(value =>
-                value.Race == race && value.Gender == gender);
+            PortraitDefinition portrait = catalog?.FindFirstPortrait(race, gender);
             if (portrait != null) CreationDraft.PortraitId = portrait.Id;
             // mainmenu_ui_new_char_set_gender/set_race always clear the prior background before refreshing the
             // newly legal identity. Re-evaluate from the first source-ordered legal entry even when the old entry
@@ -400,6 +416,16 @@ namespace Arcanum.Runtime.UI
         {
             if (CreationDraft == null) return;
             CreationDraft.SetTechnologyRank(discipline, CreationDraft.GetTechnologyRank(discipline) + delta);
+            RefreshCreationValidation();
+        }
+
+        public void AdjustCreationVitality(bool hitPoints, int delta)
+        {
+            if (CreationDraft == null || delta is not (-1 or 1)) return;
+            if (hitPoints)
+                CreationDraft.HitPointPoints = Math.Max(0, CreationDraft.HitPointPoints + delta);
+            else
+                CreationDraft.FatiguePoints = Math.Max(0, CreationDraft.FatiguePoints + delta);
             RefreshCreationValidation();
         }
 
@@ -491,10 +517,13 @@ namespace Arcanum.Runtime.UI
 
         public bool ToggleCombatMode()
         {
-            CombatResult result = _session.Combat.ToggleMode(Player);
+            CombatResult result = _session.Combat.ToggleCombatReadiness(Player);
             Combat.Refresh();
+            if (result.Succeeded)
+                CursorMode = _session.Combat.IsCombatModeActive ? GameUiCursorMode.Attack : GameUiCursorMode.Default;
             return Complete(result.Succeeded, result.Succeeded
-                ? $"Combat mode: {_session.Combat.Mode}." : result.Failure.ToString());
+                ? (_session.Combat.IsCombatModeActive ? "Combat ready." : "Combat mode ended.")
+                : result.Failure.ToString());
         }
 
         public bool ToggleAttackTalkMode()
@@ -684,7 +713,9 @@ namespace Arcanum.Runtime.UI
                 }
             }
             string readiness = "READY";
-            if (_session.Combat.IsActive && _session.Combat.Mode == CombatMode.TurnBased)
+            if (!_session.Combat.IsActive && _session.Combat.IsCombatModeActive)
+                readiness = "READY";
+            else if (_session.Combat.IsActive && _session.Combat.Mode == CombatMode.TurnBased)
                 readiness = _session.Combat.CurrentParticipant == Player ? "READY" : "WAIT";
             else if (_session.Combat.IsActive)
                 readiness = Combat.IsRealTimeBusy ? "BUSY" : Combat.IsRealTimeReady ? "READY" : "RECOVERING";
@@ -696,7 +727,7 @@ namespace Arcanum.Runtime.UI
                 HitPoints = vitality.CurrentHitPoints, MaximumHitPoints = vitality.MaximumHitPoints,
                 Fatigue = vitality.CurrentFatigue, MaximumFatigue = vitality.MaximumFatigue,
                 Weapon = weapon, Ammunition = ammunition,
-                CombatActive = _session.Combat.IsActive, CombatMode = _session.Combat.Mode,
+                CombatActive = _session.Combat.IsCombatModeActive, CombatMode = _session.Combat.Mode,
                 ActionPoints = _session.Combat.IsActive ? _session.Combat.CurrentActionPoints : 0,
                 MaximumActionPoints = _session.Combat.IsActive ? _session.Combat.MaximumActionPoints : 0,
                 Readiness = readiness,
@@ -770,6 +801,50 @@ namespace Arcanum.Runtime.UI
                 .Select(ProjectItem).ToArray();
         }
 
+        public GameUiInventorySummaryView ProjectInventorySummary()
+        {
+            if (!HasPlayer) return null;
+            long weight = _session.InventoryCapacity.GetInventoryLoad(Player);
+            int capacity = _session.InventoryCapacity.GetCarryCapacity(Player);
+            int[] ratios = { 15, 30, 45, 60, 75, 90, 100 };
+            int level = ratios.Length - 1;
+            for (int index = 0; index < ratios.Length; index++)
+                if (weight < (long)capacity * ratios[index] / 100)
+                {
+                    level = index;
+                    break;
+                }
+            var ammunition = new int[4];
+            foreach (PersistentObjectState item in _session.States.Values)
+                if (item.ParentIdentity == Player && item.Placement.Kind == ObjectPlacementKind.Contained
+                    && item.Type == ObjectType.Ammo && item.AmmoItemType is >= 0 and <= 3)
+                    ammunition[item.AmmoItemType.Value] = checked(ammunition[item.AmmoItemType.Value]
+                                                               + item.StackQuantity.GetValueOrDefault());
+            return new GameUiInventorySummaryView
+            {
+                Weight = weight,
+                CarryCapacity = capacity,
+                EncumbranceLevel = level,
+                EncumbranceThreshold = ratios[level] * capacity / 100,
+                Speed = _session.DerivedStats.GetDerivedStat(Player, CharacterDerivedStat.Speed),
+                TotalAttack = ProjectTotalAttack(),
+                TotalDefense = ProjectTotalDefense(),
+                Gold = _session.GetGold(Player),
+                Ammunition = ammunition,
+            };
+        }
+
+        public bool MoveInventoryItem(ArcanumObjectId item, int location)
+        {
+            bool moved = _session.TrySetInventoryLocation(Player, item, location);
+            string name = _session.TryGetObjectState(item, out PersistentObjectState state)
+                ? ItemName(state) : "item";
+            return Complete(moved, moved ? $"Moved {name}." : $"{name} does not fit there.");
+        }
+
+        public bool ArrangeInventory()
+            => Complete(_session.ArrangeInventory(Player), "Inventory arranged.");
+
         public bool BeginCorpseLoot(ArcanumObjectId corpse)
         {
             if (!_session.TryGetObjectState(corpse, out PersistentObjectState state)
@@ -802,6 +877,16 @@ namespace Arcanum.Runtime.UI
                 return Reject("That item is not owned by the player.");
             SelectedItem = item;
             CursorMode = GameUiCursorMode.Item;
+            Feedback = ItemName(state);
+            return true;
+        }
+
+        public bool InspectItem(ArcanumObjectId item)
+        {
+            if (!_session.TryGetObjectState(item, out PersistentObjectState state)
+                || state.ParentIdentity != Player
+                || state.Placement.Kind is not (ObjectPlacementKind.Contained or ObjectPlacementKind.Equipped))
+                return false;
             Feedback = ItemName(state);
             return true;
         }
@@ -903,6 +988,23 @@ namespace Arcanum.Runtime.UI
                 result == RuntimeCharacterAdjustmentResult.Success ? $"Decreased {skill}." : result.ToString());
         }
 
+        public bool AdjustVitalityPoint(bool hitPoints, int delta)
+        {
+            if (CharacterReadOnly) return Reject("This character examination is read-only.");
+            if (delta is not (-1 or 1)) return Reject("Invalid vitality adjustment.");
+            EnsureAcceptedCharacterEditorState();
+            PersistentCharacterVitalityState vitality = _session.Vitality.Get(Player);
+            int current = hitPoints ? vitality.Source.HitPointPoints : vitality.Source.FatiguePoints;
+            int accepted = hitPoints ? _acceptedHitPointPoints : _acceptedFatiguePoints;
+            if (delta < 0 && current <= accepted) return Reject(RuntimeCharacterAdjustmentResult.AcceptedBaseline.ToString());
+            if (delta > 0 && _session.Progression.GetUnspentCharacterPoints(Player) < 1)
+                return Reject(RuntimeCharacterAdjustmentResult.InsufficientCharacterPoints.ToString());
+            _session.Vitality.AdjustPurchasedPoint(Player, hitPoints, delta);
+            if (delta > 0) _session.Progression.SpendCharacterPoint(Player);
+            else _session.Progression.RefundCharacterPoint(Player);
+            return Complete(true, $"Adjusted {(hitPoints ? "Hit Points" : "Fatigue")}.");
+        }
+
         private void CaptureAcceptedCharacterEditorState()
         {
             if (!HasPlayer || !_session.Characters.TryGet(Player, out _)
@@ -911,6 +1013,9 @@ namespace Arcanum.Runtime.UI
                 .Select(value => _session.Characters.GetBaseAttribute(Player, value)).ToArray();
             _acceptedCharacterSkills = CharacterSkillRules.AllSkills
                 .Select(value => _session.Progression.GetPurchasedSkillPoints(Player, value)).ToArray();
+            PersistentCharacterVitalityState vitality = _session.Vitality.Get(Player);
+            _acceptedHitPointPoints = vitality.Source.HitPointPoints;
+            _acceptedFatiguePoints = vitality.Source.FatiguePoints;
         }
 
         private void EnsureAcceptedCharacterEditorState()
@@ -923,6 +1028,8 @@ namespace Arcanum.Runtime.UI
         {
             _acceptedCharacterAttributes = null;
             _acceptedCharacterSkills = null;
+            _acceptedHitPointPoints = 0;
+            _acceptedFatiguePoints = 0;
         }
 
         public IReadOnlyList<GameUiSpellView> ProjectSpells(ArcanumObjectId target = default)
@@ -1176,9 +1283,55 @@ namespace Arcanum.Runtime.UI
                 Weight = _session.InventoryCapacity.GetTotalWeight(value.Identity),
                 InventoryArtId = value.InventoryArtId, InventoryFootprint = value.InventoryFootprint,
                 InventoryLocation = value.InventoryLocation,
+                AmmoItemType = value.AmmoItemType,
                 WornLocation = value.Placement.Kind == ObjectPlacementKind.Equipped
                     ? value.Placement.WornLocation : null,
             };
+
+        private int ProjectTotalAttack()
+        {
+            Weapon weapon = _session.TryGetEquippedItem(Player, WornLocation.Weapon,
+                                out PersistentObjectState equipped)
+                            && equipped.Type == ObjectType.Weapon && equipped.WeaponData != null
+                ? equipped.WeaponData : Weapon.Unarmed();
+            CharacterSkill skill = weapon.Skill switch
+            {
+                WeaponSkill.Bow => CharacterSkill.Bow,
+                WeaponSkill.Throwing => CharacterSkill.Throwing,
+                WeaponSkill.Firearms => CharacterSkill.Firearms,
+                _ => CharacterSkill.Melee,
+            };
+            int effectiveness = checked(5 * _session.Progression.GetEffectiveSkillRank(Player, skill) + 25);
+            if (_session.Characters.GetEffectiveAttribute(Player, CharacterAttribute.Intelligence) >= 20)
+                effectiveness += 10;
+            int weighted = 15 * effectiveness;
+            int divisor = 15;
+            int[] weights = { 12, 12, 18, 15, 12 };
+            int meleeBonus = weapon.Skill == WeaponSkill.Melee
+                ? _session.DerivedStats.GetDerivedStat(Player, CharacterDerivedStat.MeleeDamageBonus) : 0;
+            for (int index = 0; index < Weapon.DamageTypeCount; index++)
+            {
+                int minimum = weapon.DamageMin[index] + (index == (int)DamageType.Normal ? meleeBonus : 0);
+                int maximum = weapon.DamageMax[index] + (index == (int)DamageType.Normal ? meleeBonus : 0);
+                weighted += weights[index] * ((minimum + maximum) / 2);
+                divisor += weights[index];
+            }
+            return weighted / (divisor + 6);
+        }
+
+        private int ProjectTotalDefense()
+        {
+            int weighted = 24 * _session.DerivedStats.GetArmorClass(Player);
+            int divisor = 24;
+            int[] weights = { 25, 15, 10, 16, 15 };
+            for (int index = 0; index < weights.Length; index++)
+            {
+                weighted += weights[index] * _session.DerivedStats.GetResistance(Player,
+                    (CharacterResistance)index);
+                divisor += weights[index];
+            }
+            return 2 * (weighted / (divisor + 6));
+        }
 
         private GameUiMerchantItemView MerchantView(PersistentObjectState value,
             EconomyTransactionDirection direction)

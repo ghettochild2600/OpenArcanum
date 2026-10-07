@@ -79,6 +79,8 @@ namespace Arcanum.Runtime.UI
         private SourceUiBitmapText _points;
         private SourceUiBitmapText _level;
         private SourceUiBitmapText _experience;
+        private SourceUiBitmapText _hitPointValue;
+        private SourceUiBitmapText _fatigueValue;
         private SourceUiBitmapText _name;
         private SourceUiBitmapText _race;
         private SourceUiBitmapText _gender;
@@ -196,13 +198,34 @@ namespace Arcanum.Runtime.UI
                 float y = RetailCharacterSheetLayout.AttributePlus[index].y + 1f;
                 _attributeValues.Add(attribute, AddText($"{attribute} Value", _window,
                     new Rect(x, y, 36f, 18f), 27, SourceWhite));
+                BindHint(minus.gameObject, AttributeHintId(attribute), () => 1);
+                BindHint(plus.gameObject, AttributeHintId(attribute), () => 1);
+                BindHint(_attributeValues[attribute].gameObject, AttributeHintId(attribute), () => 1);
             }
 
-            AddSourceButtonTopLeft("Skills", _window, 34, new Vector2(527f, 11f), () => { });
-            AddSourceButtonTopLeft("Technology", _window, 35, new Vector2(595f, 11f),
+            SourceUiButton hpMinus = AddSourceButtonTopLeft("Decrease Hit Points", _window, 23,
+                new Vector2(409f, 144f), () => AdjustVitality(true, -1));
+            SourceUiButton hpPlus = AddSourceButtonTopLeft("Increase Hit Points", _window, 24,
+                new Vector2(465f, 144f), () => AdjustVitality(true, 1));
+            SourceUiButton fatigueMinus = AddSourceButtonTopLeft("Decrease Fatigue", _window, 23,
+                new Vector2(409f, 214f), () => AdjustVitality(false, -1));
+            SourceUiButton fatiguePlus = AddSourceButtonTopLeft("Increase Fatigue", _window, 24,
+                new Vector2(465f, 214f), () => AdjustVitality(false, 1));
+            _hitPointValue = AddText("Hit Point Value", _window, new Rect(429f, 184f, 36f, 18f), 27, SourceWhite);
+            _fatigueValue = AddText("Fatigue Value", _window, new Rect(429f, 254f, 36f, 18f), 27, SourceWhite);
+            foreach (GameObject target in new[] { hpMinus.gameObject, hpPlus.gameObject, _hitPointValue.gameObject })
+                BindHint(target, 106, () => 1);
+            foreach (GameObject target in new[] { fatigueMinus.gameObject, fatiguePlus.gameObject, _fatigueValue.gameObject })
+                BindHint(target, 107, () => 1);
+
+            SourceUiButton skills = AddSourceButtonTopLeft("Skills", _window, 34, new Vector2(527f, 11f), () => { });
+            SourceUiButton technology = AddSourceButtonTopLeft("Technology", _window, 35, new Vector2(595f, 11f),
                 () => _controller.ShowFeedback("Technology advancement is outside UI-E.2; use the Technology route."));
-            AddSourceButtonTopLeft("Magic", _window, 36, new Vector2(663f, 11f),
+            SourceUiButton magic = AddSourceButtonTopLeft("Magic", _window, 36, new Vector2(663f, 11f),
                 () => _controller.ShowFeedback("Magic advancement is outside UI-E.2; use the Magic route."));
+            BindHint(skills.gameObject, 132, () => 0);
+            BindHint(technology.gameObject, 133, () => 0);
+            BindHint(magic.gameObject, 134, () => 0);
             AddSourceButtonTopLeft("Auto-Level Schemes", _window, 568, new Vector2(754f, 21f),
                 () => _controller.ShowFeedback("Auto-level schemes are not available in the current runtime."));
 
@@ -252,6 +275,8 @@ namespace Arcanum.Runtime.UI
             foreach (GameUiAttributeView attribute in view.Attributes)
                 SetCenteredText(_attributeValues[attribute.Attribute], attribute.Base == attribute.Effective
                     ? attribute.Base.ToString() : $"{attribute.Base}/{attribute.Effective}");
+            SetCenteredText(_hitPointValue, view.MaximumHitPoints.ToString());
+            SetCenteredText(_fatigueValue, view.MaximumFatigue.ToString());
 
             foreach (GameUiDerivedStatView stat in view.DerivedStats)
             {
@@ -322,6 +347,50 @@ namespace Arcanum.Runtime.UI
             _dirty = true;
             Synchronize();
         }
+
+        private void AdjustVitality(bool hitPoints, int delta)
+        {
+            _controller.AdjustVitalityPoint(hitPoints, delta);
+            _dirty = true;
+            Synchronize();
+        }
+
+        private void BindHint(GameObject target, int sourceMessageId, Func<int> cost)
+        {
+            if (target.GetComponent<Graphic>() == null)
+            {
+                Image hitArea = target.AddComponent<Image>();
+                hitArea.color = Color.clear;
+                hitArea.raycastTarget = true;
+            }
+            SourceHoverHintTarget hint = target.GetComponent<SourceHoverHintTarget>()
+                                         ?? target.AddComponent<SourceHoverHintTarget>();
+            hint.Bind(() => ShowHint(sourceMessageId, cost?.Invoke() ?? 0), ClearHint);
+        }
+
+        private void ShowHint(int sourceMessageId, int cost)
+        {
+            string value = _resolver.Original.TryReadMessage("mes/charedit.mes", sourceMessageId,
+                out string source) ? source : string.Empty;
+            if (cost > 0 && sourceMessageId is >= 106 and <= 116)
+                value = string.IsNullOrEmpty(value) ? $"CP cost: {cost}" : $"{value}  CP cost: {cost}";
+            SetText(_feedback, value);
+        }
+
+        private void ClearHint() => SetText(_feedback, _controller?.Feedback ?? string.Empty);
+
+        private static int AttributeHintId(CharacterAttribute attribute) => attribute switch
+        {
+            CharacterAttribute.Strength => 109,
+            CharacterAttribute.Constitution => 110,
+            CharacterAttribute.Dexterity => 111,
+            CharacterAttribute.Beauty => 112,
+            CharacterAttribute.Intelligence => 113,
+            CharacterAttribute.Willpower => 114,
+            CharacterAttribute.Perception => 115,
+            CharacterAttribute.Charisma => 116,
+            _ => -1,
+        };
 
         private void SetPortrait(int portraitId)
         {

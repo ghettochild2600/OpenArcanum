@@ -82,6 +82,25 @@ namespace Arcanum.Runtime.Character
         public bool IsConscious(ArcanumObjectId identity, bool fatigueImmune = false)
             => IsAlive(identity) && !IsUnconscious(identity, fatigueImmune);
 
+        /// <summary>Source character-editor mutation of OBJ_F_HP_PTS/OBJ_F_CRITTER_FATIGUE_PTS.</summary>
+        internal void AdjustPurchasedPoint(ArcanumObjectId identity, bool hitPoints, int delta)
+        {
+            if (delta is not (-1 or 1)) throw new ArgumentOutOfRangeException(nameof(delta));
+            PersistentCharacterVitalityState state = Get(identity);
+            CharacterVitalitySource source = state.Source;
+            int hp = source.HitPointPoints + (hitPoints ? delta : 0);
+            int fatigue = source.FatiguePoints + (hitPoints ? 0 : delta);
+            if (hp < 0 || fatigue < 0) throw new InvalidOperationException("Vitality points cannot be negative.");
+            int previousHitPoints = state.CurrentHitPoints;
+            int previousFatigue = state.CurrentFatigue;
+            state.ReplaceSource(new CharacterVitalitySource(source.Level, hp, source.HitPointAdjustment,
+                source.HitPointDamage, fatigue, source.FatigueAdjustment, source.FatigueDamage));
+            int maximumHitPoints = CalculateMaximumHitPoints(identity, state.Source);
+            int maximumFatigue = CalculateMaximumFatigue(identity, state.Source);
+            state.SynchronizeMaxima(maximumHitPoints, maximumFatigue, state.HitPointDamage, state.FatigueDamage);
+            RaiseChanged(state, previousHitPoints, previousFatigue);
+        }
+
         public void ApplyHitPointDamage(ArcanumObjectId identity, int amount)
         {
             ValidateAmount(amount);

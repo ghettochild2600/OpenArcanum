@@ -118,6 +118,10 @@ namespace Arcanum.Runtime.UI
         private SourceUiBitmapText _backgroundText;
         private SourceUiBitmapText _descriptionTitle;
         private SourceUiBitmapText _pointsText;
+        private SourceUiBitmapText _hitPointValue;
+        private SourceUiBitmapText _fatigueValue;
+        private (SourceUiButton Minus, SourceUiButton Plus) _hitPointButtons;
+        private (SourceUiButton Minus, SourceUiButton Plus) _fatigueButtons;
         private SourceUiBitmapText _identityFeedbackText;
         private SourceUiBitmapText _editorFeedbackText;
         private readonly List<SourceUiBitmapText> _identityStats = new();
@@ -288,6 +292,9 @@ namespace Arcanum.Runtime.UI
         {
             _identityBackground = AddSourceImage("Create Character Base", _identity,
                 RetailCharacterCreationLayout.IdentityBackgroundSourceId, new Rect(0f, 0f, 800f, 400f));
+            // The portrait is a 128x128 draw into a 64x64 invalidation region. Source buttons are widgets
+            // painted above that draw, so create the portrait before the overlapping arrow controls.
+            _identityPortrait = AddPortraitImage("Portrait", _identity, RetailCharacterCreationLayout.PortraitDraw);
             AddSourceButtonTopLeft("Identity Continue", _identityNavigation, 321,
                 BottomBarLocal(RetailCharacterCreationLayout.ContinueButton), ContinueToEditor);
             AddSourceButtonTopLeft("Identity Back", _identityNavigation, 323,
@@ -312,9 +319,6 @@ namespace Arcanum.Runtime.UI
             AddSourceButtonTopLeft("Next Gender", _identity, 758, MainWindowLocal(new Vector2(255f, 282f)),
                 () => CycleGender(1));
 
-            // mainmenu_ui.c dirties/fills a 64x64 rectangle but calls portrait_draw_128x128 at its origin.
-            // Fitting those pixels into the dirty rectangle makes the portrait occupy one quarter of its source area.
-            _identityPortrait = AddPortraitImage("Portrait", _identity, RetailCharacterCreationLayout.PortraitDraw);
             _nameInput = AddNameInput(_identity, RetailCharacterCreationLayout.Name);
             _genderText = AddText("Gender", _identity, RetailCharacterCreationLayout.Gender, string.Empty, 27,
                 SourceWhite);
@@ -364,7 +368,29 @@ namespace Arcanum.Runtime.UI
                 float y = RetailCharacterCreationLayout.AttributePlus[index].y + 1f;
                 _attributeValues[attribute] = AddText($"{attribute} Value", _editor,
                     new Rect(x, y, 25f, 18f), string.Empty, 27, SourceWhite);
+                BindHint(minus.gameObject, AttributeHintId(attribute), () => 1);
+                BindHint(plus.gameObject, AttributeHintId(attribute), () => 1);
+                BindHint(_attributeValues[attribute].gameObject, AttributeHintId(attribute), () => 1);
             }
+
+            SourceUiButton hpMinus = AddSourceButtonTopLeft("Decrease Hit Points", _editor, 23,
+                new Vector2(409f, 144f), () => AdjustVitality(true, -1));
+            SourceUiButton hpPlus = AddSourceButtonTopLeft("Increase Hit Points", _editor, 24,
+                new Vector2(465f, 144f), () => AdjustVitality(true, 1));
+            SourceUiButton fatigueMinus = AddSourceButtonTopLeft("Decrease Fatigue", _editor, 23,
+                new Vector2(409f, 214f), () => AdjustVitality(false, -1));
+            SourceUiButton fatiguePlus = AddSourceButtonTopLeft("Increase Fatigue", _editor, 24,
+                new Vector2(465f, 214f), () => AdjustVitality(false, 1));
+            _hitPointButtons = (hpMinus, hpPlus);
+            _fatigueButtons = (fatigueMinus, fatiguePlus);
+            _hitPointValue = AddText("Hit Point Value", _editor, new Rect(429f, 184f, 36f, 18f),
+                string.Empty, 27, SourceWhite);
+            _fatigueValue = AddText("Fatigue Value", _editor, new Rect(429f, 254f, 36f, 18f),
+                string.Empty, 27, SourceWhite);
+            foreach (GameObject target in new[] { hpMinus.gameObject, hpPlus.gameObject, _hitPointValue.gameObject })
+                BindHint(target, 106, () => 1);
+            foreach (GameObject target in new[] { fatigueMinus.gameObject, fatiguePlus.gameObject, _fatigueValue.gameObject })
+                BindHint(target, 107, () => 1);
 
             _pageButtons[RetailCreationEditorPage.Skills] = AddSourceButtonTopLeft("Skills", _editor, 34,
                 new Vector2(527f, 11f), () => SelectPage(RetailCreationEditorPage.Skills), selected: true);
@@ -372,6 +398,9 @@ namespace Arcanum.Runtime.UI
                 new Vector2(595f, 11f), () => SelectPage(RetailCreationEditorPage.Technology), selected: true);
             _pageButtons[RetailCreationEditorPage.Magic] = AddSourceButtonTopLeft("Magic", _editor, 36,
                 new Vector2(663f, 11f), () => SelectPage(RetailCreationEditorPage.Magic), selected: true);
+            BindHint(_pageButtons[RetailCreationEditorPage.Skills].gameObject, 132, () => 0);
+            BindHint(_pageButtons[RetailCreationEditorPage.Technology].gameObject, 133, () => 0);
+            BindHint(_pageButtons[RetailCreationEditorPage.Magic].gameObject, 134, () => 0);
             AddSourceButtonTopLeft("Auto-Level Schemes", _editor, 568, new Vector2(754f, 21f),
                 RejectAutoLevelSchemes);
             AddSourceButtonTopLeft("Editor Continue", _editorNavigation, 321,
@@ -404,8 +433,7 @@ namespace Arcanum.Runtime.UI
             for (int index = 0; index < Attributes.Length; index++)
             {
                 CharacterAttribute attribute = Attributes[index];
-                int effective = draft.GetAttribute(attribute)
-                                + CharacterAttributeSet.SourceAdjustment(draft.Race, draft.Gender, attribute);
+                int effective = _session.CharacterCreation.GetEffectiveAttribute(draft, attribute);
                 SetText(_identityStats[index], $"{Short(attribute)}:{effective}");
             }
             SetText(_descriptionTitle, background?.Name ?? "Background");
@@ -424,11 +452,19 @@ namespace Arcanum.Runtime.UI
             SetPortrait(_editorPortrait, draft);
             foreach (CharacterAttribute attribute in Attributes)
             {
-                SetCenteredText(_attributeValues[attribute], draft.GetAttribute(attribute).ToString(), SourceWhite);
+                int effective = _session.CharacterCreation.GetEffectiveAttribute(draft, attribute);
+                SetCenteredText(_attributeValues[attribute], effective == draft.GetAttribute(attribute)
+                    ? effective.ToString() : $"{draft.GetAttribute(attribute)}/{effective}", SourceWhite);
                 (SourceUiButton minus, SourceUiButton plus) = _attributeButtons[attribute];
                 minus.SetInteractable(CanAdjustAttribute(draft, attribute, -1));
                 plus.SetInteractable(CanAdjustAttribute(draft, attribute, 1));
             }
+            SetCenteredText(_hitPointValue, ProjectMaximumHitPoints(draft).ToString(), SourceWhite);
+            SetCenteredText(_fatigueValue, ProjectMaximumFatigue(draft).ToString(), SourceWhite);
+            _hitPointButtons.Minus.SetInteractable(CanAdjustVitality(draft, true, -1));
+            _hitPointButtons.Plus.SetInteractable(CanAdjustVitality(draft, true, 1));
+            _fatigueButtons.Minus.SetInteractable(CanAdjustVitality(draft, false, -1));
+            _fatigueButtons.Plus.SetInteractable(CanAdjustVitality(draft, false, 1));
             foreach (var pair in _pageButtons) pair.Value.SetSelected(pair.Key == EditorPage);
             SetText(_pointsText, $"Character Points: {_controller.CreationValidation.RemainingCharacterPoints}");
             SetText(_editorFeedbackText, _controller.Feedback);
@@ -469,12 +505,16 @@ namespace Arcanum.Runtime.UI
             {
                 CharacterSkill skill = (CharacterSkill)(_skillGroup * 4 + row);
                 float buttonY = 84f + 66f * row;
-                AddSourceButtonTopLeft($"Decrease {skill}", _editorPanel, 625, new Vector2(18f, buttonY),
-                    () => AdjustSkill(skill, -1)).SetInteractable(CanAdjustSkill(draft, skill, -1));
-                AddSourceButtonTopLeft($"Increase {skill}", _editorPanel, 624, new Vector2(192f, buttonY),
-                    () => AdjustSkill(skill, 1)).SetInteractable(CanAdjustSkill(draft, skill, 1));
-                AddText($"{skill} Name", _editorPanel, new Rect(17f, 63f + 66f * row, 170f, 18f),
-                    Friendly(skill), 27, SourceWhite);
+                SourceUiButton minus = AddSourceButtonTopLeft($"Decrease {skill}", _editorPanel, 625,
+                    new Vector2(18f, buttonY), () => AdjustSkill(skill, -1));
+                SourceUiButton plus = AddSourceButtonTopLeft($"Increase {skill}", _editorPanel, 624,
+                    new Vector2(192f, buttonY), () => AdjustSkill(skill, 1));
+                minus.SetInteractable(CanAdjustSkill(draft, skill, -1));
+                plus.SetInteractable(CanAdjustSkill(draft, skill, 1));
+                SourceUiBitmapText name = AddText($"{skill} Name", _editorPanel,
+                    new Rect(17f, 63f + 66f * row, 170f, 18f), Friendly(skill), 27, SourceWhite);
+                foreach (GameObject target in new[] { minus.gameObject, plus.gameObject, name.gameObject })
+                    BindHint(target, 1000 + (int)skill, () => 1);
                 int sourceLevel = draft.GetSkillPoints(skill) * CharacterSkillRules.SkillUnitsPerPoint
                                   + (CurrentBackground(draft)?.SkillModifiers.GetValueOrDefault(skill) ?? 0);
                 sourceLevel = Mathf.Clamp(sourceLevel, 0, 20);
@@ -617,6 +657,8 @@ namespace Arcanum.Runtime.UI
 
         private void AdjustAttribute(CharacterAttribute attribute, int delta)
         { _controller.AdjustCreationAttribute(attribute, delta); _editorSignature = int.MinValue; Synchronize(); }
+        private void AdjustVitality(bool hitPoints, int delta)
+        { _controller.AdjustCreationVitality(hitPoints, delta); _editorSignature = int.MinValue; Synchronize(); }
         private void AdjustSkill(CharacterSkill skill, int delta)
         { _controller.AdjustCreationSkill(skill, delta); _editorSignature = int.MinValue; Synchronize(); }
         private void AdjustSpell(int delta)
@@ -626,6 +668,11 @@ namespace Arcanum.Runtime.UI
 
         private bool CanAdjustAttribute(CharacterCreationSpecification draft, CharacterAttribute attribute, int delta)
             => ValidateProspective(draft, copy => copy.SetAttribute(attribute, copy.GetAttribute(attribute) + delta));
+        private bool CanAdjustVitality(CharacterCreationSpecification draft, bool hitPoints, int delta)
+            => ValidateProspective(draft, copy =>
+            {
+                if (hitPoints) copy.HitPointPoints += delta; else copy.FatiguePoints += delta;
+            });
         private bool CanAdjustSkill(CharacterCreationSpecification draft, CharacterSkill skill, int delta)
             => ValidateProspective(draft, copy => copy.SetSkillPoints(skill, copy.GetSkillPoints(skill) + delta));
         private bool CanAdjustSpell(CharacterCreationSpecification draft, SpellCollege college, int delta)
@@ -648,6 +695,7 @@ namespace Arcanum.Runtime.UI
             {
                 Name = source.Name, Race = source.Race, Gender = source.Gender,
                 BackgroundId = source.BackgroundId, PortraitId = source.PortraitId, Age = source.Age,
+                HitPointPoints = source.HitPointPoints, FatiguePoints = source.FatiguePoints,
             };
             foreach (CharacterAttribute value in Attributes) copy.SetAttribute(value, source.GetAttribute(value));
             foreach (CharacterSkill value in CharacterSkillRules.AllSkills)
@@ -673,6 +721,44 @@ namespace Arcanum.Runtime.UI
         private BackgroundDefinition CurrentBackground(CharacterCreationSpecification draft)
             => _session.CharacterCreation.Catalog.TryGetBackground(draft.BackgroundId, out BackgroundDefinition value)
                 ? value : null;
+
+        private int ProjectMaximumHitPoints(CharacterCreationSpecification draft)
+        {
+            int strength = _session.CharacterCreation.GetEffectiveAttribute(draft, CharacterAttribute.Strength);
+            int willpower = _session.CharacterCreation.GetEffectiveAttribute(draft, CharacterAttribute.Willpower);
+            return checked(4 * draft.HitPointPoints + willpower + 2 * (strength + 1) + 4);
+        }
+
+        private int ProjectMaximumFatigue(CharacterCreationSpecification draft)
+        {
+            int constitution = _session.CharacterCreation.GetEffectiveAttribute(draft, CharacterAttribute.Constitution);
+            int willpower = _session.CharacterCreation.GetEffectiveAttribute(draft, CharacterAttribute.Willpower);
+            return checked(4 * draft.FatiguePoints + 2 * (1 + constitution) + willpower + 4);
+        }
+
+        private void BindHint(GameObject target, int sourceMessageId, Func<int> cost)
+        {
+            if (target.GetComponent<Graphic>() == null)
+            {
+                Image hitArea = target.AddComponent<Image>();
+                hitArea.color = Color.clear;
+                hitArea.raycastTarget = true;
+            }
+            SourceHoverHintTarget hint = target.GetComponent<SourceHoverHintTarget>()
+                                         ?? target.AddComponent<SourceHoverHintTarget>();
+            hint.Bind(() => ShowHint(sourceMessageId, cost?.Invoke() ?? 0), ClearHint);
+        }
+
+        private void ShowHint(int sourceMessageId, int cost)
+        {
+            string value = _resolver.Original.TryReadMessage("mes/charedit.mes", sourceMessageId,
+                out string source) ? source : string.Empty;
+            if (cost > 0 && sourceMessageId is >= 106 and <= 116)
+                value = string.IsNullOrEmpty(value) ? $"CP cost: {cost}" : $"{value}  CP cost: {cost}";
+            SetText(_editorFeedbackText, value);
+        }
+
+        private void ClearHint() => SetText(_editorFeedbackText, _controller?.Feedback ?? string.Empty);
 
         private InputField AddNameInput(RectTransform parent, Rect rect)
         {
@@ -871,6 +957,8 @@ namespace Arcanum.Runtime.UI
                 hash = hash * 31 + (int)value.Gender;
                 hash = hash * 31 + value.PortraitId;
                 hash = hash * 31 + value.BackgroundId;
+                hash = hash * 31 + value.HitPointPoints;
+                hash = hash * 31 + value.FatiguePoints;
                 foreach (CharacterAttribute item in Attributes) hash = hash * 31 + value.GetAttribute(item);
                 foreach (CharacterSkill item in CharacterSkillRules.AllSkills)
                     hash = hash * 31 + value.GetSkillPoints(item);
@@ -889,6 +977,19 @@ namespace Arcanum.Runtime.UI
             CharacterAttribute.Constitution => "CN", CharacterAttribute.Beauty => "BE",
             CharacterAttribute.Intelligence => "IN", CharacterAttribute.Perception => "PE",
             CharacterAttribute.Willpower => "WP", CharacterAttribute.Charisma => "CH", _ => "?",
+        };
+
+        private static int AttributeHintId(CharacterAttribute attribute) => attribute switch
+        {
+            CharacterAttribute.Strength => 109,
+            CharacterAttribute.Constitution => 110,
+            CharacterAttribute.Dexterity => 111,
+            CharacterAttribute.Beauty => 112,
+            CharacterAttribute.Intelligence => 113,
+            CharacterAttribute.Willpower => 114,
+            CharacterAttribute.Perception => 115,
+            CharacterAttribute.Charisma => 116,
+            _ => -1,
         };
 
         private static string Friendly(Enum value)

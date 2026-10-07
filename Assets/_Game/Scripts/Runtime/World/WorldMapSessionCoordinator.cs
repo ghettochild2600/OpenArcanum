@@ -815,6 +815,14 @@ namespace Arcanum.Runtime.World
             return item != null;
         }
 
+        /// <summary>Authoritative source-grid move used by Inventory drag/drop.</summary>
+        public bool TrySetInventoryLocation(ArcanumObjectId owner, ArcanumObjectId item, int location)
+            => InventoryCapacity.TrySetInventoryLocation(owner, item, location);
+
+        /// <summary>Authoritative source arrange command; presentation owns no item positions.</summary>
+        public bool ArrangeInventory(ArcanumObjectId owner)
+            => InventoryCapacity.ArrangeInventory(owner);
+
         /// <summary>Finds the stable source-shaped ammo stack used by the bounded ranged transaction.</summary>
         public bool TryGetAmmo(ArcanumObjectId owner, int ammoType, int quantity,
             out PersistentObjectState ammo)

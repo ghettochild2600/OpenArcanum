@@ -175,6 +175,7 @@ namespace Arcanum.Runtime.UI
         private readonly SourceUiButton[] _skillActionButtons = new SourceUiButton[4];
         private readonly SourceUiBitmapText[] _sleepLabels = new SourceUiBitmapText[8];
         private readonly SourceUiButton[] _sleepButtons = new SourceUiButton[8];
+        private readonly Button[] _sleepRows = new Button[8];
         private SourceUiButton _combatButton;
         private Camera _managedCamera;
         private Rect _originalCameraRect;
@@ -374,7 +375,8 @@ namespace Arcanum.Runtime.UI
             _mapButton = AddScreenButton("Map", _topWindow, 193, 78f, 2f, GameUiScreen.Map);
             _inventoryButton = AddScreenButton("Inventory", _topWindow, 186, 115f, 2f, GameUiScreen.Inventory);
             _fateButton = AddButton("Fate", _topWindow, 137, 157f, 9f, () => _controller.ToggleFatePanel());
-            _sleepButton = AddButton("Sleep", _topWindow, 137, 605f, 9f, () => _controller.ToggleSleepPanel());
+            _sleepButton = AddButton("Sleep", _topWindow, 137, 605f, 9f,
+                () => _controller.ToggleSleepPanel(), hasPressedFrame: false);
             AddButton("Skills", _bottomWindow, 472, 693f, 456f - 441f,
                 () => _controller.ToggleSkillsPanel());
             AddScreenButton("Spells", _bottomWindow, 473, 649f, 494f - 441f, GameUiScreen.Magic);
@@ -470,6 +472,9 @@ namespace Arcanum.Runtime.UI
                     Mathf.Max(1f, width - 11f), 18f), label, 229);
                 int captured = index;
                 AddButton($"Fate Choice {index}", _fatePanel, 293, 223f, 4f + 18f * index,
+                    () => _controller.ActivateFate((FateChoice)captured), hasPressedFrame: false);
+                AddChoiceHitArea($"Fate Row {index}", _fatePanel,
+                    new Rect(7f, 2f + 18f * index, Mathf.Max(1f, width - 10f), 18f),
                     () => _controller.ActivateFate((FateChoice)captured));
             }
             _fatePanel.gameObject.SetActive(false);
@@ -492,7 +497,10 @@ namespace Arcanum.Runtime.UI
                     Mathf.Max(1f, width - 36f), 18f), label, 229);
                 int captured = index;
                 _sleepButtons[index] = AddButton($"Sleep Choice {index}", _sleepPanel, 293, 8f,
-                    3f + 18f * index, () => _controller.Sleep((SleepOption)captured));
+                    3f + 18f * index, () => _controller.Sleep((SleepOption)captured), hasPressedFrame: false);
+                _sleepRows[index] = AddChoiceHitArea($"Sleep Row {index}", _sleepPanel,
+                    new Rect(5f, 2f + 18f * index, Mathf.Max(1f, width - 8f), 18f),
+                    () => _controller.Sleep((SleepOption)captured));
             }
             _sleepPanel.gameObject.SetActive(false);
         }
@@ -533,6 +541,7 @@ namespace Arcanum.Runtime.UI
                 bool active = !wait || index < waitFallback.Length;
                 _sleepLabels[index].gameObject.SetActive(active);
                 _sleepButtons[index].gameObject.SetActive(active);
+                _sleepRows[index].gameObject.SetActive(active);
                 if (!active) continue;
                 string fallback = wait ? waitFallback[index] : sleepFallback[index];
                 int message = wait ? index + 12 : index;
@@ -552,6 +561,17 @@ namespace Arcanum.Runtime.UI
         private string SourceMessage(string path, int key, string fallback)
             => _resolver.Original.TryReadMessage(path, key, out string value)
                 && !string.IsNullOrWhiteSpace(value) ? value : fallback;
+
+        private static Button AddChoiceHitArea(string name, RectTransform parent, Rect rect, Action clicked)
+        {
+            RectTransform target = AddRect(name, parent, rect);
+            Image image = target.gameObject.AddComponent<Image>();
+            image.color = Color.clear;
+            Button button = target.gameObject.AddComponent<Button>();
+            button.transition = Selectable.Transition.None;
+            button.onClick.AddListener(() => clicked());
+            return button;
+        }
 
         private void AddQuickSlot(RectTransform parent, int index)
         {

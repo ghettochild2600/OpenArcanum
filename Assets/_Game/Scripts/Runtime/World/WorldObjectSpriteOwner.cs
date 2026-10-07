@@ -42,7 +42,7 @@ namespace Arcanum.Runtime.World
             if (_animator == null || _sourceFrames == null || _sourceFrames.Length < 2 || _worldObject == null)
                 return 0f;
             float progress = 0f;
-            int fps = SourceLocomotionTiming.AdjustedWalkFramesPerSecond(FramesPerSecond, speed, _worldObject.ArtId);
+            int fps = SourceLocomotionTiming.AdjustedFramesPerSecond(FramesPerSecond, speed, _worldObject.ArtId);
             _animator.AdvanceManual(deltaSeconds, fps, frameIndex =>
             {
                 ArtFrame frame = _sourceFrames[frameIndex];

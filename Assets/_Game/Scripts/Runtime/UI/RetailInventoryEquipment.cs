@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Arcanum.Formats.Objects;
 using Arcanum.Runtime.World;
 using OpenArcanum.UI;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.UI;
 using Object = UnityEngine.Object;
 
@@ -28,17 +30,32 @@ namespace Arcanum.Runtime.UI
     {
         public const int PaperDollSourceId = 223;
         public const int InventorySourceId = 221;
+        public const int PcLensFrameSourceId = 233;
+        public const int ArrangeSourceId = 340;
+        public const int TotalAttackSourceId = 676;
+        public const int TotalDefenseSourceId = 677;
         public const int GridColumns = 10;
         public const int GridRows = 12;
         public const float CellSize = 32f;
 
         public static readonly Rect Window = new(0f, 41f, 800f, 400f);
-        public static readonly Rect PaperDoll = new(0f, 0f, 358f, 400f);
+        public static readonly Rect PaperDoll = new(0f, 0f, 800f, 400f);
         public static readonly Rect Inventory = new(358f, 0f, 442f, 400f);
         public static readonly Rect InventoryGrid = new(368f, 8f, 320f, 384f);
+        public static readonly Rect PcLens = new(11f, 9f, 89f, 89f);
         public static readonly Rect WeightText = new(145f, 29f, 185f, 15f);
         public static readonly Rect EncumbranceText = new(145f, 44f, 185f, 15f);
         public static readonly Rect SpeedText = new(145f, 59f, 185f, 15f);
+        public static readonly Rect AttackIcon = new(29f, 318f, 48f, 75f);
+        public static readonly Rect DefenseIcon = new(254f, 319f, 48f, 74f);
+        public static readonly Rect AttackValue = new(80f, 358f, 23f, 35f);
+        public static readonly Rect DefenseValue = new(261f, 358f, 23f, 35f);
+        public static readonly Rect ArrangeButton = new(763f, 197f, 32f, 32f);
+        public static readonly Rect[] CounterRects =
+        {
+            new(729f, 70f, 58f, 20f), new(729f, 93f, 58f, 20f), new(729f, 116f, 58f, 20f),
+            new(729f, 139f, 58f, 20f), new(729f, 162f, 58f, 20f),
+        };
 
         public static readonly RetailEquipmentSlotDefinition[] EquipmentSlots =
         {
@@ -88,9 +105,13 @@ namespace Arcanum.Runtime.UI
         private RectTransform _dynamicLayer;
         private SourceUiImage _paperDoll;
         private SourceUiImage _inventory;
+        private RetailPcLensView _pcLens;
         private SourceUiBitmapText _weight;
         private SourceUiBitmapText _encumbrance;
         private SourceUiBitmapText _speed;
+        private SourceUiBitmapText _attack;
+        private SourceUiBitmapText _defense;
+        private readonly SourceUiBitmapText[] _counters = new SourceUiBitmapText[5];
         private readonly Dictionary<WornLocation, Button> _equipmentButtons = new();
         private readonly List<Image> _selectionHighlights = new();
         private IReadOnlyList<GameUiItemView> _projectedItems = Array.Empty<GameUiItemView>();
@@ -172,10 +193,29 @@ namespace Arcanum.Runtime.UI
             _inventory = AddSourceImage("Inventory Grid Panel", _window,
                 RetailInventoryEquipmentLayout.InventorySourceId, RetailInventoryEquipmentLayout.Inventory);
 
+            RectTransform lens = AddRect("Live PC Lens", _window, RetailInventoryEquipmentLayout.PcLens);
+            _pcLens = lens.gameObject.AddComponent<RetailPcLensView>();
+            _pcLens.Bind(_session);
+            AddSourceImage("PC Lens Frame", _window, RetailInventoryEquipmentLayout.PcLensFrameSourceId,
+                RetailInventoryEquipmentLayout.PcLens);
+
             RectTransform blocker = AddRect("Inventory Input", _window, new Rect(0f, 0f, 800f, 400f));
             Image blockerImage = blocker.gameObject.AddComponent<Image>();
             blockerImage.color = Color.clear;
             blockerImage.raycastTarget = true;
+
+            AddSourceButton("Arrange Items", _window, RetailInventoryEquipmentLayout.ArrangeSourceId,
+                RetailInventoryEquipmentLayout.ArrangeButton, () =>
+                {
+                    _controller.ArrangeInventory();
+                    _dirty = true;
+                    Synchronize();
+                });
+
+            AddSourceImage("Total Attack", _window, RetailInventoryEquipmentLayout.TotalAttackSourceId,
+                RetailInventoryEquipmentLayout.AttackIcon);
+            AddSourceImage("Total Defense", _window, RetailInventoryEquipmentLayout.TotalDefenseSourceId,
+                RetailInventoryEquipmentLayout.DefenseIcon);
 
             foreach (RetailEquipmentSlotDefinition slot in RetailInventoryEquipmentLayout.EquipmentSlots)
             {
@@ -188,6 +228,11 @@ namespace Arcanum.Runtime.UI
             _weight = AddText("Weight", _window, RetailInventoryEquipmentLayout.WeightText);
             _encumbrance = AddText("Encumbrance", _window, RetailInventoryEquipmentLayout.EncumbranceText);
             _speed = AddText("Speed", _window, RetailInventoryEquipmentLayout.SpeedText);
+            _attack = AddText("Attack Value", _window, RetailInventoryEquipmentLayout.AttackValue);
+            _defense = AddText("Defense Value", _window, RetailInventoryEquipmentLayout.DefenseValue);
+            for (int index = 0; index < _counters.Length; index++)
+                _counters[index] = AddText($"Counter {index}", _window,
+                    RetailInventoryEquipmentLayout.CounterRects[index]);
             _dynamicLayer = AddRect("Inventory Items", _window, new Rect(0f, 0f, 800f, 400f));
         }
 
@@ -220,6 +265,10 @@ namespace Arcanum.Runtime.UI
             Button button = root.gameObject.AddComponent<Button>();
             button.transition = Selectable.Transition.None;
             button.onClick.AddListener(() => OnItem(item, equipped));
+            SourceHoverHintTarget hint = root.gameObject.AddComponent<SourceHoverHintTarget>();
+            hint.Bind(() => _controller.InspectItem(item.Identity), null);
+            RetailInventoryItemDragTarget drag = root.gameObject.AddComponent<RetailInventoryItemDragTarget>();
+            drag.Bind(_window, item.Identity, equipped, OnInventoryDrop);
 
             if (item.InventoryArtId.HasValue
                 && _resolver.Original.TryResolveInventoryItem(item.InventoryArtId.Value,
@@ -279,6 +328,22 @@ namespace Arcanum.Runtime.UI
             Synchronize();
         }
 
+        private void OnInventoryDrop(ArcanumObjectId item, bool equipped, Vector2 screenPosition,
+            Camera eventCamera)
+        {
+            if (equipped || !RectTransformUtility.ScreenPointToLocalPointInRectangle(
+                    _window, screenPosition, eventCamera, out Vector2 local)) return;
+            float x = local.x - RetailInventoryEquipmentLayout.InventoryGrid.x;
+            float y = -local.y - RetailInventoryEquipmentLayout.InventoryGrid.y;
+            if (x < 0f || y < 0f || x >= RetailInventoryEquipmentLayout.InventoryGrid.width
+                || y >= RetailInventoryEquipmentLayout.InventoryGrid.height) return;
+            int column = Mathf.FloorToInt(x / RetailInventoryEquipmentLayout.CellSize);
+            int row = Mathf.FloorToInt(y / RetailInventoryEquipmentLayout.CellSize);
+            if (_controller.MoveInventoryItem(item, row * RetailInventoryEquipmentLayout.GridColumns + column))
+                _dirty = true;
+            Synchronize();
+        }
+
         private void RefreshSelection()
         {
             for (int index = 0; index < _selectionHighlights.Count && index < _projectedItems.Count; index++)
@@ -288,11 +353,28 @@ namespace Arcanum.Runtime.UI
 
         private void RefreshSummary()
         {
-            GameUiCharacterView character = _controller.ProjectCharacter();
-            if (character == null) return;
-            SetText(_weight, $"Weight {character.CarriedWeight}/{character.CarryCapacity}");
-            SetText(_encumbrance, character.CarriedWeight <= character.CarryCapacity ? "Unencumbered" : "Encumbered");
-            SetText(_speed, "Inventory");
+            GameUiInventorySummaryView summary = _controller.ProjectInventorySummary();
+            if (summary == null) return;
+            SetText(_weight, $"{SourceMessage(9, "Weight")}: {summary.Weight} {SourceMessage(6, "stones")}");
+            SetText(_encumbrance, $"{SourceMessage(10, "Encumbrance")}: "
+                                  + $"{EncumbranceName(summary.EncumbranceLevel)} ({summary.EncumbranceThreshold})");
+            SetText(_speed, $"{SourceMessage(11, "Speed")}: {summary.Speed}");
+            SetText(_attack, summary.TotalAttack.ToString());
+            SetText(_defense, summary.TotalDefense.ToString());
+            SetText(_counters[0], summary.Gold.ToString());
+            for (int index = 0; index < 4; index++)
+                SetText(_counters[index + 1], summary.Ammunition[index].ToString());
+        }
+
+        private string SourceMessage(int id, string fallback)
+            => _resolver.Original.TryReadMessage("mes/inven_ui.mes", id, out string value)
+                && !string.IsNullOrWhiteSpace(value) ? value : fallback;
+
+        private string EncumbranceName(int level)
+        {
+            string[] fallback = { "Unencumbered", "Light", "Moderate", "Medium", "Significant", "Heavy", "Severe" };
+            return _resolver.Original.TryReadMessage("mes/critter.mes", level + 18, out string value)
+                   && !string.IsNullOrWhiteSpace(value) ? value : fallback[Mathf.Clamp(level, 0, 6)];
         }
 
         private void Invalidate()
@@ -326,6 +408,22 @@ namespace Arcanum.Runtime.UI
             image.raycastTarget = false;
             SourceUiImage source = target.gameObject.AddComponent<SourceUiImage>();
             source.Bind(_resolver, new UiAssetKey(sourceId));
+            return source;
+        }
+
+        private SourceUiButton AddSourceButton(string name, RectTransform parent, int sourceId, Rect rect,
+            Action clicked)
+        {
+            Vector2 size = _resolver.TryResolve(new UiAssetKey(sourceId), out UiResolvedAsset asset)
+                ? asset.LogicalSize : rect.size;
+            RectTransform target = AddRect(name, parent, new Rect(rect.position, size));
+            target.gameObject.AddComponent<Image>();
+            target.gameObject.AddComponent<Button>();
+            target.gameObject.AddComponent<SourceUiImage>();
+            SourceUiButton source = target.gameObject.AddComponent<SourceUiButton>();
+            source.Bind(_resolver, new UiAssetKey(sourceId, frame: 0), new UiAssetKey(sourceId, frame: 1),
+                new UiAssetKey(sourceId, frame: 2), new UiAssetKey(sourceId, frame: 0));
+            source.Button.onClick.AddListener(() => clicked());
             return source;
         }
 
@@ -392,9 +490,13 @@ namespace Arcanum.Runtime.UI
             _dynamicLayer = null;
             _paperDoll = null;
             _inventory = null;
+            _pcLens = null;
             _weight = null;
             _encumbrance = null;
             _speed = null;
+            _attack = null;
+            _defense = null;
+            Array.Clear(_counters, 0, _counters.Length);
             _equipmentButtons.Clear();
             _selectionHighlights.Clear();
             _projectedItems = Array.Empty<GameUiItemView>();
@@ -405,5 +507,77 @@ namespace Arcanum.Runtime.UI
             _projectionSignature = int.MinValue;
             _dirty = true;
         }
+    }
+
+    /// <summary>Live projection of the currently rendered PC sprite into the source 89x89 lens.</summary>
+    [DisallowMultipleComponent]
+    public sealed class RetailPcLensView : MonoBehaviour
+    {
+        private WorldMapSessionCoordinator _session;
+        private Image _image;
+        private RectTransform _imageRect;
+
+        public Sprite CurrentSprite => _image != null ? _image.sprite : null;
+
+        public void Bind(WorldMapSessionCoordinator session)
+        {
+            _session = session ?? throw new ArgumentNullException(nameof(session));
+            RectTransform root = (RectTransform)transform;
+            Image maskImage = gameObject.AddComponent<Image>();
+            maskImage.color = Color.black;
+            maskImage.raycastTarget = false;
+            gameObject.AddComponent<RectMask2D>();
+            var child = new GameObject("Live PC Sprite", typeof(RectTransform), typeof(Image));
+            _imageRect = child.GetComponent<RectTransform>();
+            _imageRect.SetParent(root, false);
+            _imageRect.anchorMin = _imageRect.anchorMax = new Vector2(.5f, .5f);
+            _imageRect.pivot = new Vector2(.5f, .5f);
+            _imageRect.anchoredPosition = new Vector2(0f, -8f);
+            _imageRect.sizeDelta = new Vector2(80f, 104f);
+            _image = child.GetComponent<Image>();
+            _image.preserveAspect = true;
+            _image.raycastTarget = false;
+            Refresh();
+        }
+
+        private void LateUpdate() => Refresh();
+
+        private void Refresh()
+        {
+            if (_image == null || _session?.PlayerState == null
+                || !_session.TryGetLoadedObject(_session.PlayerState.Identity, out WorldObject player)
+                || player.View == null)
+            {
+                if (_image != null) _image.enabled = false;
+                return;
+            }
+            _image.enabled = true;
+            _image.sprite = player.View.sprite;
+            _image.color = player.View.color;
+            _imageRect.localScale = new Vector3(player.View.flipX ? -1f : 1f, 1f, 1f);
+        }
+    }
+
+    [DisallowMultipleComponent]
+    public sealed class RetailInventoryItemDragTarget : MonoBehaviour, IBeginDragHandler, IEndDragHandler
+    {
+        private RectTransform _window;
+        private ArcanumObjectId _item;
+        private bool _equipped;
+        private Action<ArcanumObjectId, bool, Vector2, Camera> _dropped;
+
+        public void Bind(RectTransform window, ArcanumObjectId item, bool equipped,
+            Action<ArcanumObjectId, bool, Vector2, Camera> dropped)
+        {
+            _window = window;
+            _item = item;
+            _equipped = equipped;
+            _dropped = dropped;
+        }
+
+        public void OnBeginDrag(PointerEventData eventData) { }
+
+        public void OnEndDrag(PointerEventData eventData)
+            => _dropped?.Invoke(_item, _equipped, eventData.position, eventData.pressEventCamera);
     }
 }

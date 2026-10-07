@@ -87,6 +87,8 @@ namespace Arcanum.Runtime.Creation
         public int BackgroundId { get; set; }
         public int PortraitId { get; set; } = 1005;
         public int Age { get; set; } = CharacterCreationRules.SourceStartingAge;
+        public int HitPointPoints { get; set; }
+        public int FatiguePoints { get; set; }
 
         public int GetAttribute(CharacterAttribute attribute) => _attributes[(int)attribute];
         public void SetAttribute(CharacterAttribute attribute, int value) => _attributes[(int)attribute] = value;
@@ -273,6 +275,15 @@ namespace Arcanum.Runtime.Creation
             => _portraits.TryGetValue(id, out PortraitDefinition portrait)
                && portrait.Race == race && portrait.Gender == gender;
 
+        /// <summary>Retail <c>portrait_find_first</c> searches engine portraits in ascending source ID.</summary>
+        public PortraitDefinition FindFirstPortrait(CharacterRace race, CharacterGender gender)
+            => _portraits.Values.OrderBy(value => value.Id)
+                .FirstOrDefault(value => value.Race == race && value.Gender == gender);
+
+        public IReadOnlyList<PortraitDefinition> GetLegalPortraits(CharacterRace race, CharacterGender gender)
+            => _portraits.Values.Where(value => value.Race == race && value.Gender == gender)
+                .OrderBy(value => value.Id).ToArray();
+
         public static CharacterCreationCatalog FromMes(MesFile backgroundRules, MesFile backgroundText,
             MesFile effects, MesFile portraits, MapList maps, MesFile gameLevelNames = null,
             MesFile mainMenu = null)
@@ -365,9 +376,9 @@ namespace Arcanum.Runtime.Creation
                 "HU" => CharacterRace.Human,
                 "DW" => CharacterRace.Dwarf,
                 "EL" => CharacterRace.Elf,
-                "HA" => CharacterRace.HalfElf,
+                "HA" => CharacterRace.Halfling,
                 "GN" => CharacterRace.Gnome,
-                "HE" => CharacterRace.Halfling,
+                "HE" => CharacterRace.HalfElf,
                 "HO" => CharacterRace.HalfOrc,
                 "HG" => CharacterRace.HalfOgre,
                 _ => (CharacterRace)(-1),
@@ -472,6 +483,8 @@ namespace Arcanum.Runtime.Creation
         public BackgroundDefinition Background { get; }
         public int PortraitId { get; }
         public int Age { get; }
+        public int HitPointPoints { get; }
+        public int FatiguePoints { get; }
         public int SpentCharacterPoints { get; }
         public int RemainingCharacterPoints { get; }
         public int PregeneratedSourceIndex { get; }
@@ -486,6 +499,7 @@ namespace Arcanum.Runtime.Creation
             Spells = source.CopySpells(); Technology = source.CopyTechnology();
             Name = source.Name.Trim(); Race = source.Race; Gender = source.Gender;
             Background = background; PortraitId = source.PortraitId; Age = source.Age;
+            HitPointPoints = source.HitPointPoints; FatiguePoints = source.FatiguePoints;
             SpentCharacterPoints = spent;
             RemainingCharacterPoints = CharacterCreationRules.StartingCharacterPoints - spent;
             PregeneratedSourceIndex = 0;
@@ -517,6 +531,8 @@ namespace Arcanum.Runtime.Creation
             Background = background;
             PortraitId = source.PortraitId;
             Age = prototype.StatBase.Length > 25 ? prototype.StatBase[25] : CharacterCreationRules.SourceStartingAge;
+            HitPointPoints = Math.Max(0, prototype.HpPoints.GetValueOrDefault());
+            FatiguePoints = Math.Max(0, prototype.FatiguePoints.GetValueOrDefault());
             SpentCharacterPoints = Math.Max(0,
                 CharacterCreationRules.StartingCharacterPoints - progression.UnspentCharacterPoints);
             RemainingCharacterPoints = progression.UnspentCharacterPoints;
@@ -578,6 +594,10 @@ namespace Arcanum.Runtime.Creation
                     return Fail(CharacterCreationFailure.InvalidAttribute, "An attribute is outside its creation bounds.");
                 spent = checked(spent + value - CharacterAttributeSet.SourceDefault);
             }
+            if (source.HitPointPoints < 0 || source.FatiguePoints < 0)
+                return Fail(CharacterCreationFailure.InvalidAttribute,
+                    "HP and Fatigue point purchases cannot be negative.");
+            spent = checked(spent + source.HitPointPoints + source.FatiguePoints);
             for (int i = 0; i < CharacterSkillRules.SkillCount; i++)
             {
                 CharacterSkill skill = (CharacterSkill)i;
@@ -747,7 +767,8 @@ namespace Arcanum.Runtime.Creation
                 value.Technology.Sum() + value.Background.TechnologyPointModifier));
             var derived = new CharacterDerivedSource(0, resistances, 0, magicPoints, techPoints,
                 hasInstanceStatOverride: true, hasInstanceResistanceOverride: true);
-            var vitality = new CharacterVitalitySource(1, 0, 0, 0, 0, 0, 0);
+            var vitality = new CharacterVitalitySource(1, value.HitPointPoints, 0, 0,
+                value.FatiguePoints, 0, 0);
             var spellTech = new int[25];
             Array.Copy(value.Spells, spellTech, value.Spells.Length);
             spellTech[16] = -1;
@@ -863,6 +884,24 @@ namespace Arcanum.Runtime.Creation
                         + background.AttributeModifiers.GetValueOrDefault(attribute);
             return Math.Max(CharacterAttributeSet.SourceMinimum,
                 Math.Min(CharacterAttributeSet.SourceMaximumFor(source.Race, attribute), value));
+        }
+
+        /// <summary>Candidate stat projection after the currently selected source background effect.</summary>
+        public int GetEffectiveAttribute(CharacterCreationSpecification source, CharacterAttribute attribute)
+        {
+            if (source == null) return 0;
+            if (Catalog == null || !Catalog.TryGetBackground(source.BackgroundId,
+                    out BackgroundDefinition background)) return source.GetAttribute(attribute);
+            return EffectiveAttribute(source, background, attribute);
+        }
+
+        public int GetEffectiveSkillRank(CharacterCreationSpecification source, CharacterSkill skill)
+        {
+            if (source == null) return 0;
+            int modifier = Catalog != null && Catalog.TryGetBackground(source.BackgroundId,
+                out BackgroundDefinition background) ? background.SkillModifiers.GetValueOrDefault(skill) : 0;
+            return Math.Max(0, checked(source.GetSkillPoints(skill) * CharacterSkillRules.SkillUnitsPerPoint
+                                       + modifier));
         }
 
         private static CharacterCreationValidationResult Fail(CharacterCreationFailure failure, string message,

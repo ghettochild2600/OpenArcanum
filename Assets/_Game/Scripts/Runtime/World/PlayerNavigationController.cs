@@ -16,7 +16,8 @@ namespace Arcanum.Runtime.World
     {
         private const int StandAnimation = 0;
         private const int WalkAnimation = 1;
-        private const int RunAnimation = 2;
+        // tig/art.h: WALK=1 and RUN=6. Animation 2 is not the retail running locomotion family.
+        private const int RunAnimation = 6;
 
         [SerializeField] private string playerObjectId;
 

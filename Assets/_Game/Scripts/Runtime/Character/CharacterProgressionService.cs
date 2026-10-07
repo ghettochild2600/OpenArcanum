@@ -109,6 +109,7 @@ namespace Arcanum.Runtime.Character
         public int GetUnspentCharacterPoints(ArcanumObjectId identity) => Get(identity).UnspentCharacterPoints;
 
         internal void SpendCharacterPoint(ArcanumObjectId identity) => Get(identity).SpendCharacterPoint();
+        internal void RefundCharacterPoint(ArcanumObjectId identity) => Get(identity).RefundCharacterPoint();
 
         public static int GetExperienceForLevel(int level)
         {

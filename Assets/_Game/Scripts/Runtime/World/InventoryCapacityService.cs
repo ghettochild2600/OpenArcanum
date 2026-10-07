@@ -256,6 +256,48 @@ namespace Arcanum.Runtime.World
             return FindFirstFit(BuildGrid(owner, rows, excludedIdentity), rows, footprint);
         }
 
+        /// <summary>Moves one ordinary contained item to an exact source grid origin after a full footprint check.</summary>
+        internal bool TrySetInventoryLocation(ArcanumObjectId owner, ArcanumObjectId itemIdentity, int location)
+        {
+            PersistentObjectState item = Item(itemIdentity);
+            if (item.ParentIdentity != owner || item.Placement.Kind != ObjectPlacementKind.Contained)
+                return false;
+            RequireOwner(owner, out ObjectType ownerType);
+            int rows = ownerType == ObjectType.Container ? ContainerGridRows : CritterGridRows;
+            bool[] grid = BuildGrid(owner, rows, itemIdentity);
+            if (!Fits(grid, rows, location, item.InventoryFootprint)) return false;
+            item.InventoryLocation = location;
+            return true;
+        }
+
+        /// <summary>
+        /// Source <c>item_arrange_inventory</c>: ignore worn items, order by descending height then width,
+        /// and pack into the first horizontal free location.  All locations are preflighted before commit.
+        /// </summary>
+        internal bool ArrangeInventory(ArcanumObjectId owner)
+        {
+            RequireOwner(owner, out ObjectType ownerType);
+            int rows = ownerType == ObjectType.Container ? ContainerGridRows : CritterGridRows;
+            List<PersistentObjectState> items = _session.States.Values
+                .Where(value => value.ParentIdentity == owner
+                                && value.Placement.Kind == ObjectPlacementKind.Contained)
+                .OrderByDescending(value => value.InventoryFootprint.Height)
+                .ThenByDescending(value => value.InventoryFootprint.Width)
+                .ThenBy(value => value.Identity.Key, StringComparer.Ordinal)
+                .ToList();
+            var locations = new int[items.Count];
+            var grid = new bool[GridColumns * rows];
+            for (int index = 0; index < items.Count; index++)
+            {
+                int location = FindFirstFit(grid, rows, items[index].InventoryFootprint);
+                if (location < 0) return false;
+                locations[index] = location;
+                Mark(grid, location, items[index].InventoryFootprint);
+            }
+            for (int index = 0; index < items.Count; index++) items[index].InventoryLocation = locations[index];
+            return true;
+        }
+
         internal static long TotalWeight(ObjectType type, int unitWeight, int? quantity)
         {
             if (type == ObjectType.Gold) return 0;

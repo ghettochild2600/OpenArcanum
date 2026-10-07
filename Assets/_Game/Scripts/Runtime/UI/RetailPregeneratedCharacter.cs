@@ -92,12 +92,15 @@ namespace Arcanum.Runtime.UI
             _window = AddRect("Pregenerated Window", modal, SourceWindow);
             _background = AddSourceImage("Pregenerated Base", _window, BackgroundSourceId,
                 new Rect(0f, 0f, 800f, 400f));
+
+            // mainmenu_ui draws the portrait before it creates the four source buttons.  Keeping
+            // that order is significant: the 128x128 portrait intentionally intersects the
+            // button rectangles, but the buttons (and their complete hit targets) remain on top.
+            _portrait = AddImage("Portrait 128x128", PortraitDraw);
             AddButton("Start", 321, new Vector2(675f, 55f), () => _controller.FinalizePregeneratedCharacter());
             AddButton("Back", 323, new Vector2(69f, 55f), () => _controller.Open(GameUiScreen.MainMenu));
             AddButton("Previous Portrait", 283, new Vector2(43f, 118f), () => Cycle(-1));
             AddButton("Next Portrait", 284, new Vector2(244f, 118f), () => Cycle(1));
-
-            _portrait = AddImage("Portrait 128x128", PortraitDraw);
             _name = AddText("Name", new Rect(46f, 183f, 228f, 18f), 27, SourceYellow);
             _gender = AddText("Gender", RetailCharacterCreationLayout.Gender, 27, SourceWhite);
             _race = AddText("Race", RetailCharacterCreationLayout.Race, 27, SourceWhite);

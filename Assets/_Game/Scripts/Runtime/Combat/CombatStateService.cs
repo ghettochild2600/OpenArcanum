@@ -592,10 +592,12 @@ namespace Arcanum.Runtime.Combat
         private readonly List<Vector2Int> _route = new();
         private SectorNavigationMap _navigationMap;
         private ICombatRandom _random;
+        private ArcanumObjectId _combatReadyActor;
 
         public CombatLifecycle Lifecycle { get; private set; }
         public CombatMode Mode { get; private set; } = CombatMode.TurnBased;
         public bool IsActive => Lifecycle == CombatLifecycle.Active;
+        public bool IsCombatModeActive => IsActive || !_combatReadyActor.IsNull;
         public IReadOnlyList<CombatParticipant> Participants => _participants;
         public IReadOnlyCollection<ArcanumObjectId> EngagedParticipants => _engaged;
         public ArcanumObjectId CurrentParticipant { get; private set; }
@@ -732,6 +734,7 @@ namespace Arcanum.Runtime.Combat
             SortSourceOrder(pending);
 
             Lifecycle = CombatLifecycle.Starting;
+            _combatReadyActor = default;
             _world.Dialogue.Cancel("Combat started.");
             _participants.AddRange(pending);
             _engaged.UnionWith(pendingEngagement);
@@ -744,6 +747,32 @@ namespace Arcanum.Runtime.Combat
             Lifecycle = CombatLifecycle.Active;
             return Success();
         }
+
+        /// <summary>
+        /// Source <c>combat_critter_activate_combat_mode</c>. With an eligible nearby hostile this enters the
+        /// existing encounter kernel; otherwise the session authority retains the PC's combat-ready stance.
+        /// </summary>
+        public CombatResult ActivateCombatMode(ArcanumObjectId actor)
+        {
+            if (IsCombatModeActive) return Fail(CombatFailure.AlreadyActive);
+            if (!TryValidateActor(actor, out _, out CombatFailure failure)) return Fail(failure);
+            CombatActorSource? hostile = FindNearestSourceHostile(actor);
+            if (hostile.HasValue) return StartCombat(actor, hostile.Value.Identity, CombatMode.TurnBased);
+            _combatReadyActor = actor;
+            return Success();
+        }
+
+        public CombatResult DeactivateCombatMode(ArcanumObjectId actor)
+        {
+            if (IsActive) return EndCombat(actor);
+            if (_combatReadyActor.IsNull) return Fail(CombatFailure.Inactive);
+            if (_combatReadyActor != actor) return Fail(CombatFailure.InvalidActor);
+            _combatReadyActor = default;
+            return Success();
+        }
+
+        public CombatResult ToggleCombatReadiness(ArcanumObjectId actor)
+            => IsCombatModeActive ? DeactivateCombatMode(actor) : ActivateCombatMode(actor);
 
         /// <summary>Source Space-key combat-mode switch. Roster and committed world state stay authoritative.</summary>
         public CombatResult ToggleMode(ArcanumObjectId actor)
@@ -1993,6 +2022,20 @@ namespace Arcanum.Runtime.Combat
             }
         }
 
+        private CombatActorSource? FindNearestSourceHostile(ArcanumObjectId pc)
+        {
+            if (!TryGetCombatPosition(pc, out Vector2Int pcPosition)) return null;
+            int perception = _world.Characters.GetEffectiveAttribute(pc, CharacterAttribute.Perception);
+            int range = Math.Max(10, perception / 2 + 5);
+            return _sources.Values.Where(source => source.ObjectType == ObjectType.Npc
+                                                   && IsEligible(source) && IsSourceHostile(source)
+                                                   && TryGetCombatPosition(source.Identity, out Vector2Int position)
+                                                   && Math.Abs(position.x - pcPosition.x) <= range
+                                                   && Math.Abs(position.y - pcPosition.y) <= range)
+                .OrderBy(source => source.SourceOrder).ThenBy(source => source.Identity.Key, StringComparer.Ordinal)
+                .Cast<CombatActorSource?>().FirstOrDefault();
+        }
+
         private bool IsSourceHostile(CombatActorSource source)
         {
             if (_world.PlayerState == null || _world.Party.IsMember(source.Identity)
@@ -2028,6 +2071,7 @@ namespace Arcanum.Runtime.Combat
             LastAttackResult = null;
             AttackResolutionSequence = 0;
             Mode = CombatMode.TurnBased;
+            _combatReadyActor = default;
             Lifecycle = CombatLifecycle.Inactive;
         }
 
