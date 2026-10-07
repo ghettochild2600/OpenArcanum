@@ -17,6 +17,24 @@ namespace Arcanum.Runtime.Save
         public EconomySaveData Economy { get; set; }
         public SocialSaveData Social { get; set; }
         public CharacterCreationSaveData CharacterCreation { get; set; }
+        public GameplayHudSaveData GameplayHud { get; set; }
+    }
+
+    /// <summary>Optional UI-C.4 authority added inside the compatible V1 envelope.</summary>
+    public sealed class GameplayHudSaveData
+    {
+        public int FatePoints { get; set; }
+        public int ActiveFateFlags { get; set; }
+        public int PrimaryNotifications { get; set; }
+        public List<RecentActionSaveData> RecentActions { get; set; }
+    }
+
+    public sealed class RecentActionSaveData
+    {
+        public int Kind { get; set; }
+        public int SourceId { get; set; }
+        public int IconSourceId { get; set; }
+        public string PreferredItemIdentity { get; set; }
     }
 
     /// <summary>Optional M12B identity metadata added without changing the compatible V1 envelope.</summary>

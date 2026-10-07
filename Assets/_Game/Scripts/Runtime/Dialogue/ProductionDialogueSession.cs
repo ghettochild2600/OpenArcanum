@@ -887,7 +887,7 @@ namespace Arcanum.Runtime.Dialogue
             if (!result.Succeeded) throw new InvalidOperationException($"Item transfer failed: {result.Code}.");
         }
         public void GiveXp(int questId) => throw Outside(nameof(GiveXp));
-        public void GiveFatePoint() => throw Outside(nameof(GiveFatePoint));
+        public void GiveFatePoint() => _world.GameplayHud.GrantFatePoint();
         public void StartCombat()
         {
             _world.Social.SetHostile(_npc, _pc);

@@ -29,6 +29,8 @@ namespace Arcanum.Runtime.UI
         Default, Move, Use, Attack, Invalid, Item, SpellTarget, TechnologyTarget, MerchantTarget,
     }
 
+    public enum GameUiHudPanel { None, Fate, Sleep }
+
     public sealed class GameUiHudView
     {
         public int HitPoints { get; internal set; }
@@ -44,6 +46,14 @@ namespace Arcanum.Runtime.UI
         public string Readiness { get; internal set; }
         public int MaintainedSpellSlotCapacity { get; internal set; }
         public IReadOnlyList<ActiveSpellEffect> ActiveEffects { get; internal set; }
+        public int FatePoints { get; internal set; }
+        public int ContextQuantity { get; internal set; }
+        public int ContextIconSourceId { get; internal set; }
+        public int ExperienceGaugeValue { get; internal set; }
+        public long SourceTimeMilliseconds { get; internal set; }
+        public bool UsesWorldMapButton { get; internal set; }
+        public HudPrimaryNotification PrimaryNotifications { get; internal set; }
+        public IReadOnlyList<RecentActionBinding> RecentActions { get; internal set; }
     }
 
     public sealed class GameUiItemView
@@ -171,6 +181,8 @@ namespace Arcanum.Runtime.UI
         public bool HasPlayer => _session.PlayerState != null;
         public ArcanumObjectId Player => _session.PlayerState?.Identity ?? default;
         public bool IsModalOpen => Screen != GameUiScreen.None;
+        public GameUiHudPanel HudPanel { get; private set; }
+        public bool IsHudPanelOpen => HudPanel != GameUiHudPanel.None;
 
         public GameUiController(WorldMapSessionCoordinator session, ISessionSaveSlotOperations saveOperations = null,
             CombatUiController combat = null)
@@ -189,6 +201,7 @@ namespace Arcanum.Runtime.UI
             Combat.Refresh();
             if (!HasPlayer)
             {
+                HudPanel = GameUiHudPanel.None;
                 if (Screen is not (GameUiScreen.MainMenu or GameUiScreen.CharacterCreation or GameUiScreen.SaveLoad
                     or GameUiScreen.Options))
                     Screen = GameUiScreen.MainMenu;
@@ -219,6 +232,7 @@ namespace Arcanum.Runtime.UI
                 && screen is not (GameUiScreen.Dialogue or GameUiScreen.SaveLoad))
                 return Reject("The interface is locked while another combatant acts.");
             SaveLoad.Close();
+            HudPanel = GameUiHudPanel.None;
             Screen = screen;
             CursorMode = GameUiCursorMode.Default;
             SelectedItem = default;
@@ -227,6 +241,7 @@ namespace Arcanum.Runtime.UI
             _character = screen is GameUiScreen.Character or GameUiScreen.Skills ? Player : default;
             Feedback = string.Empty;
             if (screen == GameUiScreen.SaveLoad) SaveLoad.Open(SaveLoadPanelMode.Save);
+            ClearPrimaryNotification(screen);
             _audio?.PresentInterface(screen is GameUiScreen.Journal or GameUiScreen.Map
                 ? InterfaceAudioCue.BookOpen : InterfaceAudioCue.WindowOpen);
             return true;
@@ -339,6 +354,12 @@ namespace Arcanum.Runtime.UI
 
         public void Close()
         {
+            if (HudPanel != GameUiHudPanel.None)
+            {
+                HudPanel = GameUiHudPanel.None;
+                Feedback = string.Empty;
+                return;
+            }
             bool wasOpen = Screen != GameUiScreen.None;
             SaveLoad.Close();
             Screen = GameUiScreen.None;
@@ -366,7 +387,11 @@ namespace Arcanum.Runtime.UI
         public bool AutoLoad()
         {
             SessionSaveSlotResult result = _saveOperations.LoadSlot("auto");
-            if (result.Succeeded) Refresh();
+            if (result.Succeeded)
+            {
+                HudPanel = GameUiHudPanel.None;
+                Refresh();
+            }
             return Complete(result.Succeeded, result.Succeeded ? "Auto-save loaded." : result.Message ?? result.Failure.ToString());
         }
 
@@ -423,9 +448,11 @@ namespace Arcanum.Runtime.UI
         {
             QuickSlotBinding binding = _session.Shortcuts.Get(index);
             bool succeeded;
+            ArcanumObjectId resolvedItem = default;
             switch (binding.Kind)
             {
                 case QuickSlotKind.Item when _session.Shortcuts.TryResolveItem(index, out ArcanumObjectId item):
+                    resolvedItem = item;
                     if (!_session.TryGetObjectState(item, out PersistentObjectState state))
                         return Reject("The assigned item is unavailable.");
                     succeeded = PhaseOneTechnologyCatalog.TryGetItem(state.PrototypeNumber, out _)
@@ -441,14 +468,83 @@ namespace Arcanum.Runtime.UI
                 default:
                     return Reject("The assigned action is unavailable.");
             }
-            if (succeeded) _session.Shortcuts.MarkActivated(index);
+            if (succeeded)
+            {
+                _session.Shortcuts.MarkActivated(index);
+                _session.GameplayHud.RecordRecentAction(binding, resolvedItem);
+            }
             return succeeded;
         }
 
-        public bool ActivateRecentAction()
-            => _session.Shortcuts.ActiveSlot >= 0
-                ? ActivateQuickSlot(_session.Shortcuts.ActiveSlot)
-                : Reject("No active action has been used yet.");
+        public bool ActivateRecentAction(int index = 0)
+        {
+            if (index < 0 || index >= _session.GameplayHud.RecentActions.Count)
+                return Reject("That recent action is unavailable.");
+            RecentActionBinding binding = _session.GameplayHud.RecentActions[index];
+            switch (binding.Kind)
+            {
+                case RecentActionKind.Item when _session.GameplayHud.TryResolveRecentItem(index, out ArcanumObjectId item):
+                    if (!_session.TryGetObjectState(item, out PersistentObjectState state))
+                        return Reject("The recent item is unavailable.");
+                    bool itemResult = PhaseOneTechnologyCatalog.TryGetItem(state.PrototypeNumber, out _)
+                        ? UseTechnology(item, Player)
+                        : WorldMapSessionCoordinator.TryGetNaturalWornLocation(state, out _) && Equip(item);
+                    if (itemResult) _session.GameplayHud.RecordRecentAction(
+                        new QuickSlotBinding(QuickSlotKind.Item, item, state.PrototypeNumber), item);
+                    return itemResult;
+                case RecentActionKind.Spell when PhaseOneSpellCatalog.TryGet(binding.SourceId, out SpellDefinition spell):
+                    bool spellResult;
+                    if (spell.AllowsSelf) spellResult = CastSpell(spell.Id, Player);
+                    else { BeginSpellTargeting(spell.Id); spellResult = true; }
+                    if (spellResult) _session.GameplayHud.RecordRecentAction(
+                        new QuickSlotBinding(QuickSlotKind.Spell, default, spell.Id));
+                    return spellResult;
+                case RecentActionKind.Skill:
+                    return Reject("That source skill action is not available in the current runtime.");
+                default:
+                    return Reject("The recent action is unavailable.");
+            }
+        }
+
+        public bool ToggleFatePanel()
+        {
+            if (HudPanel == GameUiHudPanel.Fate) { HudPanel = GameUiHudPanel.None; return true; }
+            if (!HasPlayer || !_session.Vitality.IsAlive(Player)) return Reject("Fate is unavailable.");
+            CloseScreenForHudPanel();
+            HudPanel = GameUiHudPanel.Fate;
+            Feedback = string.Empty;
+            return true;
+        }
+
+        public bool ActivateFate(FateChoice choice)
+        {
+            FateResult result = _session.GameplayHud.ActivateFate(choice);
+            return Complete(result.Succeeded, result.Succeeded ? "Fate invoked." : result.Failure switch
+            {
+                FateFailure.InsufficientPoints => "No Fate Points remain.",
+                FateFailure.UnsupportedDeferredEffect => "That deferred Fate effect has no exact runtime resolution path.",
+                _ => result.Failure.ToString(),
+            });
+        }
+
+        public bool ToggleSleepPanel()
+        {
+            if (HudPanel == GameUiHudPanel.Sleep) { HudPanel = GameUiHudPanel.None; return true; }
+            SleepFailure preview = _session.GameplayHud.PreviewSleep();
+            if (preview != SleepFailure.None) return Reject(SleepFailureMessage(preview));
+            CloseScreenForHudPanel();
+            HudPanel = GameUiHudPanel.Sleep;
+            Feedback = string.Empty;
+            return true;
+        }
+
+        public bool Sleep(SleepOption option)
+        {
+            SleepResult result = _session.GameplayHud.Sleep(option);
+            if (!result.Succeeded) return Reject(SleepFailureMessage(result.Failure));
+            HudPanel = GameUiHudPanel.None;
+            return Complete(true, $"Rested for {result.HoursAdvanced} hour{(result.HoursAdvanced == 1 ? string.Empty : "s")}.");
+        }
 
         private static string SlotLabel(int index) => index == 9 ? "0" : (index + 1).ToString();
 
@@ -470,18 +566,33 @@ namespace Arcanum.Runtime.UI
                 return null;
             string weapon = "Unarmed";
             int ammunition = 0;
+            int contextQuantity = _session.GetGold(Player);
+            int contextIcon = 474;
             if (_session.TryGetEquippedItem(Player, WornLocation.Weapon, out PersistentObjectState item))
             {
                 weapon = ItemName(item);
                 if (item.WeaponData?.UsesAmmo == true
                     && _session.TryGetAmmo(Player, item.WeaponData.AmmoType, 1, out PersistentObjectState ammo))
+                {
                     ammunition = ammo.StackQuantity.GetValueOrDefault();
+                    contextQuantity = ammunition;
+                    contextIcon = item.WeaponData.AmmoType is >= 0 and <= 3
+                        ? 250 + item.WeaponData.AmmoType : 474;
+                }
+                else if (item.WeaponData?.UsesAmmo == false)
+                {
+                    int mana = _session.ResolvePrototype(item.PrototypeNumber)?.SpellMana ?? 0;
+                    if (mana > 0) { contextQuantity = mana; contextIcon = 469; }
+                }
             }
             string readiness = "READY";
             if (_session.Combat.IsActive && _session.Combat.Mode == CombatMode.TurnBased)
                 readiness = _session.Combat.CurrentParticipant == Player ? "READY" : "WAIT";
             else if (_session.Combat.IsActive)
                 readiness = Combat.IsRealTimeBusy ? "BUSY" : Combat.IsRealTimeReady ? "READY" : "RECOVERING";
+            PersistentCharacterProgressionState progression = _session.Progression.Get(Player);
+            int gauge = ExperienceGaugeValue(progression);
+            bool worldMap = _session.TryGetCurrentMapId(out int currentMapId) && currentMapId == 1;
             return new GameUiHudView
             {
                 HitPoints = vitality.CurrentHitPoints, MaximumHitPoints = vitality.MaximumHitPoints,
@@ -493,9 +604,62 @@ namespace Arcanum.Runtime.UI
                 Readiness = readiness,
                 MaintainedSpellSlotCapacity = Math.Clamp(_session.Characters.GetEffectiveAttribute(
                     Player, CharacterAttribute.Intelligence) / 4, 0, 5),
-                ActiveEffects = _session.Magic.ActiveEffects.Where(value => value.Target == Player).ToArray(),
+                ActiveEffects = _session.Magic.ActiveEffects.Where(value => value.Caster == Player
+                        && PhaseOneSpellCatalog.TryGet(value.SpellId, out SpellDefinition spell) && spell.Maintained)
+                    .OrderBy(value => value.Id).ToArray(),
+                FatePoints = _session.GameplayHud.FatePoints,
+                ContextQuantity = contextQuantity,
+                ContextIconSourceId = contextIcon,
+                ExperienceGaugeValue = gauge,
+                SourceTimeMilliseconds = _session.SourceTime.ElapsedMilliseconds,
+                UsesWorldMapButton = worldMap,
+                PrimaryNotifications = _session.GameplayHud.Notifications,
+                RecentActions = _session.GameplayHud.RecentActions.ToArray(),
             };
         }
+
+        private static int ExperienceGaugeValue(PersistentCharacterProgressionState progression)
+        {
+            if (progression.Level < 1) return 0;
+            if (progression.Level >= CharacterProgressionService.MaximumPlayableLevel) return 0;
+            int current = CharacterProgressionService.GetExperienceForLevel(progression.Level);
+            int next = CharacterProgressionService.GetExperienceForLevel(progression.Level + 1);
+            if (next <= current) return 999;
+            int progress = Math.Clamp(1000 * (progression.Experience - current) / (next - current), 0, 999);
+            return 11 * progress / 10;
+        }
+
+        private void CloseScreenForHudPanel()
+        {
+            if (Screen == GameUiScreen.None) return;
+            SaveLoad.Close();
+            Screen = GameUiScreen.None;
+            CursorMode = GameUiCursorMode.Default;
+            SelectedItem = default;
+            SelectedWorldTarget = default;
+        }
+
+        private void ClearPrimaryNotification(GameUiScreen screen)
+        {
+            HudPrimaryNotification notification = screen switch
+            {
+                GameUiScreen.Character => HudPrimaryNotification.Character,
+                GameUiScreen.Journal => HudPrimaryNotification.Logbook,
+                GameUiScreen.Map => HudPrimaryNotification.TownMap | HudPrimaryNotification.WorldMap,
+                GameUiScreen.Inventory => HudPrimaryNotification.Inventory,
+                _ => HudPrimaryNotification.None,
+            };
+            if (notification != HudPrimaryNotification.None) _session.GameplayHud.ClearNotification(notification);
+        }
+
+        private static string SleepFailureMessage(SleepFailure failure) => failure switch
+        {
+            SleepFailure.Dead => "The dead cannot sleep.",
+            SleepFailure.Unconscious => "You are unconscious already.",
+            SleepFailure.CombatActive => "You cannot sleep with enemies near.",
+            SleepFailure.UnsupportedLocation => "You cannot wait here; town waitability and bed use are not yet represented.",
+            _ => failure.ToString(),
+        };
 
         public IReadOnlyList<GameUiItemView> ProjectInventory(ArcanumObjectId owner = default)
         {

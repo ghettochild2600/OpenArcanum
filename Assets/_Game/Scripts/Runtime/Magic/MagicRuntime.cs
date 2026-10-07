@@ -23,6 +23,7 @@ namespace Arcanum.Runtime.Magic
     public sealed class SpellDefinition
     {
         public int Id { get; }
+        public int IconSourceId { get; }
         public string Name { get; }
         public SpellCollege College { get; }
         public int Rank { get; }
@@ -48,7 +49,7 @@ namespace Arcanum.Runtime.Magic
         public CharacterAttribute? ResistanceAttribute { get; }
         public int ResistanceModifier { get; }
 
-        public SpellDefinition(int id, string name, SpellTargetClass targetClass,
+        public SpellDefinition(int id, int iconSourceId, string name, SpellTargetClass targetClass,
             SpellEffectFamily effectFamily, SpellDisposition disposition, int baseFatigueCost,
             int actionPointCost, int range, bool allowsSelf, int minimumMagnitude = 0,
             int maximumMagnitude = 0, bool maintained = false, int upkeepFatigueCost = 0,
@@ -59,6 +60,7 @@ namespace Arcanum.Runtime.Magic
         {
             if (id < 0 || id >= 80) throw new ArgumentOutOfRangeException(nameof(id));
             Id = id;
+            IconSourceId = iconSourceId;
             Name = name ?? throw new ArgumentNullException(nameof(name));
             College = (SpellCollege)(id / 5);
             Rank = id % 5 + 1;
@@ -99,19 +101,19 @@ namespace Arcanum.Runtime.Magic
         private static readonly IReadOnlyDictionary<int, SpellDefinition> Definitions =
             new Dictionary<int, SpellDefinition>
             {
-                [StrengthOfEarth] = new(StrengthOfEarth, "Strength of Earth",
+                [StrengthOfEarth] = new(StrengthOfEarth, 93, "Strength of Earth",
                     SpellTargetClass.LivingCritter, SpellEffectFamily.AttributeModifier,
                     SpellDisposition.Friendly, 5, SourceSpellActionPointCost, SourceDefaultRange, true,
                     maintained: true, upkeepFatigueCost: 1, upkeepPeriodMilliseconds: 80_000,
                     modifiedAttribute: CharacterAttribute.Strength, attributeMagnitude: 4),
-                [Harm] = new(Harm, "Harm", SpellTargetClass.LivingCritter,
+                [Harm] = new(Harm, 105, "Harm", SpellTargetClass.LivingCritter,
                     SpellEffectFamily.DirectDamage, SpellDisposition.Aggressive, 5,
                     SourceSpellActionPointCost, SourceDefaultRange, false, 3, 40),
-                [MinorHealing] = new(MinorHealing, "Minor Healing",
+                [MinorHealing] = new(MinorHealing, 111, "Minor Healing",
                     SpellTargetClass.DamagedLivingCritter, SpellEffectFamily.Healing,
                     SpellDisposition.Friendly, 5, SourceSpellActionPointCost,
                     SourceDefaultRange, true, 5, 30),
-                [Flash] = new(Flash, "Flash", SpellTargetClass.LivingCritter,
+                [Flash] = new(Flash, 82, "Flash", SpellTargetClass.LivingCritter,
                     SpellEffectFamily.CritterFlag, SpellDisposition.Aggressive, 10,
                     SourceSpellActionPointCost, SourceDefaultRange, true,
                     runtimeCritterFlag: 0x00000080, durationSourceMilliseconds: 80_000,

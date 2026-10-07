@@ -16,6 +16,7 @@ using Arcanum.Runtime.Economy;
 using Arcanum.Runtime.Social;
 using Arcanum.Runtime.Crafting;
 using Arcanum.Runtime.Creation;
+using Arcanum.Runtime.UI;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Serialization;
 using UnityEngine;
@@ -101,6 +102,7 @@ namespace Arcanum.Runtime.Save
         internal EconomySaveData Economy;
         internal SocialSaveData Social;
         internal CharacterCreationSaveData CharacterCreation;
+        internal GameplayHudSaveData GameplayHud;
     }
 
     /// <summary>Versioned, presentation-independent persistence for the bounded M1-M5 session state.</summary>
@@ -292,6 +294,7 @@ namespace Arcanum.Runtime.Save
                 Economy = _session.Economy.ExportSaveData(),
                 Social = _session.Social.ExportSaveData(),
                 CharacterCreation = _session.CharacterCreation.ExportSaveData(),
+                GameplayHud = _session.GameplayHud.ExportSaveData(),
                 Party = new PartySaveData
                 {
                     LeaderIdentity = _session.Party.Leader.Key,
@@ -482,6 +485,18 @@ namespace Arcanum.Runtime.Save
             if (!result.Succeeded) { plan = null; return result; }
             result = BuildParty(data.Party, plan);
             if (!result.Succeeded) { plan = null; return result; }
+            result = BuildGameplayHud(data.GameplayHud, plan);
+            if (!result.Succeeded) { plan = null; return result; }
+            return new SessionLoadResult(SessionLoadFailure.None);
+        }
+
+        private static SessionLoadResult BuildGameplayHud(GameplayHudSaveData data, SessionRestorePlan plan)
+        {
+            // Earlier V1 saves legitimately have no UI-C.4 HUD domain.
+            if (!GameplayHudStateService.ValidateSaveData(data, plan.Objects, plan.Player.Identity,
+                    out string error))
+                return Failure(SessionLoadFailure.InvalidCharacter, error);
+            plan.GameplayHud = data;
             return new SessionLoadResult(SessionLoadFailure.None);
         }
 

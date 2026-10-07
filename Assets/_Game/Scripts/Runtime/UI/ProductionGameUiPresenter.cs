@@ -141,7 +141,8 @@ namespace Arcanum.Runtime.UI
                 Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift),
                 Input.GetKey(KeyCode.LeftAlt) || Input.GetKey(KeyCode.RightAlt));
             var context = new ProductionKeyboardContext(Controller.Screen, Controller.HasPlayer,
-                Controller.Screen == GameUiScreen.CharacterCreation, _session.Combat.IsActive, _session.Combat.Mode);
+                Controller.Screen == GameUiScreen.CharacterCreation, _session.Combat.IsActive, _session.Combat.Mode,
+                Controller.IsHudPanelOpen);
             foreach (KeyCode key in UpKeys)
                 if (Input.GetKeyUp(key)) _keyboard.Dispatch(key, ProductionKeyPhase.Up, context, this);
             foreach (KeyCode key in DownKeys)
@@ -184,6 +185,8 @@ namespace Arcanum.Runtime.UI
         void IProductionKeyboardCommands.ToggleAttackTalkMode() => Controller.ToggleAttackTalkMode();
         void IProductionKeyboardCommands.ActivateQuickSlot(int index) => Controller.ActivateQuickSlot(index);
         void IProductionKeyboardCommands.ActivateRecentAction() => Controller.ActivateRecentAction();
+        void IProductionKeyboardCommands.ToggleSleep() => Controller.ToggleSleepPanel();
+        void IProductionKeyboardCommands.ToggleFate() => Controller.ToggleFatePanel();
         void IProductionKeyboardCommands.SetCalledLocation(CombatCalledLocation location)
             => Controller.Combat.SetCalledLocation(location);
         void IProductionKeyboardCommands.AutoSave() => Controller.AutoSave();

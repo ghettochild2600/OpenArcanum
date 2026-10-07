@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.IO;
 using System.Linq;
+using Arcanum.Formats.Objects;
 using Arcanum.Runtime.Character;
 using Arcanum.Runtime.Creation;
 using Arcanum.Runtime.Magic;
@@ -143,6 +144,62 @@ namespace OpenArcanum.Editor
                           RetailGameplayHudLayout.GameplayCameraViewport(Screen.width, Screen.height)),
                     "camera renders behind the transparent source composition");
 
+                SourceUiButton characterButton = FindSourceButton("Character");
+                SourceUiButton logbookButton = FindSourceButton("Logbook");
+                SourceUiButton mapButton = FindSourceButton("Map");
+                SourceUiButton inventoryButton = FindSourceButton("Inventory");
+                HudPrimaryNotification initialNotifications = hud.PrimaryNotifications;
+                Check(characterButton.CurrentPresentationKey.SourceId ==
+                          (hud.PrimaryNotifications.HasFlag(HudPrimaryNotification.Character) ? 561 : 169)
+                      && logbookButton.CurrentPresentationKey.SourceId ==
+                          (hud.PrimaryNotifications.HasFlag(HudPrimaryNotification.Logbook) ? 560 : 187)
+                      && mapButton.CurrentPresentationKey.SourceId ==
+                          (hud.PrimaryNotifications.HasFlag(HudPrimaryNotification.WorldMap) ? 195 : 194)
+                      && inventoryButton.CurrentPresentationKey.SourceId ==
+                          (hud.PrimaryNotifications.HasFlag(HudPrimaryNotification.Inventory) ? 559 : 186),
+                    "fresh-game primary buttons project source normal/highlight art from notification authority");
+                Check(hud.PrimaryNotifications.HasFlag(HudPrimaryNotification.Inventory),
+                    "fresh starting-item placement raises the source inventory notification");
+                SourceUiBitmapText fateCounter = view.GetComponentsInChildren<SourceUiBitmapText>(true)
+                    .Single(value => value.name == "Fate Counter Text");
+                Check(fateCounter.FontSourceId == 171 && fateCounter.Text == "00",
+                    "fresh-game Fate counter is the source two-digit zero value");
+                SourceUiBitmapText contextCounter = view.GetComponentsInChildren<SourceUiBitmapText>(true)
+                    .Single(value => value.name == "Context Counter Text");
+                Check(contextCounter.Text.Length == 6 && view.LastProjection.ContextIconSourceId == 474,
+                    "unarmed fresh game projects the source six-digit Gold counter and Gold icon");
+
+                foreach ((string name, GameUiScreen screen) in new[]
+                         {
+                             ("Character", GameUiScreen.Character), ("Logbook", GameUiScreen.Journal),
+                             ("Map", GameUiScreen.Map),
+                         })
+                {
+                    FindButton(name).onClick.Invoke();
+                    Check(controller.Screen == screen, name + " pointer route opens the authoritative screen");
+                    controller.Close();
+                }
+                var keyboardContext = new ProductionKeyboardContext(GameUiScreen.None, true, false,
+                    false, default);
+                foreach ((KeyCode key, GameUiScreen screen) in new[]
+                         {
+                             (KeyCode.C, GameUiScreen.Character), (KeyCode.L, GameUiScreen.Journal),
+                             (KeyCode.W, GameUiScreen.Map), (KeyCode.I, GameUiScreen.Inventory),
+                         })
+                {
+                    Check(presenter.Keyboard.Dispatch(key, ProductionKeyPhase.Down, keyboardContext, presenter),
+                        key + " keyboard route dispatches");
+                    Check(controller.Screen == screen, key + " opens the same authoritative screen");
+                    controller.Close();
+                }
+                view.Synchronize(true);
+                Check(!session.GameplayHud.HasNotification(HudPrimaryNotification.Character
+                                                           | HudPrimaryNotification.Logbook
+                                                           | HudPrimaryNotification.TownMap
+                                                           | HudPrimaryNotification.WorldMap
+                                                           | HudPrimaryNotification.Inventory),
+                    "opening each primary screen clears its source notification state");
+
                 Button inventory = FindButton("Inventory");
                 inventory.onClick.Invoke();
                 view.Synchronize(true);
@@ -210,6 +267,65 @@ namespace OpenArcanum.Editor
                 view.Synchronize(true);
                 Check(session.Shortcuts.ActiveSlot == 0 && view.LastProjection.Fatigue < fatigue,
                     "quick-slot activation commits only through existing magic/vitality authority");
+                SourceUiImage firstMaintained = view.GetComponentsInChildren<SourceUiImage>(true)
+                    .Single(value => value.name == "Maintained Spell Slot 1");
+                Check(firstMaintained.Key.SourceId == 93 && session.Magic.ActiveEffects.Count == 1,
+                    "authoritative maintained Strength of Earth occupies slot one with source icon 93");
+                SourceUiImage recentAction = view.GetComponentsInChildren<SourceUiImage>(true)
+                    .Single(value => value.name == "Recent Action 1");
+                Check(recentAction.Key.SourceId == 93
+                      && session.GameplayHud.RecentActions[0].SourceId == PhaseOneSpellCatalog.StrengthOfEarth,
+                    "successful spell action advances the source recent-action queue");
+                firstMaintained.GetComponent<Button>().onClick.Invoke();
+                view.Synchronize(true);
+                Check(session.Magic.ActiveEffects.Count == 0 && firstMaintained.Key.SourceId == 188,
+                    "clicking the maintained icon cancels through M10A and restores the open source slot");
+
+                ArcanumObjectId player = session.PlayerState.Identity;
+                Check(controller.ActivateQuickSlot(0), "maintained spell can be re-established for sleep proof");
+                session.Vitality.ApplyHitPointDamage(player, 6);
+                session.Vitality.ApplyFatigueDamage(player, 6);
+                int hpBeforeSleep = session.Vitality.GetCurrentHitPoints(player);
+                int fatigueBeforeSleep = session.Vitality.GetCurrentFatigue(player);
+                long timeBeforeSleep = session.SourceTime.ElapsedMilliseconds;
+                FindButton("Sleep").onClick.Invoke();
+                Check(controller.HudPanel == GameUiHudPanel.Sleep,
+                    "source Sleep button opens the bounded authoritative sleep panel");
+                FindButton("Sleep Choice 0").onClick.Invoke();
+                view.Synchronize(true);
+                Check(controller.HudPanel == GameUiHudPanel.None
+                      && session.SourceTime.ElapsedMilliseconds == timeBeforeSleep + 3_600_000
+                      && session.Vitality.GetCurrentHitPoints(player) > hpBeforeSleep
+                      && session.Vitality.GetCurrentFatigue(player) > fatigueBeforeSleep
+                      && session.Magic.ActiveEffects.Count == 0,
+                    "one-hour wilderness sleep advances SourceTime, heals, restores fatigue, and demaintains once");
+
+                session.GameplayHud.GrantFatePoint();
+                session.Vitality.ApplyHitPointDamage(player, 4);
+                session.Vitality.ApplyFatigueDamage(player, 4);
+                FindButton("Fate").onClick.Invoke();
+                view.Synchronize(true);
+                Check(controller.HudPanel == GameUiHudPanel.Fate && fateCounter.Text == "01",
+                    "source Fate button exposes the saved authoritative point");
+                FindButton("Fate Choice 0").onClick.Invoke();
+                view.Synchronize(true);
+                Check(session.GameplayHud.FatePoints == 0 && fateCounter.Text == "00"
+                      && session.Vitality.GetCurrentHitPoints(player) == session.Vitality.GetMaximumHitPoints(player)
+                      && session.Vitality.GetCurrentFatigue(player) == session.Vitality.GetMaximumFatigue(player),
+                    "source Full Heal Fate choice spends once and restores authoritative vitality");
+
+                session.SourceTime.Advance(4 * 3_600_000);
+                view.Synchronize(true);
+                Check(view.ClockPeriod == RetailClockPeriod.Evening, "clock reaches source evening state");
+                session.SourceTime.Advance(4 * 3_600_000);
+                view.Synchronize(true);
+                Check(view.ClockPeriod == RetailClockPeriod.Night, "clock reaches source night state");
+                session.SourceTime.Advance(9 * 3_600_000);
+                view.Synchronize(true);
+                Check(view.ClockPeriod == RetailClockPeriod.Morning, "clock reaches source morning state");
+                session.SourceTime.Advance(6 * 3_600_000);
+                view.Synchronize(true);
+                Check(view.ClockPeriod == RetailClockPeriod.Midday, "clock returns to source midday state");
 
                 PersistentObjectState combatTarget = session.States.Values
                     .Where(value => value.Identity != session.PlayerState.Identity
@@ -326,8 +442,12 @@ namespace OpenArcanum.Editor
                       && Object.FindObjectsByType<EventSystem>(FindObjectsSortMode.None).Length == 1,
                     "rebuild leaves one HUD, one inventory, one gameplay cursor, and one EventSystem");
 
-                Debug.Log("UI-C.3/UI-E.1 PHYSICAL VALIDATION: PASS; fresh New Game=crash-site START_MAP 1; "
+                Debug.Log("UI-C.4 PHYSICAL VALIDATION: PASS; fresh New Game=crash-site START_MAP 1; "
                           + "source HUD=185 top 800x41 + 184 bottom 800x159; world=full-screen; "
+                          + $"initial notifications={initialNotifications}; primary pointer+keyboard routes/clear=PASS; "
+                          + "Fate=00>01>Full Heal>00; maintained icon/cancel=PASS; "
+                          + "sleep=1h SourceTime/recovery/demaintain; clock=midday/evening/night/morning/midday; "
+                          + "context=Gold six-digit/icon474; recent spell action=icon93; "
                           + "counter=Cloister18/three-digit/centered; maintained apertures=5/5 source-filled; "
                           + "source Inventory=223+221/800x400; grid/equip/unequip/selection/bind=PASS; "
                           + "quick slot spell activation=PASS; combat state=PASS; "
@@ -346,6 +466,10 @@ namespace OpenArcanum.Editor
 
         private static Button FindButton(string name)
             => Object.FindObjectsByType<Button>(FindObjectsInactive.Include, FindObjectsSortMode.None)
+                .Single(value => value.name == name);
+
+        private static SourceUiButton FindSourceButton(string name)
+            => Object.FindObjectsByType<SourceUiButton>(FindObjectsInactive.Include, FindObjectsSortMode.None)
                 .Single(value => value.name == name);
 
         private static T Require<T>(T value, string description) where T : class

@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using Arcanum.Formats.Objects;
+using Arcanum.Runtime.Magic;
 using Arcanum.Runtime.World;
 using OpenArcanum.UI;
 using UnityEngine;
@@ -32,9 +34,18 @@ namespace Arcanum.Runtime.UI
         public static readonly Rect FatigueBar = new Rect(754f, 473f, 28f, 88f);
         public static readonly Rect HealthCounter = new Rect(15f, 578f, 29f, 12f);
         public static readonly Rect FatigueCounter = new Rect(755f, 578f, 27f, 12f);
+        public static readonly Rect FateCounter = new Rect(190f, 17f, 24f, 12f);
+        public static readonly Rect ContextCounter = new Rect(104f, 512f, 50f, 20f);
+        public static readonly Rect ClockFrame = new Rect(648f, 5f, 128f, 30f);
         public static readonly Rect MessageWindow = new Rect(196f, 492f, 410f, 107f);
         public static readonly Rect MessageText = new Rect(211f, 503f, 383f, 82f);
         public static readonly Rect AmmoButton = new Rect(61f, 509f, 37f, 24f);
+        public static readonly Rect[] RecentActions =
+            { new Rect(69f, 548f, 32f, 32f), new Rect(114f, 548f, 32f, 32f) };
+        public static readonly int[] ExperienceSegmentSourceIds =
+            { 773, 774, 775, 776, 777, 778, 779, 780, 781, 782 };
+        public static readonly float[] ExperienceSegmentX =
+            { 211f, 249f, 287f, 327f, 365f, 403f, 439f, 478f, 516f, 555f };
 
         public static readonly int[] QuickSlotSourceIds =
             { 173, 174, 175, 176, 177, 178, 179, 180, 181, 172 };
@@ -112,6 +123,8 @@ namespace Arcanum.Runtime.UI
         public bool Active { get; internal set; }
     }
 
+    public enum RetailClockPeriod { Morning, Midday, Evening, Night }
+
     [DisallowMultipleComponent]
     public sealed class RetailGameplayHudView : MonoBehaviour
     {
@@ -133,13 +146,30 @@ namespace Arcanum.Runtime.UI
         private Image _fatigueLiquid;
         private SourceUiBitmapText _healthText;
         private SourceUiBitmapText _fatigueText;
+        private SourceUiBitmapText _fateText;
+        private SourceUiBitmapText _contextText;
         private SourceUiBitmapText _messageLineOne;
         private SourceUiBitmapText _messageLineTwo;
-        private SourceUiBitmapText _ammoText;
         private SourceUiImage _ammoImage;
         private readonly SourceUiBitmapText[] _slotLabels = new SourceUiBitmapText[10];
         private readonly RetailQuickSlotPresentation[] _slots = new RetailQuickSlotPresentation[10];
         private readonly SourceUiImage[] _maintainedSpellSlots = new SourceUiImage[5];
+        private readonly Button[] _maintainedSpellButtons = new Button[5];
+        private readonly SourceUiImage[] _recentActionImages = new SourceUiImage[2];
+        private readonly Button[] _recentActionButtons = new Button[2];
+        private readonly SourceUiImage[] _experienceSegments = new SourceUiImage[10];
+        private SourceUiImage _experiencePartial;
+        private RectTransform _clockClip;
+        private readonly SourceUiImage[] _clockBands = new SourceUiImage[3];
+        private SourceUiImage _clockPointer;
+        private SourceUiButton _characterButton;
+        private SourceUiButton _logbookButton;
+        private SourceUiButton _mapButton;
+        private SourceUiButton _inventoryButton;
+        private SourceUiButton _fateButton;
+        private SourceUiButton _sleepButton;
+        private RectTransform _fatePanel;
+        private RectTransform _sleepPanel;
         private SourceUiButton _combatButton;
         private Camera _managedCamera;
         private Rect _originalCameraRect;
@@ -154,6 +184,7 @@ namespace Arcanum.Runtime.UI
         public float HealthFill { get; private set; }
         public float FatigueFill { get; private set; }
         public GameUiHudView LastProjection { get; private set; }
+        public RetailClockPeriod ClockPeriod { get; private set; }
 
         public void Bind(GameUiController controller, WorldMapSessionCoordinator session,
             Action<GameUiScreen> openScreen, UiSkinResolver resolver = null)
@@ -201,7 +232,7 @@ namespace Arcanum.Runtime.UI
             _fatigueLiquid.fillAmount = FatigueFill;
             SetCounter(_healthText, Mathf.Max(0, LastProjection.HitPoints));
             SetCounter(_fatigueText, Mathf.Max(0, LastProjection.Fatigue));
-            RefreshMaintainedSpellSlots(LastProjection.MaintainedSpellSlotCapacity);
+            RefreshMaintainedSpellSlots(LastProjection.MaintainedSpellSlotCapacity, LastProjection.ActiveEffects);
 
             string feedback = string.IsNullOrWhiteSpace(_controller.Feedback)
                 ? LastProjection.Weapon : _controller.Feedback;
@@ -210,9 +241,15 @@ namespace Arcanum.Runtime.UI
                 ? $"{LastProjection.CombatMode}  AP {LastProjection.ActionPoints}/{LastProjection.MaximumActionPoints}  {LastProjection.Readiness}"
                 : $"{LastProjection.Readiness}  {LastProjection.Weapon}";
             SetText(_messageLineTwo, Clip(combat, 46), SourceText);
-            SetText(_ammoText, LastProjection.Ammunition > 0 ? LastProjection.Ammunition.ToString() : string.Empty,
-                SourceText);
-            if (_ammoImage != null) _ammoImage.gameObject.SetActive(LastProjection.Ammunition > 0);
+            SetCounter(_fateText, Mathf.Max(0, LastProjection.FatePoints), 2);
+            SetCounter(_contextText, Mathf.Max(0, LastProjection.ContextQuantity), 6);
+            if (_ammoImage != null) _ammoImage.SetKey(new UiAssetKey(LastProjection.ContextIconSourceId));
+            RefreshPrimaryButtons();
+            RefreshClock();
+            RefreshExperienceGauge();
+            RefreshRecentActions();
+            if (_fatePanel != null) _fatePanel.gameObject.SetActive(_controller.HudPanel == GameUiHudPanel.Fate);
+            if (_sleepPanel != null) _sleepPanel.gameObject.SetActive(_controller.HudPanel == GameUiHudPanel.Sleep);
             _combatButton?.SetSelected(LastProjection.CombatActive);
             RefreshQuickSlots();
         }
@@ -249,9 +286,30 @@ namespace Arcanum.Runtime.UI
             AddInputBlocker("Bottom Interface Input", _bottomWindow, new Rect(0f, 0f, 800f, 159f));
 
             for (int index = 0; index < _maintainedSpellSlots.Length; index++)
+            {
                 _maintainedSpellSlots[index] = AddImage($"Maintained Spell Slot {index + 1}", _topWindow,
                     new UiAssetKey(RetailGameplayHudLayout.MaintainedSpellPluggedSourceIds[index]),
                     new Rect(280f + 50f * index, 2f, 35f, 35f), false);
+                Button button = _maintainedSpellSlots[index].gameObject.AddComponent<Button>();
+                button.transition = Selectable.Transition.None;
+                _maintainedSpellSlots[index].Image.raycastTarget = true;
+                int captured = index;
+                button.onClick.AddListener(() => CancelMaintainedSpell(captured));
+                _maintainedSpellButtons[index] = button;
+            }
+
+            _fateText = AddCounter("Fate Counter", _topWindow,
+                RetailGameplayHudLayout.TopWindowLocal(RetailGameplayHudLayout.FateCounter));
+
+            _clockClip = AddRect("Clock Clip", _topWindow,
+                RetailGameplayHudLayout.TopWindowLocal(RetailGameplayHudLayout.ClockFrame));
+            _clockClip.gameObject.AddComponent<RectMask2D>();
+            for (int index = 0; index < _clockBands.Length; index++)
+                _clockBands[index] = AddImage($"Clock Band {index + 1}", _clockClip,
+                    new UiAssetKey(index % 2 == 0 ? 207 : 208), new Rect(0f, 0f, 1f, 30f), false);
+            Vector2 pointerSize = ResolveLogicalSize(new UiAssetKey(216));
+            _clockPointer = AddImage("Clock Pointer", _topWindow, new UiAssetKey(216),
+                new Rect(708f, 6f, pointerSize.x, pointerSize.y), false);
 
             AddVial("Health Empty Vial", _bottomWindow,
                 RetailGameplayHudLayout.BottomWindowLocal(new Rect(11f, 471f, 34f, 90f)));
@@ -268,6 +326,21 @@ namespace Arcanum.Runtime.UI
             _fatigueText = AddCounter("Fatigue Counter", _bottomWindow,
                 RetailGameplayHudLayout.BottomWindowLocal(RetailGameplayHudLayout.FatigueCounter));
 
+            for (int index = 0; index < _experienceSegments.Length; index++)
+            {
+                Vector2 size = ResolveLogicalSize(new UiAssetKey(RetailGameplayHudLayout.ExperienceSegmentSourceIds[index]));
+                _experienceSegments[index] = AddImage($"Experience Segment {index + 1}", _bottomWindow,
+                    new UiAssetKey(RetailGameplayHudLayout.ExperienceSegmentSourceIds[index]),
+                    RetailGameplayHudLayout.BottomWindowLocal(new Rect(
+                        RetailGameplayHudLayout.ExperienceSegmentX[index], 478f, size.x, size.y)), false);
+            }
+            Vector2 partialSize = ResolveLogicalSize(new UiAssetKey(772));
+            _experiencePartial = AddImage("Experience Partial", _bottomWindow, new UiAssetKey(772),
+                RetailGameplayHudLayout.BottomWindowLocal(new Rect(216f, 488f, partialSize.x, partialSize.y)), false);
+            _experiencePartial.Image.type = Image.Type.Filled;
+            _experiencePartial.Image.fillMethod = Image.FillMethod.Horizontal;
+            _experiencePartial.Image.fillOrigin = (int)Image.OriginHorizontal.Left;
+
             AddImage("Message Lens", _bottomWindow, new UiAssetKey(RetailGameplayHudLayout.MessageWindowSourceId),
                 RetailGameplayHudLayout.BottomWindowLocal(RetailGameplayHudLayout.MessageWindow), false);
             RectTransform textClip = AddRect("Message Text Clip", _bottomWindow,
@@ -280,21 +353,27 @@ namespace Arcanum.Runtime.UI
 
             _ammoImage = AddImage("Ammo", _bottomWindow, new UiAssetKey(251),
                 RetailGameplayHudLayout.BottomWindowLocal(RetailGameplayHudLayout.AmmoButton), false);
-            _ammoText = AddText("Ammo Counter", _bottomWindow,
-                RetailGameplayHudLayout.BottomWindowLocal(new Rect(99f, 512f, 38f, 14f)), string.Empty,
-                RetailGameplayHudLayout.TextFontSourceId);
+            _contextText = AddCounter("Context Counter", _bottomWindow,
+                RetailGameplayHudLayout.BottomWindowLocal(RetailGameplayHudLayout.ContextCounter));
 
-            AddScreenButton("Character", _topWindow, 169, 4f, 2f, GameUiScreen.Character);
-            AddScreenButton("Logbook", _topWindow, 187, 41f, 2f, GameUiScreen.Journal);
-            AddScreenButton("Map", _topWindow, 193, 78f, 2f, GameUiScreen.Map);
-            AddScreenButton("Inventory", _topWindow, 186, 115f, 2f, GameUiScreen.Inventory);
+            _characterButton = AddScreenButton("Character", _topWindow, 169, 4f, 2f, GameUiScreen.Character);
+            _logbookButton = AddScreenButton("Logbook", _topWindow, 187, 41f, 2f, GameUiScreen.Journal);
+            _mapButton = AddScreenButton("Map", _topWindow, 193, 78f, 2f, GameUiScreen.Map);
+            _inventoryButton = AddScreenButton("Inventory", _topWindow, 186, 115f, 2f, GameUiScreen.Inventory);
+            _fateButton = AddButton("Fate", _topWindow, 137, 157f, 9f, () => _controller.ToggleFatePanel());
+            _sleepButton = AddButton("Sleep", _topWindow, 137, 605f, 9f, () => _controller.ToggleSleepPanel());
             AddScreenButton("Skills", _bottomWindow, 472, 693f, 456f - 441f, GameUiScreen.Skills);
             AddScreenButton("Spells", _bottomWindow, 473, 649f, 494f - 441f, GameUiScreen.Magic);
             _combatButton = AddButton("Combat", _bottomWindow, 470, 86f, 457f - 441f,
                 () => _controller.ToggleCombatMode());
             AddScreenButton("Schematics", _bottomWindow, 471, 693f, 539f - 441f, GameUiScreen.Crafting);
 
+            for (int index = 0; index < _recentActionImages.Length; index++) AddRecentAction(index);
+
             for (int index = 0; index < 10; index++) AddQuickSlot(_bottomWindow, index);
+
+            BuildFatePanel();
+            BuildSleepPanel();
 
             var cursor = new GameObject("Retail Gameplay Cursor",
                 typeof(RectTransform), typeof(Image), typeof(SourceUiImage), typeof(RetailMainMenuCursorView));
@@ -323,7 +402,7 @@ namespace Arcanum.Runtime.UI
             return image;
         }
 
-        private void AddScreenButton(string name, RectTransform parent, int sourceId, float x, float y,
+        private SourceUiButton AddScreenButton(string name, RectTransform parent, int sourceId, float x, float y,
             GameUiScreen screen)
             => AddButton(name, parent, sourceId, x, y,
                 () => { if (_controller.Screen == screen) _controller.Close(); else _openScreen(screen); });
@@ -344,6 +423,77 @@ namespace Arcanum.Runtime.UI
             source.Button.onClick.AddListener(() => clicked());
             return source;
         }
+
+        private void AddRecentAction(int index)
+        {
+            Rect sourceRect = RetailGameplayHudLayout.BottomWindowLocal(RetailGameplayHudLayout.RecentActions[index]);
+            SourceUiImage image = AddImage($"Recent Action {index + 1}", _bottomWindow,
+                new UiAssetKey(index == 0 ? 280 : 279), sourceRect, true);
+            Button button = image.gameObject.AddComponent<Button>();
+            button.transition = Selectable.Transition.None;
+            int captured = index;
+            button.onClick.AddListener(() => _controller.ActivateRecentAction(captured));
+            _recentActionImages[index] = image;
+            _recentActionButtons[index] = button;
+        }
+
+        private void BuildFatePanel()
+        {
+            _fatePanel = AddSourcePanel("Fate Panel", _topWindow, 292, 0f, 41f);
+            string[] fallback =
+            {
+                "Full Heal", "Force Good Reaction", "Critical Hit", "Critical Miss",
+                "Save Against Magick", "Spell At Maximum", "Critical Success: Gambling",
+                "Critical Success: Heal", "Critical Success: Pick Pocket", "Critical Success: Repair",
+                "Critical Success: Pick Locks", "Critical Success: Disarm Traps",
+            };
+            float width = _fatePanel.sizeDelta.x;
+            for (int index = 0; index < fallback.Length; index++)
+            {
+                string label = SourceMessage("mes/fate_ui.mes", index, fallback[index]);
+                AddText($"Fate Label {index}", _fatePanel, new Rect(11f, 3f + 18f * index,
+                    Mathf.Max(1f, width - 11f), 18f), label, 229);
+                int captured = index;
+                AddButton($"Fate Choice {index}", _fatePanel, 293, 223f, 4f + 18f * index,
+                    () => _controller.ActivateFate((FateChoice)captured));
+            }
+            _fatePanel.gameObject.SetActive(false);
+        }
+
+        private void BuildSleepPanel()
+        {
+            _sleepPanel = AddSourcePanel("Sleep Panel", _topWindow, 565, 573f, 41f);
+            string[] fallback =
+            {
+                "Sleep For One Hour", "Sleep For Two Hours", "Sleep For Four Hours",
+                "Sleep For Eight Hours", "Sleep For One Day", "Sleep Until Morning",
+                "Sleep Until Evening", "Sleep Until Healed",
+            };
+            float width = _sleepPanel.sizeDelta.x;
+            for (int index = 0; index < fallback.Length; index++)
+            {
+                string label = SourceMessage("mes/sleepui.mes", index, fallback[index]);
+                AddText($"Sleep Label {index}", _sleepPanel, new Rect(36f, 2f + 18f * index,
+                    Mathf.Max(1f, width - 36f), 18f), label, 229);
+                int captured = index;
+                AddButton($"Sleep Choice {index}", _sleepPanel, 293, 8f, 3f + 18f * index,
+                    () => _controller.Sleep((SleepOption)captured));
+            }
+            _sleepPanel.gameObject.SetActive(false);
+        }
+
+        private RectTransform AddSourcePanel(string name, RectTransform parent, int sourceId, float x, float y)
+        {
+            Vector2 size = ResolveLogicalSize(new UiAssetKey(sourceId));
+            RectTransform panel = AddRect(name, parent, new Rect(x, y, size.x, size.y));
+            AddImage(name + " Background", panel, new UiAssetKey(sourceId),
+                new Rect(0f, 0f, size.x, size.y), false);
+            return panel;
+        }
+
+        private string SourceMessage(string path, int key, string fallback)
+            => _resolver.Original.TryReadMessage(path, key, out string value)
+                && !string.IsNullOrWhiteSpace(value) ? value : fallback;
 
         private void AddQuickSlot(RectTransform parent, int index)
         {
@@ -395,19 +545,130 @@ namespace Arcanum.Runtime.UI
             }
         }
 
-        private void RefreshMaintainedSpellSlots(int capacity)
+        private void RefreshMaintainedSpellSlots(int capacity, IReadOnlyList<ActiveSpellEffect> effects)
         {
             capacity = Mathf.Clamp(capacity, 0, _maintainedSpellSlots.Length);
             for (int index = 0; index < _maintainedSpellSlots.Length; index++)
             {
+                SpellDefinition spell = null;
+                bool active = effects != null && index < effects.Count
+                              && PhaseOneSpellCatalog.TryGet(effects[index].SpellId, out spell);
                 bool open = index < capacity;
                 SourceUiImage slot = _maintainedSpellSlots[index];
-                slot.SetKey(new UiAssetKey(open
+                slot.SetKey(new UiAssetKey(active ? spell.IconSourceId : open
                     ? RetailGameplayHudLayout.MaintainedSpellOpenSourceIds[index]
                     : RetailGameplayHudLayout.MaintainedSpellPluggedSourceIds[index]));
-                Place((RectTransform)slot.transform, open
+                _maintainedSpellButtons[index].interactable = active;
+                Place((RectTransform)slot.transform, active || open
                     ? new Rect(281f + 50f * index, 3f, 32f, 32f)
                     : new Rect(280f + 50f * index, 2f, 35f, 35f));
+            }
+        }
+
+        private void CancelMaintainedSpell(int index)
+        {
+            if (LastProjection?.ActiveEffects == null || index < 0 || index >= LastProjection.ActiveEffects.Count)
+                return;
+            _controller.CancelEffect(LastProjection.ActiveEffects[index].Id);
+        }
+
+        private void RefreshPrimaryButtons()
+        {
+            HudPrimaryNotification notifications = LastProjection.PrimaryNotifications;
+            BindButtonPresentation(_characterButton,
+                (notifications & HudPrimaryNotification.Character) != 0 ? 561 : 169);
+            BindButtonPresentation(_logbookButton,
+                (notifications & HudPrimaryNotification.Logbook) != 0 ? 560 : 187);
+            bool mapHighlighted = LastProjection.UsesWorldMapButton
+                ? (notifications & HudPrimaryNotification.WorldMap) != 0
+                : (notifications & HudPrimaryNotification.TownMap) != 0;
+            BindButtonPresentation(_mapButton, LastProjection.UsesWorldMapButton
+                ? mapHighlighted ? 195 : 194
+                : mapHighlighted ? 558 : 193);
+            BindButtonPresentation(_inventoryButton,
+                (notifications & HudPrimaryNotification.Inventory) != 0 ? 559 : 186);
+        }
+
+        private void BindButtonPresentation(SourceUiButton button, int sourceId)
+        {
+            if (button == null) return;
+            button.Bind(_resolver, new UiAssetKey(sourceId, frame: 0),
+                new UiAssetKey(sourceId, frame: 1), new UiAssetKey(sourceId, frame: 2),
+                new UiAssetKey(sourceId, frame: 0), new UiAssetKey(sourceId, frame: 1));
+        }
+
+        private void RefreshClock()
+        {
+            long sourceSeconds = 12L * 3600L + LastProjection.SourceTimeMilliseconds / 1000L;
+            int hour = (int)((sourceSeconds / 3600L) % 24L);
+            ClockPeriod = hour switch
+            {
+                >= 6 and < 12 => RetailClockPeriod.Morning,
+                >= 12 and < 17 => RetailClockPeriod.Midday,
+                >= 17 and < 21 => RetailClockPeriod.Evening,
+                _ => RetailClockPeriod.Night,
+            };
+            int timeWidth = Mathf.Max(1, Mathf.RoundToInt(ResolveLogicalSize(new UiAssetKey(207)).x));
+            int moonWidth = Mathf.Max(1, Mathf.RoundToInt(ResolveLogicalSize(new UiAssetKey(208)).x));
+            int cycleWidth = timeWidth + moonWidth;
+            int offset = (int)((cycleWidth + (sourceSeconds + 73800L) % 86400L * cycleWidth / 86400L
+                                - RetailGameplayHudLayout.ClockFrame.width / 2f) % cycleWidth);
+            int moonDay = (int)(((sourceSeconds + 43200L) / 84600L) % 28L);
+            int[] thresholds = { 0, 4, 9, 13, 14, 18, 23, 27 };
+            int moon = 0;
+            while (moon < thresholds.Length - 1 && moonDay > thresholds[moon]) moon++;
+            float x = -offset;
+            for (int index = 0; index < _clockBands.Length; index++)
+            {
+                bool time = index % 2 == 0;
+                int sourceId = time ? 207 : 208 + moon;
+                float width = time ? timeWidth : moonWidth;
+                _clockBands[index].SetKey(new UiAssetKey(sourceId));
+                Place((RectTransform)_clockBands[index].transform, new Rect(x, 0f, width, 30f));
+                x += width;
+            }
+        }
+
+        private void RefreshExperienceGauge()
+        {
+            int value = Mathf.Clamp(LastProjection.ExperienceGaugeValue, 0, 1099);
+            int full = Mathf.Min(_experienceSegments.Length, value / 100);
+            for (int index = 0; index < _experienceSegments.Length; index++)
+                _experienceSegments[index].gameObject.SetActive(index < full);
+            int partial = value % 100;
+            _experiencePartial.gameObject.SetActive(partial > 0);
+            _experiencePartial.Image.type = Image.Type.Filled;
+            _experiencePartial.Image.fillMethod = Image.FillMethod.Horizontal;
+            _experiencePartial.Image.fillOrigin = (int)Image.OriginHorizontal.Left;
+            _experiencePartial.Image.fillAmount = partial / 100f;
+        }
+
+        private void RefreshRecentActions()
+        {
+            if (LastProjection.RecentActions == null) return;
+            for (int index = 0; index < _recentActionImages.Length; index++)
+            {
+                RecentActionBinding binding = LastProjection.RecentActions[index];
+                SourceUiImage image = _recentActionImages[index];
+                RetailItemArtAsset resolved = null;
+                bool itemArt = binding.Kind == RecentActionKind.Item
+                               && _session.GameplayHud.TryResolveRecentItem(index, out ArcanumObjectId identity)
+                               && _session.TryGetObjectState(identity, out PersistentObjectState state)
+                               && state.InventoryArtId.HasValue
+                               && _resolver.Original.TryResolveInventoryItem(state.InventoryArtId.Value, out resolved);
+                if (itemArt)
+                {
+                    image.enabled = false;
+                    image.Image.sprite = resolved.Sprite;
+                    image.Image.color = Color.white;
+                    image.Image.preserveAspect = true;
+                }
+                else
+                {
+                    image.enabled = true;
+                    image.SetKey(new UiAssetKey(binding.IconSourceId));
+                    image.Image.preserveAspect = true;
+                }
             }
         }
 
@@ -529,9 +790,13 @@ namespace Arcanum.Runtime.UI
             else text.SetTint(tint);
         }
 
-        private void SetCounter(SourceUiBitmapText text, int value)
+        private void SetCounter(SourceUiBitmapText text, int value, int digits = 3)
         {
-            SetText(text, value.ToString("D3"), SourceText);
+            digits = Mathf.Max(1, digits);
+            int maximum = 1;
+            for (int index = 0; index < digits; index++) maximum *= 10;
+            string format = "D" + digits;
+            SetText(text, Mathf.Clamp(value, 0, maximum - 1).ToString(format), SourceText);
             RectTransform rect = (RectTransform)text.transform;
             rect.anchorMin = rect.anchorMax = new Vector2(.5f, .5f);
             rect.pivot = new Vector2(.5f, .5f);
@@ -573,12 +838,29 @@ namespace Arcanum.Runtime.UI
             _fatigueLiquid = null;
             _healthText = null;
             _fatigueText = null;
+            _fateText = null;
+            _contextText = null;
             _messageLineOne = null;
             _messageLineTwo = null;
-            _ammoText = null;
             _ammoImage = null;
+            _clockClip = null;
+            _clockPointer = null;
+            _characterButton = null;
+            _logbookButton = null;
+            _mapButton = null;
+            _inventoryButton = null;
+            _fateButton = null;
+            _sleepButton = null;
+            _fatePanel = null;
+            _sleepPanel = null;
             _combatButton = null;
             Array.Clear(_maintainedSpellSlots, 0, _maintainedSpellSlots.Length);
+            Array.Clear(_maintainedSpellButtons, 0, _maintainedSpellButtons.Length);
+            Array.Clear(_recentActionImages, 0, _recentActionImages.Length);
+            Array.Clear(_recentActionButtons, 0, _recentActionButtons.Length);
+            Array.Clear(_experienceSegments, 0, _experienceSegments.Length);
+            Array.Clear(_clockBands, 0, _clockBands.Length);
+            _experiencePartial = null;
             Array.Clear(_slotLabels, 0, _slotLabels.Length);
             Array.Clear(_slots, 0, _slots.Length);
             LastProjection = null;

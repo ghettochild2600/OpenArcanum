@@ -67,6 +67,7 @@ namespace Arcanum.Runtime.World
         private DeathConsequenceService _deathConsequences;
         private PartyStateService _party;
         private ProductionShortcutState _shortcuts;
+        private GameplayHudStateService _gameplayHud;
         private MagicStateService _magic;
         private TechnologyStateService _technology;
         private CraftingStateService _crafting;
@@ -115,6 +116,7 @@ namespace Arcanum.Runtime.World
             => _deathConsequences ??= new DeathConsequenceService(this);
         public PartyStateService Party => _party ??= new PartyStateService(this);
         public ProductionShortcutState Shortcuts => _shortcuts ??= new ProductionShortcutState(this);
+        public GameplayHudStateService GameplayHud => _gameplayHud ??= new GameplayHudStateService(this);
         public SourceTimeService SourceTime => _sourceTime ??= new SourceTimeService();
         public MagicStateService Magic => _magic ??= new MagicStateService(this);
         public TechnologyStateService Technology => _technology ??= new TechnologyStateService(this);
@@ -342,6 +344,14 @@ namespace Arcanum.Runtime.World
 
         public int CurrentArea => PlayerState != null && HasSelectedSector && _mapAreas != null
             ? _mapAreas.Resolve(SelectedSector, PlayerState.MapPosition) : 0;
+
+        public bool TryGetCurrentMapId(out int mapId)
+        {
+            if (_mapTransitions != null && !string.IsNullOrWhiteSpace(CurrentMap))
+                return _mapTransitions.TryGetMapId(CurrentMap, out mapId);
+            mapId = 0;
+            return false;
+        }
 
         public bool SetNpcWaiting(ArcanumObjectId identity, bool waiting)
         {
@@ -2097,6 +2107,8 @@ namespace Arcanum.Runtime.World
             _deathConsequences = null;
             _party = null;
             _shortcuts = null;
+            _gameplayHud?.Dispose();
+            _gameplayHud = null;
             _magic = null;
             _technology = null;
             _crafting = null;
@@ -2119,6 +2131,8 @@ namespace Arcanum.Runtime.World
             if (plan == null) throw new ArgumentNullException(nameof(plan));
             ClearSelectedSector();
             foreach (string sector in new List<string>(_loaded.Keys)) UnloadSector(sector);
+            _gameplayHud?.Dispose();
+            _gameplayHud = null;
 
             _states.Clear();
             foreach (var pair in plan.Objects) _states.Add(pair.Key, pair.Value);
@@ -2170,11 +2184,14 @@ namespace Arcanum.Runtime.World
             _social = CreateSocial();
             _social.RestoreSaveData(plan.Social);
             CharacterCreation.RestoreSaveData(plan.CharacterCreation);
+            _gameplayHud = new GameplayHudStateService(this);
+            _gameplayHud.RestoreSaveData(plan.GameplayHud);
             return SelectSector(plan.SelectedSector);
         }
 
         private void OnDestroy()
         {
+            _gameplayHud?.Dispose();
             foreach (string sector in new List<string>(_loaded.Keys)) UnloadSector(sector);
         }
     }

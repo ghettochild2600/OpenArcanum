@@ -3,6 +3,10 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Arcanum.Formats.Objects;
+using Arcanum.Formats.Text;
+using Arcanum.Formats.World;
+using Arcanum.Runtime.Character;
+using Arcanum.Runtime.Magic;
 using Arcanum.Runtime.Save;
 using Arcanum.Runtime.UI;
 using Arcanum.Runtime.World;
@@ -46,6 +50,11 @@ namespace Arcanum.Formats.Tests
             _root = new GameObject(nameof(UiCGameplayHudTests));
             _session = _root.AddComponent<WorldMapSessionCoordinator>();
             _session.RegisterObjectOwner(new Owner(_session));
+            var gold = new ObjectProtoInfo(9056, ObjectType.Gold, 0x60000003u, invAid: 3)
+                { GoldQuantity = 1 };
+            _session.BindPrototypeSource(number => number == 9056 ? gold : null);
+            _session.BindMapTransitionSource(new MapTransitionResolver(
+                MapList.Read(MesReader.Read("{5000}{test, 0, 0}\n")), _ => false, _ => null));
             Assert.That(_session.SelectSector(Sector), Is.True);
             _session.GetOrCreatePlayer(ProductionPlayerLifecycle.DefaultPlayerIdentity, Sector, Vector2.one,
                 0x28100000u);
@@ -70,8 +79,10 @@ namespace Arcanum.Formats.Tests
         [Test]
         public void RetailHudAssetsResolveFromSourceData()
         {
-            int[] ids = { 3, 17, 18, 19, 20, 169, 171, 172, 173, 181, 184, 185, 186, 187, 188,
-                192, 193, 251, 354, 470, 471, 472, 473, 628, 632 };
+            int[] ids = { 3, 17, 18, 19, 20, 82, 93, 105, 111, 137, 169, 171, 172, 173, 181,
+                184, 185, 186, 187, 188, 192, 193, 194, 195, 207, 208, 216, 229, 250, 251,
+                252, 253, 279, 280, 292, 293, 354, 469, 470, 471, 472, 473, 474, 558, 559,
+                560, 561, 565, 628, 632, 772, 773, 782 };
             foreach (int id in ids)
                 Assert.That(_retail.TryResolve(new UiAssetKey(id), out _), Is.True, $"source id {id}");
             Assert.That(Original(RetailGameplayHudLayout.TopSourceId).LogicalSize,
@@ -200,6 +211,170 @@ namespace Arcanum.Formats.Tests
                 Assert.That(((RectTransform)slots[index].transform).sizeDelta,
                     Is.EqualTo(open ? new Vector2(32f, 32f) : new Vector2(35f, 35f)));
             }
+        }
+
+        [Test]
+        public void PrimaryHighlightsAreSavedNotificationsNotOpenScreenState()
+        {
+            _session.GameplayHud.Notify(HudPrimaryNotification.Inventory);
+            _view.Synchronize(true);
+            SourceUiButton inventory = _root.GetComponentsInChildren<SourceUiButton>(true)
+                .Single(value => value.name == "Inventory");
+            Assert.That(inventory.CurrentPresentationKey.SourceId, Is.EqualTo(559));
+
+            inventory.Button.onClick.Invoke();
+            _view.Synchronize(true);
+            Assert.That(_controller.Screen, Is.EqualTo(GameUiScreen.Inventory));
+            Assert.That(_session.GameplayHud.HasNotification(HudPrimaryNotification.Inventory), Is.False);
+            Assert.That(inventory.CurrentPresentationKey.SourceId, Is.EqualTo(186));
+            inventory.Button.onClick.Invoke();
+            _view.Synchronize(true);
+            Assert.That(inventory.CurrentPresentationKey.SourceId, Is.EqualTo(186));
+            _session.GameplayHud.Notify(HudPrimaryNotification.Inventory);
+            _view.Synchronize(true);
+            Assert.That(inventory.CurrentPresentationKey.SourceId, Is.EqualTo(559));
+        }
+
+        [Test]
+        public void SessionResetDisposesOldHudObserverAndReplacementReceivesInventoryEventsOnce()
+        {
+            GameplayHudStateService previous = _session.GameplayHud;
+            previous.ClearNotification(HudPrimaryNotification.Inventory);
+
+            _session.ResetAuthoritativeSession();
+            Assert.That(_session.SelectSector(Sector), Is.True);
+            ArcanumObjectId player = ProductionPlayerLifecycle.DefaultPlayerIdentity;
+            _session.GetOrCreatePlayer(player, Sector, Vector2.one, 0x28100000u);
+            GameplayHudStateService replacement = _session.GameplayHud;
+            replacement.ClearNotification(HudPrimaryNotification.Inventory);
+
+            ItemCreationResult created = _session.CreateItem(9056, ObjectPlacement.ContainedBy(player));
+
+            Assert.That(created.Succeeded, Is.True);
+            Assert.That(replacement.HasNotification(HudPrimaryNotification.Inventory), Is.True);
+            Assert.That(previous.HasNotification(HudPrimaryNotification.Inventory), Is.False,
+                "the disposed observer must not retain coordinator event authority");
+        }
+
+        [Test]
+        public void FateCounterAndFullHealUseAuthoritativeTransactionalState()
+        {
+            ArcanumObjectId player = _session.PlayerState.Identity;
+            _session.Vitality.ApplyHitPointDamage(player, 5);
+            _session.Vitality.ApplyFatigueDamage(player, 7);
+            _session.GameplayHud.GrantFatePoint();
+            Assert.That(_controller.ToggleFatePanel(), Is.True);
+            FateResult result = _session.GameplayHud.ActivateFate(FateChoice.FullHeal);
+            _view.Synchronize(true);
+
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(_session.GameplayHud.FatePoints, Is.Zero);
+            Assert.That(_session.Vitality.GetCurrentHitPoints(player),
+                Is.EqualTo(_session.Vitality.GetMaximumHitPoints(player)));
+            Assert.That(_session.Vitality.GetCurrentFatigue(player),
+                Is.EqualTo(_session.Vitality.GetMaximumFatigue(player)));
+            SourceUiBitmapText fate = _root.GetComponentsInChildren<SourceUiBitmapText>(true)
+                .Single(value => value.name == "Fate Counter Text");
+            Assert.That(fate.Text, Is.EqualTo("00"));
+        }
+
+        [Test]
+        public void UnsupportedDeferredFateFailsBeforePointOrVitalityMutation()
+        {
+            ArcanumObjectId player = _session.PlayerState.Identity;
+            _session.GameplayHud.GrantFatePoint();
+            int hp = _session.Vitality.GetCurrentHitPoints(player);
+            int fatigue = _session.Vitality.GetCurrentFatigue(player);
+            FateResult result = _session.GameplayHud.ActivateFate(FateChoice.CriticalHit);
+            Assert.That(result.Failure, Is.EqualTo(FateFailure.UnsupportedDeferredEffect));
+            Assert.That((_session.GameplayHud.FatePoints,
+                    _session.Vitality.GetCurrentHitPoints(player), _session.Vitality.GetCurrentFatigue(player)),
+                Is.EqualTo((1, hp, fatigue)));
+        }
+
+        [Test]
+        public void MaintainedSpellUsesSourceIconOrderAndClickCancelsThroughMagicAuthority()
+        {
+            ArcanumObjectId player = _session.PlayerState.Identity;
+            _session.Magic.SetKnownCollegeRank(player, SpellCollege.Earth, 1);
+            SpellCastResult cast = _session.Magic.Cast(new SpellCastRequest(player,
+                PhaseOneSpellCatalog.StrengthOfEarth, player));
+            Assert.That(cast.Succeeded, Is.True);
+            _view.Synchronize(true);
+            SourceUiImage first = _root.GetComponentsInChildren<SourceUiImage>(true)
+                .Single(value => value.name == "Maintained Spell Slot 1");
+            Assert.That(first.Key.SourceId, Is.EqualTo(93));
+            first.GetComponent<Button>().onClick.Invoke();
+            Assert.That(_session.Magic.ActiveEffects, Is.Empty);
+        }
+
+        [Test]
+        public void WildernessSleepAdvancesSourceTimeHealsAndDemaintainsExactlyOnce()
+        {
+            ArcanumObjectId player = _session.PlayerState.Identity;
+            _session.Magic.SetKnownCollegeRank(player, SpellCollege.Earth, 1);
+            Assert.That(_session.Magic.Cast(new SpellCastRequest(player,
+                PhaseOneSpellCatalog.StrengthOfEarth, player)).Succeeded, Is.True);
+            _session.Vitality.ApplyHitPointDamage(player, 8);
+            _session.Vitality.ApplyFatigueDamage(player, 9);
+            int hpBefore = _session.Vitality.GetCurrentHitPoints(player);
+            int fatigueBefore = _session.Vitality.GetCurrentFatigue(player);
+            int healRate = _session.DerivedStats.GetDerivedStat(player, CharacterDerivedStat.HealRate);
+
+            SleepResult result = _session.GameplayHud.Sleep(SleepOption.OneHour);
+
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(_session.SourceTime.ElapsedMilliseconds, Is.EqualTo(3_600_000));
+            Assert.That(_session.Vitality.GetCurrentHitPoints(player),
+                Is.EqualTo(Math.Min(_session.Vitality.GetMaximumHitPoints(player), hpBefore + healRate)));
+            Assert.That(_session.Vitality.GetCurrentFatigue(player),
+                Is.EqualTo(Math.Min(_session.Vitality.GetMaximumFatigue(player), fatigueBefore + 3 * healRate)));
+            Assert.That(_session.Magic.ActiveEffects, Is.Empty);
+        }
+
+        [Test]
+        public void ContextCounterExperienceGaugeClockAndRecentActionsProjectSourceFacts()
+        {
+            ArcanumObjectId player = _session.PlayerState.Identity;
+            _session.AddGold(player, 1234);
+            _session.Progression.AwardExperience(player, 1050);
+            _session.GameplayHud.RecordRecentAction(new QuickSlotBinding(QuickSlotKind.Spell, default,
+                PhaseOneSpellCatalog.StrengthOfEarth));
+            _view.Synchronize(true);
+
+            Assert.That((_view.LastProjection.ContextIconSourceId, _view.LastProjection.ContextQuantity),
+                Is.EqualTo((474, 1234)));
+            Assert.That(_view.LastProjection.ExperienceGaugeValue, Is.EqualTo(550));
+            Assert.That(_view.ClockPeriod, Is.EqualTo(RetailClockPeriod.Midday));
+            SourceUiImage pointer = _root.GetComponentsInChildren<SourceUiImage>(true)
+                .Single(value => value.name == "Clock Pointer");
+            Assert.That(((RectTransform)pointer.transform).sizeDelta, Is.EqualTo(new Vector2(5f, 29f)));
+            SourceUiBitmapText money = _root.GetComponentsInChildren<SourceUiBitmapText>(true)
+                .Single(value => value.name == "Context Counter Text");
+            Assert.That(money.Text, Is.EqualTo("001234"));
+            SourceUiImage recent = _root.GetComponentsInChildren<SourceUiImage>(true)
+                .Single(value => value.name == "Recent Action 1");
+            Assert.That(recent.Key.SourceId, Is.EqualTo(93));
+            Assert.That(_root.GetComponentsInChildren<SourceUiImage>(true)
+                .Count(value => value.name.StartsWith("Experience Segment") && value.gameObject.activeSelf),
+                Is.EqualTo(5));
+        }
+
+        [Test]
+        public void HudAuthorityRoundTripsInOptionalSaveV1Domain()
+        {
+            _session.GameplayHud.GrantFatePoint();
+            _session.GameplayHud.Notify(HudPrimaryNotification.Logbook);
+            _session.GameplayHud.RecordRecentAction(new QuickSlotBinding(QuickSlotKind.Spell, default,
+                PhaseOneSpellCatalog.StrengthOfEarth));
+            string json = _session.SaveGames.SerializeCurrentSession();
+            Assert.That(json, Does.Contain("\"gameplayHud\""));
+            Assert.That(_session.SaveGames.LoadJson(json).Succeeded, Is.True);
+            Assert.That(_session.GameplayHud.FatePoints, Is.EqualTo(1));
+            Assert.That(_session.GameplayHud.HasNotification(HudPrimaryNotification.Logbook), Is.True);
+            Assert.That(_session.GameplayHud.RecentActions[0].SourceId,
+                Is.EqualTo(PhaseOneSpellCatalog.StrengthOfEarth));
+            Assert.That(_session.SourceTime.ElapsedMilliseconds, Is.Zero);
         }
 
         [TestCase("Character", GameUiScreen.Character)]

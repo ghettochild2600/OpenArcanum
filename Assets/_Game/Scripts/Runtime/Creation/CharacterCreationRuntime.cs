@@ -525,6 +525,9 @@ namespace Arcanum.Runtime.Creation
             try
             {
                 _world.ResetAuthoritativeSession();
+                // Reset replaces all authoritative domains, including the session-owned HUD observer. Recreate it
+                // before starting items, progression, quests, or map discovery can raise source notification events.
+                _ = _world.GameplayHud;
                 Commit(finalized);
                 Finalized = finalized;
                 if (!_world.SelectSector(finalized.StartSector))

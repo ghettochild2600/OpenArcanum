@@ -15,15 +15,17 @@ namespace Arcanum.Runtime.UI
         public bool TextEntryFocused { get; }
         public bool CombatActive { get; }
         public CombatMode CombatMode { get; }
+        public bool HudPanelOpen { get; }
 
         public ProductionKeyboardContext(GameUiScreen screen, bool hasPlayer, bool textEntryFocused,
-            bool combatActive, CombatMode combatMode)
+            bool combatActive, CombatMode combatMode, bool hudPanelOpen = false)
         {
             Screen = screen;
             HasPlayer = hasPlayer;
             TextEntryFocused = textEntryFocused;
             CombatActive = combatActive;
             CombatMode = combatMode;
+            HudPanelOpen = hudPanelOpen;
         }
     }
 
@@ -37,6 +39,8 @@ namespace Arcanum.Runtime.UI
         void ToggleAttackTalkMode();
         void ActivateQuickSlot(int index);
         void ActivateRecentAction();
+        void ToggleSleep();
+        void ToggleFate();
         void SetCalledLocation(CombatCalledLocation location);
         void IssuePartyOrder(int sourceIndex);
         void AutoSave();
@@ -84,7 +88,7 @@ namespace Arcanum.Runtime.UI
 
             if (key == KeyCode.Space && phase == ProductionKeyPhase.Down)
             {
-                if (context.Screen != GameUiScreen.None) commands.CloseInterface();
+                if (context.Screen != GameUiScreen.None || context.HudPanelOpen) commands.CloseInterface();
                 else commands.ToggleCombatMode();
                 return true;
             }
@@ -147,8 +151,8 @@ namespace Arcanum.Runtime.UI
                 case KeyCode.O: commands.ToggleScreen(GameUiScreen.Options); return true;
                 case KeyCode.R: commands.ToggleAttackTalkMode(); return true;
                 case KeyCode.A: commands.ActivateRecentAction(); return true;
-                case KeyCode.S: commands.Unsupported("Sleep"); return true;
-                case KeyCode.F: commands.Unsupported("Fate points"); return true;
+                case KeyCode.S: commands.ToggleSleep(); return true;
+                case KeyCode.F: commands.ToggleFate(); return true;
                 case KeyCode.V: commands.ShowVersion(); return true;
                 case KeyCode.Return:
                 case KeyCode.KeypadEnter: commands.Unsupported("Broadcast/chat"); return true;

@@ -43,7 +43,22 @@ internal sealed class UiCTestExecution : ScriptableObject, ICallbacks
         => Run(new Filter { testMode = TestMode.EditMode, categoryNames = new[] { "UIBMainMenu" } },
             "UI-B Main Menu regression");
 
-    [MenuItem("OpenArcanum/UI-C/Run Complete EditMode Tests", false, 8)]
+    [MenuItem("OpenArcanum/UI-C/Run UI-C.4 Required Regressions", false, 8)]
+    private static void RunRequiredRegressions()
+        => Run(new Filter
+        {
+            testMode = TestMode.EditMode,
+            categoryNames = new[]
+            {
+                "UIACommonRuntime", "UIEInventoryEquipment", "M12CFullGameUi", "M12BCharacterCreationNewGame",
+                "M13AKeyboardInput", "PlayerStartup", "PlayerNavigation", "M3B", "M3C", "M3D",
+                "M3ECapacity", "M4ACharacterAttributes", "M4BCharacterVitality", "M4CCharacterProgression",
+                "M4DDerivedCharacterStats", "M6A", "M6B", "M6C", "M7DWorldMapDestination",
+                "M7EWorldMapTravel", "M8ICombatUI", "M10AMagicRuntime",
+            },
+        }, "UI-C.4 required regressions");
+
+    [MenuItem("OpenArcanum/UI-C/Run Complete EditMode Tests", false, 9)]
     private static void RunComplete()
         => Run(new Filter { testMode = TestMode.EditMode }, "UI-C complete EditMode");
 

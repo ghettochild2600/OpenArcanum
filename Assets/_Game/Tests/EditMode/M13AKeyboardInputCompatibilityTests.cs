@@ -141,11 +141,12 @@ namespace Arcanum.Formats.Tests
         }
 
         [Test]
-        public void UnsupportedRetailSurfacesFailClosedInsteadOfOpeningDummyWindows()
+        public void SleepAndFateRouteToAuthoritativeHudPanelsWhileBroadcastFailsClosed()
         {
             foreach (KeyCode key in new[] { KeyCode.S, KeyCode.F, KeyCode.Return })
                 Assert.That(_keyboard.Dispatch(key, ProductionKeyPhase.Down, Hud(), _commands), Is.True);
-            Assert.That(_commands.UnsupportedActions, Is.EqualTo(new[] { "Sleep", "Fate points", "Broadcast/chat" }));
+            Assert.That((_commands.SleepToggles, _commands.FateToggles), Is.EqualTo((1, 1)));
+            Assert.That(_commands.UnsupportedActions, Is.EqualTo(new[] { "Broadcast/chat" }));
             Assert.That(_commands.Screen, Is.EqualTo(GameUiScreen.None));
         }
 
@@ -217,6 +218,7 @@ namespace Arcanum.Formats.Tests
             public readonly List<string> UnsupportedActions = new();
             public int Saves, Loads, Screenshots, Closes, CombatToggles, Escapes, EndTurns;
             public int Centers, ReadyToggles, ActiveActions;
+            public int SleepToggles, FateToggles;
             public CombatCalledLocation CalledLocation;
             public void Escape() => Escapes++;
             public void ToggleScreen(GameUiScreen screen) => Screen = screen;
@@ -226,6 +228,8 @@ namespace Arcanum.Formats.Tests
             public void ToggleAttackTalkMode() => ReadyToggles++;
             public void ActivateQuickSlot(int index) => QuickSlots.Add(index);
             public void ActivateRecentAction() => ActiveActions++;
+            public void ToggleSleep() => SleepToggles++;
+            public void ToggleFate() => FateToggles++;
             public void SetCalledLocation(CombatCalledLocation location) => CalledLocation = location;
             public void IssuePartyOrder(int sourceIndex) => PartyOrders.Add(sourceIndex);
             public void AutoSave() => Saves++;
