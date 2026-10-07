@@ -75,7 +75,11 @@ player-facing manual save/load presentation, M7A bounded passive local map trans
   those branches fail closed. **DONE UI-E.1 — Inventory/Equipment Foundation:** the ordinary source ID 223 + ID 221 800 x 400 composition,
   exact grid/slot geometry, retained item art/footprints, selection, quick-slot binding, and M3C equip/unequip routes
   replace the generic Inventory overlay without owning item state. Original/Enhanced fallback uses UI-A. Distinct
-  paper-doll composite layers and gesture parity remain later presentation boundaries.
+  paper-doll composite layers and gesture parity remain later presentation boundaries. **DONE UI-D — Character
+  Creation:** source ID 765 identity flows into the active ID 22 editor with child IDs 29/30/31 and atomic M12B
+  finalization. **DONE UI-E.2 — Character / Skills:** the active ID 22 Character sheet and ID 29 Skills child panel
+  project M4 authority, legal same-open-session point adjustments are transactional, and `K` uses the source ID 472
+  to ID 274 non-modal Skills route. The four unsupported source skill-action targets fail closed without mutation.
   **DONE M13A opening crash-site compatibility pass and bounded user follow-ups:** authentic Virgil dialogue 1324
   now includes generic source `mm`, `ss`, `ia`, `ce`, and `wa` semantics; source heartbeat initialization reconstructs
   the additional crash-site casualties without replaying death rewards/consequences; the production PC and generic
@@ -2644,12 +2648,43 @@ authority.
 
 See [`documentation_unity/ui/ui-d-character-creation-reconstruction.md`](documentation_unity/ui/ui-d-character-creation-reconstruction.md).
 
+## UI-E.2 Source Character / Skills Reconstruction (2026-10-07)
+
+UI-E.2 is complete. The production `C` route now follows `charedit_open(..., CHAREDIT_MODE_ACTIVE)`: source ID 22
+owns the fixed 800 x 400 active Character editor at source y 41 while the source HUD remains visible, and source ID
+29 owns the replaceable Skills child panel at local `(503,4)`. The view projects finalized identity, level/XP,
+Character Points, M4A attributes, M4B vitality, M4D derived values and resistances, carried weight/capacity,
+alignment/aptitude, and all M4C ranks and training states. It does not recalculate those facts.
+
+Source plus/minus controls 24/23 and skill row controls 624/625 submit transactional adjustments to M4. A successful
+increase spends one Character Point. A decrease may refund only a change made since the current sheet was opened;
+closing/reopening accepts the authoritative values as the new floor. Prospective attribute reductions reject before
+mutation when dependent skill prerequisites would become illegal. Read-only/invalid/insufficient-point operations do
+not partially change attributes, skills, points, vitality, inventory, or world state.
+
+The source Skills HUD route is also corrected: `K` and control ID 472 toggle rotating window ID 274 at `(196,492)`
+without opening a generic modal. Its four controls use source IDs 279, 280, 282, and 278 for Prowling, Pick Pocket,
+Disarm Traps, and Repair. OpenArcanum does not yet have their target/action authorities, so those exact controls fail
+closed with explicit feedback. Training remains the existing M4C authority; Magic, Technology, trainers,
+auto-level schemes, paper-doll compositing, and the four target/action kernels are outside UI-E.2.
+
+Focused UI-E.2 validation passed **20/20**. Directly affected regressions passed **169/169**: UI-D 20, UI-E.1 18,
+M4A 13, M4B 20, M4C 29, M4D 25, M12C 18, production keyboard/input 23, and Player Startup 3. The complete EditMode
+suite passed **1269/1269**, with 0 failed, 0 skipped, and 0 inconclusive. The production Play Mode proof passed through
+authentic New Game/Player Startup at the crash site and covered source IDs 22/29, authoritative projection,
+attribute spend/refund, skill spend/training, `K`/ID 274 and fail-closed source actions, Inventory -> Character
+ownership, Original -> Enhanced -> Original rebuilding, five target resolutions, and unique production presenters.
+Compilation is clean, the final cleared Console has 0 logs, 0 warnings, and 0 errors, and `git diff --check` is clean.
+
+See [`documentation_unity/ui/ui-e2-character-skills-reconstruction.md`](documentation_unity/ui/ui-e2-character-skills-reconstruction.md).
+
 ## Next Recommended Milestone
 
 M9A, M9B, M10A, M10B, M11A, M11B, M11C, M12B, M12C, M12D, and the bounded M13A opening pass are formally closed.
 The source-authentic keyboard compatibility follow-up, UI-A common runtime, UI-B source-faithful Main Menu, bounded
 UI-C.5 implementation, and UI-E.1 Inventory/Equipment foundation are complete. UI-C overall remains open on the exact
 skill-action Fate and bed-authority blockers above. UI-D source-faithful Character Creation is complete with M12B
-authority unchanged. The next bounded presentation milestone is UI-E.2 Character/Skills reconstruction, deliberately
-reusing UI-D's source-proven character-editor components and the completed UI-E.1 Inventory/Equipment foundation.
+authority unchanged. UI-E.2 Character/Skills reconstruction is complete with M4 authority unchanged. The next safe
+step is the read-only UI-F Dialogue/Journal/Party source audit; implementation should begin only after that audit
+defines exact ART identities, runtime compositions, ownership, and missing-authority boundaries.
 Continue M13A only from concrete user-discovered campaign defects; do not start an autonomous campaign playthrough.
