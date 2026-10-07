@@ -2614,11 +2614,38 @@ UI-C remains **OPEN** with two isolated exact blockers: authoritative action-res
 checks, and source-backed occupied/rented-bed state. These do not alter the validated shared UI/runtime authority used
 by Character Creation, but they must not be called complete or approximated.
 
+## UI-D Source-Faithful Character Creation (2026-10-07)
+
+UI-D is complete. The production New Character route no longer uses the generic whole-screen scrolling form. It now
+follows the two actual source runtime compositions: Main Menu identity ID 765 (`createcharacterbase.art`, 800 x 400),
+then `charedit_open(..., CHAREDIT_MODE_CREATE)` with editor ID 22 (`char_maint.art`, 800 x 400) and the active ID
+29/30/31 Skills/Technology/Magic child panel. Source IDs 23/24 provide attribute controls, 34/35/36 category controls,
+568 Accept, 302–305 skill groups, 624/625 skill changes, 306–313 technology disciplines, and 647/648 technology or
+spell-rank changes. Mounted `portrait/<name>_b.bmp` pixels use the retail ordinary-BMP fallback.
+
+The view projects the existing M12B draft and submits only controller intent. Race/gender/portrait/background
+legality, attribute/skill/spell/technology costs, Character Points, validation, and atomic finalization remain M12B
+authority. Back from Editor preserves the draft and returns to Identity; invalid identity/finalization cannot create
+a partial player; successful Accept creates exactly one PC, enters authentic `START_MAP` 1, and reveals the existing
+source HUD. Pick Character/pregenerated characters, intro playback, and shopping remain deferred/fail closed rather
+than being approximated.
+
+Focused UI-D validation passed **19/19**. Directly affected UI-A, UI-B, M12B, M4A–M4D, M10A, M10B, Player Startup,
+and production keyboard/input regressions passed **217/217**. The production physical validator passed in the existing
+Editor and proved invalid-name rollback, identity cycling, IDs 765 -> 22/29, all four point-spend categories,
+Back/Continue preservation, Original -> exact-4x Enhanced -> Original rebuilding, fixed and accessible 800 x 400
+geometry at 800x600/1024x768/1080p/1440p/4K, and atomic finalization to the authentic start map and source HUD.
+Compilation is clean, the final cleared Console is 0/0/0, and `git diff --check` is clean. The complete suite is
+deferred to the UI-E.2 gate because UI-D required no core-authority change.
+
+See [`documentation_unity/ui/ui-d-character-creation-reconstruction.md`](documentation_unity/ui/ui-d-character-creation-reconstruction.md).
+
 ## Next Recommended Milestone
 
 M9A, M9B, M10A, M10B, M11A, M11B, M11C, M12B, M12C, M12D, and the bounded M13A opening pass are formally closed.
 The source-authentic keyboard compatibility follow-up, UI-A common runtime, UI-B source-faithful Main Menu, bounded
 UI-C.5 implementation, and UI-E.1 Inventory/Equipment foundation are complete. UI-C overall remains open on the exact
-skill-action Fate and bed-authority blockers above. The next independent bounded presentation milestone is UI-D
-Character Creation source reconstruction, provided its M12B authority remains unchanged. Continue M13A only from
-concrete user-discovered campaign defects; do not start an autonomous campaign playthrough.
+skill-action Fate and bed-authority blockers above. UI-D source-faithful Character Creation is complete with M12B
+authority unchanged. The next bounded presentation milestone is UI-E.2 Character/Skills reconstruction, deliberately
+reusing UI-D's source-proven character-editor components and the completed UI-E.1 Inventory/Equipment foundation.
+Continue M13A only from concrete user-discovered campaign defects; do not start an autonomous campaign playthrough.
