@@ -59,6 +59,7 @@ namespace Arcanum.Runtime.World
         private MapTransitionResolver _mapTransitions;
         private AreaEntranceResolver _areaEntrances;
         private MapAreaResolver _mapAreas;
+        private ISleepLocationSource _sleepLocations;
         private AreaList _areaSource;
         private WorldMapDestinationProjection _worldMapDestinations;
         private WorldMapTravelSource _worldMapTravelSource;
@@ -118,6 +119,7 @@ namespace Arcanum.Runtime.World
         public ProductionShortcutState Shortcuts => _shortcuts ??= new ProductionShortcutState(this);
         public GameplayHudStateService GameplayHud => _gameplayHud ??= new GameplayHudStateService(this);
         public SourceTimeService SourceTime => _sourceTime ??= new SourceTimeService();
+        public ISleepLocationSource SleepLocations => _sleepLocations;
         public MagicStateService Magic => _magic ??= new MagicStateService(this);
         public TechnologyStateService Technology => _technology ??= new TechnologyStateService(this);
         public CraftingStateService Crafting => _crafting ??= CreateCrafting();
@@ -341,6 +343,9 @@ namespace Arcanum.Runtime.World
 
         public void BindMapAreaSource(MapAreaResolver resolver)
             => _mapAreas = resolver ?? throw new ArgumentNullException(nameof(resolver));
+
+        public void BindSleepLocationSource(ISleepLocationSource source)
+            => _sleepLocations = source ?? throw new ArgumentNullException(nameof(source));
 
         public int CurrentArea => PlayerState != null && HasSelectedSector && _mapAreas != null
             ? _mapAreas.Resolve(SelectedSector, PlayerState.MapPosition) : 0;

@@ -43,6 +43,7 @@ namespace Arcanum.Runtime.UI
     public enum FateFailure
     {
         None,
+        InvalidChoice,
         NoPlayer,
         PlayerUnavailable,
         InsufficientPoints,
@@ -55,6 +56,76 @@ namespace Arcanum.Runtime.UI
         public bool Succeeded => Failure == FateFailure.None;
         public FateFailure Failure { get; }
         internal FateResult(FateFailure failure) => Failure = failure;
+    }
+
+    public enum FateResolutionKind
+    {
+        ImmediateFullHeal,
+        DialogueReaction,
+        AttackerCriticalHit,
+        DefenderCriticalMiss,
+        MagickSavingThrow,
+        SpellAtMaximum,
+        SkillCriticalSuccess,
+    }
+
+    public readonly struct FateDefinition
+    {
+        public FateChoice Choice { get; }
+        public string DisplayIdentity { get; }
+        public int Cost { get; }
+        public FateResolutionKind Resolution { get; }
+        public CharacterSkill? Skill { get; }
+        public bool IsImmediate => Choice == FateChoice.FullHeal;
+        public bool HasRuntimeResolver { get; }
+
+        internal FateDefinition(FateChoice choice, string displayIdentity, FateResolutionKind resolution,
+            bool hasRuntimeResolver, CharacterSkill? skill = null)
+        {
+            Choice = choice;
+            DisplayIdentity = displayIdentity;
+            Cost = 1;
+            Resolution = resolution;
+            HasRuntimeResolver = hasRuntimeResolver;
+            Skill = skill;
+        }
+    }
+
+    /// <summary>Retail fate.c table plus the exact fate_resolve call-site classification.</summary>
+    public static class FateCatalog
+    {
+        private static readonly FateDefinition[] Definitions =
+        {
+            new(FateChoice.FullHeal, "Full Heal", FateResolutionKind.ImmediateFullHeal, true),
+            new(FateChoice.ForceGoodReaction, "Force Good Reaction", FateResolutionKind.DialogueReaction, true),
+            new(FateChoice.CriticalHit, "Critical Hit", FateResolutionKind.AttackerCriticalHit, true),
+            new(FateChoice.CriticalMiss, "Critical Miss", FateResolutionKind.DefenderCriticalMiss, true),
+            new(FateChoice.SaveAgainstMagick, "Save Against Magick", FateResolutionKind.MagickSavingThrow, true),
+            new(FateChoice.SpellAtMaximum, "Spell At Maximum", FateResolutionKind.SpellAtMaximum, true),
+            new(FateChoice.CriticalSuccessGambling, "Critical Success: Gambling",
+                FateResolutionKind.SkillCriticalSuccess, false, CharacterSkill.Gambling),
+            new(FateChoice.CriticalSuccessHeal, "Critical Success: Heal",
+                FateResolutionKind.SkillCriticalSuccess, false, CharacterSkill.Heal),
+            new(FateChoice.CriticalSuccessPickPocket, "Critical Success: Pick Pocket",
+                FateResolutionKind.SkillCriticalSuccess, false, CharacterSkill.PickPocket),
+            new(FateChoice.CriticalSuccessRepair, "Critical Success: Repair",
+                FateResolutionKind.SkillCriticalSuccess, false, CharacterSkill.Repair),
+            new(FateChoice.CriticalSuccessPickLocks, "Critical Success: Pick Locks",
+                FateResolutionKind.SkillCriticalSuccess, false, CharacterSkill.PickLocks),
+            new(FateChoice.CriticalSuccessDisarmTraps, "Critical Success: Disarm Traps",
+                FateResolutionKind.SkillCriticalSuccess, false, CharacterSkill.DisarmTraps),
+        };
+
+        public static IReadOnlyList<FateDefinition> All => Definitions;
+
+        public static bool TryGet(FateChoice choice, out FateDefinition definition)
+        {
+            int index = (int)choice;
+            if ((uint)index < (uint)Definitions.Length && Definitions[index].Choice == choice)
+            { definition = Definitions[index]; return true; }
+            definition = default;
+            return false;
+        }
     }
 
     public enum SleepOption
@@ -85,8 +156,10 @@ namespace Arcanum.Runtime.UI
         public bool Succeeded => Failure == SleepFailure.None;
         public SleepFailure Failure { get; }
         public int HoursAdvanced { get; }
-        internal SleepResult(SleepFailure failure, int hoursAdvanced = 0)
-        { Failure = failure; HoursAdvanced = hoursAdvanced; }
+        public SleepLocationMode Mode { get; }
+        internal SleepResult(SleepFailure failure, int hoursAdvanced = 0,
+            SleepLocationMode mode = SleepLocationMode.Unavailable)
+        { Failure = failure; HoursAdvanced = hoursAdvanced; Mode = mode; }
     }
 
     public enum RecentActionKind { Skill, Item, Spell }
@@ -174,6 +247,8 @@ namespace Arcanum.Runtime.UI
 
         public FateResult ActivateFate(FateChoice choice)
         {
+            if (!FateCatalog.TryGet(choice, out FateDefinition definition))
+                return new FateResult(FateFailure.InvalidChoice);
             if (_world.PlayerState == null) return new FateResult(FateFailure.NoPlayer);
             ArcanumObjectId player = _world.PlayerState.Identity;
             if (!_world.Vitality.TryGet(player, out PersistentCharacterVitalityState vitality)
@@ -182,19 +257,26 @@ namespace Arcanum.Runtime.UI
             int flag = FateFlag(choice);
             if (flag != 0 && (_activeFateFlags & flag) != 0)
                 return new FateResult(FateFailure.AlreadyActive);
-            // The current bounded runtime has no exact resolution call sites for the eleven deferred fate effects.
-            // Reject them before consuming a point or changing the saved flag mask.
-            if (choice != FateChoice.FullHeal)
+            if (!definition.HasRuntimeResolver)
                 return new FateResult(FateFailure.UnsupportedDeferredEffect);
-            if (_fatePoints <= 0) return new FateResult(FateFailure.InsufficientPoints);
-            _fatePoints--;
-            _world.Vitality.RestoreHitPoints(player, int.MaxValue);
-            _world.Vitality.RestoreFatigue(player, int.MaxValue);
+            if (_fatePoints < definition.Cost) return new FateResult(FateFailure.InsufficientPoints);
+            _fatePoints -= definition.Cost;
+            if (definition.IsImmediate)
+            {
+                _world.Vitality.RestoreHitPoints(player, int.MaxValue);
+                _world.Vitality.RestoreFatigue(player, int.MaxValue);
+            }
+            else
+            {
+                _activeFateFlags |= flag;
+            }
             return new FateResult(FateFailure.None);
         }
 
         public FateResult DeactivateFate(FateChoice choice)
         {
+            if (!FateCatalog.TryGet(choice, out FateDefinition definition) || definition.IsImmediate)
+                return new FateResult(FateFailure.InvalidChoice);
             int flag = FateFlag(choice);
             if (flag == 0 || (_activeFateFlags & flag) == 0)
                 return new FateResult(FateFailure.UnsupportedDeferredEffect);
@@ -203,26 +285,41 @@ namespace Arcanum.Runtime.UI
             return new FateResult(FateFailure.None);
         }
 
-        public SleepFailure PreviewSleep()
+        /// <summary>Consumes one armed deferred fate at its source-proven resolution call site.</summary>
+        public bool TryResolveFate(FateChoice choice)
         {
+            if (!FateCatalog.TryGet(choice, out FateDefinition definition)
+                || definition.IsImmediate || !definition.HasRuntimeResolver)
+                return false;
+            int flag = FateFlag(choice);
+            if ((_activeFateFlags & flag) == 0) return false;
+            _activeFateFlags &= ~flag;
+            return true;
+        }
+
+        public SleepFailure PreviewSleep() => PreviewSleep(out _);
+
+        public SleepFailure PreviewSleep(out SleepLocationMode mode)
+        {
+            mode = SleepLocationMode.Unavailable;
             if (_world.PlayerState == null) return SleepFailure.NoPlayer;
             ArcanumObjectId player = _world.PlayerState.Identity;
             if (!_world.Vitality.TryGet(player, out PersistentCharacterVitalityState vitality)
                 || vitality.CurrentHitPoints <= 0) return SleepFailure.Dead;
             if (vitality.CurrentFatigue <= 0) return SleepFailure.Unconscious;
             if (_world.Combat.IsActive) return SleepFailure.CombatActive;
-            // Map 1 is the retail overland wilderness. Town waitability and bed occupancy/use scripts are not yet
-            // represented, so every other location fails closed instead of inventing permission.
-            return _world.TryGetCurrentMapId(out int mapId) && mapId == 1
-                ? SleepFailure.None : SleepFailure.UnsupportedLocation;
+            mode = _world.SleepLocations?.Resolve(_world.SelectedSector) ?? SleepLocationMode.Unavailable;
+            return mode == SleepLocationMode.Unavailable ? SleepFailure.UnsupportedLocation : SleepFailure.None;
         }
 
         public SleepResult Sleep(SleepOption option)
         {
-            SleepFailure preview = PreviewSleep();
+            SleepFailure preview = PreviewSleep(out SleepLocationMode mode);
             if (preview != SleepFailure.None) return new SleepResult(preview);
+            if (mode == SleepLocationMode.TownWait && option == SleepOption.UntilHealed)
+                return new SleepResult(SleepFailure.InvalidOption, mode: mode);
             int hours = ResolveSleepHours(option);
-            if (hours < 1) return new SleepResult(SleepFailure.InvalidOption);
+            if (hours < 1) return new SleepResult(SleepFailure.InvalidOption, mode: mode);
 
             ArcanumObjectId player = _world.PlayerState.Identity;
             foreach (ActiveSpellEffect effect in _world.Magic.ActiveEffects
@@ -234,10 +331,13 @@ namespace Arcanum.Runtime.UI
             for (int hour = 0; hour < hours; hour++)
             {
                 _world.SourceTime.Advance(SourceHourMilliseconds);
-                RestingHeal(player, 1);
-                foreach (PartyMember member in _world.Party.Members) RestingHeal(member.Identity, 1);
+                if (mode == SleepLocationMode.WildernessSleep)
+                {
+                    RestingHeal(player, 1);
+                    foreach (PartyMember member in _world.Party.Members) RestingHeal(member.Identity, 1);
+                }
             }
-            return new SleepResult(SleepFailure.None, hours);
+            return new SleepResult(SleepFailure.None, hours, mode);
         }
 
         public void RecordRecentAction(QuickSlotBinding binding, ArcanumObjectId resolvedItem = default)

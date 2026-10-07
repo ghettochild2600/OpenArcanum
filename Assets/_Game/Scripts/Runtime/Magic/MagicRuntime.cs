@@ -5,6 +5,7 @@ using Arcanum.Formats.Objects;
 using Arcanum.Runtime.Character;
 using Arcanum.Runtime.Combat;
 using Arcanum.Runtime.Save;
+using Arcanum.Runtime.UI;
 using Arcanum.Runtime.World;
 using UnityEngine;
 
@@ -350,14 +351,24 @@ namespace Arcanum.Runtime.Magic
             SpellCastResult preview = PreviewInternal(request, scheduledRealTime);
             if (!preview.Succeeded) return preview;
             PhaseOneSpellCatalog.TryGet(request.SpellId, out SpellDefinition spell);
+            bool forceMaximum = _world.PlayerState != null
+                                && request.Caster == _world.PlayerState.Identity
+                                && _world.GameplayHud.IsFateActive(FateChoice.SpellAtMaximum);
+            bool forceSave = _world.PlayerState != null
+                             && request.Target == _world.PlayerState.Identity
+                             && request.Caster != request.Target
+                             && spell.ResistanceAttribute.HasValue
+                             && _world.GameplayHud.IsFateActive(FateChoice.SaveAgainstMagick);
             int resistance = spell.Disposition == SpellDisposition.Aggressive
                 ? ResolveResistance(request.Caster, request.Target) : 0;
-            int magnitude = ScaledMagnitude(spell, request.Caster);
+            int magnitude = forceMaximum ? spell.MaximumMagnitude : ScaledMagnitude(spell, request.Caster);
             if (spell.EffectFamily == SpellEffectFamily.DirectDamage && resistance > 0)
                 magnitude = Math.Max(1, magnitude * (100 - resistance) / 100);
-            bool resisted = spell.ResistanceAttribute.HasValue
+            bool resisted = forceSave || spell.ResistanceAttribute.HasValue
                             && ResolveSavingThrow(spell, request.Caster, request.Target, resistance);
 
+            if (forceMaximum) _world.GameplayHud.TryResolveFate(FateChoice.SpellAtMaximum);
+            if (forceSave) _world.GameplayHud.TryResolveFate(FateChoice.SaveAgainstMagick);
             _world.Vitality.ApplyFatigueDamage(request.Caster, preview.FatigueCost);
             if (_world.Combat.IsActive && _world.Combat.Mode == CombatMode.TurnBased)
                 _world.Combat.CommitTurnBasedSpellAction(request.Caster, spell.ActionPointCost);

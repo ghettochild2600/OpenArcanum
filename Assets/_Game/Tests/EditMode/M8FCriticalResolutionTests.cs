@@ -7,6 +7,7 @@ using Arcanum.Formats.World;
 using Arcanum.Runtime;
 using Arcanum.Runtime.Character;
 using Arcanum.Runtime.Combat;
+using Arcanum.Runtime.UI;
 using Arcanum.Runtime.World;
 using Arcanum.World;
 using NUnit.Framework;
@@ -135,6 +136,55 @@ namespace Arcanum.Formats.Tests
             Assert.That(result.AmmoQuantityBefore, Is.Zero);
             Assert.That(result.AmmoQuantityAfter, Is.Zero);
             Assert.That(_session.Vitality.GetCurrentHitPoints(_bear), Is.EqualTo(hpBefore - 6));
+        }
+
+        [Test]
+        public void ArmedCriticalHitForcesPcAttackAndConsumesOnlyOnCommit()
+        {
+            GivePcTurn();
+            _session.GameplayHud.GrantFatePoint();
+            Assert.That(_session.GameplayHud.ActivateFate(FateChoice.CriticalHit).Succeeded, Is.True);
+            _session.Combat.SetRandomSource(new SequenceRandom(100, 100, 4, 4, 100, 100, 1));
+
+            CombatAttackResult result = _session.Combat.Attack(_pc.Identity, _bear);
+
+            Assert.That((result.Succeeded, result.Outcome, result.Hit),
+                Is.EqualTo((true, CombatAttackOutcome.CriticalSuccess, true)));
+            Assert.That(result.CriticalEffect, Is.EqualTo(CombatCriticalEffect.BonusDamage50));
+            Assert.That(_session.GameplayHud.IsFateActive(FateChoice.CriticalHit), Is.False);
+        }
+
+        [Test]
+        public void ArmedCriticalMissForcesOpponentSelfHitAndConsumesOnCommit()
+        {
+            _session.GameplayHud.GrantFatePoint();
+            Assert.That(_session.GameplayHud.ActivateFate(FateChoice.CriticalMiss).Succeeded, Is.True);
+            int pcHp = _session.Vitality.GetCurrentHitPoints(_pc.Identity);
+            int bearHp = _session.Vitality.GetCurrentHitPoints(_bear);
+            _session.Combat.SetRandomSource(new SequenceRandom(1, 100, 51, 5));
+
+            CombatAttackResult result = _session.Combat.Attack(_bear, _pc.Identity);
+
+            Assert.That((result.Succeeded, result.Outcome, result.EffectTargetIdentity),
+                Is.EqualTo((true, CombatAttackOutcome.CriticalFailure, _bear)));
+            Assert.That(_session.Vitality.GetCurrentHitPoints(_pc.Identity), Is.EqualTo(pcHp));
+            Assert.That(_session.Vitality.GetCurrentHitPoints(_bear), Is.LessThan(bearHp));
+            Assert.That(_session.GameplayHud.IsFateActive(FateChoice.CriticalMiss), Is.False);
+        }
+
+        [Test]
+        public void ArmedCriticalMissRemainsArmedWhenUnsupportedEffectRollFailsClosed()
+        {
+            _session.GameplayHud.GrantFatePoint();
+            Assert.That(_session.GameplayHud.ActivateFate(FateChoice.CriticalMiss).Succeeded, Is.True);
+            int actionPoints = _session.Combat.CurrentActionPoints;
+            _session.Combat.SetRandomSource(new SequenceRandom(1, 100, 50));
+
+            CombatAttackResult result = _session.Combat.Attack(_bear, _pc.Identity);
+
+            Assert.That(result.Failure, Is.EqualTo(CombatFailure.UnsupportedCriticalEffect));
+            Assert.That(_session.GameplayHud.IsFateActive(FateChoice.CriticalMiss), Is.True);
+            Assert.That(_session.Combat.CurrentActionPoints, Is.EqualTo(actionPoints));
         }
 
         [Test]

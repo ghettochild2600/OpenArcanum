@@ -9,6 +9,8 @@ using Arcanum.Runtime.Campaign;
 using Arcanum.Runtime.Character;
 using Arcanum.Runtime.Combat;
 using Arcanum.Runtime.Party;
+using Arcanum.Runtime.Save;
+using Arcanum.Runtime.UI;
 using Arcanum.Runtime.World;
 using Arcanum.Runtime.Social;
 using Arcanum.Script;
@@ -209,13 +211,17 @@ namespace Arcanum.Runtime.Dialogue
             if (_dialogue == null)
                 return FailStart(DialogueStartStatus.MissingDialogue, $"Dialogue {DialogueNumber} is missing.");
 
+            DialogueTransactionSnapshot snapshot = new(_world, _campaign);
+            if (_world.Social.GetReaction(npc, pc) < 100
+                && _world.GameplayHud.TryResolveFate(FateChoice.ForceGoodReaction))
+                _world.Social.SetReaction(npc, pc, 100);
+
             _context = new ProductionDialogueContext(_world, _campaign, pc, npc, _resolveGeneratedText,
                 () =>
                 {
                     SpecialView = DialogueSpecialView.CharacterExamination;
                     SpecialViewTarget = npc;
                 });
-            DialogueTransactionSnapshot snapshot = new(_world, _campaign);
             ScriptAttachmentState attachment = _campaign.GetScriptAttachment(npc, (int)Sap.Dialog);
             var scriptContext = new ScriptContext
             {
@@ -646,6 +652,7 @@ namespace Arcanum.Runtime.Dialogue
             private readonly CharacterDerivedStatService.Snapshot _derived;
             private readonly SocialStateService.Snapshot _social;
             private readonly WorldMapSessionCoordinator.DialogueInventorySnapshot _inventory;
+            private readonly GameplayHudSaveData _gameplayHud;
             private readonly PartyMember[] _party;
             private readonly Dictionary<ArcanumObjectId, bool> _waiting;
 
@@ -656,6 +663,7 @@ namespace Arcanum.Runtime.Dialogue
                 _derived = world.DerivedStats.CaptureSnapshot();
                 _social = world.Social.CaptureSnapshot();
                 _inventory = world.CaptureDialogueInventorySnapshot();
+                _gameplayHud = world.GameplayHud.ExportSaveData();
                 _party = world.Party.CaptureMembership();
                 _waiting = new Dictionary<ArcanumObjectId, bool>();
                 foreach (PersistentObjectState state in world.States.Values)
@@ -670,6 +678,7 @@ namespace Arcanum.Runtime.Dialogue
                 world.DerivedStats.RestoreSnapshot(_derived);
                 world.Social.RestoreSnapshot(_social);
                 world.RestoreDialogueInventorySnapshot(_inventory);
+                world.GameplayHud.RestoreSaveData(_gameplayHud);
                 world.Party.RestoreMembership(_party);
                 foreach (KeyValuePair<ArcanumObjectId, bool> pair in _waiting)
                     world.SetNpcWaiting(pair.Key, pair.Value);

@@ -8,6 +8,7 @@ using Arcanum.Formats.World;
 using Arcanum.Runtime.Character;
 using Arcanum.Runtime.Combat;
 using Arcanum.Runtime.Magic;
+using Arcanum.Runtime.UI;
 using Arcanum.Runtime.World;
 using Arcanum.Runtime;
 using Arcanum.World;
@@ -102,6 +103,53 @@ namespace Arcanum.Formats.Tests
             Assert.That(result.Magnitude, Is.EqualTo(3));
             Assert.That(Hp(_target), Is.EqualTo(hp - 3));
             Assert.That(Fatigue(_pc.Identity), Is.EqualTo(fatigue - 5));
+        }
+
+        [Test]
+        public void SpellAtMaximumUsesRetailMaximumAndConsumesOnlyAfterValidPreview()
+        {
+            _session.GameplayHud.GrantFatePoint();
+            Assert.That(_session.GameplayHud.ActivateFate(FateChoice.SpellAtMaximum).Succeeded, Is.True);
+            _session.Magic.SetRandomSource(new SequenceMagicRandom(99));
+
+            SpellCastResult result = _session.Magic.Cast(
+                new SpellCastRequest(_pc.Identity, PhaseOneSpellCatalog.Harm, _target));
+
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(result.Magnitude, Is.EqualTo(40));
+            Assert.That(_session.GameplayHud.IsFateActive(FateChoice.SpellAtMaximum), Is.False);
+        }
+
+        [Test]
+        public void InvalidSpellDoesNotConsumeArmedSpellAtMaximum()
+        {
+            _session.GameplayHud.GrantFatePoint();
+            Assert.That(_session.GameplayHud.ActivateFate(FateChoice.SpellAtMaximum).Succeeded, Is.True);
+
+            SpellCastResult result = _session.Magic.Cast(new SpellCastRequest(_pc.Identity, 999, _target));
+
+            Assert.That(result.Failure, Is.EqualTo(SpellCastFailure.InvalidSpell));
+            Assert.That(_session.GameplayHud.IsFateActive(FateChoice.SpellAtMaximum), Is.True);
+        }
+
+        [Test]
+        public void SaveAgainstMagickForcesPcSaveAndConsumesOnValidCast()
+        {
+            _session.Characters.SetEffectModifier(_target, "test:fate-save-against-magick-willpower",
+                CharacterAttribute.Willpower, 1);
+            _session.Magic.SetKnownCollegeRank(_target, SpellCollege.Phantasm, 2);
+            _session.GameplayHud.GrantFatePoint();
+            Assert.That(_session.GameplayHud.ActivateFate(FateChoice.SaveAgainstMagick).Succeeded, Is.True);
+            _session.Magic.SetRandomSource(new SequenceMagicRandom(99));
+
+            SpellCastResult result = _session.Magic.Cast(
+                new SpellCastRequest(_target, PhaseOneSpellCatalog.Flash, _pc.Identity));
+
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(result.ResistancePercent, Is.EqualTo(100));
+            Assert.That(result.ActiveEffectId, Is.Null);
+            Assert.That(_session.Combat.HasCritterFlag(_pc.Identity, 0x80), Is.False);
+            Assert.That(_session.GameplayHud.IsFateActive(FateChoice.SaveAgainstMagick), Is.False);
         }
 
         [Test]

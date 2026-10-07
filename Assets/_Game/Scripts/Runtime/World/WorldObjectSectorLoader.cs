@@ -1177,6 +1177,11 @@ namespace Arcanum.Runtime.World
                 _vfs.ReadAllBytes("mes/gamearea.mes")));
             Session.BindAreaSource(areas);
             Session.BindMapAreaSource(new MapAreaResolver(maps, areas, _vfs.Exists, _vfs.ReadAllBytes));
+            Session.BindSleepLocationSource(new SleepLocationSource(
+                _vfs.Exists("rules/townmap.mes")
+                    ? MesReader.Read(_vfs.ReadAllBytes("rules/townmap.mes"))
+                    : new MesFile(new List<KeyValuePair<int, string>>()),
+                _vfs.Exists, _vfs.ReadAllBytes));
             Session.BindAreaEntranceSource(new AreaEntranceResolver(maps, areas, transitions, _scripts.Get));
             Session.BindUseScriptSource(_scripts);
             Session.BindDialogueSource(_scripts.Get, dialogNum => DialogLocator.Load(_vfs, dialogNum));

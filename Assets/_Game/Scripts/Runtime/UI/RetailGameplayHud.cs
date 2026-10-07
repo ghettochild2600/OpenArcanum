@@ -170,6 +170,8 @@ namespace Arcanum.Runtime.UI
         private SourceUiButton _sleepButton;
         private RectTransform _fatePanel;
         private RectTransform _sleepPanel;
+        private readonly SourceUiBitmapText[] _sleepLabels = new SourceUiBitmapText[8];
+        private readonly SourceUiButton[] _sleepButtons = new SourceUiButton[8];
         private SourceUiButton _combatButton;
         private Camera _managedCamera;
         private Rect _originalCameraRect;
@@ -249,7 +251,12 @@ namespace Arcanum.Runtime.UI
             RefreshExperienceGauge();
             RefreshRecentActions();
             if (_fatePanel != null) _fatePanel.gameObject.SetActive(_controller.HudPanel == GameUiHudPanel.Fate);
-            if (_sleepPanel != null) _sleepPanel.gameObject.SetActive(_controller.HudPanel == GameUiHudPanel.Sleep);
+            if (_sleepPanel != null)
+            {
+                bool sleepOpen = _controller.HudPanel == GameUiHudPanel.Sleep;
+                _sleepPanel.gameObject.SetActive(sleepOpen);
+                if (sleepOpen) RefreshSleepPanel();
+            }
             _combatButton?.SetSelected(LastProjection.CombatActive);
             RefreshQuickSlots();
         }
@@ -473,13 +480,40 @@ namespace Arcanum.Runtime.UI
             for (int index = 0; index < fallback.Length; index++)
             {
                 string label = SourceMessage("mes/sleepui.mes", index, fallback[index]);
-                AddText($"Sleep Label {index}", _sleepPanel, new Rect(36f, 2f + 18f * index,
+                _sleepLabels[index] = AddText($"Sleep Label {index}", _sleepPanel, new Rect(36f, 2f + 18f * index,
                     Mathf.Max(1f, width - 36f), 18f), label, 229);
                 int captured = index;
-                AddButton($"Sleep Choice {index}", _sleepPanel, 293, 8f, 3f + 18f * index,
-                    () => _controller.Sleep((SleepOption)captured));
+                _sleepButtons[index] = AddButton($"Sleep Choice {index}", _sleepPanel, 293, 8f,
+                    3f + 18f * index, () => _controller.Sleep((SleepOption)captured));
             }
             _sleepPanel.gameObject.SetActive(false);
+        }
+
+        private void RefreshSleepPanel()
+        {
+            bool wait = _controller.ActiveSleepMode == SleepLocationMode.TownWait;
+            string[] sleepFallback =
+            {
+                "Sleep For One Hour", "Sleep For Two Hours", "Sleep For Four Hours",
+                "Sleep For Eight Hours", "Sleep For One Day", "Sleep Until Morning",
+                "Sleep Until Evening", "Sleep Until Healed",
+            };
+            string[] waitFallback =
+            {
+                "Wait For One Hour", "Wait For Two Hours", "Wait For Four Hours",
+                "Wait For Eight Hours", "Wait For One Day", "Wait Until Morning",
+                "Wait Until Evening",
+            };
+            for (int index = 0; index < _sleepLabels.Length; index++)
+            {
+                bool active = !wait || index < waitFallback.Length;
+                _sleepLabels[index].gameObject.SetActive(active);
+                _sleepButtons[index].gameObject.SetActive(active);
+                if (!active) continue;
+                string fallback = wait ? waitFallback[index] : sleepFallback[index];
+                int message = wait ? index + 12 : index;
+                SetText(_sleepLabels[index], SourceMessage("mes/sleepui.mes", message, fallback), SourceText);
+            }
         }
 
         private RectTransform AddSourcePanel(string name, RectTransform parent, int sourceId, float x, float y)

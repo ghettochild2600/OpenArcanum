@@ -55,6 +55,7 @@ namespace Arcanum.Formats.Tests
             _session.BindPrototypeSource(number => number == 9056 ? gold : null);
             _session.BindMapTransitionSource(new MapTransitionResolver(
                 MapList.Read(MesReader.Read("{5000}{test, 0, 0}\n")), _ => false, _ => null));
+            _session.BindSleepLocationSource(new FixedSleepLocationSource(SleepLocationMode.WildernessSleep));
             Assert.That(_session.SelectSector(Sector), Is.True);
             _session.GetOrCreatePlayer(ProductionPlayerLifecycle.DefaultPlayerIdentity, Sector, Vector2.one,
                 0x28100000u);
@@ -279,17 +280,56 @@ namespace Arcanum.Formats.Tests
         }
 
         [Test]
-        public void UnsupportedDeferredFateFailsBeforePointOrVitalityMutation()
+        public void SupportedDeferredFateArmsExactlyOnceAndCanRefundBeforeResolution()
         {
-            ArcanumObjectId player = _session.PlayerState.Identity;
             _session.GameplayHud.GrantFatePoint();
-            int hp = _session.Vitality.GetCurrentHitPoints(player);
-            int fatigue = _session.Vitality.GetCurrentFatigue(player);
             FateResult result = _session.GameplayHud.ActivateFate(FateChoice.CriticalHit);
-            Assert.That(result.Failure, Is.EqualTo(FateFailure.UnsupportedDeferredEffect));
+
+            Assert.That(result.Succeeded, Is.True);
             Assert.That((_session.GameplayHud.FatePoints,
-                    _session.Vitality.GetCurrentHitPoints(player), _session.Vitality.GetCurrentFatigue(player)),
-                Is.EqualTo((1, hp, fatigue)));
+                    _session.GameplayHud.IsFateActive(FateChoice.CriticalHit)), Is.EqualTo((0, true)));
+            Assert.That(_session.GameplayHud.ActivateFate(FateChoice.CriticalHit).Failure,
+                Is.EqualTo(FateFailure.AlreadyActive));
+            Assert.That(_session.GameplayHud.DeactivateFate(FateChoice.CriticalHit).Succeeded, Is.True);
+            Assert.That((_session.GameplayHud.FatePoints,
+                    _session.GameplayHud.IsFateActive(FateChoice.CriticalHit)), Is.EqualTo((1, false)));
+        }
+
+        [TestCase(FateChoice.ForceGoodReaction)]
+        [TestCase(FateChoice.CriticalHit)]
+        [TestCase(FateChoice.CriticalMiss)]
+        [TestCase(FateChoice.SaveAgainstMagick)]
+        [TestCase(FateChoice.SpellAtMaximum)]
+        public void SourceBackedDeferredFatesCanBeArmed(FateChoice choice)
+        {
+            _session.GameplayHud.GrantFatePoint();
+            Assert.That(_session.GameplayHud.ActivateFate(choice).Succeeded, Is.True);
+            Assert.That(_session.GameplayHud.IsFateActive(choice), Is.True);
+        }
+
+        [TestCase(FateChoice.CriticalSuccessGambling)]
+        [TestCase(FateChoice.CriticalSuccessHeal)]
+        [TestCase(FateChoice.CriticalSuccessPickPocket)]
+        [TestCase(FateChoice.CriticalSuccessRepair)]
+        [TestCase(FateChoice.CriticalSuccessPickLocks)]
+        [TestCase(FateChoice.CriticalSuccessDisarmTraps)]
+        public void UnsupportedSkillFateFailsBeforePointMutation(FateChoice choice)
+        {
+            _session.GameplayHud.GrantFatePoint();
+            FateResult result = _session.GameplayHud.ActivateFate(choice);
+            Assert.That(result.Failure, Is.EqualTo(FateFailure.UnsupportedDeferredEffect));
+            Assert.That((_session.GameplayHud.FatePoints, _session.GameplayHud.ActiveFateFlags),
+                Is.EqualTo((1, 0)));
+        }
+
+        [Test]
+        public void FateCatalogRecordsAllRetailChoicesAndResolverBoundaries()
+        {
+            Assert.That(FateCatalog.All.Select(value => value.Choice),
+                Is.EqualTo(Enum.GetValues(typeof(FateChoice)).Cast<FateChoice>()));
+            Assert.That(FateCatalog.All.All(value => value.Cost == 1), Is.True);
+            Assert.That(FateCatalog.All.Count(value => value.HasRuntimeResolver), Is.EqualTo(6));
+            Assert.That(FateCatalog.All.Count(value => !value.HasRuntimeResolver), Is.EqualTo(6));
         }
 
         [Test]
@@ -333,6 +373,57 @@ namespace Arcanum.Formats.Tests
         }
 
         [Test]
+        public void TownWaitAdvancesTimeAndDemaintainsWithoutRecovery()
+        {
+            _session.BindSleepLocationSource(new FixedSleepLocationSource(SleepLocationMode.TownWait));
+            ArcanumObjectId player = _session.PlayerState.Identity;
+            _session.Magic.SetKnownCollegeRank(player, SpellCollege.Earth, 1);
+            Assert.That(_session.Magic.Cast(new SpellCastRequest(player,
+                PhaseOneSpellCatalog.StrengthOfEarth, player)).Succeeded, Is.True);
+            _session.Vitality.ApplyHitPointDamage(player, 8);
+            _session.Vitality.ApplyFatigueDamage(player, 9);
+            int hp = _session.Vitality.GetCurrentHitPoints(player);
+            int fatigue = _session.Vitality.GetCurrentFatigue(player);
+
+            SleepResult result = _session.GameplayHud.Sleep(SleepOption.OneHour);
+
+            Assert.That((result.Succeeded, result.Mode, result.HoursAdvanced),
+                Is.EqualTo((true, SleepLocationMode.TownWait, 1)));
+            Assert.That((_session.SourceTime.ElapsedMilliseconds,
+                    _session.Vitality.GetCurrentHitPoints(player), _session.Vitality.GetCurrentFatigue(player)),
+                Is.EqualTo((3_600_000L, hp, fatigue)));
+            Assert.That(_session.Magic.ActiveEffects, Is.Empty);
+        }
+
+        [Test]
+        public void TownWaitRejectsUntilHealedBeforeTimeOrVitalityMutation()
+        {
+            _session.BindSleepLocationSource(new FixedSleepLocationSource(SleepLocationMode.TownWait));
+            ArcanumObjectId player = _session.PlayerState.Identity;
+            _session.Vitality.ApplyHitPointDamage(player, 5);
+            int hp = _session.Vitality.GetCurrentHitPoints(player);
+
+            SleepResult result = _session.GameplayHud.Sleep(SleepOption.UntilHealed);
+
+            Assert.That(result.Failure, Is.EqualTo(SleepFailure.InvalidOption));
+            Assert.That((_session.SourceTime.ElapsedMilliseconds,
+                    _session.Vitality.GetCurrentHitPoints(player)), Is.EqualTo((0L, hp)));
+        }
+
+        [Test]
+        public void TownMapWaitableFlagUsesExactSourceParsing()
+        {
+            SleepLocationSource source = new(MesReader.Read(
+                "{3}{Tarant [w: 1]}\n{4}{Black Root [W:0]}\n{5}{Stillwater}\n"),
+                _ => false, _ => null);
+
+            Assert.That(source.ResolveTownMap(0), Is.EqualTo(SleepLocationMode.WildernessSleep));
+            Assert.That(source.ResolveTownMap(3), Is.EqualTo(SleepLocationMode.TownWait));
+            Assert.That(source.ResolveTownMap(4), Is.EqualTo(SleepLocationMode.Unavailable));
+            Assert.That(source.ResolveTownMap(5), Is.EqualTo(SleepLocationMode.Unavailable));
+        }
+
+        [Test]
         public void ContextCounterExperienceGaugeClockAndRecentActionsProjectSourceFacts()
         {
             ArcanumObjectId player = _session.PlayerState.Identity;
@@ -364,6 +455,8 @@ namespace Arcanum.Formats.Tests
         public void HudAuthorityRoundTripsInOptionalSaveV1Domain()
         {
             _session.GameplayHud.GrantFatePoint();
+            _session.GameplayHud.GrantFatePoint();
+            Assert.That(_session.GameplayHud.ActivateFate(FateChoice.CriticalHit).Succeeded, Is.True);
             _session.GameplayHud.Notify(HudPrimaryNotification.Logbook);
             _session.GameplayHud.RecordRecentAction(new QuickSlotBinding(QuickSlotKind.Spell, default,
                 PhaseOneSpellCatalog.StrengthOfEarth));
@@ -371,10 +464,18 @@ namespace Arcanum.Formats.Tests
             Assert.That(json, Does.Contain("\"gameplayHud\""));
             Assert.That(_session.SaveGames.LoadJson(json).Succeeded, Is.True);
             Assert.That(_session.GameplayHud.FatePoints, Is.EqualTo(1));
+            Assert.That(_session.GameplayHud.IsFateActive(FateChoice.CriticalHit), Is.True);
             Assert.That(_session.GameplayHud.HasNotification(HudPrimaryNotification.Logbook), Is.True);
             Assert.That(_session.GameplayHud.RecentActions[0].SourceId,
                 Is.EqualTo(PhaseOneSpellCatalog.StrengthOfEarth));
             Assert.That(_session.SourceTime.ElapsedMilliseconds, Is.Zero);
+        }
+
+        private sealed class FixedSleepLocationSource : ISleepLocationSource
+        {
+            private readonly SleepLocationMode _mode;
+            public FixedSleepLocationSource(SleepLocationMode mode) => _mode = mode;
+            public SleepLocationMode Resolve(string selectedSector) => _mode;
         }
 
         [TestCase("Character", GameUiScreen.Character)]

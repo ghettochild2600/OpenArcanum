@@ -282,7 +282,53 @@ namespace OpenArcanum.Editor
                     "clicking the maintained icon cancels through M10A and restores the open source slot");
 
                 ArcanumObjectId player = session.PlayerState.Identity;
-                Check(controller.ActivateQuickSlot(0), "maintained spell can be re-established for sleep proof");
+                string townSector = session.SelectedSector;
+                Check(session.SleepLocations.Resolve(townSector) == SleepLocationMode.TownWait,
+                    "retail crash-site TownMapInfo resolves through townmap.mes as wait-only");
+                Check(controller.ActivateQuickSlot(0), "maintained spell can be re-established for wait proof");
+                session.Vitality.ApplyHitPointDamage(player, 6);
+                session.Vitality.ApplyFatigueDamage(player, 6);
+                int hpBeforeWait = session.Vitality.GetCurrentHitPoints(player);
+                int fatigueBeforeWait = session.Vitality.GetCurrentFatigue(player);
+                long timeBeforeWait = session.SourceTime.ElapsedMilliseconds;
+                FindButton("Sleep").onClick.Invoke();
+                Check(controller.HudPanel == GameUiHudPanel.Sleep,
+                    "source Sleep button opens the authoritative wait panel in a wait-only sector");
+                FindButton("Sleep Choice 0").onClick.Invoke();
+                view.Synchronize(true);
+                Check(controller.HudPanel == GameUiHudPanel.None
+                      && session.SourceTime.ElapsedMilliseconds == timeBeforeWait + 3_600_000
+                      && session.Vitality.GetCurrentHitPoints(player) == hpBeforeWait
+                      && session.Vitality.GetCurrentFatigue(player) == fatigueBeforeWait
+                      && session.Magic.ActiveEffects.Count == 0,
+                    "one-hour town wait advances SourceTime and demaintains once without recovery");
+
+                string wildernessSector = new[]
+                    {
+                        "maps/arcanum1-024-fixed/88570436011.sec",
+                        "maps/arcanum1-024-fixed/88570436013.sec",
+                        "maps/arcanum1-024-fixed/88570436010.sec",
+                        "maps/arcanum1-024-fixed/88570436014.sec",
+                        "maps/arcanum1-024-fixed/101602821844.sec",
+                        "maps/arcanum1-024-fixed/101602821845.sec",
+                        "maps/arcanum1-024-fixed/122473678402.sec",
+                        "maps/arcanum1-024-fixed/47781512457.sec",
+                        "maps/arcanum1-024-fixed/59726889458.sec",
+                        "maps/arcanum1-024-fixed/68786586569.sec",
+                        "maps/arcanum1-024-fixed/86570436012.sec",
+                        "maps/arcanum1-024-fixed/96502547529.sec",
+                        "maps/arcanum1-024-fixed/96636765255.sec",
+                    }
+                    .FirstOrDefault(value => session.SleepLocations.Resolve(value)
+                                             == SleepLocationMode.WildernessSleep);
+                Check(wildernessSector != null,
+                    "an authentic retail sector resolves as wilderness sleep");
+                Check(session.SelectSector(wildernessSector),
+                    "production coordinator selects the authentic wilderness sector");
+                yield return null;
+                yield return null;
+                Check(controller.ActivateQuickSlot(0),
+                    "maintained spell can be re-established for wilderness sleep proof");
                 session.Vitality.ApplyHitPointDamage(player, 6);
                 session.Vitality.ApplyFatigueDamage(player, 6);
                 int hpBeforeSleep = session.Vitality.GetCurrentHitPoints(player);
@@ -290,7 +336,7 @@ namespace OpenArcanum.Editor
                 long timeBeforeSleep = session.SourceTime.ElapsedMilliseconds;
                 FindButton("Sleep").onClick.Invoke();
                 Check(controller.HudPanel == GameUiHudPanel.Sleep,
-                    "source Sleep button opens the bounded authoritative sleep panel");
+                    "source Sleep button opens the authoritative wilderness sleep panel");
                 FindButton("Sleep Choice 0").onClick.Invoke();
                 view.Synchronize(true);
                 Check(controller.HudPanel == GameUiHudPanel.None
@@ -299,6 +345,10 @@ namespace OpenArcanum.Editor
                       && session.Vitality.GetCurrentFatigue(player) > fatigueBeforeSleep
                       && session.Magic.ActiveEffects.Count == 0,
                     "one-hour wilderness sleep advances SourceTime, heals, restores fatigue, and demaintains once");
+                Check(session.SelectSector(townSector),
+                    "production coordinator returns to the authentic crash-site sector");
+                yield return null;
+                yield return null;
 
                 session.GameplayHud.GrantFatePoint();
                 session.Vitality.ApplyHitPointDamage(player, 4);
@@ -442,11 +492,13 @@ namespace OpenArcanum.Editor
                       && Object.FindObjectsByType<EventSystem>(FindObjectsSortMode.None).Length == 1,
                     "rebuild leaves one HUD, one inventory, one gameplay cursor, and one EventSystem");
 
-                Debug.Log("UI-C.4 PHYSICAL VALIDATION: PASS; fresh New Game=crash-site START_MAP 1; "
+                Debug.Log("UI-C.5 PHYSICAL VALIDATION: PASS; fresh New Game=crash-site START_MAP 1; "
                           + "source HUD=185 top 800x41 + 184 bottom 800x159; world=full-screen; "
                           + $"initial notifications={initialNotifications}; primary pointer+keyboard routes/clear=PASS; "
                           + "Fate=00>01>Full Heal>00; maintained icon/cancel=PASS; "
-                          + "sleep=1h SourceTime/recovery/demaintain; clock=midday/evening/night/morning/midday; "
+                          + "wait=1h SourceTime/no recovery/demaintain; "
+                          + "wilderness sleep=1h SourceTime/recovery/demaintain; "
+                          + "clock=midday/evening/night/morning/midday; "
                           + "context=Gold six-digit/icon474; recent spell action=icon93; "
                           + "counter=Cloister18/three-digit/centered; maintained apertures=5/5 source-filled; "
                           + "source Inventory=223+221/800x400; grid/equip/unequip/selection/bind=PASS; "

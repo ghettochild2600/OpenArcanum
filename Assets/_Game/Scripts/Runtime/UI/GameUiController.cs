@@ -182,6 +182,7 @@ namespace Arcanum.Runtime.UI
         public ArcanumObjectId Player => _session.PlayerState?.Identity ?? default;
         public bool IsModalOpen => Screen != GameUiScreen.None;
         public GameUiHudPanel HudPanel { get; private set; }
+        public SleepLocationMode ActiveSleepMode { get; private set; }
         public bool IsHudPanelOpen => HudPanel != GameUiHudPanel.None;
 
         public GameUiController(WorldMapSessionCoordinator session, ISessionSaveSlotOperations saveOperations = null,
@@ -529,10 +530,12 @@ namespace Arcanum.Runtime.UI
 
         public bool ToggleSleepPanel()
         {
-            if (HudPanel == GameUiHudPanel.Sleep) { HudPanel = GameUiHudPanel.None; return true; }
-            SleepFailure preview = _session.GameplayHud.PreviewSleep();
+            if (HudPanel == GameUiHudPanel.Sleep)
+            { HudPanel = GameUiHudPanel.None; ActiveSleepMode = SleepLocationMode.Unavailable; return true; }
+            SleepFailure preview = _session.GameplayHud.PreviewSleep(out SleepLocationMode mode);
             if (preview != SleepFailure.None) return Reject(SleepFailureMessage(preview));
             CloseScreenForHudPanel();
+            ActiveSleepMode = mode;
             HudPanel = GameUiHudPanel.Sleep;
             Feedback = string.Empty;
             return true;
@@ -543,7 +546,9 @@ namespace Arcanum.Runtime.UI
             SleepResult result = _session.GameplayHud.Sleep(option);
             if (!result.Succeeded) return Reject(SleepFailureMessage(result.Failure));
             HudPanel = GameUiHudPanel.None;
-            return Complete(true, $"Rested for {result.HoursAdvanced} hour{(result.HoursAdvanced == 1 ? string.Empty : "s")}.");
+            ActiveSleepMode = SleepLocationMode.Unavailable;
+            string verb = result.Mode == SleepLocationMode.TownWait ? "Waited" : "Rested";
+            return Complete(true, $"{verb} for {result.HoursAdvanced} hour{(result.HoursAdvanced == 1 ? string.Empty : "s")}.");
         }
 
         private static string SlotLabel(int index) => index == 9 ? "0" : (index + 1).ToString();
@@ -657,7 +662,8 @@ namespace Arcanum.Runtime.UI
             SleepFailure.Dead => "The dead cannot sleep.",
             SleepFailure.Unconscious => "You are unconscious already.",
             SleepFailure.CombatActive => "You cannot sleep with enemies near.",
-            SleepFailure.UnsupportedLocation => "You cannot wait here; town waitability and bed use are not yet represented.",
+            SleepFailure.UnsupportedLocation => "You cannot wait here.",
+            SleepFailure.InvalidOption => "That rest option is unavailable here.",
             _ => failure.ToString(),
         };
 

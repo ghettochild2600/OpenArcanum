@@ -4,6 +4,7 @@ using System.Linq;
 using Arcanum.Formats.Art;
 using Arcanum.Formats.Objects;
 using Arcanum.Runtime.Character;
+using Arcanum.Runtime.UI;
 using Arcanum.Runtime.World;
 using UnityEngine;
 
@@ -1139,9 +1140,21 @@ namespace Arcanum.Runtime.Combat
             CombatAttackOutcome outcome = aptitudeCriticalFailure
                 ? CombatAttackOutcome.CriticalFailure
                 : ClassifyAttack(ordinaryHit, criticalRoll, criticalChance);
-            bool hit = ordinaryHit;
+            bool forceCriticalHit = _world.PlayerState != null
+                                    && actor == _world.PlayerState.Identity
+                                    && _world.GameplayHud.IsFateActive(FateChoice.CriticalHit);
+            bool forceCriticalMiss = _world.PlayerState != null
+                                     && target == _world.PlayerState.Identity
+                                     && _world.GameplayHud.IsFateActive(FateChoice.CriticalMiss);
+            bool hit = forceCriticalHit || ordinaryHit;
+            if (forceCriticalHit) outcome = CombatAttackOutcome.CriticalSuccess;
+            else if (forceCriticalMiss)
+            {
+                hit = false;
+                outcome = CombatAttackOutcome.CriticalFailure;
+            }
             DodgeResolution dodge = default;
-            if (hit && !aptitudeCriticalFailure)
+            if (hit && !aptitudeCriticalFailure && !forceCriticalHit)
             {
                 dodge = ResolveDodge(target, chance.DodgeChance);
                 hit = !dodge.Succeeded;
@@ -1194,6 +1207,8 @@ namespace Arcanum.Runtime.Combat
             if (resolvesDamage && mitigatedNormal >= hitPointsBefore && effectTargetSource.DyingScriptNum != 0)
                 return AttackFailure(CombatFailure.UnresolvedDeathScript, request);
 
+            if (forceCriticalHit) _world.GameplayHud.TryResolveFate(FateChoice.CriticalHit);
+            if (forceCriticalMiss) _world.GameplayHud.TryResolveFate(FateChoice.CriticalMiss);
             int spent = turnBased ? Math.Min(CurrentActionPoints, actionPointCost) : 0;
             int overdrawFatigue = overdraw ? 2 : 0;
             if (turnBased) CurrentActionPoints -= spent;
@@ -1343,11 +1358,21 @@ namespace Arcanum.Runtime.Combat
             int criticalChance = GetCriticalChance(chance.MeleeEffectiveness, ordinaryHit,
                 calledLocationBonus: GetCalledLocationCriticalBonus(request.CalledLocation));
             CombatAttackOutcome outcome = ClassifyAttack(ordinaryHit, criticalRoll, criticalChance);
-            if (outcome == CombatAttackOutcome.CriticalFailure)
-                return AttackFailure(CombatFailure.UnsupportedCriticalEffect, request);
-            bool hit = ordinaryHit;
+            bool forceCriticalHit = _world.PlayerState != null
+                                    && actor == _world.PlayerState.Identity
+                                    && _world.GameplayHud.IsFateActive(FateChoice.CriticalHit);
+            bool forceCriticalMiss = _world.PlayerState != null
+                                     && target == _world.PlayerState.Identity
+                                     && _world.GameplayHud.IsFateActive(FateChoice.CriticalMiss);
+            bool hit = forceCriticalHit || ordinaryHit;
+            if (forceCriticalHit) outcome = CombatAttackOutcome.CriticalSuccess;
+            else if (forceCriticalMiss)
+            {
+                hit = false;
+                outcome = CombatAttackOutcome.CriticalFailure;
+            }
             DodgeResolution dodge = default;
-            if (hit)
+            if (hit && !forceCriticalHit)
             {
                 dodge = ResolveDodge(target, chance.DodgeChance);
                 hit = !dodge.Succeeded;
@@ -1361,7 +1386,10 @@ namespace Arcanum.Runtime.Combat
             CombatActorSource effectTargetSource = targetSource;
             CombatCriticalEffect transactionCriticalEffect = CombatCriticalEffect.None;
             int transactionCriticalEffectRoll = 0;
-            if (dodge.CriticalDodge)
+            bool supportedCriticalFailure = forceCriticalMiss || dodge.CriticalDodge;
+            if (outcome == CombatAttackOutcome.CriticalFailure && !supportedCriticalFailure)
+                return AttackFailure(CombatFailure.UnsupportedCriticalEffect, request);
+            if (supportedCriticalFailure)
             {
                 transactionCriticalEffectRoll = _random.NextInclusive(1, 100);
                 if (transactionCriticalEffectRoll <= 50)
@@ -1374,7 +1402,7 @@ namespace Arcanum.Runtime.Combat
             SkillTrainingLevel bowTraining = _world.Progression.GetTrainingLevel(actor,
                 CharacterSkill.Bow);
             int impactCount = bowTraining >= SkillTrainingLevel.Expert ? 2 : 1;
-            bool resolvesDamage = hit || dodge.CriticalDodge;
+            bool resolvesDamage = hit || supportedCriticalFailure;
             var plans = new CombatImpactPlan[impactCount];
             int projectedHitPoints = _world.Vitality.GetCurrentHitPoints(effectTarget);
             for (int index = 0; index < impactCount; index++)
@@ -1412,6 +1440,8 @@ namespace Arcanum.Runtime.Combat
                     secondaryCriticalEffectRoll, tertiaryCriticalEffectRoll);
             }
 
+            if (forceCriticalHit) _world.GameplayHud.TryResolveFate(FateChoice.CriticalHit);
+            if (forceCriticalMiss) _world.GameplayHud.TryResolveFate(FateChoice.CriticalMiss);
             int spent = turnBased ? Math.Min(CurrentActionPoints, actionPointCost) : 0;
             int previousActionPoints = CurrentActionPoints;
             if (turnBased) CurrentActionPoints -= spent;
