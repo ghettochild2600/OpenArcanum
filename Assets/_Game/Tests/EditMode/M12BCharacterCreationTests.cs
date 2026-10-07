@@ -5,6 +5,7 @@ using Arcanum.Formats.Text;
 using Arcanum.Formats.World;
 using Arcanum.Runtime.Character;
 using Arcanum.Runtime.Creation;
+using Arcanum.Runtime.Economy;
 using Arcanum.Runtime.Magic;
 using Arcanum.Runtime.Technology;
 using Arcanum.Runtime.World;
@@ -31,7 +32,11 @@ namespace Arcanum.Formats.Tests
             _session.BindInventoryFootprintSource(_ => InventoryFootprint.OneCell);
             var gold = new ObjectProtoInfo(9056, ObjectType.Gold, 0x60000003u, invAid: 3) { GoldQuantity = 1 };
             var armor = new ObjectProtoInfo(8157, ObjectType.Armor, 0x70000000u, invAid: 0);
-            _session.BindPrototypeSource(number => number == 9056 ? gold : number == 8157 ? armor : null);
+            var pregenerated = PregeneratedPrototype();
+            _session.BindPrototypeSource(number => number == 9056 ? gold
+                : number == 8157 ? armor : number == 16067 ? pregenerated : null);
+            _session.BindEconomySource(InventorySourceCatalog.FromMes(
+                Mes((108, "Merwin: 0 0 100 8137")), null));
             _session.BindCharacterCreationSource(CreateCatalog());
         }
 
@@ -100,7 +105,8 @@ namespace Arcanum.Formats.Tests
             Assert.That(_session.DerivedStats.GetResistance(pc, CharacterResistance.Poison), Is.EqualTo(40),
                 "the authentic +20 background contribution composes with M4D's Constitution-derived 20");
             string json = _session.SaveGames.SerializeCurrentSession();
-            Assert.That(_session.SaveGames.LoadJson(json).Succeeded, Is.True);
+            var load = _session.SaveGames.LoadJson(json);
+            Assert.That(load.Succeeded, Is.True, load.Message);
             Assert.That(_session.Characters.GetEffectiveAttribute(pc, CharacterAttribute.Beauty), Is.EqualTo(7));
             Assert.That(_session.DerivedStats.GetResistance(pc, CharacterResistance.Poison), Is.EqualTo(40));
         }
@@ -224,6 +230,60 @@ namespace Arcanum.Formats.Tests
             Assert.That(_session.SelectedSector, Is.EqualTo(StartSector));
         }
 
+        [Test]
+        public void PregeneratedBasicPrototypeReconstructsEngineOwnedSourceDefaultsWithoutLooseOverride()
+        {
+            var gold = new ObjectProtoInfo(9056, ObjectType.Gold, 0x60000003u, invAid: 3) { GoldQuantity = 1 };
+            var armor = new ObjectProtoInfo(8157, ObjectType.Armor, 0x70000000u, invAid: 0);
+            _session.BindPrototypeSource(number => number == 9056 ? gold : number == 8157 ? armor : null);
+            PregeneratedCharacterDefinition selected = _session.CharacterCreation.Catalog.PregeneratedCharacters
+                .Single(value => value.SourceIndex == 1);
+            ObjectProtoInfo prototype = _session.CharacterCreation.ResolvePregeneratedPrototype(selected);
+
+            Assert.That(prototype.ProtoNumber, Is.EqualTo(16067));
+            Assert.That(prototype.Type, Is.EqualTo(ObjectType.Pc));
+            Assert.That(prototype.Portrait, Is.EqualTo(1017));
+            Assert.That(prototype.StatBase.Take(CharacterAttributeSet.Count),
+                Is.EqualTo(Enumerable.Repeat(CharacterAttributeSet.SourceDefault, CharacterAttributeSet.Count)));
+            Assert.That(prototype.StatBase[CharacterProgressionSource.LevelSourceSlot], Is.EqualTo(1));
+            Assert.That(prototype.StatBase[CharacterAttributeSet.GenderSourceSlot], Is.EqualTo((int)CharacterGender.Male));
+            Assert.That(prototype.StatBase[CharacterAttributeSet.RaceSourceSlot], Is.EqualTo((int)CharacterRace.Halfling));
+            Assert.That(prototype.CurrentArtId,
+                Is.EqualTo(CharacterCreationRules.BuildPlayerArt(CharacterRace.Halfling, CharacterGender.Male)));
+
+            CharacterCreationFinalizeResult result = _session.CharacterCreation.FinalizePregeneratedCharacter(
+                selected.SourceIndex);
+            Assert.That(result.Succeeded, Is.True, result.Message);
+            Assert.That(_session.Characters.Get(ProductionPlayerLifecycle.DefaultPlayerIdentity).PrototypeNumber,
+                Is.EqualTo(selected.PrototypeNumber));
+        }
+
+        [Test]
+        public void PregeneratedPrototypeFinalizesExactlyOnceWithSourceIdentityInventoryFlagAndSaveLoad()
+        {
+            CharacterCreationFinalizeResult result = _session.CharacterCreation.FinalizePregeneratedCharacter(1);
+            Assert.That(result.Succeeded, Is.True, result.Message);
+            ArcanumObjectId pc = ProductionPlayerLifecycle.DefaultPlayerIdentity;
+            Assert.That(_session.CharacterCreation.Finalized.Name, Is.EqualTo("Merwin Tumblebrook"));
+            Assert.That(_session.CharacterCreation.Finalized.PortraitId, Is.EqualTo(1017));
+            Assert.That(_session.Characters.Get(pc).PrototypeNumber, Is.EqualTo(16067));
+            Assert.That(_session.Characters.Get(pc).Race, Is.EqualTo(CharacterRace.Halfling));
+            Assert.That(_session.Progression.GetPurchasedSkillPoints(pc, CharacterSkill.Melee), Is.EqualTo(2));
+            Assert.That(_session.Campaign.GetFlag(123), Is.EqualTo(1));
+            PersistentObjectState armor = _session.States.Values.Single(value => value.PrototypeNumber == 8157);
+            Assert.That(armor.Placement.Kind, Is.EqualTo(ObjectPlacementKind.Equipped));
+            Assert.That(_session.CharacterCreation.FinalizePregeneratedCharacter(1).Failure,
+                Is.EqualTo(CharacterCreationFailure.AlreadyFinalized));
+
+            string json = _session.SaveGames.SerializeCurrentSession();
+            Assert.That(json, Does.Contain("\"pregeneratedSourceIndex\": 1"));
+            var load = _session.SaveGames.LoadJson(json);
+            Assert.That(load.Succeeded, Is.True, load.Message);
+            Assert.That(_session.CharacterCreation.Finalized.Name, Is.EqualTo("Merwin Tumblebrook"));
+            Assert.That(_session.Characters.Get(pc).Race, Is.EqualTo(CharacterRace.Halfling));
+            Assert.That(_session.Campaign.GetFlag(123), Is.EqualTo(1));
+        }
+
         private WorldMapSessionCoordinator NewSession()
         {
             var root = new GameObject("secondary");
@@ -241,19 +301,48 @@ namespace Arcanum.Formats.Tests
                 (0, "1000"), (1, "86"), (2, ""), (3, "400"), (4, ""),
                 (10, "1001"), (11, "87"), (12, ""), (13, "400"), (14, ""),
                 (30, "1003"), (31, "89"), (32, "HUF HUM"), (33, "400"), (34, "8157"),
+                (390, "1039"), (391, "86"), (392, "HEM"), (393, "0"), (394, ""),
                 (50, "1005"), (51, "200"), (52, ""), (53, "400"), (54, ""));
             MesFile text = Mes((1000, "No significant background\n\nNothing happened."),
                 (1001, "Raised by Snake Handlers\n\nPoison and Beauty."),
                 (1003, "Raised by Elves\n\nElven mail."),
+                (1039, "Merwin's Background\n\nRetail pregenerated source."),
                 (1005, "Unsupported\n\nUnsupported test."));
             MesFile effects = Mes((86, ""), (87, "resistpoison +20, be -1"),
                 (89, "repair -1, firearms -1, picklock -1, armtrap -1"), (200, "speed +1"));
             MesFile portraits = Mes((1001, "DWM1"), (1005, "HUM1"), (1006, "ELF1"),
                 (1009, "HGM1"), (1010, "HEM1"), (1003, "HAM1"), (1004, "HOM1"),
-                (1002, "GNM1"), (1007, "HOF1"), (1008, "HUF1"), (1011, "HEF1"));
+                (1002, "GNM1"), (1007, "HOF1"), (1008, "HUF1"), (1011, "HEF1"),
+                (1017, "HEM2"));
             MapList maps = MapList.Read(Mes((5000,
                 "Arcanum1-024-fixed, 92958, 82592, Type: START_MAP, WorldMap: 0")));
-            return CharacterCreationCatalog.FromMes(rules, text, effects, portraits, maps);
+            return CharacterCreationCatalog.FromMes(rules, text, effects, portraits, maps,
+                Mes((76, "Merwin Tumblebrook")), Mes((551, "123")));
+        }
+
+        private static ObjectProtoInfo PregeneratedPrototype()
+        {
+            var stats = Enumerable.Repeat(8, CharacterAttributeSet.SourceStatArrayCount).ToArray();
+            stats[17] = 1;
+            stats[18] = 0;
+            stats[21] = 3;
+            stats[25] = 20;
+            stats[26] = (int)CharacterGender.Male;
+            stats[27] = (int)CharacterRace.Halfling;
+            var basic = new int[CharacterSkillRules.BasicSkillCount];
+            basic[(int)CharacterSkill.Melee] = 2;
+            return new ObjectProtoInfo(16067, ObjectType.Pc, 0x2D100000u)
+            {
+                StatBase = stats,
+                BasicSkills = basic,
+                TechSkills = new int[CharacterSkillRules.TechnicalSkillCount],
+                SpellTech = new int[25],
+                Resistances = new int[CharacterDerivedStatRules.ResistanceCount],
+                Portrait = 1017,
+                InventorySource = 108,
+                HpPoints = 0,
+                FatiguePoints = 0,
+            };
         }
 
         private static MesFile Mes(params (int key, string value)[] values)

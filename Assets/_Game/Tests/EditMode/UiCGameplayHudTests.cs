@@ -503,6 +503,29 @@ namespace Arcanum.Formats.Tests
         }
 
         [Test]
+        public void TwoFrameSkillActionFamilyUsesHoverFrameForPressedPresentation()
+        {
+            Button skills = _root.GetComponentsInChildren<Button>(true).Single(value => value.name == "Skills");
+            skills.onClick.Invoke();
+            SourceUiButton[] actions = _root.GetComponentsInChildren<SourceUiButton>(true)
+                .Where(value => value.name.StartsWith("Source Skill Action", StringComparison.Ordinal))
+                .OrderBy(value => value.name).ToArray();
+            Assert.That(actions, Has.Length.EqualTo(4));
+            Assert.That(actions.Select(value => value.CurrentPresentationKey.SourceId),
+                Is.EqualTo(new[] { 279, 280, 282, 278 }));
+            foreach (SourceUiButton action in actions)
+            {
+                action.OnPointerEnter(null);
+                Assert.That(action.CurrentPresentationKey.Frame, Is.EqualTo(1), action.name);
+                action.OnPointerDown(null);
+                Assert.That(action.CurrentPresentationKey.Frame, Is.EqualTo(1), action.name);
+                action.OnPointerUp(null);
+                action.OnPointerExit(null);
+                Assert.That(action.CurrentPresentationKey.Frame, Is.Zero, action.name);
+            }
+        }
+
+        [Test]
         public void NonSourceConvenienceButtonsAreAbsentFromRetailComposition()
         {
             string[] forbidden = { "PARTY", "BARTER", "SAVE/LOAD" };

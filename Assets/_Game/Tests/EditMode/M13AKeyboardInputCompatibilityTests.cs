@@ -29,7 +29,7 @@ namespace Arcanum.Formats.Tests
         [TestCase(KeyCode.I, GameUiScreen.Inventory)]
         [TestCase(KeyCode.C, GameUiScreen.Character)]
         [TestCase(KeyCode.M, GameUiScreen.Magic)]
-        [TestCase(KeyCode.T, GameUiScreen.Technology)]
+        [TestCase(KeyCode.T, GameUiScreen.Crafting)]
         [TestCase(KeyCode.L, GameUiScreen.Journal)]
         [TestCase(KeyCode.W, GameUiScreen.Map)]
         [TestCase(KeyCode.O, GameUiScreen.Options)]
@@ -163,7 +163,8 @@ namespace Arcanum.Formats.Tests
             _keyboard.Dispatch(KeyCode.Home, ProductionKeyPhase.Up, Hud(), _commands);
             _keyboard.Dispatch(KeyCode.R, ProductionKeyPhase.Down, Hud(), _commands);
             _keyboard.Dispatch(KeyCode.A, ProductionKeyPhase.Down, Hud(), _commands);
-            Assert.That((_commands.Centers, _commands.ReadyToggles, _commands.ActiveActions), Is.EqualTo((1, 1, 1)));
+            Assert.That((_commands.Centers, _commands.CombatToggles, _commands.ReadyToggles, _commands.ActiveActions),
+                Is.EqualTo((1, 1, 0, 1)));
         }
 
         [Test]

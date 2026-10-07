@@ -34,6 +34,7 @@ namespace Arcanum.Runtime.Creation
         InvalidTechnology,
         OverspentCharacterPoints,
         MissingStartingPrototype,
+        InvalidPregeneratedSource,
         CommitFailed,
     }
 
@@ -203,6 +204,42 @@ namespace Arcanum.Runtime.Creation
         { Id = id; SourceName = sourceName; Race = race; Gender = gender; }
     }
 
+    /// <summary>
+    /// One retail pregenerated PC. Prototype, scheme, portrait, inventory-source and background numbers come from
+    /// proto.c's BP_MERWIN_TUMBLEBROOK..BP_KEREE_MELANGE cases; the display name comes from gamelevelname.mes.
+    /// </summary>
+    public sealed class PregeneratedCharacterDefinition
+    {
+        public int SourceIndex { get; }
+        public int PrototypeNumber { get; }
+        public int AutoLevelScheme { get; }
+        public string Name { get; }
+        public CharacterRace Race { get; }
+        public CharacterGender Gender { get; }
+        public int PortraitId { get; }
+        public int InventorySourceId { get; }
+        public int BackgroundId { get; }
+        public int BackgroundTextId { get; }
+        public int SelectionGlobalFlag { get; }
+
+        internal PregeneratedCharacterDefinition(int sourceIndex, string name, CharacterRace race,
+            CharacterGender gender, int portraitId, int inventorySourceId, int backgroundId,
+            int selectionGlobalFlag)
+        {
+            SourceIndex = sourceIndex;
+            PrototypeNumber = checked(CharacterCreationRules.PlayerPrototypeNumber + sourceIndex);
+            AutoLevelScheme = 75 + sourceIndex;
+            Name = name;
+            Race = race;
+            Gender = gender;
+            PortraitId = portraitId;
+            InventorySourceId = inventorySourceId;
+            BackgroundId = backgroundId;
+            BackgroundTextId = 1000 + backgroundId;
+            SelectionGlobalFlag = selectionGlobalFlag;
+        }
+    }
+
     /// <summary>Parsed retail creation content. Background and portrait coverage expands with the mounted data.</summary>
     public sealed class CharacterCreationCatalog
     {
@@ -210,12 +247,14 @@ namespace Arcanum.Runtime.Creation
         private readonly Dictionary<int, PortraitDefinition> _portraits;
         public IReadOnlyDictionary<int, BackgroundDefinition> Backgrounds => _backgrounds;
         public IReadOnlyDictionary<int, PortraitDefinition> Portraits => _portraits;
+        public IReadOnlyList<PregeneratedCharacterDefinition> PregeneratedCharacters { get; }
         public MapListEntry StartMap { get; }
         public string StartSector { get; }
         public Vector2 StartTile { get; }
 
         private CharacterCreationCatalog(Dictionary<int, BackgroundDefinition> backgrounds,
-            Dictionary<int, PortraitDefinition> portraits, MapListEntry startMap)
+            Dictionary<int, PortraitDefinition> portraits, MapListEntry startMap,
+            IReadOnlyList<PregeneratedCharacterDefinition> pregeneratedCharacters)
         {
             _backgrounds = backgrounds;
             _portraits = portraits;
@@ -225,6 +264,7 @@ namespace Arcanum.Runtime.Creation
             SectorCoordinate sector = SectorCoordinate.FromGlobal(mapPath, global);
             StartSector = sector.Path;
             StartTile = sector.ToLocal(global);
+            PregeneratedCharacters = pregeneratedCharacters;
         }
 
         public bool TryGetBackground(int id, out BackgroundDefinition background)
@@ -234,7 +274,8 @@ namespace Arcanum.Runtime.Creation
                && portrait.Race == race && portrait.Gender == gender;
 
         public static CharacterCreationCatalog FromMes(MesFile backgroundRules, MesFile backgroundText,
-            MesFile effects, MesFile portraits, MapList maps)
+            MesFile effects, MesFile portraits, MapList maps, MesFile gameLevelNames = null,
+            MesFile mainMenu = null)
         {
             if (backgroundRules == null || backgroundText == null || effects == null || portraits == null
                 || maps == null) throw new ArgumentNullException("A complete creation source set is required.");
@@ -273,7 +314,43 @@ namespace Arcanum.Runtime.Creation
                     portraitDefinitions[entry.Key] = new PortraitDefinition(entry.Key, entry.Value.Trim(), race, gender);
 
             MapListEntry start = maps.Entries.Single(entry => entry.Type == MapType.StartMap);
-            return new CharacterCreationCatalog(definitions, portraitDefinitions, start);
+            return new CharacterCreationCatalog(definitions, portraitDefinitions, start,
+                BuildPregeneratedCharacters(gameLevelNames, mainMenu));
+        }
+
+        private static IReadOnlyList<PregeneratedCharacterDefinition> BuildPregeneratedCharacters(
+            MesFile gameLevelNames, MesFile mainMenu)
+        {
+            (string fallback, CharacterRace race, CharacterGender gender, int portrait, int inventory, int background)[]
+                source =
+                {
+                    ("Merwin Tumblebrook", CharacterRace.Halfling, CharacterGender.Male, 1017, 108, 39),
+                    ("Godfrey Castleburger", CharacterRace.Gnome, CharacterGender.Male, 1002, 24, 40),
+                    ("Horace McGinley", CharacterRace.HalfElf, CharacterGender.Male, 1032, 20, 41),
+                    ("Muck Evil Eye", CharacterRace.HalfOgre, CharacterGender.Male, 1027, 25, 42),
+                    ("Dren Lelor", CharacterRace.Elf, CharacterGender.Male, 1033, 20, 43),
+                    ("Solomon Doone", CharacterRace.Human, CharacterGender.Male, 1005, 22, 44),
+                    ("Merik Luggerton", CharacterRace.HalfOrc, CharacterGender.Male, 1030, 20, 45),
+                    ("Lugard Bloodstone", CharacterRace.Dwarf, CharacterGender.Male, 1020, 24, 46),
+                    ("Victoria Warrington", CharacterRace.Human, CharacterGender.Female, 1025, 23, 47),
+                    ("Belan Tseraa", CharacterRace.Elf, CharacterGender.Female, 1024, 22, 48),
+                    ("Clarisse Vorak", CharacterRace.HalfOrc, CharacterGender.Female, 1031, 26, 49),
+                    ("Keree Melange", CharacterRace.HalfElf, CharacterGender.Female, 1029, 26, 50),
+                };
+            var result = new List<PregeneratedCharacterDefinition>(source.Length);
+            for (int index = 0; index < source.Length; index++)
+            {
+                int sourceIndex = index + 1;
+                int scheme = 75 + sourceIndex;
+                string name = gameLevelNames?.Get(scheme);
+                if (string.IsNullOrWhiteSpace(name)) name = source[index].fallback;
+                int.TryParse(mainMenu?.Get(551 + index), NumberStyles.Integer,
+                    CultureInfo.InvariantCulture, out int flag);
+                var value = source[index];
+                result.Add(new PregeneratedCharacterDefinition(sourceIndex, name.Trim(), value.race,
+                    value.gender, value.portrait, value.inventory, value.background, Math.Max(0, flag)));
+            }
+            return result.AsReadOnly();
         }
 
         internal static bool TryParseIdentityToken(string token, out CharacterRace race,
@@ -397,6 +474,7 @@ namespace Arcanum.Runtime.Creation
         public int Age { get; }
         public int SpentCharacterPoints { get; }
         public int RemainingCharacterPoints { get; }
+        public int PregeneratedSourceIndex { get; }
         public string StartSector { get; }
         public Vector2 StartTile { get; }
         public uint ArtId { get; }
@@ -410,8 +488,43 @@ namespace Arcanum.Runtime.Creation
             Background = background; PortraitId = source.PortraitId; Age = source.Age;
             SpentCharacterPoints = spent;
             RemainingCharacterPoints = CharacterCreationRules.StartingCharacterPoints - spent;
+            PregeneratedSourceIndex = 0;
             StartSector = catalog.StartSector; StartTile = catalog.StartTile;
             ArtId = CharacterCreationRules.BuildPlayerArt(Race, Gender);
+        }
+
+        internal FinalizedCharacterSpecification(PregeneratedCharacterDefinition source,
+            BackgroundDefinition background, CharacterCreationCatalog catalog, ObjectProtoInfo prototype,
+            CharacterProgressionSource progression)
+        {
+            Attributes = new int[CharacterAttributeSet.Count];
+            Array.Copy(prototype.StatBase, Attributes, Attributes.Length);
+            Skills = new int[CharacterSkillRules.SkillCount];
+            foreach (CharacterSkill skill in CharacterSkillRules.AllSkills)
+                Skills[(int)skill] = progression.GetPacked(skill) & 63;
+            Spells = new int[16];
+            Technology = new int[8];
+            if (prototype.SpellTech != null)
+            {
+                Array.Copy(prototype.SpellTech, Spells, Math.Min(Spells.Length, prototype.SpellTech.Length));
+                if (prototype.SpellTech.Length > 17)
+                    Array.Copy(prototype.SpellTech, 17, Technology, 0,
+                        Math.Min(Technology.Length, prototype.SpellTech.Length - 17));
+            }
+            Name = source.Name;
+            Race = source.Race;
+            Gender = source.Gender;
+            Background = background;
+            PortraitId = source.PortraitId;
+            Age = prototype.StatBase.Length > 25 ? prototype.StatBase[25] : CharacterCreationRules.SourceStartingAge;
+            SpentCharacterPoints = Math.Max(0,
+                CharacterCreationRules.StartingCharacterPoints - progression.UnspentCharacterPoints);
+            RemainingCharacterPoints = progression.UnspentCharacterPoints;
+            PregeneratedSourceIndex = source.SourceIndex;
+            StartSector = catalog.StartSector;
+            StartTile = catalog.StartTile;
+            ArtId = prototype.CurrentArtId != 0 ? prototype.CurrentArtId
+                : CharacterCreationRules.BuildPlayerArt(Race, Gender);
         }
     }
 
@@ -541,6 +654,81 @@ namespace Arcanum.Runtime.Creation
             }
         }
 
+        public CharacterCreationFinalizeResult FinalizePregeneratedCharacter(int sourceIndex)
+        {
+            if (IsFinalized)
+                return new CharacterCreationFinalizeResult(CharacterCreationFailure.AlreadyFinalized,
+                    "This session already owns a finalized new character.");
+            PregeneratedCharacterDefinition selected = Catalog?.PregeneratedCharacters
+                .FirstOrDefault(value => value.SourceIndex == sourceIndex);
+            if (selected == null)
+                return new CharacterCreationFinalizeResult(CharacterCreationFailure.InvalidPregeneratedSource,
+                    "Unknown retail pregenerated character.");
+            ObjectProtoInfo prototype = ResolvePregeneratedPrototype(selected);
+            if (prototype == null || prototype.Type != ObjectType.Pc || prototype.StatBase == null
+                || prototype.StatBase.Length < CharacterAttributeSet.SourceStatArrayCount)
+                return new CharacterCreationFinalizeResult(CharacterCreationFailure.InvalidPregeneratedSource,
+                    $"Retail PC prototype {selected.PrototypeNumber} is unavailable or incomplete.");
+            CharacterAttributeSet attributes;
+            CharacterRace race;
+            CharacterGender gender;
+            try { attributes = CharacterAttributeSet.FromSourceStatArray(prototype.StatBase, out race, out gender); }
+            catch (Exception exception)
+            {
+                return new CharacterCreationFinalizeResult(CharacterCreationFailure.InvalidPregeneratedSource,
+                    exception.Message);
+            }
+            bool hasBackground = Catalog.TryGetBackground(selected.BackgroundId, out BackgroundDefinition background);
+            if (race != selected.Race || gender != selected.Gender
+                || prototype.Portrait != selected.PortraitId
+                || !hasBackground
+                || background.TextId != selected.BackgroundTextId)
+                return new CharacterCreationFinalizeResult(CharacterCreationFailure.InvalidPregeneratedSource,
+                    "The pregenerated prototype does not match its retail identity metadata.");
+
+            CharacterProgressionSource progression = CharacterProgressionSource.Resolve(null, prototype.StatBase,
+                null, prototype.BasicSkills, null, prototype.TechSkills, prototype.CritterFlags ?? 0);
+            CharacterDerivedSource derived = CharacterDerivedSource.Resolve(null, prototype.StatBase,
+                null, prototype.BaseArmorClass, null, prototype.Resistances, null, prototype.ReactionBase,
+                0, prototype.CritterFlags ?? 0);
+            CharacterVitalitySource vitality = CharacterVitalitySource.Resolve(null, prototype.StatBase,
+                null, prototype.HpPoints, null, prototype.HpAdjustment, null, prototype.HpDamage,
+                null, prototype.FatiguePoints, null, prototype.FatigueAdjustment, null, prototype.FatigueDamage);
+            int[] spellTech = prototype.SpellTech != null ? (int[])prototype.SpellTech.Clone() : new int[25];
+            var finalized = new FinalizedCharacterSpecification(selected, background, Catalog, prototype, progression);
+            try
+            {
+                _world.ResetAuthoritativeSession();
+                _ = _world.GameplayHud;
+                ArcanumObjectId pc = ProductionPlayerLifecycle.DefaultPlayerIdentity;
+                _world.InitializeCreatedPlayer(pc, finalized.StartSector, finalized.StartTile, finalized.ArtId,
+                    attributes, race, gender, progression, derived, vitality, spellTech, prototype);
+                ApplyPersistentModifiers(pc, background);
+                if (!_world.Economy.PopulateStartingInventory(pc, selected.InventorySourceId, out string inventoryFailure))
+                    throw new InvalidOperationException(inventoryFailure);
+                foreach (ArcanumObjectId item in _world.ChildrenOf(pc).ToArray())
+                    if (_world.TryGetObjectState(item, out PersistentObjectState state)
+                        && WorldMapSessionCoordinator.TryGetNaturalWornLocation(state, out WornLocation location)
+                        && !_world.TryGetEquippedItem(pc, location, out _))
+                        _world.EquipItem(pc, item, location);
+                foreach (PregeneratedCharacterDefinition value in Catalog.PregeneratedCharacters)
+                    if (value.SelectionGlobalFlag > 0)
+                        _world.Campaign.SetFlag(value.SelectionGlobalFlag,
+                            value.SourceIndex == selected.SourceIndex ? 1 : 0);
+                Finalized = finalized;
+                if (!_world.SelectSector(finalized.StartSector))
+                    throw new InvalidOperationException("The authentic START_MAP sector could not be presented.");
+                return new CharacterCreationFinalizeResult(CharacterCreationFailure.None, null, finalized);
+            }
+            catch (Exception exception)
+            {
+                _world.ResetAuthoritativeSession();
+                Finalized = null;
+                return new CharacterCreationFinalizeResult(CharacterCreationFailure.CommitFailed,
+                    exception.Message);
+            }
+        }
+
         private void Commit(FinalizedCharacterSpecification value)
         {
             var attributes = new CharacterAttributeSet(value.Attributes, value.Race);
@@ -590,6 +778,7 @@ namespace Arcanum.Runtime.Creation
                 PortraitId = Finalized.PortraitId,
                 Age = Finalized.Age,
                 SpentCharacterPoints = Finalized.SpentCharacterPoints,
+                PregeneratedSourceIndex = Finalized.PregeneratedSourceIndex,
             };
 
         internal void RestoreSaveData(CharacterCreationSaveData data)
@@ -600,17 +789,60 @@ namespace Arcanum.Runtime.Creation
                 throw new InvalidOperationException("The saved creation background is not available.");
             ArcanumObjectId pc = ProductionPlayerLifecycle.DefaultPlayerIdentity;
             PersistentCharacterState character = _world.Characters.Get(pc);
-            if (background.TextId != data.BackgroundTextId
-                || !Catalog.IsPortraitLegal(data.PortraitId, character.Race, character.Gender))
+            if (background.TextId != data.BackgroundTextId)
                 throw new InvalidOperationException("The saved creation content does not match its source catalog.");
-            var source = new CharacterCreationSpecification
+            FinalizedCharacterSpecification restored;
+            bool identityMatches;
+            if (data.PregeneratedSourceIndex > 0)
             {
-                Name = data.Name, BackgroundId = data.BackgroundId, PortraitId = data.PortraitId, Age = data.Age,
-                Race = character.Race, Gender = character.Gender,
-            };
-            Finalized = new FinalizedCharacterSpecification(source, background, Catalog,
-                data.SpentCharacterPoints);
+                PregeneratedCharacterDefinition selected = Catalog.PregeneratedCharacters.FirstOrDefault(value =>
+                    value.SourceIndex == data.PregeneratedSourceIndex);
+                identityMatches = selected != null
+                                  && selected.Name == data.Name
+                                  && selected.BackgroundId == data.BackgroundId
+                                  && selected.PortraitId == data.PortraitId
+                                  && selected.PrototypeNumber == character.PrototypeNumber
+                                  && selected.Race == character.Race
+                                  && selected.Gender == character.Gender;
+                if (!identityMatches)
+                    throw new InvalidOperationException("The saved creation content does not match its source catalog.");
+                ObjectProtoInfo prototype = ResolvePregeneratedPrototype(selected);
+                restored = new FinalizedCharacterSpecification(selected, background, Catalog, prototype,
+                    _world.Progression.Get(pc).Source);
+                if (restored.Age != data.Age || restored.SpentCharacterPoints != data.SpentCharacterPoints)
+                    throw new InvalidOperationException("The saved pregenerated character does not match its prototype.");
+            }
+            else
+            {
+                identityMatches = Catalog.IsPortraitLegal(data.PortraitId, character.Race, character.Gender);
+                var source = new CharacterCreationSpecification
+                {
+                    Name = data.Name, BackgroundId = data.BackgroundId, PortraitId = data.PortraitId, Age = data.Age,
+                    Race = character.Race, Gender = character.Gender,
+                };
+                restored = new FinalizedCharacterSpecification(source, background, Catalog,
+                    data.SpentCharacterPoints);
+            }
+            if (!identityMatches)
+                throw new InvalidOperationException("The saved creation content does not match its source catalog.");
+            Finalized = restored;
             ApplyPersistentModifiers(pc, background);
+        }
+
+        /// <summary>
+        /// Resolves a retail pregenerated PC from a loose override when one exists, otherwise reconstructs the
+        /// engine-owned basic prototype created by <c>proto.c</c>. The shipped pregenerated PCs are basic prototypes,
+        /// not loose <c>data/proto</c> overrides, so treating a missing loose file as missing source data is incorrect.
+        /// </summary>
+        internal ObjectProtoInfo ResolvePregeneratedPrototype(PregeneratedCharacterDefinition selected)
+        {
+            if (selected == null) throw new ArgumentNullException(nameof(selected));
+            ObjectProtoInfo prototype = _world.ResolvePrototype(selected.PrototypeNumber);
+            if (prototype != null) return prototype;
+
+            return ObjectProtoInfo.CreateEngineOwnedPc(selected.PrototypeNumber,
+                CharacterCreationRules.BuildPlayerArt(selected.Race, selected.Gender), selected.PortraitId,
+                (int)selected.Gender, (int)selected.Race, CharacterCreationRules.SourceStartingAge);
         }
 
         private void ApplyPersistentModifiers(ArcanumObjectId identity, BackgroundDefinition background)

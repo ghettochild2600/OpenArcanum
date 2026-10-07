@@ -47,6 +47,7 @@ namespace Arcanum.Runtime.Save
         public int PortraitId { get; set; }
         public int Age { get; set; }
         public int SpentCharacterPoints { get; set; }
+        public int PregeneratedSourceIndex { get; set; }
     }
 
     public sealed class SocialSaveData

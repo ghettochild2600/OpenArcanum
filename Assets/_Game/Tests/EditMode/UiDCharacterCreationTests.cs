@@ -97,6 +97,9 @@ namespace Arcanum.Formats.Tests
             Assert.That(RetailCharacterCreationLayout.BackButton, Is.EqualTo(new Vector2(69, 496)));
             Assert.That(RetailCharacterCreationLayout.ContinueButton, Is.EqualTo(new Vector2(675, 496)));
             Assert.That(RetailCharacterCreationLayout.Portrait, Is.EqualTo(new Rect(95, 28, 64, 64)));
+            Assert.That(RetailCharacterCreationLayout.PortraitDraw, Is.EqualTo(new Rect(95, 28, 128, 128)));
+            Assert.That(((RectTransform)_view.IdentityPortraitImage.transform).sizeDelta,
+                Is.EqualTo(new Vector2(128, 128)));
             Assert.That(RetailCharacterCreationLayout.Name, Is.EqualTo(new Rect(46, 183, 228, 18)));
             Assert.That(RetailCharacterCreationLayout.Gender, Is.EqualTo(new Rect(66, 243, 186, 19)));
             Assert.That(RetailCharacterCreationLayout.Race, Is.EqualTo(new Rect(66, 293, 186, 19)));
@@ -134,8 +137,48 @@ namespace Arcanum.Formats.Tests
             Assert.That(_session.CharacterCreation.Catalog.IsPortraitLegal(_controller.CreationDraft.PortraitId,
                 _controller.CreationDraft.Race, _controller.CreationDraft.Gender), Is.True);
             Invoke("Next Race");
-            Assert.That(_controller.CreationDraft.Race, Is.EqualTo(CharacterRace.Dwarf));
-            Assert.That(_controller.CreationDraft.Gender, Is.EqualTo(CharacterGender.Male));
+            Assert.That(_controller.CreationDraft.Race, Is.EqualTo(CharacterRace.Elf));
+            Assert.That(_controller.CreationDraft.Gender, Is.EqualTo(CharacterGender.Female));
+        }
+
+        [Test]
+        public void GenderRulesCoverAllEightRacesAndRaceCyclingSkipsUnsupportedFemaleBodies()
+        {
+            CharacterRace[] female =
+                { CharacterRace.Human, CharacterRace.Elf, CharacterRace.HalfElf, CharacterRace.HalfOrc };
+            CharacterRace[] maleOnly =
+                { CharacterRace.Dwarf, CharacterRace.Gnome, CharacterRace.Halfling, CharacterRace.HalfOgre };
+            foreach (CharacterRace race in female)
+                Assert.That(CharacterCreationRules.IsGenderLegal(race, CharacterGender.Female), Is.True, race.ToString());
+            foreach (CharacterRace race in maleOnly)
+                Assert.That(CharacterCreationRules.IsGenderLegal(race, CharacterGender.Female), Is.False, race.ToString());
+
+            Invoke("Previous Gender");
+            CharacterRace[] cycled = new CharacterRace[4];
+            for (int index = 0; index < cycled.Length; index++)
+            {
+                cycled[index] = _controller.CreationDraft.Race;
+                Invoke("Next Race");
+            }
+            Assert.That(cycled, Is.EqualTo(female));
+            Assert.That(_controller.CreationDraft.Gender, Is.EqualTo(CharacterGender.Female));
+        }
+
+        [Test]
+        public void IdentityLabelsRemainInsideImmutableSourceRectanglesAfterRepeatedCycling()
+        {
+            RectTransform gender = (RectTransform)_view.IdentityRoot.Find("Gender");
+            RectTransform race = (RectTransform)_view.IdentityRoot.Find("Race");
+            RectTransform background = (RectTransform)_view.IdentityRoot.Find("Background");
+            for (int index = 0; index < 100; index++)
+            {
+                Invoke("Next Gender");
+                Invoke("Next Race");
+                Invoke("Next Background");
+            }
+            AssertCenteredWithin(gender, RetailCharacterCreationLayout.Gender);
+            AssertCenteredWithin(race, RetailCharacterCreationLayout.Race);
+            AssertCenteredWithin(background, RetailCharacterCreationLayout.Background);
         }
 
         [Test]
@@ -199,16 +242,55 @@ namespace Arcanum.Formats.Tests
             Assert.That(_controller.CreationDraft.GetAttribute(CharacterAttribute.Strength), Is.EqualTo(8));
         }
 
+        [TestCase(8)]
+        [TestCase(9)]
+        [TestCase(10)]
+        [TestCase(11)]
+        [TestCase(20)]
+        public void AttributeValueUsesImmutableMeasuredCenterForOneAndTwoDigitValues(int value)
+        {
+            _view.ContinueToEditor();
+            _controller.CreationDraft.SetAttribute(CharacterAttribute.Strength, value);
+            Invoke("Magic");
+            Invoke("Skills");
+
+            RectTransform text = _view.GetComponentsInChildren<RectTransform>(true)
+                .Single(candidate => candidate.name == "Strength Value");
+            const float sourceX = 194f;
+            const float sourceWidth = 25f;
+            Assert.That(text.anchoredPosition.x, Is.GreaterThanOrEqualTo(sourceX));
+            Assert.That(text.anchoredPosition.x + text.sizeDelta.x,
+                Is.LessThanOrEqualTo(sourceX + sourceWidth + .001f));
+            Assert.That(text.anchoredPosition.x + text.sizeDelta.x * .5f,
+                Is.EqualTo(sourceX + sourceWidth * .5f).Within(.501f));
+        }
+
         [Test]
         public void SkillsPanelUsesFourSourceGroupsAndM12BMutation()
         {
             _view.ContinueToEditor();
             Invoke("Increase Bow");
             Assert.That(_controller.CreationDraft.GetSkillPoints(CharacterSkill.Bow), Is.EqualTo(1));
+            Assert.That(_view.SkillGauges[CharacterSkill.Bow].fillAmount, Is.EqualTo(.2f).Within(.001f));
             Invoke("Skill Group 3");
             Assert.That(_view.SkillGroup, Is.EqualTo(3));
             Invoke("Increase Repair");
             Assert.That(_controller.CreationDraft.GetSkillPoints(CharacterSkill.Repair), Is.EqualTo(1));
+        }
+
+        [Test]
+        public void SkillGaugeUsesExactSourceTwentyUnitCropAndRestoresOnDecrease()
+        {
+            _view.ContinueToEditor();
+            Image gauge = _view.SkillGauges[CharacterSkill.Bow];
+            Assert.That(gauge.enabled, Is.False);
+            Invoke("Increase Bow");
+            gauge = _view.SkillGauges[CharacterSkill.Bow];
+            Assert.That(gauge.enabled, Is.True);
+            Assert.That(gauge.fillAmount, Is.EqualTo(.2f).Within(.001f));
+            Assert.That(((RectTransform)gauge.transform).sizeDelta, Is.EqualTo(new Vector2(120f, 27f)));
+            Invoke("Decrease Bow");
+            Assert.That(_view.SkillGauges[CharacterSkill.Bow].enabled, Is.False);
         }
 
         [Test]
@@ -292,6 +374,14 @@ namespace Arcanum.Formats.Tests
                 .Single(value => value.name == name);
             Assert.That(rect.anchoredPosition, Is.EqualTo(new Vector2(expected.x, -expected.y)));
             Assert.That(rect.pivot, Is.EqualTo(new Vector2(0f, 1f)));
+        }
+
+        private static void AssertCenteredWithin(RectTransform text, Rect bounds)
+        {
+            float x = text.anchoredPosition.x;
+            Assert.That(x, Is.GreaterThanOrEqualTo(bounds.x));
+            Assert.That(x + text.sizeDelta.x, Is.LessThanOrEqualTo(bounds.xMax + .001f));
+            Assert.That(x + text.sizeDelta.x * .5f, Is.EqualTo(bounds.center.x).Within(.501f));
         }
 
         private static CharacterCreationCatalog CreateCatalog()

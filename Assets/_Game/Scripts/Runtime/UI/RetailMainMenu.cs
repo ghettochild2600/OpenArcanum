@@ -136,7 +136,7 @@ namespace Arcanum.Runtime.UI
                     ShowNotice("VIEW INTRO", "RETAIL INTRO MOVIES ARE NOT YET MAPPED");
                     break;
                 case RetailMainMenuCommand.PickCharacter:
-                    ShowNotice("PICK CHARACTER", "PREGENERATED CHARACTER SELECTION IS NOT YET AVAILABLE");
+                    _controller.BeginPregeneratedCharacter();
                     break;
                 case RetailMainMenuCommand.NewCharacter:
                     _controller.BeginNewGame();

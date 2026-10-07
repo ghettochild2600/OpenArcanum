@@ -37,6 +37,7 @@ namespace Arcanum.Runtime.UI
         private ProductionCombatPresenter _legacyCombat;
         private RetailMainMenuView _retailMainMenu;
         private RetailCharacterCreationView _retailCharacterCreation;
+        private RetailPregeneratedCharacterView _retailPregeneratedCharacter;
         private RetailGameplayHudView _retailGameplayHud;
         private RetailInventoryEquipmentView _retailInventory;
         private RetailCharacterSheetView _retailCharacterSheet;
@@ -98,6 +99,9 @@ namespace Arcanum.Runtime.UI
             _retailCharacterCreation = GetComponent<RetailCharacterCreationView>()
                                        ?? gameObject.AddComponent<RetailCharacterCreationView>();
             _retailCharacterCreation.Bind(_controller, _session, _retailGameplayHud.Resolver);
+            _retailPregeneratedCharacter = GetComponent<RetailPregeneratedCharacterView>()
+                                           ?? gameObject.AddComponent<RetailPregeneratedCharacterView>();
+            _retailPregeneratedCharacter.Bind(_controller, _session, _retailGameplayHud.Resolver);
             _retailInventory = GetComponent<RetailInventoryEquipmentView>()
                                ?? gameObject.AddComponent<RetailInventoryEquipmentView>();
             _retailInventory.Bind(_controller, _session, _retailGameplayHud.Resolver);
@@ -138,6 +142,7 @@ namespace Arcanum.Runtime.UI
             SyncInputGate();
 
             _retailMainMenu?.Synchronize();
+            _retailPregeneratedCharacter?.Synchronize();
             _retailCharacterCreation?.Synchronize();
             _retailGameplayHud?.Synchronize(_showHud);
             _retailInventory?.Synchronize();
@@ -181,6 +186,12 @@ namespace Arcanum.Runtime.UI
                 && _retailCharacterCreation?.IsVisible == true)
             {
                 _retailCharacterCreation.HandleEscape();
+                return;
+            }
+            if (Controller.Screen == GameUiScreen.PregeneratedCharacter
+                && _retailPregeneratedCharacter?.IsVisible == true)
+            {
+                _retailPregeneratedCharacter.HandleEscape();
                 return;
             }
             if (Controller.Screen == GameUiScreen.Dialogue) Controller.CancelDialogue();
@@ -330,6 +341,7 @@ namespace Arcanum.Runtime.UI
         internal bool PointerOverInterface(Vector3 mouse)
         {
             if (_retailCharacterCreation?.IsVisible == true) return true;
+            if (_retailPregeneratedCharacter?.IsVisible == true) return true;
             if (_retailCharacterSheet?.ContainsScreenPoint(mouse) == true) return true;
             if (_retailInventory?.ContainsScreenPoint(mouse) == true) return true;
             if (_retailGameplayHud?.ContainsScreenPoint(mouse) == true) return true;
@@ -345,6 +357,7 @@ namespace Arcanum.Runtime.UI
             Controller.Refresh();
             _retailMainMenu?.Synchronize();
             _retailCharacterCreation?.Synchronize();
+            _retailPregeneratedCharacter?.Synchronize();
             _retailGameplayHud?.Synchronize(_showHud);
             _retailInventory?.Synchronize();
             _retailCharacterSheet?.Synchronize();
@@ -352,13 +365,15 @@ namespace Arcanum.Runtime.UI
                                   && _retailMainMenu?.IsAvailable == true;
             bool sourceCharacterCreation = Controller.Screen == GameUiScreen.CharacterCreation
                                            && _retailCharacterCreation?.IsAvailable == true;
+            bool sourcePregeneratedCharacter = Controller.Screen == GameUiScreen.PregeneratedCharacter
+                                               && _retailPregeneratedCharacter?.IsAvailable == true;
             bool sourceInventory = Controller.Screen == GameUiScreen.Inventory
                                    && _retailInventory?.IsAvailable == true;
             bool sourceCharacter = Controller.Screen == GameUiScreen.Character
                                    && _retailCharacterSheet?.IsAvailable == true;
             GUI.depth = -120;
             if (_showHud && _retailGameplayHud?.IsAvailable != true) DrawHud();
-            if (Controller.IsModalOpen && !sourceMainMenu && !sourceCharacterCreation && !sourceInventory
+            if (Controller.IsModalOpen && !sourceMainMenu && !sourceCharacterCreation && !sourcePregeneratedCharacter && !sourceInventory
                 && !sourceCharacter)
                 DrawScreen();
             DrawCursorLabel();

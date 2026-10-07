@@ -423,7 +423,7 @@ namespace Arcanum.Runtime.UI
                 () => { if (_controller.Screen == screen) _controller.Close(); else _openScreen(screen); });
 
         private SourceUiButton AddButton(string name, RectTransform parent, int sourceId, float x, float y,
-            Action clicked)
+            Action clicked, bool hasPressedFrame = true)
         {
             Vector2 size = ResolveLogicalSize(new UiAssetKey(sourceId));
             var go = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(Button), typeof(SourceUiImage),
@@ -433,7 +433,7 @@ namespace Arcanum.Runtime.UI
             Place(rect, new Rect(x, y, size.x, size.y));
             SourceUiButton source = go.GetComponent<SourceUiButton>();
             source.Bind(_resolver, new UiAssetKey(sourceId, frame: 0), new UiAssetKey(sourceId, frame: 1),
-                new UiAssetKey(sourceId, frame: 2), new UiAssetKey(sourceId, frame: 0),
+                new UiAssetKey(sourceId, frame: hasPressedFrame ? 2 : 1), new UiAssetKey(sourceId, frame: 0),
                 new UiAssetKey(sourceId, frame: 1));
             source.Button.onClick.AddListener(() => clicked());
             return source;
@@ -508,7 +508,7 @@ namespace Arcanum.Runtime.UI
                 int captured = index;
                 _skillActionButtons[index] = AddButton($"Source Skill Action {index}", _skillsPanel,
                     sourceIds[index], sourceX[index] - 196f, 514f - 492f,
-                    () => _controller.ActivateSourceSkillAction(captured));
+                    () => _controller.ActivateSourceSkillAction(captured), hasPressedFrame: false);
             }
             _skillsPanel.gameObject.SetActive(false);
         }

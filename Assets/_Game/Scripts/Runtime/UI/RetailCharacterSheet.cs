@@ -74,6 +74,8 @@ namespace Arcanum.Runtime.UI
         private SourceUiImage _background;
         private readonly Dictionary<CharacterAttribute, SourceUiBitmapText> _attributeValues = new();
         private readonly Dictionary<CharacterAttribute, (SourceUiButton Minus, SourceUiButton Plus)> _attributeButtons = new();
+        private readonly Dictionary<SourceUiBitmapText, Rect> _textBounds = new();
+        private readonly Dictionary<CharacterSkill, Image> _skillGauges = new();
         private SourceUiBitmapText _points;
         private SourceUiBitmapText _level;
         private SourceUiBitmapText _experience;
@@ -91,6 +93,7 @@ namespace Arcanum.Runtime.UI
         public int SkillGroup => _skillGroup;
         public RectTransform WindowTransform => _window;
         public RectTransform SkillsPanelTransform => _skillsPanel;
+        public IReadOnlyDictionary<CharacterSkill, Image> SkillGauges => _skillGauges;
         public UiResolvedAsset BackgroundAsset => _background?.CurrentAsset;
         public GameUiCharacterView LastProjection { get; private set; }
 
@@ -247,7 +250,7 @@ namespace Arcanum.Runtime.UI
             SetText(_gender, $": {view.Gender}");
             SetText(_age, view.Age > 0 ? $": {view.Age}" : string.Empty);
             foreach (GameUiAttributeView attribute in view.Attributes)
-                SetText(_attributeValues[attribute.Attribute], attribute.Base == attribute.Effective
+                SetCenteredText(_attributeValues[attribute.Attribute], attribute.Base == attribute.Effective
                     ? attribute.Base.ToString() : $"{attribute.Base}/{attribute.Effective}");
 
             foreach (GameUiDerivedStatView stat in view.DerivedStats)
@@ -277,6 +280,7 @@ namespace Arcanum.Runtime.UI
         private void RebuildSkills(GameUiCharacterView view)
         {
             ClearChildren(_skillsPanel);
+            _skillGauges.Clear();
             AddSourceImage("Skills Window", _skillsPanel, 29, new Rect(0f, 0f, 235f, 325f));
             for (int group = 0; group < 4; group++)
             {
@@ -296,9 +300,12 @@ namespace Arcanum.Runtime.UI
                     () => AdjustSkill(skill.Skill, 1));
                 AddText($"{skill.Skill} Name", _skillsPanel, new Rect(17f, 63f + 66f * row, 175f, 18f),
                     27, SourceWhite).Bind(_resolver, Friendly(skill.Skill), SourceWhite, 27);
+                _skillGauges[skill.Skill] = AddSkillGauge($"{skill.Skill} Gauge", _skillsPanel,
+                    new Rect(59f, 87f + 66f * row, 120f, 27f), skill.EffectiveRank);
                 string rank = $"{skill.PurchasedPoints}  {skill.EffectiveRank}/20  {Friendly(skill.Training)}";
-                AddText($"{skill.Skill} Rank", _skillsPanel, new Rect(58f, 90f + 66f * row, 130f, 18f),
-                    26, SourceYellow).Bind(_resolver, rank, SourceYellow, 26);
+                SourceUiBitmapText rankText = AddText($"{skill.Skill} Rank", _skillsPanel,
+                    new Rect(58f, 90f + 66f * row, 130f, 18f), 26, SourceYellow);
+                SetCenteredText(rankText, rank, SourceYellow);
             }
         }
 
@@ -353,6 +360,18 @@ namespace Arcanum.Runtime.UI
             return source;
         }
 
+        private Image AddSkillGauge(string name, RectTransform parent, Rect rect, int sourceLevel)
+        {
+            SourceUiImage source = AddSourceImage(name, parent, 623, rect);
+            Image image = source.Image;
+            image.type = Image.Type.Filled;
+            image.fillMethod = Image.FillMethod.Horizontal;
+            image.fillOrigin = (int)Image.OriginHorizontal.Left;
+            image.fillAmount = Mathf.Clamp01(Mathf.Clamp(sourceLevel, 0, 20) / 20f);
+            image.enabled = sourceLevel != 0;
+            return image;
+        }
+
         private SourceUiButton AddSourceButtonTopLeft(string name, RectTransform parent, int sourceId,
             Vector2 topLeft, Action clicked)
         {
@@ -383,8 +402,21 @@ namespace Arcanum.Runtime.UI
         {
             RectTransform target = AddRect(name, parent, rect);
             SourceUiBitmapText text = target.gameObject.AddComponent<SourceUiBitmapText>();
+            _textBounds[text] = rect;
             text.Bind(_resolver, string.Empty, color, font);
             return text;
+        }
+
+        private void SetCenteredText(SourceUiBitmapText text, string value, Color? tint = null)
+        {
+            if (text == null) return;
+            RectTransform rect = (RectTransform)text.transform;
+            Rect bounds = _textBounds.TryGetValue(text, out Rect immutable)
+                ? immutable : new Rect(rect.anchoredPosition.x, -rect.anchoredPosition.y,
+                    rect.sizeDelta.x, rect.sizeDelta.y);
+            text.Bind(_resolver, value ?? string.Empty, tint ?? SourceWhite, text.FontSourceId);
+            rect.anchoredPosition = new Vector2(
+                bounds.x + Mathf.Max(0f, (bounds.width - text.LogicalSize.x) * .5f), -bounds.y);
         }
 
         private void SetText(SourceUiBitmapText text, string value)
@@ -435,6 +467,8 @@ namespace Arcanum.Runtime.UI
             _background = null;
             _attributeValues.Clear();
             _attributeButtons.Clear();
+            _textBounds.Clear();
+            _skillGauges.Clear();
             LastProjection = null;
             _signature = int.MinValue;
             _dirty = true;

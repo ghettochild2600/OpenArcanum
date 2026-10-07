@@ -724,15 +724,29 @@ namespace Arcanum.Runtime.World
         internal PersistentPlayerState InitializeCreatedPlayer(ArcanumObjectId identity, string sector,
             Vector2 spawnTile, uint artId, CharacterAttributeSet attributes, CharacterRace race,
             CharacterGender gender, CharacterProgressionSource progression, CharacterDerivedSource derived,
-            CharacterVitalitySource vitality, int[] spellTech)
+            CharacterVitalitySource vitality, int[] spellTech, ObjectProtoInfo sourcePrototype = null)
         {
             if (PlayerState != null) throw new InvalidOperationException("A production player is already registered.");
             string normalized = NormalizeSector(sector)
                 ?? throw new ArgumentException("Player sector is required.", nameof(sector));
-            Characters.GetOrCreateCreatedPlayer(identity, attributes, race, gender);
-            Progression.GetOrCreateCreatedPlayer(identity, progression);
-            DerivedStats.GetOrCreateCreatedPlayer(identity, derived);
-            Vitality.GetOrCreateCreatedPlayer(identity, vitality);
+            if (sourcePrototype == null)
+            {
+                Characters.GetOrCreateCreatedPlayer(identity, attributes, race, gender);
+                Progression.GetOrCreateCreatedPlayer(identity, progression);
+                DerivedStats.GetOrCreateCreatedPlayer(identity, derived);
+                Vitality.GetOrCreateCreatedPlayer(identity, vitality);
+            }
+            else
+            {
+                Characters.GetOrCreateSourceCharacter(identity, ObjectType.Pc, sourcePrototype.ProtoNumber,
+                    null, sourcePrototype.StatBase);
+                Progression.GetOrCreateSourceCharacter(identity, ObjectType.Pc,
+                    sourcePrototype.ProtoNumber, progression);
+                DerivedStats.GetOrCreateSourceCharacter(identity, ObjectType.Pc,
+                    sourcePrototype.ProtoNumber, derived);
+                Vitality.GetOrCreateSourceCharacter(identity, ObjectType.Pc,
+                    sourcePrototype.ProtoNumber, vitality);
+            }
             Magic.RegisterSourceCharacter(identity, spellTech, null);
             Technology.RegisterSourceCharacter(identity, spellTech, null);
             Combat.RegisterActorSource(new CombatActorSource(identity, ObjectType.Pc, null, normalized,

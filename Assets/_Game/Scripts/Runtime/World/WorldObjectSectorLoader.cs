@@ -1164,7 +1164,9 @@ namespace Arcanum.Runtime.World
                 MesReader.Read(_vfs.ReadAllBytes("rules/backgrnd.mes")),
                 MesReader.Read(_vfs.ReadAllBytes("mes/gameback.mes")),
                 MesReader.Read(_vfs.ReadAllBytes("rules/effect.mes")),
-                MesReader.Read(_vfs.ReadAllBytes("portrait/gameport.mes")), maps));
+                MesReader.Read(_vfs.ReadAllBytes("portrait/gameport.mes")), maps,
+                MesReader.Read(_vfs.ReadAllBytes("mes/gamelevelname.mes")),
+                MesReader.Read(_vfs.ReadAllBytes("mes/mainmenu.mes"))));
             var transitions = new MapTransitionResolver(
                 maps,
                 _vfs.Exists,

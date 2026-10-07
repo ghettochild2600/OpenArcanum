@@ -467,6 +467,8 @@ namespace Arcanum.Runtime.Save
 
             SessionLoadResult result = BuildWorld(data, out plan);
             if (!result.Succeeded) return result;
+            result = BuildCharacterCreation(data.CharacterCreation, plan);
+            if (!result.Succeeded) { plan = null; return result; }
             result = BuildCharacters(data.Characters, plan);
             if (!result.Succeeded) { plan = null; return result; }
             result = BuildMagic(data.Magic, plan);
@@ -478,8 +480,6 @@ namespace Arcanum.Runtime.Save
             result = BuildEconomy(data.Economy, plan);
             if (!result.Succeeded) { plan = null; return result; }
             result = BuildSocial(data.Social, plan);
-            if (!result.Succeeded) { plan = null; return result; }
-            result = BuildCharacterCreation(data.CharacterCreation, plan);
             if (!result.Succeeded) { plan = null; return result; }
             result = BuildCampaign(data.Campaign, plan);
             if (!result.Succeeded) { plan = null; return result; }
@@ -511,7 +511,8 @@ namespace Arcanum.Runtime.Save
                 || data.BackgroundId < 0 || data.BackgroundTextId < 1000
                 || data.PortraitId < 1000 || data.Age != CharacterCreationRules.SourceStartingAge
                 || data.SpentCharacterPoints < 0
-                || data.SpentCharacterPoints > CharacterCreationRules.StartingCharacterPoints)
+                || data.SpentCharacterPoints > CharacterCreationRules.StartingCharacterPoints
+                || data.PregeneratedSourceIndex < 0)
                 return Failure(SessionLoadFailure.InvalidCharacter,
                     "The finalized character-creation identity is invalid.");
             plan.CharacterCreation = data;
@@ -929,8 +930,9 @@ namespace Arcanum.Runtime.Save
                         || (ObjectType)value.ObjectType is not ObjectType.Pc and not ObjectType.Npc)
                         return Failure(SessionLoadFailure.InvalidCharacter, $"Character {identity} has an invalid type.");
                     ObjectType objectType = (ObjectType)value.ObjectType;
+                    bool pregeneratedPc = plan.CharacterCreation?.PregeneratedSourceIndex > 0;
                     if (objectType == ObjectType.Pc
-                        ? identity != plan.Player.Identity || value.PrototypeNumber.HasValue
+                        ? identity != plan.Player.Identity || value.PrototypeNumber.HasValue != pregeneratedPc
                         : !value.PrototypeNumber.HasValue || !plan.Objects.TryGetValue(identity, out PersistentObjectState npc)
                           || npc.Type != ObjectType.Npc || npc.PrototypeNumber != value.PrototypeNumber.Value)
                         return Failure(SessionLoadFailure.InvalidCharacter, $"Character {identity} has no matching owner.");

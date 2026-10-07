@@ -362,6 +362,41 @@ namespace Arcanum.Runtime.Economy
             { _world.RestoreDialogueInventorySnapshot(snapshot); failure = ex.Message; return false; }
         }
 
+        /// <summary>
+        /// Creates the retail inventory-source contents used by a newly-created pregenerated PC. This deliberately
+        /// uses the same source percentages and random authority as merchant source generation, but creates no
+        /// merchant runtime or restock deadline.
+        /// </summary>
+        internal bool PopulateStartingInventory(ArcanumObjectId owner, int sourceId, out string failure)
+        {
+            failure = null;
+            if (!owner.IsPersistent || _catalog == null || !_catalog.TryGet(sourceId, out InventorySourceDefinition source))
+            { failure = "Starting inventory source is unavailable."; return false; }
+            WorldMapSessionCoordinator.DialogueInventorySnapshot snapshot = _world.CaptureDialogueInventorySnapshot();
+            try
+            {
+                if (source.MaximumGold > 0)
+                {
+                    int amount = _random.NextInclusive(source.MinimumGold, source.MaximumGold);
+                    if (amount > 0) _world.AddGold(owner, amount);
+                }
+                foreach (InventorySourceEntry entry in source.Entries)
+                {
+                    if (_random.NextInclusive(1, 100) > entry.ChancePercent) continue;
+                    ItemCreationResult created = _world.CreateItem(entry.PrototypeNumber,
+                        ObjectPlacement.ContainedBy(owner));
+                    if (!created.Succeeded) throw new InvalidOperationException(created.Code.ToString());
+                }
+                return true;
+            }
+            catch (Exception exception)
+            {
+                _world.RestoreDialogueInventorySnapshot(snapshot);
+                failure = exception.Message;
+                return false;
+            }
+        }
+
         public EconomySaveData ExportSaveData()
             => new()
             {

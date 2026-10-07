@@ -234,6 +234,39 @@ namespace Arcanum.Formats.Objects
             LightAid = lightAid;
             LightColor = lightColor;
         }
+
+        /// <summary>
+        /// Reconstructs one engine-owned PC basic prototype. Retail creates these entries in <c>proto.c</c>, so
+        /// unlike authored overrides they have no required loose <c>data/proto/*.pro</c> file.
+        /// </summary>
+        public static ObjectProtoInfo CreateEngineOwnedPc(int protoNumber, uint currentArtId, int portrait,
+            int gender, int race, int age = 20)
+        {
+            const int sourceStatCount = 28;
+            const int levelSlot = 17;
+            const int experienceSlot = 18;
+            const int unspentPointsSlot = 21;
+            const int ageSlot = 25;
+            const int genderSlot = 26;
+            const int raceSlot = 27;
+            var stats = new int[sourceStatCount];
+            for (int index = 0; index < 8; index++) stats[index] = 8;
+            stats[levelSlot] = 1;
+            stats[experienceSlot] = 0;
+            stats[unspentPointsSlot] = 0;
+            stats[ageSlot] = age;
+            stats[genderSlot] = gender;
+            stats[raceSlot] = race;
+            return new ObjectProtoInfo(protoNumber, ObjectType.Pc, currentArtId, description: protoNumber)
+            {
+                StatBase = stats,
+                BasicSkills = new int[12],
+                TechSkills = new int[4],
+                SpellTech = new int[25],
+                Resistances = new int[5],
+                Portrait = portrait,
+            };
+        }
     }
 
     /// <summary>

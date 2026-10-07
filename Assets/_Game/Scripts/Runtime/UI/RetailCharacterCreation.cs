@@ -35,6 +35,7 @@ namespace Arcanum.Runtime.UI
         public static readonly Vector2 BackButton = new(69f, 496f);
         public static readonly Vector2 ContinueButton = new(675f, 496f);
         public static readonly Rect Portrait = new(95f, 28f, 64f, 64f);
+        public static readonly Rect PortraitDraw = new(95f, 28f, 128f, 128f);
         public static readonly Rect Name = new(46f, 183f, 228f, 18f);
         public static readonly Rect Gender = new(66f, 243f, 186f, 19f);
         public static readonly Rect Race = new(66f, 293f, 186f, 19f);
@@ -123,6 +124,8 @@ namespace Arcanum.Runtime.UI
         private readonly Dictionary<CharacterAttribute, SourceUiBitmapText> _attributeValues = new();
         private readonly Dictionary<CharacterAttribute, (SourceUiButton Minus, SourceUiButton Plus)> _attributeButtons = new();
         private readonly Dictionary<RetailCreationEditorPage, SourceUiButton> _pageButtons = new();
+        private readonly Dictionary<SourceUiBitmapText, Rect> _textBounds = new();
+        private readonly Dictionary<CharacterSkill, Image> _skillGauges = new();
         private bool _wasVisible;
         private int _identitySignature = int.MinValue;
         private int _editorSignature = int.MinValue;
@@ -145,6 +148,8 @@ namespace Arcanum.Runtime.UI
         public InputField NameInput => _nameInput;
         public UiResolvedAsset IdentityBackgroundAsset => _identityBackground?.CurrentAsset;
         public UiResolvedAsset EditorBackgroundAsset => _editorBackground?.CurrentAsset;
+        public Image IdentityPortraitImage => _identityPortrait;
+        public IReadOnlyDictionary<CharacterSkill, Image> SkillGauges => _skillGauges;
 
         public void Bind(GameUiController controller, WorldMapSessionCoordinator session, UiSkinResolver resolver)
         {
@@ -307,7 +312,9 @@ namespace Arcanum.Runtime.UI
             AddSourceButtonTopLeft("Next Gender", _identity, 758, MainWindowLocal(new Vector2(255f, 282f)),
                 () => CycleGender(1));
 
-            _identityPortrait = AddPortraitImage("Portrait", _identity, RetailCharacterCreationLayout.Portrait);
+            // mainmenu_ui.c dirties/fills a 64x64 rectangle but calls portrait_draw_128x128 at its origin.
+            // Fitting those pixels into the dirty rectangle makes the portrait occupy one quarter of its source area.
+            _identityPortrait = AddPortraitImage("Portrait", _identity, RetailCharacterCreationLayout.PortraitDraw);
             _nameInput = AddNameInput(_identity, RetailCharacterCreationLayout.Name);
             _genderText = AddText("Gender", _identity, RetailCharacterCreationLayout.Gender, string.Empty, 27,
                 SourceWhite);
@@ -417,7 +424,7 @@ namespace Arcanum.Runtime.UI
             SetPortrait(_editorPortrait, draft);
             foreach (CharacterAttribute attribute in Attributes)
             {
-                SetText(_attributeValues[attribute], draft.GetAttribute(attribute).ToString());
+                SetCenteredText(_attributeValues[attribute], draft.GetAttribute(attribute).ToString(), SourceWhite);
                 (SourceUiButton minus, SourceUiButton plus) = _attributeButtons[attribute];
                 minus.SetInteractable(CanAdjustAttribute(draft, attribute, -1));
                 plus.SetInteractable(CanAdjustAttribute(draft, attribute, 1));
@@ -438,6 +445,7 @@ namespace Arcanum.Runtime.UI
         private void RebuildEditorPanel(CharacterCreationSpecification draft)
         {
             ClearChildren(_editorPanel);
+            _skillGauges.Clear();
             switch (EditorPage)
             {
                 case RetailCreationEditorPage.Skills: BuildSkillsPanel(draft); break;
@@ -467,8 +475,15 @@ namespace Arcanum.Runtime.UI
                     () => AdjustSkill(skill, 1)).SetInteractable(CanAdjustSkill(draft, skill, 1));
                 AddText($"{skill} Name", _editorPanel, new Rect(17f, 63f + 66f * row, 170f, 18f),
                     Friendly(skill), 27, SourceWhite);
-                AddText($"{skill} Rank", _editorPanel, new Rect(104f, 90f + 66f * row, 40f, 18f),
+                int sourceLevel = draft.GetSkillPoints(skill) * CharacterSkillRules.SkillUnitsPerPoint
+                                  + (CurrentBackground(draft)?.SkillModifiers.GetValueOrDefault(skill) ?? 0);
+                sourceLevel = Mathf.Clamp(sourceLevel, 0, 20);
+                _skillGauges[skill] = AddSkillGauge($"{skill} Gauge", _editorPanel,
+                    new Rect(59f, 87f + 66f * row, 120f, 27f), sourceLevel);
+                SourceUiBitmapText rank = AddText($"{skill} Rank", _editorPanel,
+                    new Rect(104f, 90f + 66f * row, 40f, 18f),
                     draft.GetSkillPoints(skill).ToString(), 27, SourceYellow);
+                SetCenteredText(rank, draft.GetSkillPoints(skill).ToString(), SourceYellow);
             }
         }
 
@@ -549,7 +564,10 @@ namespace Arcanum.Runtime.UI
         {
             CharacterCreationSpecification draft = _controller.CreationDraft;
             List<CharacterRace> values = Enum.GetValues(typeof(CharacterRace)).Cast<CharacterRace>()
-                .Where(CharacterCreationRules.IsPlayableRace).ToList();
+                .Where(value => CharacterCreationRules.IsPlayableRace(value)
+                                && (draft.Gender != CharacterGender.Female
+                                    || CharacterCreationRules.IsGenderLegal(value, CharacterGender.Female)))
+                .ToList();
             int index = values.IndexOf(draft.Race);
             CharacterRace race = values[Wrap(index + direction, values.Count)];
             CharacterGender gender = CharacterCreationRules.IsGenderLegal(race, draft.Gender)
@@ -712,6 +730,18 @@ namespace Arcanum.Runtime.UI
             return source;
         }
 
+        private Image AddSkillGauge(string name, RectTransform parent, Rect rect, int sourceLevel)
+        {
+            SourceUiImage source = AddSourceImage(name, parent, 623, rect);
+            Image image = source.Image;
+            image.type = Image.Type.Filled;
+            image.fillMethod = Image.FillMethod.Horizontal;
+            image.fillOrigin = (int)Image.OriginHorizontal.Left;
+            image.fillAmount = Mathf.Clamp01(sourceLevel / 20f);
+            image.enabled = sourceLevel != 0;
+            return image;
+        }
+
         private SourceUiButton AddSourceButtonTopLeft(string name, RectTransform parent, int sourceId,
             Vector2 topLeft, Action clicked, bool selected = false)
         {
@@ -758,18 +788,21 @@ namespace Arcanum.Runtime.UI
         {
             RectTransform target = AddRect(name, parent, rect);
             SourceUiBitmapText text = target.gameObject.AddComponent<SourceUiBitmapText>();
+            _textBounds[text] = rect;
             text.Bind(_resolver, value ?? string.Empty, color, fontSourceId);
             return text;
         }
 
-        private void SetCenteredText(SourceUiBitmapText text, string value)
+        private void SetCenteredText(SourceUiBitmapText text, string value, Color? tint = null)
         {
             RectTransform rect = (RectTransform)text.transform;
-            Vector2 anchored = rect.anchoredPosition;
-            Vector2 bounds = rect.sizeDelta;
-            text.Bind(_resolver, value ?? string.Empty, SourceWhite, text.FontSourceId);
+            Rect bounds = _textBounds.TryGetValue(text, out Rect immutable)
+                ? immutable : new Rect(rect.anchoredPosition.x, -rect.anchoredPosition.y,
+                    rect.sizeDelta.x, rect.sizeDelta.y);
+            text.Bind(_resolver, value ?? string.Empty, tint ?? SourceWhite, text.FontSourceId);
             Vector2 size = text.LogicalSize;
-            rect.anchoredPosition = new Vector2(anchored.x + Mathf.Max(0f, (bounds.x - size.x) * .5f), anchored.y);
+            rect.anchoredPosition = new Vector2(bounds.x + Mathf.Max(0f, (bounds.width - size.x) * .5f),
+                -bounds.y);
         }
 
         private void SetText(SourceUiBitmapText text, string value)
@@ -889,6 +922,8 @@ namespace Arcanum.Runtime.UI
             _attributeValues.Clear();
             _attributeButtons.Clear();
             _pageButtons.Clear();
+            _textBounds.Clear();
+            _skillGauges.Clear();
             _controller = null;
             _session = null;
             _resolver = null;

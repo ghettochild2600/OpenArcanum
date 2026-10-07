@@ -145,12 +145,12 @@ namespace Arcanum.Runtime.UI
                 case KeyCode.I: commands.ToggleScreen(GameUiScreen.Inventory); return true;
                 case KeyCode.C: commands.ToggleScreen(GameUiScreen.Character); return true;
                 case KeyCode.M: commands.ToggleScreen(GameUiScreen.Magic); return true;
-                case KeyCode.T: commands.ToggleScreen(GameUiScreen.Technology); return true;
+                case KeyCode.T: commands.ToggleScreen(GameUiScreen.Crafting); return true;
                 case KeyCode.K: commands.ToggleSkills(); return true;
                 case KeyCode.L: commands.ToggleScreen(GameUiScreen.Journal); return true;
                 case KeyCode.W: commands.ToggleScreen(GameUiScreen.Map); return true;
                 case KeyCode.O: commands.ToggleScreen(GameUiScreen.Options); return true;
-                case KeyCode.R: commands.ToggleAttackTalkMode(); return true;
+                case KeyCode.R: commands.ToggleCombatMode(); return true;
                 case KeyCode.A: commands.ActivateRecentAction(); return true;
                 case KeyCode.S: commands.ToggleSleep(); return true;
                 case KeyCode.F: commands.ToggleFate(); return true;

@@ -145,7 +145,6 @@ namespace Arcanum.Formats.Tests
         [TestCase(RetailMainMenuCommand.Multiplayer, "MULTIPLAYER")]
         [TestCase(RetailMainMenuCommand.Credits, "CREDITS")]
         [TestCase(RetailMainMenuCommand.ViewIntro, "VIEW INTRO")]
-        [TestCase(RetailMainMenuCommand.PickCharacter, "PICK CHARACTER")]
         public void UnsupportedRetailBranchesFailClosedAsBoundedNotices(
             RetailMainMenuCommand command, string title)
         {
@@ -158,6 +157,19 @@ namespace Arcanum.Formats.Tests
             Assert.That(_session.PlayerState, Is.SameAs(player));
             Assert.That(_session.States.Count, Is.EqualTo(count));
             Assert.That(_controller.Screen, Is.EqualTo(GameUiScreen.MainMenu));
+        }
+
+        [Test]
+        public void PickCharacterEntersSourcePregeneratedSelectionInsteadOfNotice()
+        {
+            RetailMainMenuModel model = Model();
+            model.Submit(RetailMainMenuCommand.SinglePlayer);
+            model.Submit(RetailMainMenuCommand.NewGame);
+            model.Submit(RetailMainMenuCommand.PickCharacter);
+            Assert.That(_controller.Screen, Is.EqualTo(GameUiScreen.PregeneratedCharacter));
+            Assert.That(_controller.PregeneratedCharacterIndex, Is.EqualTo(1));
+            Assert.That(_session.PlayerState, Is.Null);
+            Assert.That(_session.CharacterCreation.Catalog.PregeneratedCharacters, Has.Count.EqualTo(12));
         }
 
         [Test]

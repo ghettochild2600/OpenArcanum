@@ -20,7 +20,7 @@ namespace Arcanum.Runtime.UI
 {
     public enum GameUiScreen
     {
-        None, MainMenu, CharacterCreation, Inventory, Character, Skills, Magic, Technology, Crafting, Options,
+        None, MainMenu, CharacterCreation, PregeneratedCharacter, Inventory, Character, Skills, Magic, Technology, Crafting, Options,
         Journal, Map, Party, Merchant, SaveLoad, Dialogue, Corpse,
     }
 
@@ -204,6 +204,7 @@ namespace Arcanum.Runtime.UI
         public CombatUiController Combat { get; }
         public SaveLoadPanelController SaveLoad { get; }
         public CharacterCreationSpecification CreationDraft { get; private set; }
+        public int PregeneratedCharacterIndex { get; private set; } = 1;
         public CharacterCreationValidationResult CreationValidation { get; private set; }
         public bool HasPlayer => _session.PlayerState != null;
         public ArcanumObjectId Player => _session.PlayerState?.Identity ?? default;
@@ -230,7 +231,8 @@ namespace Arcanum.Runtime.UI
             if (!HasPlayer)
             {
                 HudPanel = GameUiHudPanel.None;
-                if (Screen is not (GameUiScreen.MainMenu or GameUiScreen.CharacterCreation or GameUiScreen.SaveLoad
+                if (Screen is not (GameUiScreen.MainMenu or GameUiScreen.CharacterCreation
+                    or GameUiScreen.PregeneratedCharacter or GameUiScreen.SaveLoad
                     or GameUiScreen.Options))
                     Screen = GameUiScreen.MainMenu;
                 return;
@@ -296,6 +298,41 @@ namespace Arcanum.Runtime.UI
             return true;
         }
 
+        public bool BeginPregeneratedCharacter()
+        {
+            IReadOnlyList<PregeneratedCharacterDefinition> values = _session.CharacterCreation.Catalog?.PregeneratedCharacters;
+            if (values == null || values.Count == 0)
+                return Reject("Pregenerated-character source data is unavailable.");
+            CreationDraft = null;
+            PregeneratedCharacterIndex = values[0].SourceIndex;
+            Screen = GameUiScreen.PregeneratedCharacter;
+            Feedback = string.Empty;
+            return true;
+        }
+
+        public void CyclePregeneratedCharacter(int direction)
+        {
+            IReadOnlyList<PregeneratedCharacterDefinition> values = _session.CharacterCreation.Catalog?.PregeneratedCharacters;
+            if (Screen != GameUiScreen.PregeneratedCharacter || values == null || values.Count == 0) return;
+            int index = values.ToList().FindIndex(value => value.SourceIndex == PregeneratedCharacterIndex);
+            index = (index + direction) % values.Count;
+            if (index < 0) index += values.Count;
+            PregeneratedCharacterIndex = values[index].SourceIndex;
+            Feedback = string.Empty;
+        }
+
+        public bool FinalizePregeneratedCharacter()
+        {
+            if (Screen != GameUiScreen.PregeneratedCharacter)
+                return Reject("No pregenerated character is selected.");
+            CharacterCreationFinalizeResult result = _session.CharacterCreation
+                .FinalizePregeneratedCharacter(PregeneratedCharacterIndex);
+            if (!result.Succeeded) return Reject(result.Message ?? result.Failure.ToString());
+            Screen = GameUiScreen.None;
+            Feedback = string.Empty;
+            return true;
+        }
+
         public void SetCreationIdentity(CharacterRace race, CharacterGender gender)
         {
             if (CreationDraft == null) return;
@@ -305,8 +342,10 @@ namespace Arcanum.Runtime.UI
             PortraitDefinition portrait = catalog?.Portraits.Values.FirstOrDefault(value =>
                 value.Race == race && value.Gender == gender);
             if (portrait != null) CreationDraft.PortraitId = portrait.Id;
-            if (catalog != null && (!catalog.TryGetBackground(CreationDraft.BackgroundId, out BackgroundDefinition background)
-                                    || !background.IsLegal(race, gender) || background.HasUnsupportedEffects))
+            // mainmenu_ui_new_char_set_gender/set_race always clear the prior background before refreshing the
+            // newly legal identity. Re-evaluate from the first source-ordered legal entry even when the old entry
+            // happened to be valid for both identities.
+            if (catalog != null)
             {
                 BackgroundDefinition legal = catalog.Backgrounds.Values.OrderBy(value => value.Id)
                     .FirstOrDefault(value => value.IsLegal(race, gender) && !value.HasUnsupportedEffects);
