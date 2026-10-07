@@ -2,17 +2,18 @@
 
 ## Status
 
-UI-C.4 completed its bounded, source-proven implementation and validation on 2026-10-06. The valid UI-C.1 cursor,
-UI-C.2 two-window composition, and UI-C.3 counter/maintained-slot/Inventory corrections remain intact. UI-C overall
-is deliberately **OPEN**: the eleven deferred Fate effects have no exact resolution call sites in the current runtime,
-and town waitability plus occupied-bed authority are not represented. Those branches fail before point, time, vitality,
-spell, or presentation mutation instead of inventing behavior. UI-D has not started.
+UI-C.5 completed its bounded Fate and Sleep/Wait runtime-authority pass on 2026-10-07. The valid UI-C.1 cursor,
+UI-C.2 two-window composition, UI-C.3 counter/maintained-slot/Inventory corrections, and UI-C.4 state pass remain
+intact. UI-C overall is deliberately **OPEN** on two isolated source-authority boundaries: six skill-check critical-
+success Fate choices have no corresponding authoritative action checks in the current runtime, and bed use has no
+exact occupant/rental/SAP_USE authority. Those branches fail before Fate-point, time, vitality, spell, or presentation
+mutation instead of inventing behavior. UI-D has not started.
 
-The supported source HUD now includes saved primary notifications and highlighted ART, the Fate counter and exact Full
-Heal action, PC-maintained spell icons/cancellation, bounded wilderness sleep, the source clock, contextual counter,
-two recent-action slots, and source XP gauge. `RetailGameplayHudView` remains a disposable projection; session state,
-SourceTime, vitality, inventory, magic, progression, combat, and Save V1 remain the authority. No retail pixels or
-production Enhanced assets were committed.
+The supported source HUD now includes saved primary notifications and highlighted ART, the Fate counter, six exact
+Fate paths, PC-maintained spell icons/cancellation, source-classified wilderness sleep and town wait, the source clock,
+contextual counter, two recent-action slots, and source XP gauge. `RetailGameplayHudView` remains a disposable
+projection; session state, SourceTime, vitality, inventory, magic, progression, combat, and Save V1 remain the
+authority. No retail pixels or production Enhanced assets were committed.
 
 ## Corrected source evidence
 
@@ -82,12 +83,16 @@ layer preserves the valid UI-C.1 hotspot correction and maps one source cursor p
   `173,174,175,176,177,178,179,180,181,172`.
 - IDs 169/187/193/186 provide Character, Logbook, Map, and Inventory at y=2 in the top window.
 - IDs 561/560/558/195/559 replace those primary controls only while their authoritative notification is pending.
-- Fate projects a saved two-digit point count. Full Heal consumes exactly one point after validation; unsupported
-  deferred effects reject without mutation.
+- Fate projects a saved two-digit point count. Full Heal consumes exactly one point after validation. Force Good
+  Reaction, Critical Hit, Critical Miss, Save Against Magick, and Spell At Maximum arm through saved session state,
+  resolve only at their source call sites, and remain armed when the attempted transaction fails before commit. The
+  six unsupported skill-check critical-success choices reject without mutation.
 - The five maintained apertures project only PC-cast maintained M10A effects in stable identity order. Clicking an
   active icon cancels through M10A rather than mutating the presentation.
-- Sleep/Wait is an authoritative transaction over SourceTime, M4 vitality, party membership, and M10A effects. The
-  current bounded path supports source wilderness recovery on map 1 and rejects unsupported location authority.
+- Sleep/Wait is an authoritative transaction over SourceTime, M4 vitality, party membership, and M10A effects.
+  Selected-sector `TownMapInfo` and `rules/townmap.mes` `[w:1]` provide source location authority: town wait advances
+  time and cancels maintained effects without recovery or Until Healed, while wilderness sleep also applies hourly
+  source recovery. Bed-specific use remains unavailable until exact occupancy/rental/SAP_USE authority exists.
 - The source clock derives exclusively from `SourceTimeService`; no Unity wall clock participates.
 - The bottom contextual counter selects Gold, supported ammunition, or mana-store facts from authoritative inventory.
 - Two recent actions preserve source recency/deduplication semantics and activate through existing item/spell routes.
@@ -96,8 +101,9 @@ layer preserves the valid UI-C.1 hotspot correction and maps one source cursor p
 
 Health, fatigue, equipment, ammunition, AP, readiness, combat state, messages, and shortcuts remain projections of
 the completed M3/M4/M8/M12C systems. C/L/W/I and pointer controls share the controller routes; F and S open the Fate
-and Sleep panels, and A activates the first recent-action slot. Unsupported Fate resolution, town/bed sleep permission,
-broader ammunition/mana-store content, slot drag/cooldown, and rare-audio branches remain fail-closed or deferred.
+and Sleep panels, and A activates the first recent-action slot. Unsupported skill-action Fate resolution, bed sleep
+permission, broader ammunition/mana-store content, slot drag/cooldown, and rare-audio branches remain fail-closed or
+deferred.
 
 ## Input and lifecycle
 
@@ -150,19 +156,20 @@ captures were retained only as uncertain/modded corroboration, never as authorit
 
 No external screenshot or original retail ART was added to Git.
 
-## Validation record
+## UI-C.5 validation record
 
-- UI-C.4 focused EditMode: **53/53**, 0 failed, 0 skipped, 0 inconclusive.
-- Required affected regressions: **433/433**, covering UI-A/UI-E, M12B/M12C, M13A keyboard, startup/navigation,
-  M3B–M3E, M4A–M4D, M6A–M6C, M7D/M7E, M8I, and M10A.
-- Production UI-C.4 physical validator: **PASS** with the exact state/functionality and target-resolution proofs above.
-- Complete EditMode: **1207/1207**, 0 failed, 0 skipped, 0 inconclusive (1199 plus eight justified UI-C.4 cases).
+- Complete EditMode: **1229/1229**, 0 failed, 0 skipped, 0 inconclusive (1207 plus 22 justified UI-C.5 cases).
+- Production UI-C.5 physical validator: **PASS** in the existing Editor. It proved the 12-choice Fate panel and Full
+  Heal transaction, F/S routes, crash-site town-wait classification and seven-option presentation, one-hour town wait
+  with no recovery, authentic wilderness selection and one-hour recovery, SourceTime advancement, maintained-effect
+  cancellation, clock refresh, and return to the crash-site sector.
 - Unity compilation: clean.
 - Final cleared Console: 0 errors and 0 unexpected warnings. `git diff --check`: clean.
 
 ## Boundary
 
-UI-C.4 changes only coordinator-owned HUD state, source-proven presentation, shared controller/input routes, optional
-fields inside the compatible Save V1 envelope, and tests/audit data. It does not begin UI-D, add poison, invent Fate
-resolvers, invent town/bed authority, or alter combat/navigation/dialogue/Enhanced-art ownership. UI-C remains open
-until the eleven deferred Fate resolution call sites and source-backed town waitability/bed occupancy are supported.
+UI-C.5 changes only coordinator-owned HUD state, exact existing-authority resolution call sites, source sector/town
+classification, source-proven presentation, optional fields inside the compatible Save V1 envelope, and validation.
+It does not add a parallel action-check system, invent bed permission, or alter combat/navigation/dialogue/Enhanced-
+art ownership. UI-C remains open until the six listed skill actions have authoritative action-resolution paths and bed
+occupation/rental/use-script state can be represented exactly. See the dedicated Fate and Sleep/Wait runtime notes.
