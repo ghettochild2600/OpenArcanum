@@ -71,13 +71,17 @@ player-facing manual save/load presentation, M7A bounded passive local map trans
   them. UI-C.4 added saved primary notifications/highlights, the Fate counter, maintained effect icons/cancellation,
   sleep presentation, SourceTime clock, contextual counter, two recent actions, and the source XP gauge. UI-C.5 now
   supports Full Heal plus five source-proven deferred Fate call sites, selected-sector wilderness sleep, and exact
-  `[w:1]` town waiting. UI-C remains open only on the six skill-action Fate checks and occupied/rented-bed authority;
-  those branches fail closed. **DONE UI-E.1 — Inventory/Equipment Foundation:** the ordinary source ID 223 + ID 221 800 x 400 composition,
+  `[w:1]` town waiting. The corrective UI-C.5 follow-up now gives Combat/Skills/Spells/Schematics shared pointer and
+  keyboard routes and maps two-frame action IDs 279/280/282/278 without invalid frame 2 requests. UI-C remains open
+  on the four displayed skill-action kernels, the six skill-action Fate checks, and occupied/rented-bed authority;
+  those branches fail closed before transaction mutation. **DONE UI-E.1 — Inventory/Equipment Foundation:** the ordinary source ID 223 + ID 221 800 x 400 composition,
   exact grid/slot geometry, retained item art/footprints, selection, quick-slot binding, and M3C equip/unequip routes
   replace the generic Inventory overlay without owning item state. Original/Enhanced fallback uses UI-A. Distinct
-  paper-doll composite layers and gesture parity remain later presentation boundaries. **DONE UI-D — Character
-  Creation:** source ID 765 identity flows into the active ID 22 editor with child IDs 29/30/31 and atomic M12B
-  finalization. **DONE UI-E.2 — Character / Skills:** the active ID 22 Character sheet and ID 29 Skills child panel
+  paper-doll composite layers and gesture parity remain later presentation boundaries. **DONE UI-D.1 / UI-B.1 —
+  Player-Facing Character Creation / Pick Character:** source ID 765 identity flows into the active ID 22 editor with
+  child IDs 29/30/31 and atomic M12B finalization; 128 x 128 portraits, immutable centered text, authentic gender
+  restrictions, and ID 623 gauges are corrected. Pick Character now uses ID 766 and the twelve retail engine-owned
+  PC prototypes 16067–16078 through the authentic inventory/equip/campaign/Save V1 path. **DONE UI-E.2 — Character / Skills:** the active ID 22 Character sheet and ID 29 Skills child panel
   project M4 authority, legal same-open-session point adjustments are transactional, and `K` uses the source ID 472
   to ID 274 non-modal Skills route. The four unsupported source skill-action targets fail closed without mutation.
   **DONE M13A opening crash-site compatibility pass and bounded user follow-ups:** authentic Virgil dialogue 1324
@@ -2635,7 +2639,8 @@ authority. Back from Editor preserves the draft and returns to Identity; invalid
 a partial player; successful bottom-bar Continue creates exactly one PC, enters authentic `START_MAP` 1, and reveals
 the existing source HUD. ID 568 is not finalization: because OpenArcanum has no M12B auto-level-scheme authority,
 that exact control fails closed without draft, point, player, or navigation mutation. Pick Character/pregenerated
-characters, intro playback, and shopping remain deferred/fail closed rather than being approximated.
+characters were deferred by this original UI-D slice and are closed by the UI-D.1/UI-B.1 follow-up below; intro
+playback and shopping remain deferred rather than approximated.
 
 Corrected focused UI-D validation passed **20/20**. The directly affected regressions again passed **217/217**:
 UI-A 23, UI-B 22, M12B 13, M4A 13, M4B 20, M4C 29, M4D 25, M10A 34, M10B 12, Player Startup 3, and production
@@ -2647,6 +2652,55 @@ is clean. The complete suite remains deferred to the UI-E.2 gate because the cor
 authority.
 
 See [`documentation_unity/ui/ui-d-character-creation-reconstruction.md`](documentation_unity/ui/ui-d-character-creation-reconstruction.md).
+
+## UI-D.1 / UI-B.1 / UI-C.5 Player-Facing UI Correctness Closure (2026-10-07)
+
+The bounded correction pass is complete except for the explicitly unsupported skill-action gameplay kernels below.
+The New Character portrait now follows the actual `portrait_draw_128x128` call at source origin `(95,28)`; the
+separate 64 x 64 source rectangle is refresh invalidation/fill evidence, not the rendered portrait size. Human, Elf,
+Half-Elf, and Half-Orc permit Female, while Dwarf, Gnome, Halfling, and Half-Ogre remain source-authentic male-only.
+Female race cycling skips unsupported races, selecting a male-only race restores Male, and identity changes clear and
+re-evaluate Background and select the first legal portrait through M12B.
+
+The Race/Gender/Background drift was an accumulated presentation transform: each refresh centered from the prior
+already-centered x position. Production now stores immutable source rectangles and measures bitmap glyphs from those
+bounds on every redraw. The same path centers one- and two-digit attributes and skill values without moving the
+source controls. Character Creation and active Character Skills now render ID 623 as a 120 x 27 left-to-right fill
+of `clamp(authoritative source skill level, 0, 20) / 20`; zero restores the panel and spend/refund refreshes the gauge,
+points, value, prerequisites, and disabled state in place.
+
+Main Menu -> Single Player -> Pick Character now opens source ID 766 and cycles the actual twelve-entry retail
+corpus. The basic PC prototypes 16067–16078 are created by retail `proto.c`, so they legitimately have no required
+loose `.pro` override. OpenArcanum reconstructs those engine-owned defaults, preserves source prototype identity,
+race/gender/portrait/background/auto-level metadata, populates each inventory source with existing economy RNG,
+auto-equips natural worn locations, sets the source selection globals, and enters the ordinary atomic New Game path.
+Save V1 adds only optional `PregeneratedSourceIndex` metadata; older V1 saves default it to zero, and committed
+character, inventory, equipment, campaign, and world consequences remain their existing authorities.
+
+The bottom source controls now have command parity: Combat ID 470 / `R`, Skills ID 472 / `K`, Spells ID 473 / `M`,
+and Schematics ID 471 / `T`. Skills and Spells preserve the source rotating/message-window mutual-release behavior.
+Action IDs 279/280/282/278 are a two-frame family—frame 0 normal and frame 1 hover/pressed—so the previous frame 2
+warnings are fixed at the family mapping rather than globally clamped.
+
+Source tracing did not reveal bounded existing authority for the four visible skill actions. Prowling needs
+stealth/concealment plus world-perception state; Pick Pocket needs transactional theft/detection/reaction; Disarm
+Traps needs trap state/difficulty/failure consequences; Repair needs durability/damage/failure effects. Implementing
+any would begin a major gameplay subsystem, so they remain visible but fail closed before time/AP, inventory,
+vitality, combat, world, or recent-action mutation. `INVALID` remains correct for unsupported/invalid targets, and
+item/spell recent-action history is preserved. UI-C therefore remains open on those exact kernels; the pass does not
+pretend they are implemented.
+
+Physical Play Mode validation passed in the existing Unity 6000.0.71f1 Editor: 128 x 128 portrait refresh; all
+gender/race rules; 100 selector cycles without drift; one-/two-digit centering; ID 623 zero/partial/full/refund;
+all twelve pregenerated entries; two distinct source-prototype campaign starts; inventory/equipment; Save V1 round
+trip; HUD pointer/keyboard authority; two-frame skill icons; fail-closed unsupported actions; Original -> Enhanced ->
+Original; one presenter/EventSystem; and exact 800 x 600, 1024 x 768, 1920 x 1080, 2560 x 1440, and 3840 x 2160
+placement.
+
+Focused validation passed UI-D.1 **28/28**, UI-B.1 **22/22**, UI-C.5 **69/69**, UI-E.2 **20/20**, M12B **15/15**,
+and production keyboard/input **23/23**. Targeted UI/gameplay regressions passed **418/418**. The complete EditMode
+suite passed **1280/1280**, with 0 failed, 0 skipped, and 0 inconclusive. Compilation is clean; the final cleared
+Console has 0 logs, 0 warnings, and 0 errors; and `git diff --check` is clean.
 
 ## UI-E.2 Source Character / Skills Reconstruction (2026-10-07)
 
@@ -2682,9 +2736,10 @@ See [`documentation_unity/ui/ui-e2-character-skills-reconstruction.md`](document
 
 M9A, M9B, M10A, M10B, M11A, M11B, M11C, M12B, M12C, M12D, and the bounded M13A opening pass are formally closed.
 The source-authentic keyboard compatibility follow-up, UI-A common runtime, UI-B source-faithful Main Menu, bounded
-UI-C.5 implementation, and UI-E.1 Inventory/Equipment foundation are complete. UI-C overall remains open on the exact
-skill-action Fate and bed-authority blockers above. UI-D source-faithful Character Creation is complete with M12B
-authority unchanged. UI-E.2 Character/Skills reconstruction is complete with M4 authority unchanged.
+UI-C.5 implementation, UI-D.1/UI-B.1 player-facing correction, and UI-E.1 Inventory/Equipment foundation are
+complete. UI-C overall remains open on the four displayed skill-action kernels, the six skill-action Fate checks,
+and bed-authority blockers above. UI-D source-faithful Character Creation and ID 766 Pick Character are complete
+with M12B authority preserved. UI-E.2 Character/Skills reconstruction is complete with M4 authority unchanged.
 
 The read-only UI-F Dialogue/Journal/Party source audit is complete. It corrects two earlier assumptions: ordinary
 dialogue is an NPC world bubble plus a five-line live-world response strip rather than an ornate portrait modal, and
@@ -2693,7 +2748,8 @@ composition is bounded, but only Quests has a complete source projection. Party 
 and selected-follower command authority. See
 [`documentation_unity/ui/ui-f-dialogue-journal-party-audit.md`](documentation_unity/ui/ui-f-dialogue-journal-party-audit.md).
 
-The next safe implementation is **UI-F.1 — Source Dialogue Presentation** only: world-anchored NPC speech, the exact
+After the user physically reviews this corrective pass, the next safe implementation is **UI-F.1 — Source Dialogue
+Presentation** only: world-anchored NPC speech, the exact
 five-line `tc` response overlay, and source dialogue-mode input ownership over existing transactional dialogue,
 training, and audio authority. First physically confirm the registered ID 354 rotating-window role. Do not add
 portraits, use unproven ID 822, invent response scrolling, enable unsupported special transitions, start the Logbook,

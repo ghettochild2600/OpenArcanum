@@ -1,6 +1,6 @@
 # UI-D Character Creation Reconstruction
 
-Status: complete (2026-10-07)
+Status: UI-D.1 player-facing correction complete (2026-10-07)
 
 UI-D replaces the production Character Creation placeholder and its whole-screen `ScrollRect` with the two
 fixed, source-backed compositions used by retail Arcanum. It changes presentation only: M12B remains the sole
@@ -27,7 +27,7 @@ dynamic regions and controls are:
 
 | Element | Logical source geometry / center | Evidence and behavior |
 |---|---:|---|
-| Portrait | `(95,28,64,64)` | `mmUISharedCharRefreshFunc` calls `portrait_draw_128x128` into the source portrait region; the presentation resolves `portrait/<name>_b.bmp` with the retail ordinary-BMP fallback |
+| Portrait | origin `(95,28)`, draw size `128 x 128` | `mainmenu_ui_shared_char_portrait_rect` is the 64 x 64 invalidation/fill rectangle, but `mmUISharedCharRefreshFunc` then calls `portrait_draw_128x128` at that origin. Production preserves the 128 x 128 draw instead of fitting it into the invalidation rectangle; it resolves `portrait/<name>_b.bmp` with the retail ordinary-BMP fallback. |
 | Name | `(46,183,228,18)` | Source text-edit buffer; the Unity `InputField` consumes text focus so gameplay shortcuts do not receive name entry |
 | Gender | `(66,243,186,19)` | Source text and ID 757/758 controls at screen top-left `(42,281)` and `(255,282)` |
 | Race | `(66,293,186,19)` | Source text and ID 757/758 controls at screen top-left `(42,331)` and `(255,332)` |
@@ -38,8 +38,10 @@ dynamic regions and controls are:
 | Description | `(350,155,395,212)` | Contextual race, gender, background, and validation text |
 
 All eight supported M12B races remain available: Human, Dwarf, Elf, Half-Elf, Gnome, Halfling, Half-Orc, and
-Half-Ogre. Existing body/gender restrictions are enforced by M12B and the mounted portrait catalog. A race or gender
-change repairs portrait selection through that authority rather than retaining an illegal presentation value.
+Half-Ogre. Source allows Female for Human, Elf, Half-Elf, and Half-Orc; Dwarf, Gnome, Halfling, and Half-Ogre are
+male-only. Female race cycling skips unsupported races, selecting a male-only race restores Male, and every
+race/gender change clears and re-evaluates Background before selecting the first legal portrait, matching the
+original set-gender/set-race path. These rules remain M12B authority rather than a presenter-only legality table.
 Malformed retail Background 2 remains rejected by the existing data parser; UI-D does not invent replacement data.
 
 ## Character editor stage
@@ -59,7 +61,8 @@ remains owned by the separate Main Menu bottom bar. UI-D retains that hierarchy.
   the finalization route. There is no invented transparent editor Back region.
 - The active child panel begins at local `(503,4)` and is replaced, rather than accumulated or globally scrolled.
 - Skills use ID 29, group controls 302–305, and row controls 624/625. Rank changes submit only
-  `AdjustCreationSkill` intent.
+  `AdjustCreationSkill` intent. ID 623 `skilgauge.art` is restored from the panel at zero and filled left-to-right at
+  `clamp(source skill level, 0, 20) / 20`; its 120 x 27 rectangles use source y positions 87/153/219/285.
 - Technology uses ID 30, discipline controls 306–313, and rank controls 647/648. Rank changes submit only
   `AdjustCreationTechnology` intent.
 - Magic uses ID 31, the source college icon mapping
@@ -70,6 +73,12 @@ remains owned by the separate Main Menu bottom bar. UI-D retains that hierarchy.
 Disabled state is prospective M12B validation over a cloned specification. The view never duplicates costs,
 prerequisites, attribute limits, rank limits, or remaining-point calculations. Character Points and all values are
 projections of `GameUiController.CreationDraft` and `CreationValidation`.
+
+Dynamic text is redrawn from immutable source rectangles. The reported selector drift came from reusing an already
+centered `RectTransform.anchoredPosition` as the next centering origin, so every refresh accumulated the previous
+offset. The corrected path keeps the authored rectangle separately, measures bitmap glyphs, and derives each new x
+coordinate from that unchanged rectangle. The same measured-centering path covers one- and two-digit attribute
+values, Character Points, identity labels, and skill values without moving plus/minus geometry.
 
 ## Navigation and authority
 
@@ -82,8 +91,15 @@ one `EventSystem`. The fixed source composition captures pointer input, but it d
 - Editor Continue calls the existing M12B finalization transaction. Invalid creation remains open with no player
   mutation; valid creation creates exactly one PC, enters the authentic start map, closes creation, and reveals the
   existing source HUD.
-- Pick Character/pregenerated-character selection, intro playback, and retail post-creation shopping remain the
-  already documented fail-closed/deferred routes. UI-D does not add those subsystems.
+- Pick Character opens source ID 766 and browses the twelve retail entries in source order. Their basic PC
+  prototypes 16067–16078 are engine-owned `proto.c` entries rather than required loose `data/proto/*.pro` files.
+  OpenArcanum reconstructs only those source-defined basic prototypes, then applies the authentic prototype identity,
+  auto-level scheme, background, portrait, inventory source, selection global, and natural auto-equip path. It does
+  not translate them into custom-character presets.
+- Pregenerated Start creates exactly one source-prototype PC through the existing atomic New Game/campaign path.
+  Save V1 retains optional `PregeneratedSourceIndex` metadata while committed character, inventory/equipment,
+  campaign, world, and HUD authority remain in their existing V1 sections. Older V1 documents omit the field as zero.
+- Intro playback and retail post-creation shopping remain deferred.
 
 ## Resolution and graphics behavior
 
@@ -105,27 +121,26 @@ panel, draft values, Character Points, logical geometry, presenter identity, and
 Missing Enhanced children continue to fall back independently to Original. No retail or generated validation asset
 is committed.
 
-## Validation record
+## UI-D.1 / UI-B.1 correction validation record
 
 - Unity compilation: clean in the existing Unity 6000.0.71f1 Editor; no second Editor was launched.
-- Focused UI-D EditMode: **20/20**, 0 failed, 0 skipped, 0 inconclusive. The added case proves bottom-bar ownership
-  and that ID 568 fails closed as auto-level schemes without transaction mutation.
-- Directly affected regressions: **217/217**, comprising UI-A 23, UI-B 22, M12B 13, M4A 13, M4B 20,
-  M4C 29, M4D 25, M10A 34, M10B 12, Player Startup 3, and production keyboard/input 23.
-- Production Play Mode: **PASS**. The replacement proof exercised invalid-name rejection without mutation, mounted portrait,
-  gender/race/background cycling, source IDs 765 -> 22/29, all four point-spend categories, Back/Continue draft
-  preservation, ID 568 fail-closed auto-level behavior, Original/Enhanced/Original rebuilding, all five target
-  resolution mappings, and atomic ID 321 finalization
-  to `maps/arcanum1-024-fixed` with the source HUD visible.
+- Focused gates: UI-D.1 **28/28**, UI-B.1 **22/22**, UI-C.5 **69/69**, UI-E.2 **20/20**, M12B **15/15**, and
+  production keyboard/input **23/23**; 0 failed, skipped, or inconclusive.
+- Targeted regressions: **418/418** across UI-A/B/C/D/E.1/E.2, M3A, M3C, M4A–M4D, M6A, M8F, M10, M12B,
+  M12C, production keyboard/input, and Player Startup.
+- Complete EditMode: **1280/1280**, 0 failed, 0 skipped, 0 inconclusive (1269 baseline plus 11 justified cases).
+- Production Play Mode: **PASS**. The existing Editor proof exercised the 128 x 128 portrait draw; all source gender
+  restrictions; 100 selector cycles without drift; one- and two-digit centering; ID 623 zero/partial/full/refund
+  behavior; all twelve ID 766 pregenerated entries; two distinct prototype-backed campaign starts; authentic
+  inventory/equipment; Save V1 round trip; HUD authority; Original -> Enhanced -> Original; and exact 800 x 600,
+  1024 x 768, 1920 x 1080, 2560 x 1440, and 3840 x 2160 placement.
 - Production uniqueness: one Character Creation view, presenter/controller, and EventSystem.
 - Final cleared Unity Console: 0 logs, 0 warnings, 0 errors. `git diff --check`: clean.
-
-The complete EditMode suite is intentionally deferred to the UI-E.2 gate, as directed by the bounded overnight plan;
-UI-D required no core-authority change.
 
 ## Boundary
 
 UI-D owns source-faithful presentation, fixed composition, portrait pixel resolution, and intent forwarding only.
 M12B continues to own character legality and finalization; M4, M10A, and M10B continue to own the projected game
-facts. Runtime Character/Skills presentation belongs to UI-E.2. Pregenerated characters, intro playback, shopping,
-auto-level-scheme authority, new character rules, and any gameplay redesign are outside UI-D.
+facts. Runtime Character/Skills presentation belongs to UI-E.2. Pregenerated browsing and prototype-backed New Game
+are now closed. Intro playback, shopping, auto-level-scheme authority, new character rules, and any gameplay redesign
+remain outside UI-D.

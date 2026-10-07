@@ -7,7 +7,10 @@ UI-C.2 two-window composition, UI-C.3 counter/maintained-slot/Inventory correcti
 intact. UI-C overall is deliberately **OPEN** on two isolated source-authority boundaries: six skill-check critical-
 success Fate choices have no corresponding authoritative action checks in the current runtime, and bed use has no
 exact occupant/rental/SAP_USE authority. Those branches fail before Fate-point, time, vitality, spell, or presentation
-mutation instead of inventing behavior. UI-D has not started.
+mutation instead of inventing behavior.
+
+The UI-D.1/UI-B.1/UI-C.5 player-facing correction pass is complete. It corrected bottom-control routing and the
+two-frame source skill-icon family while preserving this open authority boundary; UI-D.1 itself is complete.
 
 The supported source HUD now includes saved primary notifications and highlighted ART, the Fate counter, six exact
 Fate paths, PC-maintained spell icons/cancellation, source-classified wilderness sleep and town wait, the source clock,
@@ -98,12 +101,26 @@ layer preserves the valid UI-C.1 hotspot correction and maps one source cursor p
 - Two recent actions preserve source recency/deduplication semantics and activate through existing item/spell routes.
 - XP segments are a read-only projection of M4C level progress; invalid or capped progress draws no invented state.
 - IDs 470/472/473/471 provide Combat, Skills, Spells, and Schematics in the bottom window.
+- Pointer and keyboard routes now share the same authority: Combat ID 470 / `R`, Skills ID 472 / `K`, Spells ID 473
+  / `M`, and Schematics ID 471 / `T`. Skills and Spells obey the rotating-window/message-window mutual-release path.
+- Skill action IDs 279/280/282/278 are a two-frame family. Frame 0 is normal and frame 1 is hover/pressed; production
+  no longer requests nonexistent frame 2. This is a family-specific state mapping, not a global frame clamp.
 
 Health, fatigue, equipment, ammunition, AP, readiness, combat state, messages, and shortcuts remain projections of
 the completed M3/M4/M8/M12C systems. C/L/W/I and pointer controls share the controller routes; F and S open the Fate
 and Sleep panels, and A activates the first recent-action slot. Unsupported skill-action Fate resolution, bed sleep
 permission, broader ammunition/mana-store content, slot drag/cooldown, and rare-audio branches remain fail-closed or
 deferred.
+
+The four visible rotating-Skills actions remain deliberately unavailable for gameplay resolution. Source tracing
+proved that Prowling requires stealth/concealment plus world-perception authority, Pick Pocket requires a
+transactional theft/detection/reaction kernel, Disarm Traps requires authoritative trap state/difficulty/failure
+consequences, and Repair requires item durability/damage/failure effects. None exists in the current runtime, so a
+source-correct valid-target transaction cannot be completed without starting major gameplay systems. Each action
+therefore fails closed before time/AP, inventory, combat, vitality, world, or recent-action mutation. `INVALID`
+remains correct for unsupported/invalid targets; a failed attempt does not replace the item/spell recent-action
+history. UI-C must remain open on these four action kernels as well as the previously documented Fate and bed-use
+authority boundaries.
 
 ## Input and lifecycle
 
@@ -165,6 +182,16 @@ No external screenshot or original retail ART was added to Git.
   cancellation, clock refresh, and return to the crash-site sector.
 - Unity compilation: clean.
 - Final cleared Console: 0 errors and 0 unexpected warnings. `git diff --check`: clean.
+
+## Player-facing correction follow-up
+
+- Focused UI-C.5: **69/69**, 0 failed, skipped, or inconclusive.
+- Targeted cross-system regressions: **418/418**; complete EditMode: **1280/1280**.
+- Production physical validation passed Combat/Skills/Spells/Schematics pointer and keyboard parity, rotating-window
+  mutual release, two-frame IDs 279/280/282/278 with no frame-out-of-range warning, fail-closed unsupported skill
+  actions without transaction mutation, recent item/spell action preservation, Original -> Enhanced -> Original,
+  and all five target resolutions.
+- Unity compilation is clean; the final cleared Console has 0 errors and 0 warnings; `git diff --check` is clean.
 
 ## Boundary
 
