@@ -71,6 +71,31 @@ internal sealed class M8ATestExecution : ScriptableObject, ICallbacks
     private static void RunM12CAll()
         => Run(new Filter { testMode = TestMode.EditMode }, "M12C complete EditMode");
 
+    [MenuItem("OpenArcanum/UI-D/Run Focused EditMode Tests", false, 1)]
+    private static void RunUiDFocused()
+        => Run(Category("UIDCharacterCreation"), "UI-D focused EditMode");
+
+    [MenuItem("OpenArcanum/UI-D/Run Targeted Regression Tests", false, 2)]
+    private static void RunUiDTargeted()
+    {
+        RunMany(
+            new[]
+            {
+                Category("UIACommonRuntime"), Category("UIBMainMenu"),
+                Category("M12BCharacterCreationNewGame"), Category("M4ACharacterAttributes"),
+                Category("M4BCharacterVitality"), Category("M4CCharacterProgression"),
+                Category("M4DDerivedCharacterStats"), Category("M10AMagicRuntime"),
+                Category("M10BTechnologyRuntime"), Category("PlayerStartup"),
+                Category("M13AKeyboardInput"),
+            },
+            new[]
+            {
+                "UI-A common runtime", "UI-B Main Menu", "M12B Character Creation",
+                "M4A attributes", "M4B vitality", "M4C progression", "M4D derived stats",
+                "M10A magic", "M10B technology", "Player Startup", "production keyboard/input",
+            });
+    }
+
     [MenuItem("OpenArcanum/M12B/Run Focused EditMode Tests #&b", false, 1)]
     private static void RunM12BFocused()
         => Run(Category("M12BCharacterCreationNewGame"), "M12B focused EditMode");

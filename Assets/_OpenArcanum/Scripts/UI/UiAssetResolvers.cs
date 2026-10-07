@@ -32,6 +32,8 @@ namespace OpenArcanum.UI
             new Dictionary<string, MesFile>(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<uint, RetailItemArtAsset> _inventoryItems =
             new Dictionary<uint, RetailItemArtAsset>();
+        private readonly Dictionary<string, RetailPortraitAsset> _portraits =
+            new Dictionary<string, RetailPortraitAsset>(StringComparer.OrdinalIgnoreCase);
         private readonly HashSet<string> _reported = new HashSet<string>(StringComparer.Ordinal);
         private ItemArtResolver _itemArt;
         private bool _disposed;
@@ -214,6 +216,54 @@ namespace OpenArcanum.UI
             }
         }
 
+        /// <summary>
+        /// Resolves a single-player portrait through the source <c>portrait/&lt;name&gt;_b.bmp</c> path with the
+        /// retail fallback to the ordinary BMP. Character identity and portrait legality remain owned by M12B;
+        /// this method decodes presentation pixels only.
+        /// </summary>
+        public bool TryResolvePortrait(string sourceName, out RetailPortraitAsset asset)
+        {
+            ThrowIfDisposed();
+            asset = null;
+            string name = sourceName?.Trim();
+            if (string.IsNullOrEmpty(name)) return false;
+            if (_portraits.TryGetValue(name, out asset) && asset?.Sprite != null) return true;
+
+            string path = $"portrait/{name}_b.bmp";
+            if (!_vfs.Exists(path)) path = $"portrait/{name}.bmp";
+            if (!_vfs.Exists(path)) return false;
+
+            Texture2D texture = null;
+            Sprite sprite = null;
+            try
+            {
+                BmpImage bmp = BmpReader.Read(_vfs.ReadAllBytes(path));
+                texture = new Texture2D(bmp.Width, bmp.Height, TextureFormat.RGBA32, false, false)
+                {
+                    name = $"UI_Portrait_{name}",
+                    filterMode = FilterMode.Point,
+                    wrapMode = TextureWrapMode.Clamp,
+                };
+                texture.LoadRawTextureData(bmp.Rgba);
+                texture.Apply(false, true);
+                sprite = Sprite.Create(texture, new Rect(0f, 0f, bmp.Width, bmp.Height),
+                    new Vector2(.5f, .5f), 1f, 0, SpriteMeshType.FullRect);
+                sprite.name = texture.name;
+                asset = new RetailPortraitAsset(name, path, texture, sprite,
+                    new Vector2Int(bmp.Width, bmp.Height));
+                _portraits[name] = asset;
+                return true;
+            }
+            catch (Exception exception)
+            {
+                Destroy(sprite);
+                Destroy(texture);
+                string message = $"OpenArcanum UI: portrait '{name}' unavailable: {exception.Message}.";
+                if (_reported.Add(message)) _diagnostic(message);
+                return false;
+            }
+        }
+
         private MesFile ReadMes(string path)
         {
             string normalized = DatFileEntry.Normalize(path);
@@ -308,6 +358,12 @@ namespace OpenArcanum.UI
                 Destroy(asset?.Texture);
             }
             _inventoryItems.Clear();
+            foreach (RetailPortraitAsset asset in _portraits.Values)
+            {
+                Destroy(asset?.Sprite);
+                Destroy(asset?.Texture);
+            }
+            _portraits.Clear();
             _sources.Clear();
             _messageTables.Clear();
             _vfs.Dispose();
@@ -344,6 +400,25 @@ namespace OpenArcanum.UI
             Vector2Int logicalSize)
         {
             ArtId = artId;
+            SourcePath = sourcePath;
+            Texture = texture;
+            Sprite = sprite;
+            LogicalSize = logicalSize;
+        }
+    }
+
+    public sealed class RetailPortraitAsset
+    {
+        public string SourceName { get; }
+        public string SourcePath { get; }
+        public Texture2D Texture { get; }
+        public Sprite Sprite { get; }
+        public Vector2Int LogicalSize { get; }
+
+        internal RetailPortraitAsset(string sourceName, string sourcePath, Texture2D texture, Sprite sprite,
+            Vector2Int logicalSize)
+        {
+            SourceName = sourceName;
             SourcePath = sourcePath;
             Texture = texture;
             Sprite = sprite;

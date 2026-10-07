@@ -36,6 +36,7 @@ namespace Arcanum.Runtime.UI
         private PlayerInteractionController _interaction;
         private ProductionCombatPresenter _legacyCombat;
         private RetailMainMenuView _retailMainMenu;
+        private RetailCharacterCreationView _retailCharacterCreation;
         private RetailGameplayHudView _retailGameplayHud;
         private RetailInventoryEquipmentView _retailInventory;
         private Vector2 _scroll;
@@ -93,6 +94,9 @@ namespace Arcanum.Runtime.UI
             _retailGameplayHud = GetComponent<RetailGameplayHudView>()
                                  ?? gameObject.AddComponent<RetailGameplayHudView>();
             _retailGameplayHud.Bind(_controller, _session, Open);
+            _retailCharacterCreation = GetComponent<RetailCharacterCreationView>()
+                                       ?? gameObject.AddComponent<RetailCharacterCreationView>();
+            _retailCharacterCreation.Bind(_controller, _session, _retailGameplayHud.Resolver);
             _retailInventory = GetComponent<RetailInventoryEquipmentView>()
                                ?? gameObject.AddComponent<RetailInventoryEquipmentView>();
             _retailInventory.Bind(_controller, _session, _retailGameplayHud.Resolver);
@@ -130,6 +134,7 @@ namespace Arcanum.Runtime.UI
             SyncInputGate();
 
             _retailMainMenu?.Synchronize();
+            _retailCharacterCreation?.Synchronize();
             _retailGameplayHud?.Synchronize(_showHud);
             _retailInventory?.Synchronize();
             if (Controller.Screen == GameUiScreen.MainMenu && _retailMainMenu?.IsAvailable == true)
@@ -167,6 +172,12 @@ namespace Arcanum.Runtime.UI
 
         void IProductionKeyboardCommands.Escape()
         {
+            if (Controller.Screen == GameUiScreen.CharacterCreation
+                && _retailCharacterCreation?.IsVisible == true)
+            {
+                _retailCharacterCreation.HandleEscape();
+                return;
+            }
             if (Controller.Screen == GameUiScreen.Dialogue) Controller.CancelDialogue();
             else if (Controller.SaveLoad.Confirmation != SaveLoadConfirmation.None)
                 Controller.SaveLoad.CancelConfirmation();
@@ -312,6 +323,7 @@ namespace Arcanum.Runtime.UI
 
         internal bool PointerOverInterface(Vector3 mouse)
         {
+            if (_retailCharacterCreation?.IsVisible == true) return true;
             if (_retailInventory?.ContainsScreenPoint(mouse) == true) return true;
             if (_retailGameplayHud?.ContainsScreenPoint(mouse) == true) return true;
             Vector2 guiPoint = new(mouse.x, Screen.height - mouse.y);
@@ -325,15 +337,19 @@ namespace Arcanum.Runtime.UI
             EnsureController();
             Controller.Refresh();
             _retailMainMenu?.Synchronize();
+            _retailCharacterCreation?.Synchronize();
             _retailGameplayHud?.Synchronize(_showHud);
             _retailInventory?.Synchronize();
             bool sourceMainMenu = Controller.Screen == GameUiScreen.MainMenu
                                   && _retailMainMenu?.IsAvailable == true;
+            bool sourceCharacterCreation = Controller.Screen == GameUiScreen.CharacterCreation
+                                           && _retailCharacterCreation?.IsAvailable == true;
             bool sourceInventory = Controller.Screen == GameUiScreen.Inventory
                                    && _retailInventory?.IsAvailable == true;
             GUI.depth = -120;
             if (_showHud && _retailGameplayHud?.IsAvailable != true) DrawHud();
-            if (Controller.IsModalOpen && !sourceMainMenu && !sourceInventory) DrawScreen();
+            if (Controller.IsModalOpen && !sourceMainMenu && !sourceCharacterCreation && !sourceInventory)
+                DrawScreen();
             DrawCursorLabel();
         }
 
