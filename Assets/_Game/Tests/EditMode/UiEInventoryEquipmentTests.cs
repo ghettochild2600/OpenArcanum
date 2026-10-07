@@ -68,7 +68,8 @@ namespace Arcanum.Formats.Tests
         [Test]
         public void RetailInventoryAssetsResolveDirectlyFromSourceData()
         {
-            foreach (int id in new[] { 221, 223, 241, 242, 243, 244, 245, 246, 247, 248, 249 })
+            foreach (int id in new[] { 221, 223, 233, 241, 242, 243, 244, 245, 246, 247, 248, 249,
+                         340, 676, 677 })
                 Assert.That(_retail.TryResolve(new UiAssetKey(id), out _), Is.True, $"source id {id}");
             Assert.That(_retail.TryResolveInventoryItem(InventoryAid, out RetailItemArtAsset item), Is.True);
             Assert.That(item.SourcePath, Does.StartWith("art/item/"));
@@ -79,12 +80,17 @@ namespace Arcanum.Formats.Tests
         [Test]
         public void OrdinaryInventoryUsesExactSourcePanelComposition()
         {
-            Assert.That(RetailInventoryEquipmentLayout.PaperDoll, Is.EqualTo(new Rect(0, 0, 358, 400)));
+            Assert.That(RetailInventoryEquipmentLayout.PaperDoll, Is.EqualTo(new Rect(0, 0, 800, 400)));
             Assert.That(RetailInventoryEquipmentLayout.Inventory, Is.EqualTo(new Rect(358, 0, 442, 400)));
             Assert.That(_view.PaperDollAsset.Key.SourceId, Is.EqualTo(223));
             Assert.That(_view.InventoryAsset.Key.SourceId, Is.EqualTo(221));
             Assert.That(_view.WindowTransform.sizeDelta, Is.EqualTo(new Vector2(800, 400)));
             Assert.That(_view.WindowTransform.anchoredPosition, Is.EqualTo(new Vector2(0, 59)));
+            Assert.That(_root.GetComponentsInChildren<RetailPcLensView>(true), Has.Length.EqualTo(1));
+            Assert.That(_root.GetComponentsInChildren<SourceUiImage>(true)
+                .Single(value => value.name == "PC Lens Frame").Key.SourceId, Is.EqualTo(233));
+            Assert.That(_root.GetComponentsInChildren<Button>(true)
+                .Single(value => value.name == "Arrange Items"), Is.Not.Null);
         }
 
         [TestCase(800, 600, 0, 41)]
@@ -118,6 +124,42 @@ namespace Arcanum.Formats.Tests
                 Is.EqualTo(new Rect(368, 8, 32, 32)));
             Assert.That(RetailInventoryEquipmentLayout.InventoryItemRect(13, new InventoryFootprint(2, 3)),
                 Is.EqualTo(new Rect(464, 40, 64, 96)));
+        }
+
+        [Test]
+        public void InventorySummaryUsesSessionAuthorityAndExactSourceCounterGeometry()
+        {
+            GameUiInventorySummaryView summary = _controller.ProjectInventorySummary();
+            Assert.That(summary, Is.Not.Null);
+            Assert.That((summary.Weight, summary.CarryCapacity, summary.EncumbranceLevel),
+                Is.EqualTo((0L, 4000, 0)));
+            Assert.That(summary.EncumbranceThreshold, Is.EqualTo(600));
+            Assert.That(summary.Ammunition, Is.EqualTo(new[] { 0, 0, 0, 0 }));
+            Assert.That(RetailInventoryEquipmentLayout.CounterRects.Select(value => (value.x, value.y)),
+                Is.EqualTo(new[] { (729f, 70f), (729f, 93f), (729f, 116f), (729f, 139f), (729f, 162f) }));
+            Assert.That(RetailInventoryEquipmentLayout.AttackValue, Is.EqualTo(new Rect(80, 358, 23, 35)));
+            Assert.That(RetailInventoryEquipmentLayout.DefenseValue, Is.EqualTo(new Rect(261, 358, 23, 35)));
+        }
+
+        [Test]
+        public void ArrangeUsesDescendingFootprintAndCommitsSourceGridLocations()
+        {
+            PersistentObjectState small = AddItem(20, ObjectType.Armor, 50, InventoryFootprint.OneCell);
+            PersistentObjectState large = AddItem(21, ObjectType.Armor, 70, new InventoryFootprint(2, 3));
+            Assert.That(_controller.ArrangeInventory(), Is.True);
+            Assert.That(large.InventoryLocation, Is.Zero);
+            Assert.That(small.InventoryLocation, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void ExactGridMoveRejectsOverlapWithoutMutatingEitherItem()
+        {
+            PersistentObjectState large = AddItem(22, ObjectType.Armor, 0, new InventoryFootprint(2, 2));
+            PersistentObjectState small = AddItem(23, ObjectType.Armor, 5, InventoryFootprint.OneCell);
+            Assert.That(_controller.MoveInventoryItem(small.Identity, 1), Is.False);
+            Assert.That((large.InventoryLocation, small.InventoryLocation), Is.EqualTo((0, 5)));
+            Assert.That(_controller.MoveInventoryItem(small.Identity, 2), Is.True);
+            Assert.That(small.InventoryLocation, Is.EqualTo(2));
         }
 
         [Test]

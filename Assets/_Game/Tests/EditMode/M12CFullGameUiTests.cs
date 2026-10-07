@@ -34,7 +34,8 @@ namespace Arcanum.Formats.Tests
             _session.RegisterObjectOwner(new Owner(_session));
             Assert.That(_session.SelectSector(Sector), Is.True);
             _pc = ProductionPlayerLifecycle.DefaultPlayerIdentity;
-            _session.GetOrCreatePlayer(_pc, Sector, Vector2.one, 0x28100000u);
+            PersistentPlayerState player = _session.GetOrCreatePlayer(_pc, Sector, Vector2.one, 0x28100000u);
+            _session.BindPlayer(Sector, player, Runtime("Player", ObjectType.Pc));
             _armorPrototype = new ObjectProtoInfo(8100, ObjectType.Armor, 0x70000000u, weight: 3);
             _session.BindPrototypeSource(number => number == 8100 ? _armorPrototype : null);
             _session.BindInventoryFootprintSource(_ => InventoryFootprint.OneCell);
@@ -52,6 +53,20 @@ namespace Arcanum.Formats.Tests
             Assert.That(view, Is.Not.Null);
             Assert.That((view.HitPoints, view.MaximumHitPoints), Is.EqualTo((hp, _session.Vitality.Get(_pc).MaximumHitPoints)));
             Assert.That(_session.Vitality.Get(_pc).CurrentHitPoints, Is.EqualTo(hp));
+        }
+
+        [Test]
+        public void CombatCommandTogglesSessionOwnedReadyStateWithoutHudBoolean()
+        {
+            Assert.That(_session.Combat.IsCombatModeActive, Is.False);
+            Assert.That(_controller.ToggleCombatMode(), Is.True, _controller.Feedback);
+            Assert.That((_session.Combat.IsCombatModeActive, _controller.ProjectHud().CombatActive,
+                    _controller.CursorMode),
+                Is.EqualTo((true, true, GameUiCursorMode.Attack)));
+            Assert.That(_controller.ToggleCombatMode(), Is.True, _controller.Feedback);
+            Assert.That((_session.Combat.IsCombatModeActive, _controller.ProjectHud().CombatActive,
+                    _controller.CursorMode),
+                Is.EqualTo((false, false, GameUiCursorMode.Default)));
         }
 
         [Test]
@@ -240,6 +255,15 @@ namespace Arcanum.Formats.Tests
                 oid: GuidBytes(sequence), parentOid: Bytes(_pc), invLocation: 0);
             return _session.GetOrCreate(source, Sector, source.CurrentArtId.Value, false, false,
                 inventoryArtId: 0u, unitWeight: 3, inventoryLocation: 0);
+        }
+
+        private WorldObject Runtime(string name, ObjectType type)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(_root.transform);
+            WorldObject runtime = go.AddComponent<WorldObject>();
+            runtime.Type = type;
+            return runtime;
         }
 
         private static byte[] GuidBytes(int sequence)

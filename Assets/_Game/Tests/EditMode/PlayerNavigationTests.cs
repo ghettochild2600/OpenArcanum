@@ -120,5 +120,18 @@ namespace Arcanum.Formats.Tests
             Assert.That((idle >> 6) & 0x1F, Is.Zero);
             Assert.That(CritterArtResolver.RotationOf(idle), Is.EqualTo(6));
         }
+
+        [Test]
+        public void RunUsesDistinctSourceAnimationAndTimingFamily()
+        {
+            uint stand = ((uint)ArtId.TypeCritter << 28) | (4u << 11);
+            uint walk = CritterArtResolver.WithAnimRotation(stand, 1, 4);
+            uint run = CritterArtResolver.WithAnimRotation(stand, 6, 4);
+            Assert.That((walk >> 6) & 0x1F, Is.EqualTo(1));
+            Assert.That((run >> 6) & 0x1F, Is.EqualTo(6));
+            Assert.That(SourceLocomotionTiming.AdjustedFramesPerSecond(10, 8, walk), Is.EqualTo(17));
+            Assert.That(SourceLocomotionTiming.AdjustedFramesPerSecond(10, 8, run), Is.EqualTo(20));
+            Assert.That(SourceLocomotionTiming.AdjustedFramesPerSecond(10, 30, run), Is.EqualTo(30));
+        }
     }
 }

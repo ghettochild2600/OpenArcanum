@@ -141,6 +141,28 @@ namespace Arcanum.Formats.Tests
             Assert.That(_controller.CreationDraft.Gender, Is.EqualTo(CharacterGender.Female));
         }
 
+        [TestCase(CharacterRace.Human, CharacterGender.Male)]
+        [TestCase(CharacterRace.Human, CharacterGender.Female)]
+        [TestCase(CharacterRace.Elf, CharacterGender.Male)]
+        [TestCase(CharacterRace.Elf, CharacterGender.Female)]
+        [TestCase(CharacterRace.HalfElf, CharacterGender.Male)]
+        [TestCase(CharacterRace.HalfElf, CharacterGender.Female)]
+        [TestCase(CharacterRace.HalfOrc, CharacterGender.Male)]
+        [TestCase(CharacterRace.HalfOrc, CharacterGender.Female)]
+        [TestCase(CharacterRace.Dwarf, CharacterGender.Male)]
+        [TestCase(CharacterRace.Gnome, CharacterGender.Male)]
+        [TestCase(CharacterRace.Halfling, CharacterGender.Male)]
+        [TestCase(CharacterRace.HalfOgre, CharacterGender.Male)]
+        public void IdentityChangeResetsToFirstLegalPortrait(CharacterRace race, CharacterGender gender)
+        {
+            _controller.SetCreationIdentity(race, gender);
+            PortraitDefinition expected = _session.CharacterCreation.Catalog.FindFirstPortrait(race, gender);
+            Assert.That(expected, Is.Not.Null);
+            Assert.That(_controller.CreationDraft.PortraitId, Is.EqualTo(expected.Id));
+            Assert.That(_session.CharacterCreation.Catalog.IsPortraitLegal(
+                _controller.CreationDraft.PortraitId, race, gender), Is.True);
+        }
+
         [Test]
         public void GenderRulesCoverAllEightRacesAndRaceCyclingSkipsUnsupportedFemaleBodies()
         {
@@ -192,6 +214,23 @@ namespace Arcanum.Formats.Tests
         }
 
         [Test]
+        public void BackgroundCycleImmediatelyReplacesEffectiveStatsWithoutStacking()
+        {
+            Assert.That(_session.CharacterCreation.GetEffectiveAttribute(_controller.CreationDraft,
+                CharacterAttribute.Beauty), Is.EqualTo(8));
+            Invoke("Next Background");
+            Assert.That(_session.CharacterCreation.GetEffectiveAttribute(_controller.CreationDraft,
+                CharacterAttribute.Beauty), Is.EqualTo(7));
+            _view.Synchronize();
+            SourceUiBitmapText beauty = _view.GetComponentsInChildren<SourceUiBitmapText>(true)
+                .Single(value => value.name == "Initial Beauty");
+            Assert.That(beauty.Text, Is.EqualTo("BE:7"));
+            Invoke("Previous Background");
+            Assert.That(_session.CharacterCreation.GetEffectiveAttribute(_controller.CreationDraft,
+                CharacterAttribute.Beauty), Is.EqualTo(8));
+        }
+
+        [Test]
         public void ContinueTransitionsToSourceEditorWithoutCreatingPlayer()
         {
             _view.ContinueToEditor();
@@ -240,6 +279,41 @@ namespace Arcanum.Formats.Tests
             Assert.That(_controller.CreationValidation.RemainingCharacterPoints, Is.EqualTo(4));
             Invoke("Decrease Strength");
             Assert.That(_controller.CreationDraft.GetAttribute(CharacterAttribute.Strength), Is.EqualTo(8));
+        }
+
+        [Test]
+        public void HitPointAndFatigueControlsSpendAndRefundCharacterPointsAtSourceCoordinates()
+        {
+            _view.ContinueToEditor();
+            int remaining = _controller.CreationValidation.RemainingCharacterPoints;
+            AssertTopLeft("Decrease Hit Points", new Vector2(409, 144));
+            AssertTopLeft("Increase Hit Points", new Vector2(465, 144));
+            AssertTopLeft("Decrease Fatigue", new Vector2(409, 214));
+            AssertTopLeft("Increase Fatigue", new Vector2(465, 214));
+            Invoke("Increase Hit Points");
+            Assert.That((_controller.CreationDraft.HitPointPoints,
+                    _controller.CreationValidation.RemainingCharacterPoints), Is.EqualTo((1, remaining - 1)));
+            Invoke("Increase Fatigue");
+            Assert.That((_controller.CreationDraft.FatiguePoints,
+                    _controller.CreationValidation.RemainingCharacterPoints), Is.EqualTo((1, remaining - 2)));
+            Invoke("Decrease Hit Points");
+            Invoke("Decrease Fatigue");
+            Assert.That((_controller.CreationDraft.HitPointPoints, _controller.CreationDraft.FatiguePoints,
+                _controller.CreationValidation.RemainingCharacterPoints), Is.EqualTo((0, 0, remaining)));
+        }
+
+        [Test]
+        public void AttributeHoverProjectsRetailMessageIntoLowerInformationPanel()
+        {
+            _view.ContinueToEditor();
+            SourceHoverHintTarget hint = _view.GetComponentsInChildren<SourceHoverHintTarget>(true)
+                .First(value => value.name == "Strength Value");
+            hint.OnPointerEnter(null);
+            SourceUiBitmapText panel = _view.GetComponentsInChildren<SourceUiBitmapText>(true)
+                .Single(value => value.name == "Editor Feedback");
+            Assert.That(panel.Text, Is.Not.Empty);
+            Assert.That(panel.Text, Does.Contain("CP"));
+            hint.OnPointerExit(null);
         }
 
         [TestCase(8)]
@@ -398,8 +472,8 @@ namespace Arcanum.Formats.Tests
             MesFile portraits = Mes(
                 (1000, "HUM1"), (1001, "HUM2"), (1002, "HUF1"),
                 (1003, "DWM1"), (1004, "ELM1"), (1005, "ELF1"),
-                (1006, "HAM1"), (1007, "HAF1"), (1008, "GNM1"),
-                (1009, "HEM1"), (1010, "HOM1"), (1011, "HOF1"), (1012, "HGM1"));
+                (1006, "HEM1"), (1007, "HEF1"), (1008, "GNM1"),
+                (1009, "HAM1"), (1010, "HOM1"), (1011, "HOF1"), (1012, "HGM1"));
             MapList maps = MapList.Read(Mes((5000,
                 "Arcanum1-024-fixed, 92958, 82592, Type: START_MAP, WorldMap: 0")));
             return CharacterCreationCatalog.FromMes(rules, text, effects, portraits, maps);

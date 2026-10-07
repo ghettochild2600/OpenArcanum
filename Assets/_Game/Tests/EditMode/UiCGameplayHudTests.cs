@@ -376,6 +376,28 @@ namespace Arcanum.Formats.Tests
         }
 
         [Test]
+        public void FullSleepRowExecutesAndTwoFrameFamiliesNeverRequestFrameTwo()
+        {
+            Assert.That(_controller.ToggleSleepPanel(), Is.True, _controller.Feedback);
+            _view.Synchronize(true);
+            SourceUiButton sleep = _root.GetComponentsInChildren<SourceUiButton>(true)
+                .Single(value => value.name == "Sleep Choice 0");
+            sleep.OnPointerDown(null);
+            Assert.That(sleep.CurrentPresentationKey,
+                Is.EqualTo(new UiAssetKey(293, frame: 1)));
+            sleep.OnPointerUp(null);
+            Button row = _root.GetComponentsInChildren<Button>(true)
+                .Single(value => value.name == "Sleep Row 0");
+            row.onClick.Invoke();
+            Assert.That(_session.SourceTime.ElapsedMilliseconds, Is.EqualTo(3_600_000));
+
+            SourceUiButton menu = _root.GetComponentsInChildren<SourceUiButton>(true)
+                .Single(value => value.name == "Sleep");
+            menu.OnPointerDown(null);
+            Assert.That(menu.CurrentPresentationKey, Is.EqualTo(new UiAssetKey(137, frame: 1)));
+        }
+
+        [Test]
         public void TownWaitAdvancesTimeAndDemaintainsWithoutRecovery()
         {
             _session.BindSleepLocationSource(new FixedSleepLocationSource(SleepLocationMode.TownWait));

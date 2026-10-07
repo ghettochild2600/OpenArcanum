@@ -295,6 +295,17 @@ namespace Arcanum.Formats.Tests
         private static CharacterCreationSpecification Default(string name = "Arbuckle")
             => new() { Name = name, BackgroundId = 0, PortraitId = 1005 };
 
+        [Test]
+        public void RetailPortraitPrefixesDifferentiateHalflingFromHalfElf()
+        {
+            CharacterCreationCatalog catalog = CreateCatalog();
+
+            Assert.That(catalog.Portraits[1003].Race, Is.EqualTo(CharacterRace.Halfling));
+            Assert.That(catalog.Portraits[1010].Race, Is.EqualTo(CharacterRace.HalfElf));
+            Assert.That(catalog.Portraits[1011].Race, Is.EqualTo(CharacterRace.HalfElf));
+            Assert.That(catalog.Portraits[1011].Gender, Is.EqualTo(CharacterGender.Female));
+        }
+
         private static CharacterCreationCatalog CreateCatalog()
         {
             MesFile rules = Mes(
@@ -313,7 +324,7 @@ namespace Arcanum.Formats.Tests
             MesFile portraits = Mes((1001, "DWM1"), (1005, "HUM1"), (1006, "ELF1"),
                 (1009, "HGM1"), (1010, "HEM1"), (1003, "HAM1"), (1004, "HOM1"),
                 (1002, "GNM1"), (1007, "HOF1"), (1008, "HUF1"), (1011, "HEF1"),
-                (1017, "HEM2"));
+                (1017, "HAM2"));
             MapList maps = MapList.Read(Mes((5000,
                 "Arcanum1-024-fixed, 92958, 82592, Type: START_MAP, WorldMap: 0")));
             return CharacterCreationCatalog.FromMes(rules, text, effects, portraits, maps,
