@@ -28,7 +28,12 @@ namespace Arcanum.Runtime.UI
         public const int MinusSourceId = 23;
         public const int PlusSourceId = 24;
 
-        public static readonly Rect Window = new(0f, 100f, 800f, 400f);
+        public const float MainMenuWindowTop = 41f;
+        public const float BottomBarTop = 441f;
+        public static readonly Rect Window = new(0f, MainMenuWindowTop, 800f, 400f);
+        public static readonly Rect BottomBar = new(0f, BottomBarTop, 800f, 159f);
+        public static readonly Vector2 BackButton = new(69f, 496f);
+        public static readonly Vector2 ContinueButton = new(675f, 496f);
         public static readonly Rect Portrait = new(95f, 28f, 64f, 64f);
         public static readonly Rect Name = new(46f, 183f, 228f, 18f);
         public static readonly Rect Gender = new(66f, 243f, 186f, 19f);
@@ -98,6 +103,8 @@ namespace Arcanum.Runtime.UI
         private GameObject _canvasRoot;
         private RectTransform _identity;
         private RectTransform _editor;
+        private RectTransform _identityNavigation;
+        private RectTransform _editorNavigation;
         private RectTransform _identityDescription;
         private RectTransform _editorPanel;
         private SourceUiImage _identityBackground;
@@ -132,6 +139,8 @@ namespace Arcanum.Runtime.UI
         public TechnologyDiscipline SelectedTechnology => _selectedTechnology;
         public RectTransform IdentityRoot => _identity;
         public RectTransform EditorRoot => _editor;
+        public RectTransform IdentityNavigationRoot => _identityNavigation;
+        public RectTransform EditorNavigationRoot => _editorNavigation;
         public RectTransform EditorPanelRoot => _editorPanel;
         public InputField NameInput => _nameInput;
         public UiResolvedAsset IdentityBackgroundAsset => _identityBackground?.CurrentAsset;
@@ -200,6 +209,8 @@ namespace Arcanum.Runtime.UI
             _wasVisible = true;
             _identity.gameObject.SetActive(Stage == RetailCharacterCreationStage.Identity);
             _editor.gameObject.SetActive(Stage == RetailCharacterCreationStage.Editor);
+            _identityNavigation.gameObject.SetActive(Stage == RetailCharacterCreationStage.Identity);
+            _editorNavigation.gameObject.SetActive(Stage == RetailCharacterCreationStage.Editor);
             if (Stage == RetailCharacterCreationStage.Identity) RefreshIdentity();
             else RefreshEditor();
         }
@@ -255,6 +266,10 @@ namespace Arcanum.Runtime.UI
 
             _identity = AddRect("Identity Stage", modal, RetailCharacterCreationLayout.Window);
             _editor = AddRect("Editor Stage", modal, RetailCharacterCreationLayout.Window);
+            _identityNavigation = AddRect("Identity Bottom-Bar Controls", modal,
+                RetailCharacterCreationLayout.BottomBar);
+            _editorNavigation = AddRect("Editor Bottom-Bar Controls", modal,
+                RetailCharacterCreationLayout.BottomBar);
             BuildIdentity();
             BuildEditor();
 
@@ -268,24 +283,28 @@ namespace Arcanum.Runtime.UI
         {
             _identityBackground = AddSourceImage("Create Character Base", _identity,
                 RetailCharacterCreationLayout.IdentityBackgroundSourceId, new Rect(0f, 0f, 800f, 400f));
-            AddSourceButtonCentered("Continue", _identity, 321, new Vector2(675f, 55f), ContinueToEditor);
-            AddSourceButtonCentered("Back", _identity, 323, new Vector2(69f, 55f),
+            AddSourceButtonTopLeft("Identity Continue", _identityNavigation, 321,
+                BottomBarLocal(RetailCharacterCreationLayout.ContinueButton), ContinueToEditor);
+            AddSourceButtonTopLeft("Identity Back", _identityNavigation, 323,
+                BottomBarLocal(RetailCharacterCreationLayout.BackButton),
                 () => _controller.Open(GameUiScreen.MainMenu));
-            AddSourceButtonCentered("Previous Portrait", _identity, 283, new Vector2(43f, 118f),
+            AddSourceButtonTopLeft("Previous Portrait", _identity, 283, MainWindowLocal(new Vector2(43f, 118f)),
                 () => CyclePortrait(-1));
-            AddSourceButtonCentered("Next Portrait", _identity, 284, new Vector2(244f, 118f),
+            AddSourceButtonTopLeft("Next Portrait", _identity, 284, MainWindowLocal(new Vector2(244f, 118f)),
                 () => CyclePortrait(1));
-            AddSourceButtonCentered("Previous Race", _identity, 757, new Vector2(42f, 331f),
+            AddSourceButtonTopLeft("Previous Race", _identity, 757, MainWindowLocal(new Vector2(42f, 331f)),
                 () => CycleRace(-1));
-            AddSourceButtonCentered("Next Race", _identity, 758, new Vector2(255f, 332f),
+            AddSourceButtonTopLeft("Next Race", _identity, 758, MainWindowLocal(new Vector2(255f, 332f)),
                 () => CycleRace(1));
-            AddSourceButtonCentered("Previous Background", _identity, 757, new Vector2(42f, 381f),
+            AddSourceButtonTopLeft("Previous Background", _identity, 757,
+                MainWindowLocal(new Vector2(42f, 381f)),
                 () => CycleBackground(-1));
-            AddSourceButtonCentered("Next Background", _identity, 758, new Vector2(255f, 382f),
+            AddSourceButtonTopLeft("Next Background", _identity, 758,
+                MainWindowLocal(new Vector2(255f, 382f)),
                 () => CycleBackground(1));
-            AddSourceButtonCentered("Previous Gender", _identity, 757, new Vector2(42f, 281f),
+            AddSourceButtonTopLeft("Previous Gender", _identity, 757, MainWindowLocal(new Vector2(42f, 281f)),
                 () => CycleGender(-1));
-            AddSourceButtonCentered("Next Gender", _identity, 758, new Vector2(255f, 282f),
+            AddSourceButtonTopLeft("Next Gender", _identity, 758, MainWindowLocal(new Vector2(255f, 282f)),
                 () => CycleGender(1));
 
             _identityPortrait = AddPortraitImage("Portrait", _identity, RetailCharacterCreationLayout.Portrait);
@@ -346,8 +365,12 @@ namespace Arcanum.Runtime.UI
                 new Vector2(595f, 11f), () => SelectPage(RetailCreationEditorPage.Technology), selected: true);
             _pageButtons[RetailCreationEditorPage.Magic] = AddSourceButtonTopLeft("Magic", _editor, 36,
                 new Vector2(663f, 11f), () => SelectPage(RetailCreationEditorPage.Magic), selected: true);
-            AddSourceButtonTopLeft("Accept Character", _editor, 568, new Vector2(754f, 21f), FinalizeCharacter);
-            AddTransparentButton("Back to Identity", _editor, new Rect(0f, 0f, 112f, 104f), HandleEscape);
+            AddSourceButtonTopLeft("Auto-Level Schemes", _editor, 568, new Vector2(754f, 21f),
+                RejectAutoLevelSchemes);
+            AddSourceButtonTopLeft("Editor Continue", _editorNavigation, 321,
+                BottomBarLocal(RetailCharacterCreationLayout.ContinueButton), FinalizeCharacter);
+            AddSourceButtonTopLeft("Editor Back", _editorNavigation, 323,
+                BottomBarLocal(RetailCharacterCreationLayout.BackButton), HandleEscape);
 
             _pointsText = AddText("Character Points", _editor, new Rect(212f, 56f, 220f, 19f),
                 string.Empty, 27, SourceYellow);
@@ -380,8 +403,7 @@ namespace Arcanum.Runtime.UI
             }
             SetText(_descriptionTitle, background?.Name ?? "Background");
             RebuildWrappedText(_identityDescription, background?.Description ?? string.Empty, 52, 11);
-            SetText(_identityFeedbackText,
-                _controller.CreationValidation.Succeeded ? string.Empty : _controller.Feedback);
+            SetText(_identityFeedbackText, _controller.Feedback);
         }
 
         private void RefreshEditor()
@@ -402,9 +424,15 @@ namespace Arcanum.Runtime.UI
             }
             foreach (var pair in _pageButtons) pair.Value.SetSelected(pair.Key == EditorPage);
             SetText(_pointsText, $"Character Points: {_controller.CreationValidation.RemainingCharacterPoints}");
-            SetText(_editorFeedbackText,
-                _controller.CreationValidation.Succeeded ? string.Empty : _controller.Feedback);
+            SetText(_editorFeedbackText, _controller.Feedback);
             RebuildEditorPanel(draft);
+        }
+
+        private void RejectAutoLevelSchemes()
+        {
+            _controller.ShowFeedback("Auto-level schemes are not available in the current runtime.");
+            _editorSignature = int.MinValue;
+            Synchronize();
         }
 
         private void RebuildEditorPanel(CharacterCreationSpecification draft)
@@ -684,15 +712,6 @@ namespace Arcanum.Runtime.UI
             return source;
         }
 
-        private SourceUiButton AddSourceButtonCentered(string name, RectTransform parent, int sourceId,
-            Vector2 center, Action clicked)
-        {
-            Vector2 size = _resolver.TryResolve(new UiAssetKey(sourceId), out UiResolvedAsset asset)
-                ? asset.LogicalSize : new Vector2(32f, 32f);
-            return AddSourceButton(name, parent, sourceId,
-                new Rect(center.x - size.x * .5f, center.y - size.y * .5f, size.x, size.y), clicked, false);
-        }
-
         private SourceUiButton AddSourceButtonTopLeft(string name, RectTransform parent, int sourceId,
             Vector2 topLeft, Action clicked, bool selected = false)
         {
@@ -716,6 +735,12 @@ namespace Arcanum.Runtime.UI
             source.Button.onClick.AddListener(() => clicked());
             return source;
         }
+
+        private static Vector2 MainWindowLocal(Vector2 sourceTopLeft)
+            => new(sourceTopLeft.x, sourceTopLeft.y - RetailCharacterCreationLayout.MainMenuWindowTop);
+
+        private static Vector2 BottomBarLocal(Vector2 sourceTopLeft)
+            => new(sourceTopLeft.x, sourceTopLeft.y - RetailCharacterCreationLayout.BottomBarTop);
 
         private static Button AddTransparentButton(string name, RectTransform parent, Rect rect, Action clicked)
         {

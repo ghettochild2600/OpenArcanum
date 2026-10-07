@@ -98,7 +98,7 @@ namespace OpenArcanum.Editor
                     "one Character Creation view, presenter/controller, and EventSystem own the flow");
 
                 view.NameInput.text = string.Empty;
-                FindButton(view, "Continue").onClick.Invoke();
+                FindButton(view, "Identity Continue").onClick.Invoke();
                 view.Synchronize();
                 Check(view.Stage == RetailCharacterCreationStage.Identity && session.PlayerState == null
                       && controller.CreationValidation.Failure == CharacterCreationFailure.InvalidName,
@@ -127,7 +127,7 @@ namespace OpenArcanum.Editor
                 Check(draft.BackgroundId == firstBackground && controller.CreationValidation.Succeeded,
                     "identity cycle returns to a bounded valid source draft");
 
-                FindButton(view, "Continue").onClick.Invoke();
+                FindButton(view, "Identity Continue").onClick.Invoke();
                 view.Synchronize();
                 Check(view.Stage == RetailCharacterCreationStage.Editor
                       && view.EditorBackgroundAsset?.Key.SourceId == 22
@@ -135,6 +135,16 @@ namespace OpenArcanum.Editor
                     "Continue enters source char_maint 22 at 800x400");
                 Check(view.EditorPanelRoot.GetComponentInChildren<SourceUiImage>(true)?.Key.SourceId == 29,
                     "editor opens the source skills subpanel 29");
+                int autoLevelStrength = draft.GetAttribute(CharacterAttribute.Strength);
+                int autoLevelPoints = controller.CreationValidation.RemainingCharacterPoints;
+                FindButton(view, "Auto-Level Schemes").onClick.Invoke();
+                yield return null;
+                view.Synchronize();
+                Check(view.Stage == RetailCharacterCreationStage.Editor && session.PlayerState == null
+                      && draft.GetAttribute(CharacterAttribute.Strength) == autoLevelStrength
+                      && controller.CreationValidation.RemainingCharacterPoints == autoLevelPoints
+                      && controller.Feedback.Contains("Auto-level schemes"),
+                    "source ID 568 is the auto-level-scheme route and fails closed without transaction mutation");
 
                 FindButton(view, "Increase Strength").onClick.Invoke();
                 yield return null;
@@ -155,13 +165,13 @@ namespace OpenArcanum.Editor
                       && controller.CreationValidation.Succeeded,
                     "source controls spend four points only through M12B attribute/skill/magic/technology authority");
 
-                view.HandleEscape();
+                FindButton(view, "Editor Back").onClick.Invoke();
                 Check(view.Stage == RetailCharacterCreationStage.Identity && session.PlayerState == null
                       && draft.GetAttribute(CharacterAttribute.Strength) == 9,
-                    "editor Back returns to identity without partial player or draft loss");
-                view.ContinueToEditor();
+                    "source bottom-bar Back returns to identity without partial player or draft loss");
+                FindButton(view, "Identity Continue").onClick.Invoke();
                 Check(view.Stage == RetailCharacterCreationStage.Editor,
-                    "identity Continue reopens the editor with the authoritative draft intact");
+                    "source bottom-bar Continue reopens the editor with the authoritative draft intact");
 
                 Directory.CreateDirectory(fixtureRoot);
                 var retail = RetailUiAssetResolver.CreateProduction();
@@ -208,14 +218,14 @@ namespace OpenArcanum.Editor
                 {
                     UiLogicalMapping mapping = UiLogicalMapping.ForResolution(width, height);
                     Rect window = mapping.LogicalToScreen(RetailCharacterCreationLayout.Window);
-                    Rect accept = mapping.LogicalToScreen(new Rect(754f, 121f, 32f, 32f));
+                    Rect continueButton = mapping.LogicalToScreen(new Rect(675f, 496f, 32f, 32f));
                     Check(window.xMin >= 0f && window.yMin >= 0f && window.xMax <= width + .001f
-                          && window.yMax <= height + .001f && accept.xMax <= width + .001f
-                          && accept.yMax <= height + .001f,
-                        $"{width}x{height} keeps the fixed source composition and Accept control accessible");
+                          && window.yMax <= height + .001f && continueButton.xMax <= width + .001f
+                          && continueButton.yMax <= height + .001f,
+                        $"{width}x{height} keeps the fixed source composition and bottom-bar Continue accessible");
                 }
 
-                FindButton(view, "Accept Character").onClick.Invoke();
+                FindButton(view, "Editor Continue").onClick.Invoke();
                 yield return null;
                 yield return null;
                 Check(session.PlayerState != null && session.CharacterCreation.IsFinalized
@@ -236,10 +246,11 @@ namespace OpenArcanum.Editor
                 Debug.Log("UI-D PHYSICAL VALIDATION: PASS; source flow=765 identity>22 editor; "
                           + "identity=name/portrait/gender/race/background arrows; invalid name=no mutation; "
                           + "editor=attributes/skills/magic/technology; points=4 spent/1 remaining; "
-                          + "Back/Continue=draft preserved; no global ScrollRect; "
+                          + "ID568=auto-level schemes/fail-closed/no mutation; bottom-bar Back/Continue=draft preserved; "
+                          + "partial-window y=41; no global ScrollRect; "
                           + "skin=Original>Enhanced exact-4x 765+22>Original with stage/panel/state preserved; "
                           + "resolutions=800x600/1024x768/1080p/1440p/4K accessible; "
-                          + "finalize=one PC/authentic START_MAP/source HUD; presenters=1; EventSystems=1. "
+                          + "finalize=ID321/one PC/authentic START_MAP/source HUD; presenters=1; EventSystems=1. "
                           + "Play Mode remains open at the crash site for visual proof.");
             }
             finally

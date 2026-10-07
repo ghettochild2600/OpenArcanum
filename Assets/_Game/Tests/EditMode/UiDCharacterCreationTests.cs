@@ -92,12 +92,26 @@ namespace Arcanum.Formats.Tests
         [Test]
         public void IdentityGeometryMatchesRuntimeSourceRectangles()
         {
-            Assert.That(RetailCharacterCreationLayout.Window, Is.EqualTo(new Rect(0, 100, 800, 400)));
+            Assert.That(RetailCharacterCreationLayout.Window, Is.EqualTo(new Rect(0, 41, 800, 400)));
+            Assert.That(RetailCharacterCreationLayout.BottomBar, Is.EqualTo(new Rect(0, 441, 800, 159)));
+            Assert.That(RetailCharacterCreationLayout.BackButton, Is.EqualTo(new Vector2(69, 496)));
+            Assert.That(RetailCharacterCreationLayout.ContinueButton, Is.EqualTo(new Vector2(675, 496)));
             Assert.That(RetailCharacterCreationLayout.Portrait, Is.EqualTo(new Rect(95, 28, 64, 64)));
             Assert.That(RetailCharacterCreationLayout.Name, Is.EqualTo(new Rect(46, 183, 228, 18)));
             Assert.That(RetailCharacterCreationLayout.Gender, Is.EqualTo(new Rect(66, 243, 186, 19)));
             Assert.That(RetailCharacterCreationLayout.Race, Is.EqualTo(new Rect(66, 293, 186, 19)));
             Assert.That(RetailCharacterCreationLayout.Background, Is.EqualTo(new Rect(66, 343, 186, 19)));
+
+            AssertTopLeft("Previous Portrait", new Vector2(43, 118 - 41));
+            AssertTopLeft("Next Portrait", new Vector2(244, 118 - 41));
+            AssertTopLeft("Previous Gender", new Vector2(42, 281 - 41));
+            AssertTopLeft("Next Gender", new Vector2(255, 282 - 41));
+            AssertTopLeft("Previous Race", new Vector2(42, 331 - 41));
+            AssertTopLeft("Next Race", new Vector2(255, 332 - 41));
+            AssertTopLeft("Previous Background", new Vector2(42, 381 - 41));
+            AssertTopLeft("Next Background", new Vector2(255, 382 - 41));
+            AssertTopLeft("Identity Back", new Vector2(69, 55));
+            AssertTopLeft("Identity Continue", new Vector2(675, 55));
         }
 
         [Test]
@@ -142,6 +156,27 @@ namespace Arcanum.Formats.Tests
             Assert.That(_view.EditorRoot.sizeDelta, Is.EqualTo(new Vector2(800f, 400f)));
             Assert.That(_view.EditorPanelRoot.sizeDelta, Is.EqualTo(new Vector2(235f, 325f)));
             Assert.That(_session.PlayerState, Is.Null);
+        }
+
+        [Test]
+        public void EditorUsesBottomBarNavigationAndId568FailsClosedAsAutoLevelSchemes()
+        {
+            _view.ContinueToEditor();
+            AssertTopLeft("Editor Back", new Vector2(69, 55));
+            AssertTopLeft("Editor Continue", new Vector2(675, 55));
+            AssertTopLeft("Auto-Level Schemes", new Vector2(754, 21));
+
+            int strength = _controller.CreationDraft.GetAttribute(CharacterAttribute.Strength);
+            int remaining = _controller.CreationValidation.RemainingCharacterPoints;
+            Invoke("Auto-Level Schemes");
+
+            Assert.That(_view.Stage, Is.EqualTo(RetailCharacterCreationStage.Editor));
+            Assert.That(_session.PlayerState, Is.Null);
+            Assert.That(_controller.CreationDraft.GetAttribute(CharacterAttribute.Strength),
+                Is.EqualTo(strength));
+            Assert.That(_controller.CreationValidation.RemainingCharacterPoints,
+                Is.EqualTo(remaining));
+            Assert.That(_controller.Feedback, Does.Contain("Auto-level schemes"));
         }
 
         [Test]
@@ -237,9 +272,9 @@ namespace Arcanum.Formats.Tests
             Assert.That(window.yMin, Is.GreaterThanOrEqualTo(0f));
             Assert.That(window.xMax, Is.LessThanOrEqualTo(width + .001f));
             Assert.That(window.yMax, Is.LessThanOrEqualTo(height + .001f));
-            Rect accept = mapping.LogicalToScreen(new Rect(754f, 121f, 32f, 32f));
-            Assert.That(accept.xMax, Is.LessThanOrEqualTo(width + .001f));
-            Assert.That(accept.yMax, Is.LessThanOrEqualTo(height + .001f));
+            Rect continueButton = mapping.LogicalToScreen(new Rect(675f, 496f, 32f, 32f));
+            Assert.That(continueButton.xMax, Is.LessThanOrEqualTo(width + .001f));
+            Assert.That(continueButton.yMax, Is.LessThanOrEqualTo(height + .001f));
         }
 
         private void Invoke(string name)
@@ -249,6 +284,14 @@ namespace Arcanum.Formats.Tests
             Assert.That(button.interactable, Is.True, name);
             button.onClick.Invoke();
             _view.Synchronize();
+        }
+
+        private void AssertTopLeft(string name, Vector2 expected)
+        {
+            RectTransform rect = _view.GetComponentsInChildren<RectTransform>(true)
+                .Single(value => value.name == name);
+            Assert.That(rect.anchoredPosition, Is.EqualTo(new Vector2(expected.x, -expected.y)));
+            Assert.That(rect.pivot, Is.EqualTo(new Vector2(0f, 1f)));
         }
 
         private static CharacterCreationCatalog CreateCatalog()
