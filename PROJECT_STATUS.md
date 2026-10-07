@@ -2619,24 +2619,28 @@ by Character Creation, but they must not be called complete or approximated.
 UI-D is complete. The production New Character route no longer uses the generic whole-screen scrolling form. It now
 follows the two actual source runtime compositions: Main Menu identity ID 765 (`createcharacterbase.art`, 800 x 400),
 then `charedit_open(..., CHAREDIT_MODE_CREATE)` with editor ID 22 (`char_maint.art`, 800 x 400) and the active ID
-29/30/31 Skills/Technology/Magic child panel. Source IDs 23/24 provide attribute controls, 34/35/36 category controls,
-568 Accept, 302–305 skill groups, 624/625 skill changes, 306–313 technology disciplines, and 647/648 technology or
+29/30/31 Skills/Technology/Magic child panel. Both partial compositions begin at source y 41; Main Menu IDs 323/321
+own Back/Continue in the separate bottom bar at absolute y 496. Source IDs 23/24 provide attribute controls,
+34/35/36 provide category controls, ID 568 selects the auto-level-scheme child window, 302–305 select skill groups,
+624/625 change skills, 306–313 select technology disciplines, and 647/648 change technology or
 spell-rank changes. Mounted `portrait/<name>_b.bmp` pixels use the retail ordinary-BMP fallback.
 
 The view projects the existing M12B draft and submits only controller intent. Race/gender/portrait/background
 legality, attribute/skill/spell/technology costs, Character Points, validation, and atomic finalization remain M12B
 authority. Back from Editor preserves the draft and returns to Identity; invalid identity/finalization cannot create
-a partial player; successful Accept creates exactly one PC, enters authentic `START_MAP` 1, and reveals the existing
-source HUD. Pick Character/pregenerated characters, intro playback, and shopping remain deferred/fail closed rather
-than being approximated.
+a partial player; successful bottom-bar Continue creates exactly one PC, enters authentic `START_MAP` 1, and reveals
+the existing source HUD. ID 568 is not finalization: because OpenArcanum has no M12B auto-level-scheme authority,
+that exact control fails closed without draft, point, player, or navigation mutation. Pick Character/pregenerated
+characters, intro playback, and shopping remain deferred/fail closed rather than being approximated.
 
-Focused UI-D validation passed **19/19**. Directly affected UI-A, UI-B, M12B, M4A–M4D, M10A, M10B, Player Startup,
-and production keyboard/input regressions passed **217/217**. The production physical validator passed in the existing
-Editor and proved invalid-name rollback, identity cycling, IDs 765 -> 22/29, all four point-spend categories,
-Back/Continue preservation, Original -> exact-4x Enhanced -> Original rebuilding, fixed and accessible 800 x 400
-geometry at 800x600/1024x768/1080p/1440p/4K, and atomic finalization to the authentic start map and source HUD.
-Compilation is clean, the final cleared Console is 0/0/0, and `git diff --check` is clean. The complete suite is
-deferred to the UI-E.2 gate because UI-D required no core-authority change.
+Corrected focused UI-D validation passed **20/20**. The directly affected regressions again passed **217/217**:
+UI-A 23, UI-B 22, M12B 13, M4A 13, M4B 20, M4C 29, M4D 25, M10A 34, M10B 12, Player Startup 3, and production
+keyboard/input 23. The corrected physical proof passed in the existing Editor and exercised source y=41 placement,
+top-left identity controls, separate bottom-bar Back/Continue, fail-closed ID 568 auto-level schemes without
+transaction mutation, all four supported point-spend categories, graphics rebuild, target resolution mappings, and
+atomic ID 321 finalization. Compilation is clean, the proof ended with 0 warnings and 0 errors, and `git diff --check`
+is clean. The complete suite remains deferred to the UI-E.2 gate because the correction does not add core gameplay
+authority.
 
 See [`documentation_unity/ui/ui-d-character-creation-reconstruction.md`](documentation_unity/ui/ui-d-character-creation-reconstruction.md).
 
