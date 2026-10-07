@@ -75,6 +75,55 @@ internal sealed class M8ATestExecution : ScriptableObject, ICallbacks
     private static void RunUiDFocused()
         => Run(Category("UIDCharacterCreation"), "UI-D focused EditMode");
 
+    [MenuItem("OpenArcanum/UI-D.1/Run Focused EditMode Tests", false, 1)]
+    private static void RunUiD1Focused()
+    {
+        RunMany(
+            new[]
+            {
+                Category("UIDCharacterCreation"), Category("UIBMainMenu"),
+                Category("UICGameplayHud"), Category("UIE2CharacterSkills"),
+                Category("M12BCharacterCreationNewGame"), Category("M13AKeyboardInput"),
+            },
+            new[]
+            {
+                "UI-D.1 Character Creation", "UI-B.1 Main Menu / Pick Character",
+                "UI-C.5 gameplay HUD", "UI-E.2 Character / Skills",
+                "M12B Character Creation", "production keyboard/input",
+            });
+    }
+
+    [MenuItem("OpenArcanum/UI-D.1/Run Targeted Regression Tests", false, 2)]
+    private static void RunUiD1Targeted()
+    {
+        RunMany(
+            new[]
+            {
+                Category("UIACommonRuntime"), Category("UIBMainMenu"), Category("UICGameplayHud"),
+                Category("UIDCharacterCreation"), Category("UIEInventoryEquipment"),
+                Category("UIE2CharacterSkills"), Category("M3A"), Category("M3C"),
+                Category("M4ACharacterAttributes"), Category("M4BCharacterVitality"),
+                Category("M4CCharacterProgression"), Category("M4DDerivedCharacterStats"),
+                Category("M6A"), Category("M8FCriticalResolution"), Category("M10AMagicRuntime"),
+                Category("M12BCharacterCreationNewGame"), Category("M12CFullGameUi"),
+                Category("M13AKeyboardInput"), Category("PlayerStartup"),
+            },
+            new[]
+            {
+                "UI-A common runtime", "UI-B Main Menu", "UI-C gameplay HUD",
+                "UI-D Character Creation", "UI-E.1 Inventory / Equipment",
+                "UI-E.2 Character / Skills", "M3A inventory", "M3C equipment",
+                "M4A attributes", "M4B vitality", "M4C progression", "M4D derived stats",
+                "M6A save/load", "M8F critical runtime", "M10 magic",
+                "M12B Character Creation", "M12C production UI", "production keyboard/input",
+                "Player Startup",
+            });
+    }
+
+    [MenuItem("OpenArcanum/UI-D.1/Run Complete EditMode Tests", false, 3)]
+    private static void RunUiD1All()
+        => Run(new Filter { testMode = TestMode.EditMode }, "UI-D.1 complete EditMode");
+
     [MenuItem("OpenArcanum/UI-E.2/Run Focused EditMode Tests", false, 1)]
     private static void RunUiE2Focused()
         => Run(Category("UIE2CharacterSkills"), "UI-E.2 Character/Skills focused EditMode");
