@@ -64,11 +64,14 @@ player-facing manual save/load presentation, M7A bounded passive local map trans
   save/load strictly as projections and commands over M1-M12B authority. **DONE M12D — Audio:** one central
   presentation bridge now resolves retail WAV/MP3 resources and source sound/scheme/dialogue rules for UI, world,
   combat, magic, technology, voice, music, and ambience without owning gameplay or changing Save V1.
-  **DONE UI-C / UI-C.3 — Source-Faithful Gameplay HUD:** the production gameplay path renders the source-proven
+  **OPEN UI-C / DONE bounded UI-C.4 — Source-Faithful Gameplay HUD State / Functionality:** the production gameplay path renders the source-proven
   native ID 185 top window and ID 184 bottom window, source vials/lens/controls/quick slots, source Cloister 18
   three-digit counters, maintained-spell aperture art, and existing M12C/M8I projections over unchanged authority.
   The world remains full-screen and interactive between/around the centered strips; ordinary Inventory coexists with
-  them. **DONE UI-E.1 — Inventory/Equipment Foundation:** the ordinary source ID 223 + ID 221 800 x 400 composition,
+  them. UI-C.4 adds saved primary notifications/highlights, the Fate counter and exact Full Heal action, maintained
+  effect icons/cancellation, bounded wilderness sleep, SourceTime clock, contextual counter, two recent actions, and
+  the source XP gauge. UI-C remains open because eleven deferred Fate effects lack exact runtime resolution call sites
+  and town waitability/occupied-bed authority is not represented; those branches fail closed. **DONE UI-E.1 — Inventory/Equipment Foundation:** the ordinary source ID 223 + ID 221 800 x 400 composition,
   exact grid/slot geometry, retained item art/footprints, selection, quick-slot binding, and M3C equip/unequip routes
   replace the generic Inventory overlay without owning item state. Original/Enhanced fallback uses UI-A. Distinct
   paper-doll composite layers and gesture parity remain later presentation boundaries.
@@ -161,10 +164,10 @@ the exact 0/10/50/100 training table and reclassifies the cleared hit through th
 unsupported secondary effects remain fail-closed. Save V1 remains unchanged and impact/Dodge diagnostics are
 transient.
 Travel time, encounters, advanced follower catch-up/formation, mid-route cancellation, route animation,
-clock/day-night behavior,
+world day/night lighting behavior,
 autosave, quicksave, cloud sync, original Arcanum save compatibility, unsupported critical-table effects, broader death
 scripts/consequences, broader NPC AI beyond the bounded M9A kernel, follower loyalty/leveling/campaign behavior,
-additional spell/technology content, retail UI bitmap/paperdoll/rotating-window polish, recent-action/quick-use slots,
+additional spell/technology content, retail UI bitmap/paperdoll/rotating-window polish, broader quick-use content,
 local-map fog artwork, intro movies/audio, and broader campaign-specific social systems remain deferred.
 
 ## Current Branch
@@ -2574,10 +2577,42 @@ gestures, and distinct paper-doll composite/animation ART remain later presentat
 See [`documentation_unity/ui/ui-c-gameplay-hud-reconstruction.md`](documentation_unity/ui/ui-c-gameplay-hud-reconstruction.md)
 and [`documentation_unity/ui/ui-screen-inventory.md`](documentation_unity/ui/ui-screen-inventory.md).
 
+## UI-C.4 Complete Source HUD State / Functionality (2026-10-06)
+
+UI-C.4 implements the source-proven HUD state that was still absent after UI-C.3. Primary Character, Logbook,
+Town/World Map, and Inventory notifications are saved session facts with the exact normal/highlight ART and clear only
+when their existing screen route opens. The Fate counter is saved inside the compatible V1 envelope; the exact
+representable Full Heal transaction consumes one point and restores M4 vitality. The other eleven source Fate effects
+have no exact current-runtime resolution call sites and reject before mutation.
+
+The five maintained slots project stable PC-cast M10A effects using their shipped spell icons and cancel through M10A.
+The source Sleep panel advances only SourceTime, demaintains once, and applies exact wilderness HP/fatigue recovery to
+the PC and eligible followers. Map 1 wilderness permission is authoritative; town waitability and occupied-bed
+authority are not yet represented and fail closed. The source clock is SourceTime-only. The bottom six-digit context
+projects Gold/supported ammunition/mana-store facts, two recent-action slots preserve source recency and activation,
+and the XP gauge reads M4C progress. C/L/W/I/F/S/A and pointer controls reuse the same controller commands.
+
+The production physical run passed from a fresh New Game at START_MAP 1. It proved the starting-item Inventory
+notification, all primary pointer/keyboard routes and clears, maintained icon/cancel, one-hour wilderness sleep,
+Fate 00 -> 01 -> Full Heal -> 00, morning/midday/evening/night clock periods, Gold context ID 474, recent spell icon
+93, combat authority, Original -> Enhanced -> Original rebuild, and native geometry at 800 x 600, 1024 x 768,
+1920 x 1080, 2560 x 1440, and 3840 x 2160. Exactly one HUD, Inventory presenter, controller presenter, gameplay
+cursor, and EventSystem remained.
+
+Focused UI-C.4 validation passed **53/53**. Affected UI-A/UI-E, M12B/M12C, keyboard, startup/navigation, M3B–M3E,
+M4A–M4D, M6A–M6C, M7D/M7E, M8I, and M10A regressions passed **433/433**. The final complete EditMode baseline is
+**1207/1207** after eight justified UI-C.4 cases, with 0 failed, skipped, or inconclusive. Compilation is clean; after
+clearing the suite's 11 intentional compatibility diagnostics the final Console had 0 errors and 0 unexpected
+warnings, and `git diff --check` was clean.
+
+UI-C remains **OPEN** with two exact blockers: source-backed resolution hooks for the eleven deferred Fate effects,
+and authoritative town waitability/occupied-bed state for the remaining Sleep/Wait modes. UI-D must not begin from
+this checkpoint.
+
 ## Next Recommended Milestone
 
 M9A, M9B, M10A, M10B, M11A, M11B, M11C, M12B, M12C, M12D, and the bounded M13A opening pass are formally closed.
-The source-authentic keyboard compatibility follow-up, UI-A common runtime, UI-B source-faithful Main Menu, UI-C.3
-source-faithful Gameplay HUD closure, and UI-E.1 Inventory/Equipment foundation are closed. The next bounded
-presentation milestone is **UI-D — Character Creation presentation**; it has not started. Continue M13A only from concrete
-user-discovered campaign defects; do not start an autonomous campaign playthrough.
+The source-authentic keyboard compatibility follow-up, UI-A common runtime, UI-B source-faithful Main Menu, bounded
+UI-C.4 implementation, and UI-E.1 Inventory/Equipment foundation are complete. UI-C overall remains open on the exact
+Fate-resolution and town/bed authority blockers above. **Do not begin UI-D** from this checkpoint. Continue M13A only
+from concrete user-discovered campaign defects; do not start an autonomous campaign playthrough.
