@@ -81,12 +81,29 @@ namespace Arcanum.Runtime.Character
 
         public int GetEffectiveAttribute(ArcanumObjectId identity, CharacterAttribute attribute)
         {
-            int value = Get(identity).GetEffective(attribute);
+            PersistentCharacterState state = Get(identity);
+            return GetEffectiveAttributeForBase(identity, attribute, state.GetBase(attribute));
+        }
+
+        internal int GetEffectiveAttributeForBase(ArcanumObjectId identity, CharacterAttribute attribute,
+            int baseValue)
+        {
+            PersistentCharacterState state = Get(identity);
+            CharacterAttributeRules.ValidateAttribute(attribute);
+            int value = checked(baseValue
+                                + CharacterAttributeRules.RaceAdjustment(state.Race, attribute)
+                                + CharacterAttributeRules.GenderAdjustment(state.Gender, attribute));
             if (_modifiers.TryGetValue(identity, out Dictionary<string, AttributeModifier> modifiers))
                 foreach (AttributeModifier modifier in modifiers.Values)
                     if (modifier.Attribute == attribute) value = checked(value + modifier.Amount);
-            int maximum = CharacterAttributeRules.SourceMaximum(Get(identity).Race, attribute);
+            int maximum = CharacterAttributeRules.SourceMaximum(state.Race, attribute);
             return Math.Max(CharacterAttributeSet.SourceMinimum, Math.Min(maximum, value));
+        }
+
+        internal void SetBaseAttribute(ArcanumObjectId identity, CharacterAttribute attribute, int value)
+        {
+            Get(identity).SetBase(attribute, value);
+            EffectiveAttributesChanged?.Invoke(identity);
         }
 
         /// <summary>Registers one inspectable non-base modifier, keyed by its owning runtime effect.</summary>

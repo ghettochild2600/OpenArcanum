@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 namespace Arcanum.Runtime.Character
 {
-    /// <summary>Immutable stored values for the eight source primary-stat slots.</summary>
+    /// <summary>Stored values for the eight source primary-stat slots.</summary>
     public sealed class CharacterAttributeSet
     {
         public const int Count = 8;
@@ -39,6 +39,17 @@ namespace Arcanum.Runtime.Character
         {
             CharacterAttributeRules.ValidateAttribute(attribute);
             return _values[(int)attribute];
+        }
+
+        internal void Set(CharacterAttribute attribute, int value, CharacterRace race)
+        {
+            CharacterAttributeRules.ValidateAttribute(attribute);
+            CharacterAttributeRules.ValidateRace(race);
+            int maximum = CharacterAttributeRules.SourceMaximum(race, attribute);
+            if (value < SourceMinimum || value > maximum)
+                throw new ArgumentOutOfRangeException(nameof(value), value,
+                    $"{attribute} base must be in the source range {SourceMinimum}..{maximum} for {race}.");
+            _values[(int)attribute] = value;
         }
 
         public int[] ToArray() => (int[])_values.Clone();

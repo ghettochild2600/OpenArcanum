@@ -75,6 +75,33 @@ internal sealed class M8ATestExecution : ScriptableObject, ICallbacks
     private static void RunUiDFocused()
         => Run(Category("UIDCharacterCreation"), "UI-D focused EditMode");
 
+    [MenuItem("OpenArcanum/UI-E.2/Run Focused EditMode Tests", false, 1)]
+    private static void RunUiE2Focused()
+        => Run(Category("UIE2CharacterSkills"), "UI-E.2 Character/Skills focused EditMode");
+
+    [MenuItem("OpenArcanum/UI-E.2/Run Targeted Regression Tests", false, 2)]
+    private static void RunUiE2Targeted()
+    {
+        RunMany(
+            new[]
+            {
+                Category("UIDCharacterCreation"), Category("UIEInventoryEquipment"),
+                Category("M4ACharacterAttributes"), Category("M4BCharacterVitality"),
+                Category("M4CCharacterProgression"), Category("M4DDerivedCharacterStats"),
+                Category("M12CFullGameUi"), Category("M13AKeyboardInput"), Category("PlayerStartup"),
+            },
+            new[]
+            {
+                "UI-D Character Creation", "UI-E.1 Inventory/Equipment", "M4A attributes", "M4B vitality",
+                "M4C progression", "M4D derived stats", "M12C production UI", "production keyboard/input",
+                "Player Startup",
+            });
+    }
+
+    [MenuItem("OpenArcanum/UI-E.2/Run Complete EditMode Tests", false, 3)]
+    private static void RunUiE2All()
+        => Run(new Filter { testMode = TestMode.EditMode }, "UI-E.2 complete EditMode");
+
     [MenuItem("OpenArcanum/UI-D/Run Targeted Regression Tests", false, 2)]
     private static void RunUiDTargeted()
     {

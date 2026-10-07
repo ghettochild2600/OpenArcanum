@@ -39,6 +39,7 @@ namespace Arcanum.Runtime.UI
         private RetailCharacterCreationView _retailCharacterCreation;
         private RetailGameplayHudView _retailGameplayHud;
         private RetailInventoryEquipmentView _retailInventory;
+        private RetailCharacterSheetView _retailCharacterSheet;
         private Vector2 _scroll;
         private Rect _panelRect;
         private bool _showHud = true;
@@ -100,6 +101,9 @@ namespace Arcanum.Runtime.UI
             _retailInventory = GetComponent<RetailInventoryEquipmentView>()
                                ?? gameObject.AddComponent<RetailInventoryEquipmentView>();
             _retailInventory.Bind(_controller, _session, _retailGameplayHud.Resolver);
+            _retailCharacterSheet = GetComponent<RetailCharacterSheetView>()
+                                    ?? gameObject.AddComponent<RetailCharacterSheetView>();
+            _retailCharacterSheet.Bind(_controller, _session, _retailGameplayHud.Resolver);
             DisableLegacyPresenters();
         }
 
@@ -137,6 +141,7 @@ namespace Arcanum.Runtime.UI
             _retailCharacterCreation?.Synchronize();
             _retailGameplayHud?.Synchronize(_showHud);
             _retailInventory?.Synchronize();
+            _retailCharacterSheet?.Synchronize();
             if (Controller.Screen == GameUiScreen.MainMenu && _retailMainMenu?.IsAvailable == true)
                 return;
 
@@ -198,6 +203,7 @@ namespace Arcanum.Runtime.UI
         void IProductionKeyboardCommands.ActivateRecentAction() => Controller.ActivateRecentAction();
         void IProductionKeyboardCommands.ToggleSleep() => Controller.ToggleSleepPanel();
         void IProductionKeyboardCommands.ToggleFate() => Controller.ToggleFatePanel();
+        void IProductionKeyboardCommands.ToggleSkills() => Controller.ToggleSkillsPanel();
         void IProductionKeyboardCommands.SetCalledLocation(CombatCalledLocation location)
             => Controller.Combat.SetCalledLocation(location);
         void IProductionKeyboardCommands.AutoSave() => Controller.AutoSave();
@@ -324,6 +330,7 @@ namespace Arcanum.Runtime.UI
         internal bool PointerOverInterface(Vector3 mouse)
         {
             if (_retailCharacterCreation?.IsVisible == true) return true;
+            if (_retailCharacterSheet?.ContainsScreenPoint(mouse) == true) return true;
             if (_retailInventory?.ContainsScreenPoint(mouse) == true) return true;
             if (_retailGameplayHud?.ContainsScreenPoint(mouse) == true) return true;
             Vector2 guiPoint = new(mouse.x, Screen.height - mouse.y);
@@ -340,15 +347,19 @@ namespace Arcanum.Runtime.UI
             _retailCharacterCreation?.Synchronize();
             _retailGameplayHud?.Synchronize(_showHud);
             _retailInventory?.Synchronize();
+            _retailCharacterSheet?.Synchronize();
             bool sourceMainMenu = Controller.Screen == GameUiScreen.MainMenu
                                   && _retailMainMenu?.IsAvailable == true;
             bool sourceCharacterCreation = Controller.Screen == GameUiScreen.CharacterCreation
                                            && _retailCharacterCreation?.IsAvailable == true;
             bool sourceInventory = Controller.Screen == GameUiScreen.Inventory
                                    && _retailInventory?.IsAvailable == true;
+            bool sourceCharacter = Controller.Screen == GameUiScreen.Character
+                                   && _retailCharacterSheet?.IsAvailable == true;
             GUI.depth = -120;
             if (_showHud && _retailGameplayHud?.IsAvailable != true) DrawHud();
-            if (Controller.IsModalOpen && !sourceMainMenu && !sourceCharacterCreation && !sourceInventory)
+            if (Controller.IsModalOpen && !sourceMainMenu && !sourceCharacterCreation && !sourceInventory
+                && !sourceCharacter)
                 DrawScreen();
             DrawCursorLabel();
         }

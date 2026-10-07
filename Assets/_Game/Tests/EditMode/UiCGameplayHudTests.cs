@@ -154,13 +154,16 @@ namespace Arcanum.Formats.Tests
         }
 
         [Test]
-        public void InventoryKeepsHudVisibleButOtherModalScreensHideItWithoutChangingAuthority()
+        public void ManagementSheetsKeepHudVisibleButOtherModalScreensHideItWithoutChangingAuthority()
         {
             PersistentPlayerState player = _session.PlayerState;
             Assert.That(_controller.Open(GameUiScreen.Inventory), Is.True);
             _view.Synchronize(true);
             Assert.That(_view.IsVisible, Is.True);
             Assert.That(_controller.Open(GameUiScreen.Character), Is.True);
+            _view.Synchronize(true);
+            Assert.That(_view.IsVisible, Is.True);
+            Assert.That(_controller.Open(GameUiScreen.Journal), Is.True);
             _view.Synchronize(true);
             Assert.That(_view.IsVisible, Is.False);
             Assert.That(_session.PlayerState, Is.SameAs(player));
@@ -481,7 +484,6 @@ namespace Arcanum.Formats.Tests
         [TestCase("Character", GameUiScreen.Character)]
         [TestCase("Logbook", GameUiScreen.Journal)]
         [TestCase("Map", GameUiScreen.Map)]
-        [TestCase("Skills", GameUiScreen.Skills)]
         [TestCase("Spells", GameUiScreen.Magic)]
         [TestCase("Schematics", GameUiScreen.Crafting)]
         public void SourceControlsReuseExistingScreenRoutes(string buttonName, GameUiScreen expected)
@@ -489,6 +491,15 @@ namespace Arcanum.Formats.Tests
             Button button = _root.GetComponentsInChildren<Button>(true).Single(value => value.name == buttonName);
             button.onClick.Invoke();
             Assert.That(_controller.Screen, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void SkillsSourceControlUsesRotatingHudPanelWithoutModalAuthority()
+        {
+            Button button = _root.GetComponentsInChildren<Button>(true).Single(value => value.name == "Skills");
+            button.onClick.Invoke();
+            Assert.That(_controller.Screen, Is.EqualTo(GameUiScreen.None));
+            Assert.That(_controller.HudPanel, Is.EqualTo(GameUiHudPanel.Skills));
         }
 
         [Test]

@@ -218,6 +218,58 @@ namespace Arcanum.Runtime.Character
             return SkillIncreaseResult.Success;
         }
 
+        /// <summary>
+        /// Applies the source active-character-editor primary-stat transaction. Runtime accepted baselines are
+        /// supplied by the UI session that opened the editor; this authority owns point spending and prerequisite
+        /// validation, so presentation cannot partially mutate either domain.
+        /// </summary>
+        public RuntimeCharacterAdjustmentResult AdjustAttribute(ArcanumObjectId identity,
+            CharacterAttribute attribute, int delta, int acceptedBase)
+        {
+            CharacterAttributeRules.ValidateAttribute(attribute);
+            if (delta is not (-1 or 1)) throw new ArgumentOutOfRangeException(nameof(delta));
+            PersistentCharacterProgressionState progression = Get(identity);
+            PersistentCharacterState character = _characters.Get(identity);
+            if (character.ObjectType != ObjectType.Pc) return RuntimeCharacterAdjustmentResult.ReadOnly;
+            int current = character.GetBase(attribute);
+            if (delta > 0)
+            {
+                if (current >= CharacterAttributeSet.SourceMaximumFor(character.Race, attribute))
+                    return RuntimeCharacterAdjustmentResult.MaximumValue;
+                if (progression.UnspentCharacterPoints < 1)
+                    return RuntimeCharacterAdjustmentResult.InsufficientCharacterPoints;
+                _characters.SetBaseAttribute(identity, attribute, current + 1);
+                progression.SpendCharacterPoint();
+                return RuntimeCharacterAdjustmentResult.Success;
+            }
+
+            if (current <= acceptedBase) return RuntimeCharacterAdjustmentResult.AcceptedBaseline;
+            int prospectiveEffective = _characters.GetEffectiveAttributeForBase(identity, attribute, current - 1);
+            foreach (CharacterSkill skill in CharacterSkillRules.AllSkills)
+            {
+                if (CharacterSkillRules.GoverningAttribute(skill) != attribute) continue;
+                int rawRank = checked(GetBaseSkillRank(identity, skill) + GetSkillModifier(identity, skill));
+                if (rawRank > CharacterSkillRules.MaximumRankForAttribute(prospectiveEffective))
+                    return RuntimeCharacterAdjustmentResult.DependentSkillPrerequisite;
+            }
+            _characters.SetBaseAttribute(identity, attribute, current - 1);
+            progression.RefundCharacterPoint();
+            return RuntimeCharacterAdjustmentResult.Success;
+        }
+
+        /// <summary>Refunds only points purchased after the current source editor session was accepted.</summary>
+        public RuntimeCharacterAdjustmentResult DecreaseSkill(ArcanumObjectId identity, CharacterSkill skill,
+            int acceptedPurchasedPoints)
+        {
+            CharacterSkillRules.ValidateSkill(skill);
+            PersistentCharacterProgressionState state = Get(identity);
+            if (state.ObjectType != ObjectType.Pc) return RuntimeCharacterAdjustmentResult.ReadOnly;
+            if (state.GetPurchasedPoints(skill) <= acceptedPurchasedPoints)
+                return RuntimeCharacterAdjustmentResult.AcceptedBaseline;
+            state.DecreaseSkill(skill);
+            return RuntimeCharacterAdjustmentResult.Success;
+        }
+
         public TrainingAssignmentResult SetTrainingLevel(ArcanumObjectId identity, CharacterSkill skill,
             SkillTrainingLevel training)
         {

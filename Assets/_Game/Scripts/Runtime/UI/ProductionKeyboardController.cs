@@ -41,6 +41,7 @@ namespace Arcanum.Runtime.UI
         void ActivateRecentAction();
         void ToggleSleep();
         void ToggleFate();
+        void ToggleSkills();
         void SetCalledLocation(CombatCalledLocation location);
         void IssuePartyOrder(int sourceIndex);
         void AutoSave();
@@ -145,7 +146,7 @@ namespace Arcanum.Runtime.UI
                 case KeyCode.C: commands.ToggleScreen(GameUiScreen.Character); return true;
                 case KeyCode.M: commands.ToggleScreen(GameUiScreen.Magic); return true;
                 case KeyCode.T: commands.ToggleScreen(GameUiScreen.Technology); return true;
-                case KeyCode.K: commands.ToggleScreen(GameUiScreen.Skills); return true;
+                case KeyCode.K: commands.ToggleSkills(); return true;
                 case KeyCode.L: commands.ToggleScreen(GameUiScreen.Journal); return true;
                 case KeyCode.W: commands.ToggleScreen(GameUiScreen.Map); return true;
                 case KeyCode.O: commands.ToggleScreen(GameUiScreen.Options); return true;

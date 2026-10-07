@@ -21,6 +21,7 @@ namespace Arcanum.Runtime.UI
         public const int TopSourceId = 185;
         public const int BottomSourceId = 184;
         public const int MessageWindowSourceId = 354;
+        public const int SkillsWindowSourceId = 274;
         public const int HealthLiquidSourceId = 18;
         public const int FatigueLiquidSourceId = 19;
         public const int EmptyVialSourceId = 20;
@@ -170,6 +171,8 @@ namespace Arcanum.Runtime.UI
         private SourceUiButton _sleepButton;
         private RectTransform _fatePanel;
         private RectTransform _sleepPanel;
+        private RectTransform _skillsPanel;
+        private readonly SourceUiButton[] _skillActionButtons = new SourceUiButton[4];
         private readonly SourceUiBitmapText[] _sleepLabels = new SourceUiBitmapText[8];
         private readonly SourceUiButton[] _sleepButtons = new SourceUiButton[8];
         private SourceUiButton _combatButton;
@@ -219,7 +222,8 @@ namespace Arcanum.Runtime.UI
         {
             if (!IsAvailable || _controller == null) return;
             bool visible = show && _controller.HasPlayer
-                                && _controller.Screen is GameUiScreen.None or GameUiScreen.Inventory;
+                                && _controller.Screen is GameUiScreen.None or GameUiScreen.Inventory
+                                    or GameUiScreen.Character;
             if (_canvasRoot.activeSelf != visible) _canvasRoot.SetActive(visible);
             ManageWorldViewport(visible);
             if (!visible) return;
@@ -257,6 +261,8 @@ namespace Arcanum.Runtime.UI
                 _sleepPanel.gameObject.SetActive(sleepOpen);
                 if (sleepOpen) RefreshSleepPanel();
             }
+            if (_skillsPanel != null)
+                _skillsPanel.gameObject.SetActive(_controller.HudPanel == GameUiHudPanel.Skills);
             _combatButton?.SetSelected(LastProjection.CombatActive);
             RefreshQuickSlots();
         }
@@ -369,7 +375,8 @@ namespace Arcanum.Runtime.UI
             _inventoryButton = AddScreenButton("Inventory", _topWindow, 186, 115f, 2f, GameUiScreen.Inventory);
             _fateButton = AddButton("Fate", _topWindow, 137, 157f, 9f, () => _controller.ToggleFatePanel());
             _sleepButton = AddButton("Sleep", _topWindow, 137, 605f, 9f, () => _controller.ToggleSleepPanel());
-            AddScreenButton("Skills", _bottomWindow, 472, 693f, 456f - 441f, GameUiScreen.Skills);
+            AddButton("Skills", _bottomWindow, 472, 693f, 456f - 441f,
+                () => _controller.ToggleSkillsPanel());
             AddScreenButton("Spells", _bottomWindow, 473, 649f, 494f - 441f, GameUiScreen.Magic);
             _combatButton = AddButton("Combat", _bottomWindow, 470, 86f, 457f - 441f,
                 () => _controller.ToggleCombatMode());
@@ -381,6 +388,7 @@ namespace Arcanum.Runtime.UI
 
             BuildFatePanel();
             BuildSleepPanel();
+            BuildSkillsPanel();
 
             var cursor = new GameObject("Retail Gameplay Cursor",
                 typeof(RectTransform), typeof(Image), typeof(SourceUiImage), typeof(RetailMainMenuCursorView));
@@ -487,6 +495,22 @@ namespace Arcanum.Runtime.UI
                     3f + 18f * index, () => _controller.Sleep((SleepOption)captured));
             }
             _sleepPanel.gameObject.SetActive(false);
+        }
+
+        private void BuildSkillsPanel()
+        {
+            _skillsPanel = AddSourcePanel("Skills Rotating Window", _bottomWindow,
+                RetailGameplayHudLayout.SkillsWindowSourceId, 196f, 492f - 441f);
+            int[] sourceIds = { 279, 280, 282, 278 };
+            float[] sourceX = { 288f, 351f, 414f, 477f };
+            for (int index = 0; index < sourceIds.Length; index++)
+            {
+                int captured = index;
+                _skillActionButtons[index] = AddButton($"Source Skill Action {index}", _skillsPanel,
+                    sourceIds[index], sourceX[index] - 196f, 514f - 492f,
+                    () => _controller.ActivateSourceSkillAction(captured));
+            }
+            _skillsPanel.gameObject.SetActive(false);
         }
 
         private void RefreshSleepPanel()
@@ -887,6 +911,8 @@ namespace Arcanum.Runtime.UI
             _sleepButton = null;
             _fatePanel = null;
             _sleepPanel = null;
+            _skillsPanel = null;
+            Array.Clear(_skillActionButtons, 0, _skillActionButtons.Length);
             _combatButton = null;
             Array.Clear(_maintainedSpellSlots, 0, _maintainedSpellSlots.Length);
             Array.Clear(_maintainedSpellButtons, 0, _maintainedSpellButtons.Length);

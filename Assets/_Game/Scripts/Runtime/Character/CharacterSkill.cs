@@ -41,6 +41,17 @@ namespace Arcanum.Runtime.Character
         MaximumRank,
     }
 
+    public enum RuntimeCharacterAdjustmentResult
+    {
+        Success,
+        ReadOnly,
+        AcceptedBaseline,
+        InsufficientCharacterPoints,
+        MaximumValue,
+        GoverningAttributeTooLow,
+        DependentSkillPrerequisite,
+    }
+
     public enum TrainingAssignmentResult
     {
         Success,

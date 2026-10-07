@@ -30,7 +30,6 @@ namespace Arcanum.Formats.Tests
         [TestCase(KeyCode.C, GameUiScreen.Character)]
         [TestCase(KeyCode.M, GameUiScreen.Magic)]
         [TestCase(KeyCode.T, GameUiScreen.Technology)]
-        [TestCase(KeyCode.K, GameUiScreen.Skills)]
         [TestCase(KeyCode.L, GameUiScreen.Journal)]
         [TestCase(KeyCode.W, GameUiScreen.Map)]
         [TestCase(KeyCode.O, GameUiScreen.Options)]
@@ -38,6 +37,14 @@ namespace Arcanum.Formats.Tests
         {
             Assert.That(_keyboard.Dispatch(key, ProductionKeyPhase.Down, Hud(), _commands), Is.True);
             Assert.That(_commands.Screen, Is.EqualTo(screen));
+        }
+
+        [Test]
+        public void KUsesTheSourceSkillsRotatingWindowInsteadOfAModalScreen()
+        {
+            Assert.That(_keyboard.Dispatch(KeyCode.K, ProductionKeyPhase.Down, Hud(), _commands), Is.True);
+            Assert.That(_commands.SkillToggles, Is.EqualTo(1));
+            Assert.That(_commands.Screen, Is.EqualTo(GameUiScreen.None));
         }
 
         [Test]
@@ -218,7 +225,7 @@ namespace Arcanum.Formats.Tests
             public readonly List<string> UnsupportedActions = new();
             public int Saves, Loads, Screenshots, Closes, CombatToggles, Escapes, EndTurns;
             public int Centers, ReadyToggles, ActiveActions;
-            public int SleepToggles, FateToggles;
+            public int SleepToggles, FateToggles, SkillToggles;
             public CombatCalledLocation CalledLocation;
             public void Escape() => Escapes++;
             public void ToggleScreen(GameUiScreen screen) => Screen = screen;
@@ -230,6 +237,7 @@ namespace Arcanum.Formats.Tests
             public void ActivateRecentAction() => ActiveActions++;
             public void ToggleSleep() => SleepToggles++;
             public void ToggleFate() => FateToggles++;
+            public void ToggleSkills() => SkillToggles++;
             public void SetCalledLocation(CombatCalledLocation location) => CalledLocation = location;
             public void IssuePartyOrder(int sourceIndex) => PartyOrders.Add(sourceIndex);
             public void AutoSave() => Saves++;

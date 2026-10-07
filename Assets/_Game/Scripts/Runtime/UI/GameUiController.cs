@@ -29,7 +29,7 @@ namespace Arcanum.Runtime.UI
         Default, Move, Use, Attack, Invalid, Item, SpellTarget, TechnologyTarget, MerchantTarget,
     }
 
-    public enum GameUiHudPanel { None, Fate, Sleep }
+    public enum GameUiHudPanel { None, Fate, Sleep, Skills }
 
     public sealed class GameUiHudView
     {
@@ -90,6 +90,21 @@ namespace Arcanum.Runtime.UI
         { Skill = skill; PurchasedPoints = purchased; EffectiveRank = effective; Training = training; }
     }
 
+    public readonly struct GameUiDerivedStatView
+    {
+        public CharacterDerivedStat Stat { get; }
+        public int Value { get; }
+        public GameUiDerivedStatView(CharacterDerivedStat stat, int value) { Stat = stat; Value = value; }
+    }
+
+    public readonly struct GameUiResistanceView
+    {
+        public CharacterResistance Resistance { get; }
+        public int Value { get; }
+        public GameUiResistanceView(CharacterResistance resistance, int value)
+        { Resistance = resistance; Value = value; }
+    }
+
     public sealed class GameUiCharacterView
     {
         public string Name { get; internal set; }
@@ -98,6 +113,14 @@ namespace Arcanum.Runtime.UI
         public int Level { get; internal set; }
         public int Experience { get; internal set; }
         public int CharacterPoints { get; internal set; }
+        public int ExperienceToNextLevel { get; internal set; }
+        public string Background { get; internal set; }
+        public int PortraitId { get; internal set; }
+        public int Age { get; internal set; }
+        public int HitPoints { get; internal set; }
+        public int MaximumHitPoints { get; internal set; }
+        public int Fatigue { get; internal set; }
+        public int MaximumFatigue { get; internal set; }
         public int Alignment { get; internal set; }
         public int Aptitude { get; internal set; }
         public int ArmorClass { get; internal set; }
@@ -105,6 +128,8 @@ namespace Arcanum.Runtime.UI
         public int CarryCapacity { get; internal set; }
         public IReadOnlyList<GameUiAttributeView> Attributes { get; internal set; }
         public IReadOnlyList<GameUiSkillView> Skills { get; internal set; }
+        public IReadOnlyList<GameUiDerivedStatView> DerivedStats { get; internal set; }
+        public IReadOnlyList<GameUiResistanceView> Resistances { get; internal set; }
     }
 
     public sealed class GameUiSpellView
@@ -165,6 +190,8 @@ namespace Arcanum.Runtime.UI
         private int _pendingSpell = -1;
         private ArcanumObjectId _pendingTechnologyItem;
         private IGameAudioPresentation _audio;
+        private int[] _acceptedCharacterAttributes;
+        private int[] _acceptedCharacterSkills;
 
         public GameUiScreen Screen { get; private set; }
         public GameUiCursorMode CursorMode { get; private set; } = GameUiCursorMode.Default;
@@ -240,6 +267,8 @@ namespace Arcanum.Runtime.UI
             SelectedWorldTarget = default;
             if (screen != GameUiScreen.Corpse) _corpse = default;
             _character = screen is GameUiScreen.Character or GameUiScreen.Skills ? Player : default;
+            if (screen == GameUiScreen.Character) CaptureAcceptedCharacterEditorState();
+            else ClearAcceptedCharacterEditorState();
             Feedback = string.Empty;
             if (screen == GameUiScreen.SaveLoad) SaveLoad.Open(SaveLoadPanelMode.Save);
             ClearPrimaryNotification(screen);
@@ -372,12 +401,37 @@ namespace Arcanum.Runtime.UI
             _character = default;
             _pendingSpell = -1;
             _pendingTechnologyItem = default;
+            ClearAcceptedCharacterEditorState();
             Feedback = string.Empty;
             if (HasPlayer) CreationDraft = null;
             if (wasOpen) _audio?.PresentInterface(InterfaceAudioCue.WindowClose);
         }
 
         public void ShowFeedback(string message) => Feedback = message ?? string.Empty;
+
+        public bool ToggleSkillsPanel()
+        {
+            if (!HasPlayer) return Reject("Start or load a game first.");
+            if (Screen != GameUiScreen.None) Close();
+            HudPanel = HudPanel == GameUiHudPanel.Skills ? GameUiHudPanel.None : GameUiHudPanel.Skills;
+            Feedback = string.Empty;
+            return true;
+        }
+
+        public bool ActivateSourceSkillAction(int sourceIndex)
+        {
+            string action = sourceIndex switch
+            {
+                0 => "Prowling",
+                1 => "Pick Pocket",
+                2 => "Disarm Traps",
+                3 => "Repair",
+                _ => null,
+            };
+            return action == null
+                ? Reject("Unknown source skill action.")
+                : Reject($"{action} targeting is not available in the current runtime.");
+        }
 
         public bool AutoSave()
         {
@@ -742,12 +796,26 @@ namespace Arcanum.Runtime.UI
             if (!HasPlayer || target.IsNull
                 || !_session.Characters.TryGet(target, out PersistentCharacterState character)
                 || !_session.Progression.TryGet(target, out PersistentCharacterProgressionState progression)) return null;
+            bool isPlayer = target == Player;
+            FinalizedCharacterSpecification finalized = isPlayer ? _session.CharacterCreation.Finalized : null;
+            int nextExperience = progression.Level >= CharacterProgressionService.MaximumPlayableLevel
+                ? progression.Experience
+                : CharacterProgressionService.GetExperienceForLevel(progression.Level + 1);
+            _session.Vitality.TryGet(target, out PersistentCharacterVitalityState vitality);
             return new GameUiCharacterView
             {
-                Name = target == Player ? _session.CharacterCreation.Finalized?.Name ?? "Player" : ObjectName(target),
+                Name = isPlayer ? finalized?.Name ?? "Player" : ObjectName(target),
                 Race = character.Race, Gender = character.Gender,
                 Level = progression.Level, Experience = progression.Experience,
+                ExperienceToNextLevel = Math.Max(0, nextExperience - progression.Experience),
                 CharacterPoints = progression.UnspentCharacterPoints,
+                Background = finalized?.Background?.Name ?? string.Empty,
+                PortraitId = finalized?.PortraitId ?? -1,
+                Age = finalized?.Age ?? 0,
+                HitPoints = vitality?.CurrentHitPoints ?? 0,
+                MaximumHitPoints = vitality?.MaximumHitPoints ?? 0,
+                Fatigue = vitality?.CurrentFatigue ?? 0,
+                MaximumFatigue = vitality?.MaximumFatigue ?? 0,
                 Alignment = _session.DerivedStats.GetAlignment(target),
                 Aptitude = _session.DerivedStats.GetDerivedStat(target, CharacterDerivedStat.MagickTechAptitude),
                 ArmorClass = _session.DerivedStats.GetArmorClass(target),
@@ -761,7 +829,21 @@ namespace Arcanum.Runtime.UI
                     _session.Progression.GetPurchasedSkillPoints(target, value),
                     _session.Progression.GetEffectiveSkillRank(target, value),
                     _session.Progression.GetTrainingLevel(target, value))).ToArray(),
+                DerivedStats = CharacterDerivedStatRules.AllStats.Select(value => new GameUiDerivedStatView(value,
+                    _session.DerivedStats.GetDerivedStat(target, value))).ToArray(),
+                Resistances = CharacterDerivedStatRules.AllResistances.Select(value => new GameUiResistanceView(value,
+                    _session.DerivedStats.GetResistance(target, value))).ToArray(),
             };
+        }
+
+        public bool AdjustAttribute(CharacterAttribute attribute, int delta)
+        {
+            if (CharacterReadOnly) return Reject("This character examination is read-only.");
+            EnsureAcceptedCharacterEditorState();
+            RuntimeCharacterAdjustmentResult result = _session.Progression.AdjustAttribute(Player, attribute, delta,
+                _acceptedCharacterAttributes[(int)attribute]);
+            return Complete(result == RuntimeCharacterAdjustmentResult.Success,
+                result == RuntimeCharacterAdjustmentResult.Success ? $"Adjusted {attribute}." : result.ToString());
         }
 
         public bool IncreaseSkill(CharacterSkill skill)
@@ -770,6 +852,38 @@ namespace Arcanum.Runtime.UI
             SkillIncreaseResult result = _session.Progression.IncreaseSkill(Player, skill);
             return Complete(result == SkillIncreaseResult.Success,
                 result == SkillIncreaseResult.Success ? $"Increased {skill}." : result.ToString());
+        }
+
+        public bool DecreaseSkill(CharacterSkill skill)
+        {
+            if (CharacterReadOnly) return Reject("This character examination is read-only.");
+            EnsureAcceptedCharacterEditorState();
+            RuntimeCharacterAdjustmentResult result = _session.Progression.DecreaseSkill(Player, skill,
+                _acceptedCharacterSkills[(int)skill]);
+            return Complete(result == RuntimeCharacterAdjustmentResult.Success,
+                result == RuntimeCharacterAdjustmentResult.Success ? $"Decreased {skill}." : result.ToString());
+        }
+
+        private void CaptureAcceptedCharacterEditorState()
+        {
+            if (!HasPlayer || !_session.Characters.TryGet(Player, out _)
+                || !_session.Progression.TryGet(Player, out _)) return;
+            _acceptedCharacterAttributes = CharacterStatService.AllAttributes
+                .Select(value => _session.Characters.GetBaseAttribute(Player, value)).ToArray();
+            _acceptedCharacterSkills = CharacterSkillRules.AllSkills
+                .Select(value => _session.Progression.GetPurchasedSkillPoints(Player, value)).ToArray();
+        }
+
+        private void EnsureAcceptedCharacterEditorState()
+        {
+            if (_acceptedCharacterAttributes == null || _acceptedCharacterSkills == null)
+                CaptureAcceptedCharacterEditorState();
+        }
+
+        private void ClearAcceptedCharacterEditorState()
+        {
+            _acceptedCharacterAttributes = null;
+            _acceptedCharacterSkills = null;
         }
 
         public IReadOnlyList<GameUiSpellView> ProjectSpells(ArcanumObjectId target = default)
