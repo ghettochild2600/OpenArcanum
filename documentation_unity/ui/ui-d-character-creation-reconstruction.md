@@ -144,3 +144,29 @@ M12B continues to own character legality and finalization; M4, M10A, and M10B co
 facts. Runtime Character/Skills presentation belongs to UI-E.2. Pregenerated browsing and prototype-backed New Game
 are now closed. Intro playback, shopping, auto-level-scheme authority, new character rules, and any gameplay redesign
 remain outside UI-D.
+
+## Player-Facing Correctness Pass II
+
+The final player-facing correction preserves the two-stage UI-D architecture and closes the defects found during
+physical review. Identity Back/Continue remain source IDs 323/321 at absolute `(69,496)` / `(675,496)`. The portrait
+is now created before the overlapping arrow widgets, matching the source paint order, while the arrows retain their
+source positions. Race or gender changes select the first legal portrait in ascending retail ID order and clear the
+old background before re-evaluating legality.
+
+Direct inspection of mounted retail `portrait/gameport.mes` corrected a reversed parser assumption: `HA` is
+Halfling and `HE` is Half-Elf. The retail entries include `HAM1` for a male Halfling and `HEM1`/`HEF1` for male and
+female Half-Elves. A fresh Female Elf -> Half-Elf change now immediately selects a Female Half-Elf portrait and
+continues into the editor without mismatch feedback.
+
+The editor now projects the selected background's effective attributes and skills without stacking that effect into
+the draft. Source IDs 23/24 at the audited HP and Fatigue positions buy or refund the corresponding M4B vitality
+points transactionally: each increase spends one Character Point, and only a purchase made during the current editor
+session may be refunded. Attribute, skill, HP, Fatigue, and category controls project the corresponding retail
+`mes/charedit.mes` help through the lower source information panel; hover presentation never mutates the draft.
+
+Production Play Mode passed at 800 x 600, 1024 x 768, 1920 x 1080, 2560 x 1440, and 3840 x 2160 with the fixed
+source composition centered and unclipped. The physical proof covered Female Half-Elf portrait correction,
+background-adjusted projection, HP and Fatigue spend/refund with Character Point changes, attribute hover help, and
+Back/Continue geometry. The final complete EditMode suite passed **1301/1301**, with 0 failed, 0 skipped, and 0
+inconclusive. Compilation is clean; the final cleared Console has 0 logs, 0 warnings, and 0 errors; and
+`git diff --check` is clean.

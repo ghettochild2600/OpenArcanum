@@ -69,3 +69,16 @@ or errors. See [`m1b-cross-sector-navigation.md`](m1b-cross-sector-navigation.md
 - Dynamic blocker movement, critter-to-critter avoidance, interaction range, combat movement and script events are not
   implemented.
 - Save-game serialization remains outside the in-memory session state.
+
+## Player-Facing Correctness Pass II
+
+Retail source evidence in `tig/art.h` identifies WALK as action 1 and RUN as action 6; action 2 was the cause of the
+visually incorrect running path. Locomotion timing now evaluates the active ART action rather than reusing walk timing
+for every locomotion family. The compatibility walk helper explicitly forces WALK bits, preserving existing callers
+and focused tests.
+
+Production input preserves the source intent table: ordinary click walks, Ctrl-click runs, NumLock enables persistent
+Always Run, and Ctrl inverts the persistent setting. The physical proof compared ordinary walking with NumLock
+Always Run in the production crash-site scene and observed the expected animation/position change. The exact normal,
+Ctrl, Always Run, and Always Run plus Ctrl combinations are covered by EditMode tests. Presentation rebuilds do not
+own or replace movement intent. The final complete EditMode suite passed **1301/1301** with no failures or skips.

@@ -200,3 +200,23 @@ classification, source-proven presentation, optional fields inside the compatibl
 It does not add a parallel action-check system, invent bed permission, or alter combat/navigation/dialogue/Enhanced-
 art ownership. UI-C remains open until the six listed skill actions have authoritative action-resolution paths and bed
 occupation/rental/use-script state can be represented exactly. See the dedicated Fate and Sleep/Wait runtime notes.
+
+## Player-Facing Correctness Pass II
+
+Combat ID 470 now submits the same `CombatStateService.ToggleCombatReadiness` transaction as `R`. With no eligible
+nearby hostile, the service owns the PC's combat-ready stance; with an eligible hostile it enters the existing combat
+kernel. The presenter merely projects that authority and cursor state. Physical pointer and keyboard checks both
+entered and left the same combat state.
+
+The Sleep/Wait rows now expose their full source hit rectangles and execute the already-established SourceTime
+transactions. At the authentic crash site, selected-sector `TownMapInfo` plus retail `[w:1]` correctly classified the
+panel as town wait. One Hour, Two Hours, and Until Evening advanced the source clock and refreshed lighting without
+inventing wilderness recovery. Source IDs 137 and 293 are two-frame controls: frame 0 is normal and frame 1 serves
+hover/pressed, so production no longer requests frame 2 or emits the former warnings.
+
+The final physical pass also verified NumLock Always Run, HUD/Inventory coexistence, Inventory close/reopen, and
+unchanged centered HUD geometry at 800 x 600, 1024 x 768, 1920 x 1080, 2560 x 1440, and 3840 x 2160. The complete
+EditMode suite passed **1301/1301**, with 0 failed, skipped, or inconclusive. Compilation is clean; the final cleared
+Console has 0 logs, 0 warnings, and 0 errors; and `git diff --check` is clean. This correction closes the reported
+combat-control, Sleep/Wait, and two-frame presentation defects only. UI-C remains open on the documented skill/Fate
+action authorities and occupied/rented-bed semantics.

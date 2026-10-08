@@ -2732,6 +2732,35 @@ Compilation is clean, the final cleared Console has 0 logs, 0 warnings, and 0 er
 
 See [`documentation_unity/ui/ui-e2-character-skills-reconstruction.md`](documentation_unity/ui/ui-e2-character-skills-reconstruction.md).
 
+## Player-Facing Correctness Pass II (2026-10-07)
+
+The bounded correction pass is complete. It did not begin UI-F or introduce new gameplay systems.
+
+- Character Creation preserves source Back/Continue and portrait-arrow layering, projects background-adjusted stats,
+  restores transactional HP/Fatigue point controls and source hover help, and correctly decodes retail portrait
+  prefixes (`HA` Halfling, `HE` Half-Elf). A fresh Female Half-Elf selection now chooses the matching retail portrait.
+- Player locomotion uses retail WALK action 1 and RUN action 6 with action-specific timing. Ordinary click, Ctrl-run,
+  NumLock Always Run, and Ctrl inversion retain a single navigation authority.
+- Combat ID 470 and `R` share the coordinator-owned combat-readiness transaction; the HUD owns no combat state.
+- Sleep/Wait source rows now execute the established SourceTime transaction. Authentic crash-site `[w:1]` town wait,
+  One Hour, Two Hours, and Until Evening were physically proven. IDs 137/293 use only frame 0 normal and frame 1
+  hover/pressed, eliminating invalid frame-2 warnings.
+- Ordinary Inventory now includes the live PC lens, source summaries and counters, attack/defense, inspected item
+  feedback, transactional grid drag, Arrange, and stable close/reopen behavior while M3/session services retain
+  inventory and equipment authority.
+
+Production Play Mode passed in the existing Unity 6000.0.71f1 Editor. Character Creation and the centered fixed
+composition were reviewed at 800 x 600, 1024 x 768, 1920 x 1080, 2560 x 1440, and 3840 x 2160; detailed Inventory
+proofs passed at 800 x 600 and 1920 x 1080. The pass also covered background projection, HP/Fatigue spend/refund,
+hover help, combat pointer/keyboard parity, Sleep/Wait time and lighting changes, Always Run, and Inventory rebuild
+stability.
+
+The final complete EditMode suite passed **1301/1301**, with 0 failed, 0 skipped, and 0 inconclusive. Compilation is
+clean; the final cleared Console has 0 logs, 0 warnings, and 0 errors; and `git diff --check` is clean. UI-C remains
+open only on its previously documented skill/Fate action and occupied/rented-bed authority boundaries. Distinct
+layered paper-doll composite ART remains a later presentation boundary; the ordinary player-facing Inventory screen
+is closed.
+
 ## Next Recommended Milestone
 
 M9A, M9B, M10A, M10B, M11A, M11B, M11C, M12B, M12C, M12D, and the bounded M13A opening pass are formally closed.
