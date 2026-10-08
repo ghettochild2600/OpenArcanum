@@ -77,11 +77,13 @@ player-facing manual save/load presentation, M7A bounded passive local map trans
   those branches fail closed before transaction mutation. **DONE UI-E.1 — Inventory/Equipment Foundation:** the ordinary source ID 223 + ID 221 800 x 400 composition,
   exact grid/slot geometry, retained item art/footprints, selection, quick-slot binding, and M3C equip/unequip routes
   replace the generic Inventory overlay without owning item state. Original/Enhanced fallback uses UI-A. Distinct
-  paper-doll composite layers and gesture parity remain later presentation boundaries. **DONE UI-D.1 / UI-B.1 —
+  paper-doll composite layers and gesture parity remain later presentation boundaries. **DONE UI-D.2 / UI-B.1 —
   Player-Facing Character Creation / Pick Character:** source ID 765 identity flows into the active ID 22 editor with
   child IDs 29/30/31 and atomic M12B finalization; 128 x 128 portraits, immutable centered text, authentic gender
-  restrictions, and ID 623 gauges are corrected. Pick Character now uses ID 766 and the twelve retail engine-owned
-  PC prototypes 16067–16078 through the authentic inventory/equip/campaign/Save V1 path. **DONE UI-E.2 — Character / Skills:** the active ID 22 Character sheet and ID 29 Skills child panel
+  restrictions, and ID 623 gauges are corrected. New Character, Character Editor, and Pick Character now compose
+  independent native ID 336 top, ID 765/22/766 center, and ID 335 bottom windows; IDs 321/323 are bottom-owned while
+  portrait IDs 283/284 remain center-owned. Pick Character uses the twelve retail engine-owned PC prototypes
+  16067–16078 through the authentic inventory/equip/campaign/Save V1 path. **DONE UI-E.2 — Character / Skills:** the active ID 22 Character sheet and ID 29 Skills child panel
   project M4 authority, legal same-open-session point adjustments are transactional, and `K` uses the source ID 472
   to ID 274 non-modal Skills route. The four unsupported source skill-action targets fail closed without mutation.
   **DONE M13A opening crash-site compatibility pass and bounded user follow-ups:** authentic Virgil dialogue 1324
@@ -2761,13 +2763,36 @@ open only on its previously documented skill/Fate action and occupied/rented-bed
 layered paper-doll composite ART remains a later presentation boundary; the ordinary player-facing Inventory screen
 is closed.
 
+## UI-D.2 Character Creation Multi-Window Layout Correction (2026-10-07)
+
+UI-D.2 corrects the source-window hierarchy without changing gameplay authority. The previous reconstruction read
+New Character Back/Continue positions `(69,55)` / `(675,55)` as center-window coordinates. In source those records
+have `flags = 1`; `main_menu_button_create_ex()` routes `flags & 0x1` controls to
+`mainmenu_ui_bottom_bar_cover_window_handles`, using `y + 441` only to choose the owning cover. IDs 323/321 are now
+direct children of the independent ID 335 bottom region. Portrait IDs 283/284 have clear flags and remain direct
+children of the center region at center-local `(43,77)` / `(244,77)`.
+
+New Character, its Character Editor stage, and Pick Character share three native source regions: top ID 336
+800 x 41, center ID 765/22/766 800 x 400, and bottom ID 335 800 x 159. All are horizontally centered; top is at y 0,
+center is at `41 + (height - 600) / 2`, and bottom is at `height - 159`. Physical production validation passed both
+New Character and Pick Character at 800 x 600, 1024 x 768, 1920 x 1080, 2560 x 1440, and 3840 x 2160. The 1080p
+result matches the supplied high-resolution target, including the intentional unused space, bottom-owned large
+navigation controls, center-owned portrait arrows, and responding hit regions. Captures remained local and were not
+committed.
+
+Focused UI-D.2 passed **7/7**; existing UI-D **44/44**; UI-B/Pick Character **23/23**; Player Startup **3/3**; and
+M12B **16/16**. The complete EditMode suite passed **1304/1304**, with 0 failed, 0 skipped, and 0 inconclusive.
+Compilation is clean; the final cleared Console has 0 logs, 0 warnings, and 0 errors; and `git diff --check` is clean.
+The read-only source audit also found bottom-cover ownership in Load Game, Save Game, Pregenerated Character,
+Character Editor, and Shopping. Those unrelated screens were not reconstructed by this correction.
+
 ## Next Recommended Milestone
 
 M9A, M9B, M10A, M10B, M11A, M11B, M11C, M12B, M12C, M12D, and the bounded M13A opening pass are formally closed.
 The source-authentic keyboard compatibility follow-up, UI-A common runtime, UI-B source-faithful Main Menu, bounded
-UI-C.5 implementation, UI-D.1/UI-B.1 player-facing correction, and UI-E.1 Inventory/Equipment foundation are
+UI-C.5 implementation, UI-D.2/UI-B.1 player-facing correction, and UI-E.1 Inventory/Equipment foundation are
 complete. UI-C overall remains open on the four displayed skill-action kernels, the six skill-action Fate checks,
-and bed-authority blockers above. UI-D source-faithful Character Creation and ID 766 Pick Character are complete
+and bed-authority blockers above. UI-D.2 source-faithful three-window Character Creation and ID 766 Pick Character are complete
 with M12B authority preserved. UI-E.2 Character/Skills reconstruction is complete with M4 authority unchanged.
 
 The read-only UI-F Dialogue/Journal/Party source audit is complete. It corrects two earlier assumptions: ordinary

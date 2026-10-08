@@ -1,6 +1,6 @@
 # UI-D Character Creation Reconstruction
 
-Status: UI-D.1 player-facing correction complete (2026-10-07)
+Status: UI-D.2 source-window ownership correction complete (2026-10-07)
 
 UI-D replaces the production Character Creation placeholder and its whole-screen `ScrollRect` with the two
 fixed, source-backed compositions used by retail Arcanum. It changes presentation only: M12B remains the sole
@@ -19,6 +19,33 @@ The reconstruction follows runtime creation calls rather than classifying ART by
 The identity screen and character editor are therefore not one large form and not one ART-derived screen. They
 are two sequential source compositions with different ownership and navigation. The production presenter suppresses
 the old generic Character Creation drawing only while this source view is available.
+
+## UI-D.2 root cause and source-window ownership
+
+The prior reconstruction treated the `mainmenu_ui_new_char_buttons` positions `(675,55)` and `(69,55)` as though
+they belonged to the center 800 x 400 window. That interpretation was structurally wrong. Both records carry
+`flags = 1`, and `main_menu_button_create_ex()` tests `info->flags & 0x1` before creating the widget. When set, the
+source adds 441 only to select one of `mainmenu_ui_bottom_bar_cover_window_handles`, assigns that cover as the
+button's window, and converts x into the selected cover's local coordinates. It does not assign the button to
+`mainmenu_ui_window_handle`. Consequently Continue ID 321 and Back ID 323 are bottom-cover controls at bottom-local
+`(675,55)` and `(69,55)`.
+
+Portrait Previous ID 283 and Portrait Next ID 284 have `flags = 0`. They remain children of the center content
+window. Its source window begins at y 41, so their center-local positions are `(43,77)` and `(244,77)`. OpenArcanum
+now represents these ownership boundaries directly rather than reproducing only the resulting screen coordinates.
+
+The shared production composition has three independent native-pixel regions:
+
+| Region | Source ART | Native size | Production ownership |
+|---|---:|---:|---|
+| Top cover | ID 336 `charcreatetopbar.art` | 800 x 41 | independent top region |
+| Center content | ID 765 New Character or ID 766 Pick Character; ID 22 for the subsequent editor | 800 x 400 | identity, pregenerated, or editor controls |
+| Bottom cover | ID 335 `charcreatebottombar.art` | 800 x 159 | ID 321 Continue/Start and ID 323 Back |
+
+The read-only `MainMenuButtonInfo` audit found the same `flags & 0x1` bottom-cover routing in Load Game, Save Game,
+New Character, Pregenerated Character, Character Editor, and Shopping. UI-D.2 does not reconstruct Load, Save, or
+Shopping. It leaves those future screens an explicit shared composition primitive so their navigation controls are
+not accidentally parented to a center window. No audited Options record uses this flag.
 
 ## Identity stage
 
@@ -103,23 +130,40 @@ one `EventSystem`. The fixed source composition captures pointer input, but it d
 
 ## Resolution and graphics behavior
 
-Both stages remain fixed 800 x 400 logical compositions at source `(0,41)` within the centered 800 x 600 source
-surface, with navigation in the source bottom bar. They do not
-stretch or become a whole-screen scrolling form at larger resolutions.
+The Character Creation partial-window family is a native-pixel high-resolution composition, not one uniformly
+scaled 800 x 600 bitmap. All three regions are horizontally centered. ID 336 is top-anchored at y 0; the center
+window uses `y = 41 + (height - 600) / 2`; and ID 335 is bottom-anchored at `y = height - 159`. This matches the
+project's proven retail/High Resolution Patch visual target: the three regions join at 800 x 600 and deliberate
+unused world/black space appears between them as display height increases. The center content and controls do not
+stretch, and 4x Enhanced replacements change sampling density only.
 
-| Display | Fixed composition result |
-|---:|---|
-| 800 x 600 | fully visible at source scale |
-| 1024 x 768 | centered, bottom-bar finalization control accessible |
-| 1920 x 1080 | centered, no clipping or global horizontal scrolling |
-| 2560 x 1440 | centered, source geometry unchanged |
-| 3840 x 2160 | centered, source geometry unchanged |
+| Display | top `(x,y)` | center `(x,y)` | bottom `(x,y)` |
+|---:|---:|---:|---:|
+| 800 x 600 | `(0,0)` | `(0,41)` | `(0,441)` |
+| 1024 x 768 | `(112,0)` | `(112,125)` | `(112,609)` |
+| 1920 x 1080 | `(560,0)` | `(560,281)` | `(560,921)` |
+| 2560 x 1440 | `(880,0)` | `(880,461)` | `(880,1281)` |
+| 3840 x 2160 | `(1520,0)` | `(1520,821)` | `(1520,2001)` |
 
 Original mode resolves mounted retail ART and portrait BMPs. Physical validation generated temporary local exact-4x
 replacements for IDs 765 and 22, switched Original -> Enhanced -> Original, and proved that stage, active Technology
 panel, draft values, Character Points, logical geometry, presenter identity, and M12B authority were unchanged.
 Missing Enhanced children continue to fall back independently to Original. No retail or generated validation asset
 is committed.
+
+## UI-D.2 validation record
+
+- Unity compilation: clean in the existing Unity 6000.0.71f1 Editor; no second Editor was launched.
+- Focused ownership/placement: **7/7**. Existing UI-D: **44/44**. UI-B/Pick Character: **23/23**. Player Startup:
+  **3/3**. M12B: **16/16**. Every run had 0 failed, skipped, or inconclusive.
+- Complete EditMode: **1304/1304**, with 0 failed, 0 skipped, and 0 inconclusive (1301 baseline plus 3 net new
+  ownership/placement cases).
+- Production Play Mode: **PASS** for New Character and Pick Character at 800 x 600, 1024 x 768, 1920 x 1080,
+  2560 x 1440, and 3840 x 2160. The 1920 x 1080 layout matches the supplied high-resolution reference: native top
+  and bottom source strips remain separated from the centered center panel, large Back/Continue remain in the bottom
+  strip, and small portrait arrows flank the portrait in the center. Portrait cycling and Back hit regions responded
+  at their rendered positions, including the 4K bottom control. Validation captures remained local and uncommitted.
+- Final cleared Unity Console: 0 logs, 0 warnings, 0 errors. `git diff --check`: clean.
 
 ## UI-D.1 / UI-B.1 correction validation record
 

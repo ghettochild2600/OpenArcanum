@@ -66,6 +66,22 @@ hit geometry.
 `SourceUiPresentationRoot` creates separate World, HUD, Modal, Dialogue, Tooltip, and Cursor layers. It owns no
 screen/modal state. Later views choose layers while their existing controllers remain authoritative.
 
+### Partial Main Menu window composition
+
+Character Creation proves a distinct source-window composition that must not be flattened into the uniform logical
+surface above. Retail partial Main Menu screens create an independent 800 x 41 top cover (ID 336), an 800 x 400
+center content window, and an independent 800 x 159 bottom cover (ID 335). `MainMenuButtonInfo.flags & 0x1` means the
+button is owned by one of the bottom-cover windows; a clear flag means it is owned by the center window and its y is
+converted from the partial window's source y 41.
+
+The shared native-pixel placement policy horizontally centers all three regions, top-anchors the top cover,
+positions the center at `41 + (height - 600) / 2`, and bottom-anchors the bottom cover. This is the proven
+retail/High Resolution Patch target used by New Character, Character Editor, and Pick Character. At 800 x 600 the
+regions join; taller displays intentionally leave world/black gaps. Source IDs and native dimensions stay separate,
+and controls must be direct children of their source owner so visual rebuilds cannot change hit ownership. The
+read-only source audit identifies Load Game, Save Game, New Character, Pregenerated Character, Character Editor, and
+Shopping as `flags & 0x1` consumers; only the Character Creation/Pick Character family is reconstructed here.
+
 ## Common presentation components
 
 - `SourceUiImage` binds one key, applies native logical sizing/aspect, and refreshes on skin invalidation.
