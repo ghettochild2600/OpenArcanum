@@ -233,8 +233,8 @@ namespace OpenArcanum.Editor
                 "Schematics routes to the authoritative Crafting screen");
             controller.Close();
             FindButton(hud, "Combat").onClick.Invoke();
-            Check(controller.Feedback.Contains("Inactive"),
-                "Combat reaches combat authority and reports inactive combat rather than a dead control");
+            Check(session.Combat.IsCombatModeActive && controller.Feedback.Contains("Combat ready"),
+                "Combat reaches the current combat-readiness authority rather than a dead control");
 
             session.ResetAuthoritativeSession();
             controller.Refresh();
