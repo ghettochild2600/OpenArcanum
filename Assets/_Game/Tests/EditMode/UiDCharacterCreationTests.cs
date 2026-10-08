@@ -72,6 +72,10 @@ namespace Arcanum.Formats.Tests
                 Assert.That(_retail.TryResolve(new UiAssetKey(id), out _), Is.True, $"source id {id}");
             Assert.That(_retail.TryResolve(new UiAssetKey(765), out UiResolvedAsset identity), Is.True);
             Assert.That(identity.LogicalSize, Is.EqualTo(new Vector2Int(800, 400)));
+            Assert.That(_retail.TryResolve(new UiAssetKey(336), out UiResolvedAsset top), Is.True);
+            Assert.That(top.LogicalSize, Is.EqualTo(new Vector2Int(800, 41)));
+            Assert.That(_retail.TryResolve(new UiAssetKey(335), out UiResolvedAsset bottom), Is.True);
+            Assert.That(bottom.LogicalSize, Is.EqualTo(new Vector2Int(800, 159)));
             Assert.That(_retail.TryResolve(new UiAssetKey(22), out UiResolvedAsset editor), Is.True);
             Assert.That(editor.LogicalSize, Is.EqualTo(new Vector2Int(800, 400)));
             Assert.That(_retail.TryResolvePortrait("HUM1", out RetailPortraitAsset portrait), Is.True);
@@ -115,6 +119,28 @@ namespace Arcanum.Formats.Tests
             AssertTopLeft("Next Background", new Vector2(255, 382 - 41));
             AssertTopLeft("Identity Back", new Vector2(69, 55));
             AssertTopLeft("Identity Continue", new Vector2(675, 55));
+        }
+
+        [Test]
+        [Category("UID2CharacterCreation")]
+        public void PartialWindowOwnsIndependentTopCenterAndBottomRegions()
+        {
+            Assert.That(_view.TopBackgroundAsset.Key.SourceId, Is.EqualTo(336));
+            Assert.That(_view.IdentityBackgroundAsset.Key.SourceId, Is.EqualTo(765));
+            Assert.That(_view.IdentityBottomBackgroundAsset.Key.SourceId, Is.EqualTo(335));
+            Assert.That(_view.TopRegionRoot, Is.Not.SameAs(_view.IdentityRoot));
+            Assert.That(_view.IdentityRoot, Is.Not.SameAs(_view.IdentityBottomRegionRoot));
+            Assert.That(_view.TopRegionRoot.sizeDelta, Is.EqualTo(new Vector2(800f, 41f)));
+            Assert.That(_view.IdentityRoot.sizeDelta, Is.EqualTo(new Vector2(800f, 400f)));
+            Assert.That(_view.IdentityBottomRegionRoot.sizeDelta, Is.EqualTo(new Vector2(800f, 159f)));
+
+            AssertSourceButtonOwnedBy("Identity Continue", 321, _view.IdentityBottomRegionRoot);
+            AssertSourceButtonOwnedBy("Identity Back", 323, _view.IdentityBottomRegionRoot);
+            AssertSourceButtonOwnedBy("Previous Portrait", 283, _view.IdentityRoot);
+            AssertSourceButtonOwnedBy("Next Portrait", 284, _view.IdentityRoot);
+            Assert.That(_view.IdentityNavigationRoot, Is.SameAs(_view.IdentityBottomRegionRoot));
+            Assert.That(_view.IdentityRoot.IsChildOf(_view.IdentityBottomRegionRoot), Is.False,
+                "Large navigation button must not be parented to center Character Creation panel.");
         }
 
         [Test]
@@ -415,22 +441,26 @@ namespace Arcanum.Formats.Tests
             Assert.That(_session.PlayerState, Is.Null);
         }
 
-        [TestCase(800, 600)]
-        [TestCase(1024, 768)]
-        [TestCase(1920, 1080)]
-        [TestCase(2560, 1440)]
-        [TestCase(3840, 2160)]
-        public void FixedCompositionRemainsCenteredAndAccessibleAtTargetResolution(int width, int height)
+        [TestCase(800, 600, 0, 41, 441)]
+        [TestCase(1024, 768, 112, 125, 609)]
+        [TestCase(1920, 1080, 560, 281, 921)]
+        [TestCase(2560, 1440, 880, 461, 1281)]
+        [TestCase(3840, 2160, 1520, 821, 2001)]
+        [Category("UID2CharacterCreation")]
+        public void PartialRegionsUseNativeHighResolutionAnchors(
+            int width, int height, float expectedX, float expectedCenterY, float expectedBottomY)
         {
-            UiLogicalMapping mapping = UiLogicalMapping.ForResolution(width, height);
-            Rect window = mapping.LogicalToScreen(RetailCharacterCreationLayout.Window);
-            Assert.That(window.xMin, Is.GreaterThanOrEqualTo(0f));
-            Assert.That(window.yMin, Is.GreaterThanOrEqualTo(0f));
-            Assert.That(window.xMax, Is.LessThanOrEqualTo(width + .001f));
-            Assert.That(window.yMax, Is.LessThanOrEqualTo(height + .001f));
-            Rect continueButton = mapping.LogicalToScreen(new Rect(675f, 496f, 32f, 32f));
-            Assert.That(continueButton.xMax, Is.LessThanOrEqualTo(width + .001f));
-            Assert.That(continueButton.yMax, Is.LessThanOrEqualTo(height + .001f));
+            Rect top = RetailPartialMainMenuLayout.TopScreenRect(width, height);
+            Rect center = RetailPartialMainMenuLayout.CenterScreenRect(width, height);
+            Rect bottom = RetailPartialMainMenuLayout.BottomScreenRect(width, height);
+            Assert.That(top, Is.EqualTo(new Rect(expectedX, 0f, 800f, 41f)));
+            Assert.That(center, Is.EqualTo(new Rect(expectedX, expectedCenterY, 800f, 400f)));
+            Assert.That(bottom, Is.EqualTo(new Rect(expectedX, expectedBottomY, 800f, 159f)));
+            Assert.That(top.width, Is.EqualTo(800f));
+            Assert.That(center.width, Is.EqualTo(800f));
+            Assert.That(bottom.width, Is.EqualTo(800f));
+            Assert.That(center.yMin, Is.GreaterThanOrEqualTo(top.yMax));
+            Assert.That(bottom.yMin, Is.GreaterThanOrEqualTo(center.yMax));
         }
 
         private void Invoke(string name)
@@ -448,6 +478,15 @@ namespace Arcanum.Formats.Tests
                 .Single(value => value.name == name);
             Assert.That(rect.anchoredPosition, Is.EqualTo(new Vector2(expected.x, -expected.y)));
             Assert.That(rect.pivot, Is.EqualTo(new Vector2(0f, 1f)));
+        }
+
+        private void AssertSourceButtonOwnedBy(string name, int sourceId, RectTransform expectedParent)
+        {
+            SourceUiButton button = _view.GetComponentsInChildren<SourceUiButton>(true)
+                .Single(value => value.name == name);
+            Assert.That(button.CurrentPresentationKey.SourceId, Is.EqualTo(sourceId));
+            Assert.That(button.transform.parent, Is.SameAs(expectedParent),
+                "Large navigation button must not be parented to center Character Creation panel.");
         }
 
         private static void AssertCenteredWithin(RectTransform text, Rect bounds)

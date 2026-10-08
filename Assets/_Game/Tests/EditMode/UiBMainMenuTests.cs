@@ -173,6 +173,46 @@ namespace Arcanum.Formats.Tests
         }
 
         [Test]
+        [Category("UID2CharacterCreation")]
+        public void PickCharacterUsesTheSharedThreeRegionWindowOwnership()
+        {
+            RetailMainMenuModel model = Model();
+            model.Submit(RetailMainMenuCommand.SinglePlayer);
+            model.Submit(RetailMainMenuCommand.NewGame);
+            model.Submit(RetailMainMenuCommand.PickCharacter);
+            RetailPregeneratedCharacterView view = _root.AddComponent<RetailPregeneratedCharacterView>();
+            view.Bind(_controller, _session, _skin);
+            view.Synchronize();
+
+            Assert.That(view.TopBackgroundAsset.Key.SourceId, Is.EqualTo(336));
+            Assert.That(view.BackgroundAsset.Key.SourceId, Is.EqualTo(766));
+            Assert.That(view.BottomBackgroundAsset.Key.SourceId, Is.EqualTo(335));
+            Assert.That(view.TopRegionRoot, Is.Not.SameAs(view.CenterRegionRoot));
+            Assert.That(view.CenterRegionRoot, Is.Not.SameAs(view.BottomRegionRoot));
+
+            SourceUiButton start = view.GetComponentsInChildren<SourceUiButton>(true)
+                .Single(value => value.name == "Start");
+            SourceUiButton back = view.GetComponentsInChildren<SourceUiButton>(true)
+                .Single(value => value.name == "Back");
+            SourceUiButton previous = view.GetComponentsInChildren<SourceUiButton>(true)
+                .Single(value => value.name == "Previous Portrait");
+            SourceUiButton next = view.GetComponentsInChildren<SourceUiButton>(true)
+                .Single(value => value.name == "Next Portrait");
+            Assert.That(start.CurrentPresentationKey.SourceId, Is.EqualTo(321));
+            Assert.That(back.CurrentPresentationKey.SourceId, Is.EqualTo(323));
+            Assert.That(previous.CurrentPresentationKey.SourceId, Is.EqualTo(283));
+            Assert.That(next.CurrentPresentationKey.SourceId, Is.EqualTo(284));
+            Assert.That(start.transform.parent, Is.SameAs(view.BottomRegionRoot));
+            Assert.That(back.transform.parent, Is.SameAs(view.BottomRegionRoot));
+            Assert.That(previous.transform.parent, Is.SameAs(view.CenterRegionRoot));
+            Assert.That(next.transform.parent, Is.SameAs(view.CenterRegionRoot));
+            Assert.That(((RectTransform)start.transform).anchoredPosition, Is.EqualTo(new Vector2(675f, -55f)));
+            Assert.That(((RectTransform)back.transform).anchoredPosition, Is.EqualTo(new Vector2(69f, -55f)));
+            Assert.That(((RectTransform)previous.transform).anchoredPosition, Is.EqualTo(new Vector2(43f, -77f)));
+            Assert.That(((RectTransform)next.transform).anchoredPosition, Is.EqualTo(new Vector2(244f, -77f)));
+        }
+
+        [Test]
         public void ExitRequiresConfirmationAndInvokesBoundQuitExactlyOnce()
         {
             int quits = 0;

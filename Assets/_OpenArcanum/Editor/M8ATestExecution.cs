@@ -75,6 +75,10 @@ internal sealed class M8ATestExecution : ScriptableObject, ICallbacks
     private static void RunUiDFocused()
         => Run(Category("UIDCharacterCreation"), "UI-D focused EditMode");
 
+    [MenuItem("OpenArcanum/UI-D.2/Run Focused EditMode Tests", false, 1)]
+    private static void RunUiD2Focused()
+        => Run(Category("UID2CharacterCreation"), "UI-D.2 partial-window ownership focused EditMode");
+
     [MenuItem("OpenArcanum/UI-D.1/Run Focused EditMode Tests", false, 1)]
     private static void RunUiD1Focused()
     {

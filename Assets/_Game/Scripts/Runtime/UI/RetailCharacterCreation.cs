@@ -21,6 +21,8 @@ namespace Arcanum.Runtime.UI
     public static class RetailCharacterCreationLayout
     {
         public const int IdentityBackgroundSourceId = 765;
+        public const int TopCoverSourceId = RetailPartialMainMenuLayout.TopCoverSourceId;
+        public const int BottomCoverSourceId = RetailPartialMainMenuLayout.BottomCoverSourceId;
         public const int EditorBackgroundSourceId = 22;
         public const int SkillsPanelSourceId = 29;
         public const int TechnologyPanelSourceId = 30;
@@ -60,7 +62,7 @@ namespace Arcanum.Runtime.UI
 
         public static readonly int[] RequiredSourceIds =
         {
-            765, 321, 323, 283, 284, 757, 758,
+            336, 335, 765, 321, 323, 283, 284, 757, 758,
             22, 23, 24, 29, 30, 31, 34, 35, 36, 568,
             302, 303, 304, 305, 306, 307, 308, 309, 310, 311, 312, 313,
             624, 625, 647, 648,
@@ -102,6 +104,7 @@ namespace Arcanum.Runtime.UI
         private WorldMapSessionCoordinator _session;
         private UiSkinResolver _resolver;
         private GameObject _canvasRoot;
+        private RectTransform _topRegion;
         private RectTransform _identity;
         private RectTransform _editor;
         private RectTransform _identityNavigation;
@@ -110,6 +113,9 @@ namespace Arcanum.Runtime.UI
         private RectTransform _editorPanel;
         private SourceUiImage _identityBackground;
         private SourceUiImage _editorBackground;
+        private SourceUiImage _topBackground;
+        private SourceUiImage _identityBottomBackground;
+        private SourceUiImage _editorBottomBackground;
         private InputField _nameInput;
         private Image _identityPortrait;
         private Image _editorPortrait;
@@ -146,12 +152,17 @@ namespace Arcanum.Runtime.UI
         public TechnologyDiscipline SelectedTechnology => _selectedTechnology;
         public RectTransform IdentityRoot => _identity;
         public RectTransform EditorRoot => _editor;
+        public RectTransform TopRegionRoot => _topRegion;
+        public RectTransform IdentityBottomRegionRoot => _identityNavigation;
+        public RectTransform EditorBottomRegionRoot => _editorNavigation;
         public RectTransform IdentityNavigationRoot => _identityNavigation;
         public RectTransform EditorNavigationRoot => _editorNavigation;
         public RectTransform EditorPanelRoot => _editorPanel;
         public InputField NameInput => _nameInput;
         public UiResolvedAsset IdentityBackgroundAsset => _identityBackground?.CurrentAsset;
         public UiResolvedAsset EditorBackgroundAsset => _editorBackground?.CurrentAsset;
+        public UiResolvedAsset TopBackgroundAsset => _topBackground?.CurrentAsset;
+        public UiResolvedAsset IdentityBottomBackgroundAsset => _identityBottomBackground?.CurrentAsset;
         public Image IdentityPortraitImage => _identityPortrait;
         public IReadOnlyDictionary<CharacterSkill, Image> SkillGauges => _skillGauges;
 
@@ -266,19 +277,30 @@ namespace Arcanum.Runtime.UI
         {
             _canvasRoot = new GameObject("Source-Faithful Character Creation",
                 typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster),
-                typeof(SourceUiPresentationRoot), typeof(SourceUiRuntime));
+                typeof(SourceUiRuntime));
             _canvasRoot.transform.SetParent(transform, false);
-            SourceUiPresentationRoot presentation = _canvasRoot.GetComponent<SourceUiPresentationRoot>();
-            _canvasRoot.GetComponent<SourceUiRuntime>().BindResolver(_resolver);
-            _canvasRoot.GetComponent<Canvas>().sortingOrder = 990;
-            RectTransform modal = presentation.GetLayer(SourceUiLayer.Modal);
-
-            _identity = AddRect("Identity Stage", modal, RetailCharacterCreationLayout.Window);
-            _editor = AddRect("Editor Stage", modal, RetailCharacterCreationLayout.Window);
-            _identityNavigation = AddRect("Identity Bottom-Bar Controls", modal,
-                RetailCharacterCreationLayout.BottomBar);
-            _editorNavigation = AddRect("Editor Bottom-Bar Controls", modal,
-                RetailCharacterCreationLayout.BottomBar);
+            RetailPartialMainMenuComposition.ConfigureNativeCanvas(_canvasRoot, _resolver, 990);
+            RectTransform canvas = (RectTransform)_canvasRoot.transform;
+            RetailPartialMainMenuRegion top = RetailPartialMainMenuComposition.CreateTop(canvas, _resolver,
+                "Character Creation Top Region");
+            RetailPartialMainMenuRegion identity = RetailPartialMainMenuComposition.CreateCenter(canvas, _resolver,
+                RetailCharacterCreationLayout.IdentityBackgroundSourceId, "Identity Center Region");
+            RetailPartialMainMenuRegion editor = RetailPartialMainMenuComposition.CreateCenter(canvas, _resolver,
+                RetailCharacterCreationLayout.EditorBackgroundSourceId, "Editor Center Region");
+            RetailPartialMainMenuRegion identityBottom = RetailPartialMainMenuComposition.CreateBottom(canvas,
+                _resolver, "Identity Bottom Region");
+            RetailPartialMainMenuRegion editorBottom = RetailPartialMainMenuComposition.CreateBottom(canvas,
+                _resolver, "Editor Bottom Region");
+            _topRegion = top.Root;
+            _topBackground = top.Background;
+            _identity = identity.Root;
+            _identityBackground = identity.Background;
+            _editor = editor.Root;
+            _editorBackground = editor.Background;
+            _identityNavigation = identityBottom.Root;
+            _identityBottomBackground = identityBottom.Background;
+            _editorNavigation = editorBottom.Root;
+            _editorBottomBackground = editorBottom.Background;
             BuildIdentity();
             BuildEditor();
 
@@ -290,8 +312,6 @@ namespace Arcanum.Runtime.UI
 
         private void BuildIdentity()
         {
-            _identityBackground = AddSourceImage("Create Character Base", _identity,
-                RetailCharacterCreationLayout.IdentityBackgroundSourceId, new Rect(0f, 0f, 800f, 400f));
             // The portrait is a 128x128 draw into a 64x64 invalidation region. Source buttons are widgets
             // painted above that draw, so create the portrait before the overlapping arrow controls.
             _identityPortrait = AddPortraitImage("Portrait", _identity, RetailCharacterCreationLayout.PortraitDraw);
@@ -349,8 +369,6 @@ namespace Arcanum.Runtime.UI
 
         private void BuildEditor()
         {
-            _editorBackground = AddSourceImage("Character Editor Base", _editor,
-                RetailCharacterCreationLayout.EditorBackgroundSourceId, new Rect(0f, 0f, 800f, 400f));
             _editorPortrait = AddPortraitImage("Editor Portrait", _editor,
                 RetailCharacterCreationLayout.EditorPortrait);
 
@@ -1010,12 +1028,18 @@ namespace Arcanum.Runtime.UI
                 if (Application.isPlaying) Object.Destroy(_canvasRoot); else Object.DestroyImmediate(_canvasRoot);
             }
             _canvasRoot = null;
+            _topRegion = null;
             _identity = null;
             _editor = null;
+            _identityNavigation = null;
+            _editorNavigation = null;
             _identityDescription = null;
             _editorPanel = null;
             _identityBackground = null;
             _editorBackground = null;
+            _topBackground = null;
+            _identityBottomBackground = null;
+            _editorBottomBackground = null;
             _nameInput = null;
             _identityPortrait = null;
             _editorPortrait = null;

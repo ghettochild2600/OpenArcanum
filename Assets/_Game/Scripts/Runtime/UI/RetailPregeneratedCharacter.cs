@@ -22,15 +22,18 @@ namespace Arcanum.Runtime.UI
         public const int BackgroundSourceId = 766;
         private static readonly Color SourceWhite = new Color32(231, 217, 174, 255);
         private static readonly Color SourceYellow = new Color32(245, 201, 65, 255);
-        private static readonly Rect SourceWindow = new(0f, 41f, 800f, 400f);
         private static readonly Rect PortraitDraw = new(95f, 28f, 128f, 128f);
 
         private GameUiController _controller;
         private WorldMapSessionCoordinator _session;
         private UiSkinResolver _resolver;
         private GameObject _canvasRoot;
+        private RectTransform _topRegion;
         private RectTransform _window;
+        private RectTransform _bottomRegion;
+        private SourceUiImage _topBackground;
         private SourceUiImage _background;
+        private SourceUiImage _bottomBackground;
         private Image _portrait;
         private SourceUiBitmapText _name;
         private SourceUiBitmapText _gender;
@@ -46,7 +49,12 @@ namespace Arcanum.Runtime.UI
         public bool IsAvailable => _canvasRoot != null && _resolver != null;
         public bool IsVisible => IsAvailable && _canvasRoot.activeSelf;
         public int SelectedSourceIndex => _controller?.PregeneratedCharacterIndex ?? 0;
+        public RectTransform TopRegionRoot => _topRegion;
+        public RectTransform CenterRegionRoot => _window;
+        public RectTransform BottomRegionRoot => _bottomRegion;
+        public UiResolvedAsset TopBackgroundAsset => _topBackground?.CurrentAsset;
         public UiResolvedAsset BackgroundAsset => _background?.CurrentAsset;
+        public UiResolvedAsset BottomBackgroundAsset => _bottomBackground?.CurrentAsset;
         public Image PortraitImage => _portrait;
 
         public void Bind(GameUiController controller, WorldMapSessionCoordinator session, UiSkinResolver resolver)
@@ -84,23 +92,37 @@ namespace Arcanum.Runtime.UI
         {
             _canvasRoot = new GameObject("Source Pregenerated Character",
                 typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster),
-                typeof(SourceUiPresentationRoot), typeof(SourceUiRuntime));
+                typeof(SourceUiRuntime));
             _canvasRoot.transform.SetParent(transform, false);
-            _canvasRoot.GetComponent<Canvas>().sortingOrder = 995;
-            _canvasRoot.GetComponent<SourceUiRuntime>().BindResolver(_resolver);
-            RectTransform modal = _canvasRoot.GetComponent<SourceUiPresentationRoot>().GetLayer(SourceUiLayer.Modal);
-            _window = AddRect("Pregenerated Window", modal, SourceWindow);
-            _background = AddSourceImage("Pregenerated Base", _window, BackgroundSourceId,
-                new Rect(0f, 0f, 800f, 400f));
+            RetailPartialMainMenuComposition.ConfigureNativeCanvas(_canvasRoot, _resolver, 995);
+            RectTransform canvas = (RectTransform)_canvasRoot.transform;
+            RetailPartialMainMenuRegion top = RetailPartialMainMenuComposition.CreateTop(canvas, _resolver,
+                "Pregenerated Top Region");
+            RetailPartialMainMenuRegion center = RetailPartialMainMenuComposition.CreateCenter(canvas, _resolver,
+                BackgroundSourceId, "Pregenerated Center Region");
+            RetailPartialMainMenuRegion bottom = RetailPartialMainMenuComposition.CreateBottom(canvas, _resolver,
+                "Pregenerated Bottom Region");
+            _topRegion = top.Root;
+            _topBackground = top.Background;
+            _window = center.Root;
+            _background = center.Background;
+            _bottomRegion = bottom.Root;
+            _bottomBackground = bottom.Background;
 
             // mainmenu_ui draws the portrait before it creates the four source buttons.  Keeping
             // that order is significant: the 128x128 portrait intentionally intersects the
             // button rectangles, but the buttons (and their complete hit targets) remain on top.
             _portrait = AddImage("Portrait 128x128", PortraitDraw);
-            AddButton("Start", 321, new Vector2(675f, 55f), () => _controller.FinalizePregeneratedCharacter());
-            AddButton("Back", 323, new Vector2(69f, 55f), () => _controller.Open(GameUiScreen.MainMenu));
-            AddButton("Previous Portrait", 283, new Vector2(43f, 118f), () => Cycle(-1));
-            AddButton("Next Portrait", 284, new Vector2(244f, 118f), () => Cycle(1));
+            AddButton("Start", _bottomRegion, 321,
+                RetailPartialMainMenuLayout.BottomLocal(new Vector2(675f, 55f)),
+                () => _controller.FinalizePregeneratedCharacter());
+            AddButton("Back", _bottomRegion, 323,
+                RetailPartialMainMenuLayout.BottomLocal(new Vector2(69f, 55f)),
+                () => _controller.Open(GameUiScreen.MainMenu));
+            AddButton("Previous Portrait", _window, 283,
+                RetailPartialMainMenuLayout.CenterLocal(new Vector2(43f, 118f)), () => Cycle(-1));
+            AddButton("Next Portrait", _window, 284,
+                RetailPartialMainMenuLayout.CenterLocal(new Vector2(244f, 118f)), () => Cycle(1));
             _name = AddText("Name", new Rect(46f, 183f, 228f, 18f), 27, SourceYellow);
             _gender = AddText("Gender", RetailCharacterCreationLayout.Gender, 27, SourceWhite);
             _race = AddText("Race", RetailCharacterCreationLayout.Race, 27, SourceWhite);
@@ -156,11 +178,11 @@ namespace Arcanum.Runtime.UI
             Synchronize();
         }
 
-        private void AddButton(string name, int sourceId, Vector2 topLeft, Action action)
+        private void AddButton(string name, RectTransform parent, int sourceId, Vector2 topLeft, Action action)
         {
             Vector2 size = _resolver.TryResolve(new UiAssetKey(sourceId), out UiResolvedAsset asset)
                 ? asset.LogicalSize : new Vector2(32f, 32f);
-            RectTransform target = AddRect(name, _window, new Rect(topLeft.x, topLeft.y, size.x, size.y));
+            RectTransform target = AddRect(name, parent, new Rect(topLeft.x, topLeft.y, size.x, size.y));
             target.gameObject.AddComponent<Image>();
             target.gameObject.AddComponent<Button>();
             target.gameObject.AddComponent<SourceUiImage>();
@@ -267,8 +289,12 @@ namespace Arcanum.Runtime.UI
                 if (Application.isPlaying) Object.Destroy(_canvasRoot); else Object.DestroyImmediate(_canvasRoot);
             }
             _canvasRoot = null;
+            _topRegion = null;
             _window = null;
+            _bottomRegion = null;
+            _topBackground = null;
             _background = null;
+            _bottomBackground = null;
             _portrait = null;
             _stats.Clear();
             _textBounds.Clear();
