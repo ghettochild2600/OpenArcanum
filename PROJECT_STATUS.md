@@ -2830,17 +2830,22 @@ complete. UI-C overall remains open on the four displayed skill-action kernels, 
 and bed-authority blockers above. UI-D.2 source-faithful three-window Character Creation and ID 766 Pick Character are complete
 with M12B authority preserved. UI-E.2 Character/Skills reconstruction is complete with M4 authority unchanged.
 
-The read-only UI-F Dialogue/Journal/Party source audit is complete. It corrects two earlier assumptions: ordinary
-dialogue is an NPC world bubble plus a five-line live-world response strip rather than an ornate portrait modal, and
-followers use a persistent six-slot left HUD stack rather than a modal Party screen. The exact Logbook book/tabs/page
-composition is bounded, but only Quests has a complete source projection. Party still needs portrait/poison projection
-and selected-follower command authority. See
+The UI-F Dialogue/Journal/Party source audit is complete, and UI-F.1 ordinary Dialogue presentation is now
+implemented and physically validated. Authentic Virgil dialogue 1324 uses an NPC world bubble plus the exact
+five-line 400 x 100 live-world response strip above the persistent source HUD rather than an ornate portrait modal.
+Pointer selection advances the existing M5 transaction; source dialogue world movement stays open; number keys do
+not invent a response shortcut; and more than five eligible options fail closed. Focused UI-F.1/M5/keyboard
+validation passed **84/84**. The production 800 x 600 proof passed with pointer advancement, one presenter, one
+EventSystem, and a cleared 0-warning/0-error Console; deterministic native-geometry checks cover 768p, 1080p, 1440p,
+and 4K. Followers use a persistent six-slot left HUD stack rather than a modal Party screen. The exact Logbook
+book/tabs/page composition is bounded, but only Quests has a complete source projection. Party still needs
+portrait/poison projection and selected-follower command authority. See
 [`documentation_unity/ui/ui-f-dialogue-journal-party-audit.md`](documentation_unity/ui/ui-f-dialogue-journal-party-audit.md).
 
-After the user physically reviews this corrective pass, the next safe implementation is **UI-F.1 — Source Dialogue
-Presentation** only: world-anchored NPC speech, the exact
-five-line `tc` response overlay, and source dialogue-mode input ownership over existing transactional dialogue,
-training, and audio authority. First physically confirm the registered ID 354 rotating-window role. Do not add
-portraits, use unproven ID 822, invent response scrolling, enable unsupported special transitions, start the Logbook,
-or start the follower HUD in that slice.
+The next independent implementation boundary is **UI-F.2a — Source Logbook Shell + Quests**: exact fixed book art,
+seven-tab shell, two-page quest pagination, source typography, PC-lens close, page turns, and existing authoritative
+quest projection. The six tabs without complete data authority must remain visibly unavailable rather than showing
+fake empty data. RetailSandbox currently exits before creating a window, so physical retail Logbook certification is
+blocked; do not call UI-F.2a complete without that proof. Do not start the follower HUD until UI-F.2a is green, and do
+not use unproven dialogue ID 822 or invent unsupported dialogue special transitions.
 Continue M13A only from concrete user-discovered campaign defects; do not start an autonomous campaign playthrough.

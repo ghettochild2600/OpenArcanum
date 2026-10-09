@@ -226,6 +226,7 @@ namespace Arcanum.Runtime.UI
         public bool HasPlayer => _session.PlayerState != null;
         public ArcanumObjectId Player => _session.PlayerState?.Identity ?? default;
         public bool IsModalOpen => Screen != GameUiScreen.None;
+        public bool BlocksWorldInput => Screen != GameUiScreen.None && Screen != GameUiScreen.Dialogue;
         public GameUiHudPanel HudPanel { get; private set; }
         public SleepLocationMode ActiveSleepMode { get; private set; }
         public bool IsHudPanelOpen => HudPanel != GameUiHudPanel.None;

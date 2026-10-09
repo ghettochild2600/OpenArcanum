@@ -2,9 +2,10 @@
 
 ## Status and boundary
 
-This is a read-only source-archaeology result. It changes no production runtime, test, scene, prefab, or retail data.
-The audit traces the actual `arcanum-ce` creation and event paths before treating an ART name or decoded bitmap as
-screen evidence. OpenArcanum gameplay authority remains unchanged.
+The source audit is complete and **UI-F.1 — Source Dialogue Presentation** is now implemented and physically
+validated in the production scene. The audit still defines the unimplemented UI-F.2 Logbook and UI-F.3 follower
+boundaries. OpenArcanum dialogue gameplay authority remains unchanged: the new view observes the existing M5
+transaction and submits response selection; it does not own dialogue state or script effects.
 
 The principal result is that UI-F is not one safe presentation-only milestone:
 
@@ -119,6 +120,34 @@ It must not add portraits, use ID 822, invent response scrolling/pagination, acc
 presented source options, or synthesize unsupported barter/map/schematic/identify/repair transitions. If a real
 dialogue produces more than five eligible responses, that is a source/data-authority defect to investigate, not a UI
 scrolling request.
+
+### UI-F.1 implementation and validation (2026-10-08)
+
+The production presenter now creates one disposable `RetailDialogueView` over the ordinary world. Authentic Virgil
+dialogue 1324 physically proved the following in the existing Unity Editor:
+
+- Virgil's current NPC line appears in a world-anchored white speech bubble while the crash-site world and source HUD
+  remain visible;
+- the response surface is the source 400 x 100 strip immediately above the 159 px bottom HUD, with no portrait modal;
+- the strip uses source font ID 229, white text with black shadow, yellow pointer hover, 6 px horizontal padding,
+  20 px rows, and a strict five-response boundary;
+- pointer selection advanced the real M5 Virgil transaction from the first response set to the next NPC line and
+  response set;
+- dialogue retains response-pointer precedence but leaves the source world-movement path open; other true modal
+  screens continue to block world input;
+- number keys remain owned/suppressed by dialogue mode but do not select a response. This matches both the physical
+  retail observation and `tc_handle_message`, whose response selection path is mouse-down only;
+- more than five eligible responses fail closed visibly instead of inventing scrolling or pagination;
+- the production scene retained one production presenter and one EventSystem.
+
+The 800 x 600 production Game view was visually inspected. Deterministic geometry checks cover 1024 x 768,
+1920 x 1080, 2560 x 1440, and 3840 x 2160 without stretching the native strip. Focused UI-F.1 plus M5A/M5B/M5C
+and production-keyboard validation passed **84/84**, with 0 failed, skipped, or inconclusive. Unity compilation is
+clean. The focused run's four warnings are expected diagnostics asserted by existing transactional dialogue tests;
+the cleared production physical proof ended with 0 warnings and 0 errors.
+
+Retail voice parity is not claimed: the retail oracle remains on the source-supported `-nosound` path. Existing M12D
+voice selection and line-lifecycle authority was preserved and was not duplicated in this view.
 
 ## Journal / Logbook
 

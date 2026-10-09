@@ -87,6 +87,11 @@ namespace Arcanum.Runtime.World
             Vector3 screen = Input.mousePosition;
             screen.z = Mathf.Abs(cam.transform.position.z - _loader.transform.position.z);
             Vector3 world = cam.ScreenToWorldPoint(screen);
+            if (_loader.Session.Dialogue.Phase == Arcanum.Runtime.Dialogue.DialogueSessionPhase.AwaitingPlayerChoice)
+            {
+                SubmitGroundMove(world);
+                return;
+            }
             _combatPresenter ??= GetComponent<ProductionCombatPresenter>();
             if (_combatPresenter != null && _combatPresenter.TryHandleWorldClick(world))
             {
@@ -125,6 +130,11 @@ namespace Arcanum.Runtime.World
                 LastClickAccepted = result.IsAccepted;
                 return;
             }
+            SubmitGroundMove(world);
+        }
+
+        private void SubmitGroundMove(Vector3 world)
+        {
             Vector3 local = _loader.transform.InverseTransformPoint(world);
             Vector2Int tile = IsoProjection.WorldToTile(local, _loader.PixelsPerUnit);
             LastClickedTile = tile;

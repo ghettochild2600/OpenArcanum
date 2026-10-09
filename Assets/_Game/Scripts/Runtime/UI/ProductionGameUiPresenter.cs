@@ -41,6 +41,7 @@ namespace Arcanum.Runtime.UI
         private RetailGameplayHudView _retailGameplayHud;
         private RetailInventoryEquipmentView _retailInventory;
         private RetailCharacterSheetView _retailCharacterSheet;
+        private RetailDialogueView _retailDialogue;
         private Vector2 _scroll;
         private Rect _panelRect;
         private bool _showHud = true;
@@ -75,7 +76,7 @@ namespace Arcanum.Runtime.UI
         }
         public float PresentationScale => Mathf.Clamp(Mathf.Min(Screen.width / ReferenceWidth,
             Screen.height / ReferenceHeight), .75f, 1.5f);
-        public bool IsInputBlocked => Controller?.IsModalOpen == true;
+        public bool IsInputBlocked => Controller?.BlocksWorldInput == true;
         public ProductionKeyboardController Keyboard => _keyboard;
 
         private void Awake()
@@ -108,6 +109,8 @@ namespace Arcanum.Runtime.UI
             _retailCharacterSheet = GetComponent<RetailCharacterSheetView>()
                                     ?? gameObject.AddComponent<RetailCharacterSheetView>();
             _retailCharacterSheet.Bind(_controller, _session, _retailGameplayHud.Resolver);
+            _retailDialogue = GetComponent<RetailDialogueView>() ?? gameObject.AddComponent<RetailDialogueView>();
+            _retailDialogue.Bind(_controller, _session, _retailGameplayHud.Resolver);
             DisableLegacyPresenters();
         }
 
@@ -147,6 +150,7 @@ namespace Arcanum.Runtime.UI
             _retailGameplayHud?.Synchronize(_showHud);
             _retailInventory?.Synchronize();
             _retailCharacterSheet?.Synchronize();
+            _retailDialogue?.Synchronize();
             if (Controller.Screen == GameUiScreen.MainMenu && _retailMainMenu?.IsAvailable == true)
                 return;
 
@@ -171,11 +175,6 @@ namespace Arcanum.Runtime.UI
                 Open(GameUiScreen.Merchant);
                 Controller.BeginMerchantTargeting();
             }
-            if (Controller.Screen == GameUiScreen.Dialogue)
-                for (int index = 0; index < Controller.Dialogue.AvailableResponses.Count && index < 9; index++)
-                    if (Input.GetKeyDown((KeyCode)((int)KeyCode.Alpha1 + index)))
-                        Controller.SelectDialogueResponse(index);
-
             HandleWorldPointer();
             SyncInputGate();
         }
@@ -344,6 +343,7 @@ namespace Arcanum.Runtime.UI
             if (_retailPregeneratedCharacter?.IsVisible == true) return true;
             if (_retailCharacterSheet?.ContainsScreenPoint(mouse) == true) return true;
             if (_retailInventory?.ContainsScreenPoint(mouse) == true) return true;
+            if (_retailDialogue?.ContainsScreenPoint(mouse) == true) return true;
             if (_retailGameplayHud?.ContainsScreenPoint(mouse) == true) return true;
             Vector2 guiPoint = new(mouse.x, Screen.height - mouse.y);
             if (_retailGameplayHud?.IsAvailable == true) return _panelRect.Contains(guiPoint);
@@ -361,6 +361,7 @@ namespace Arcanum.Runtime.UI
             _retailGameplayHud?.Synchronize(_showHud);
             _retailInventory?.Synchronize();
             _retailCharacterSheet?.Synchronize();
+            _retailDialogue?.Synchronize();
             bool sourceMainMenu = Controller.Screen == GameUiScreen.MainMenu
                                   && _retailMainMenu?.IsAvailable == true;
             bool sourceCharacterCreation = Controller.Screen == GameUiScreen.CharacterCreation
@@ -371,10 +372,12 @@ namespace Arcanum.Runtime.UI
                                    && _retailInventory?.IsAvailable == true;
             bool sourceCharacter = Controller.Screen == GameUiScreen.Character
                                    && _retailCharacterSheet?.IsAvailable == true;
+            bool sourceDialogue = Controller.Screen == GameUiScreen.Dialogue
+                                  && _retailDialogue?.IsAvailable == true;
             GUI.depth = -120;
             if (_showHud && _retailGameplayHud?.IsAvailable != true) DrawHud();
             if (Controller.IsModalOpen && !sourceMainMenu && !sourceCharacterCreation && !sourcePregeneratedCharacter && !sourceInventory
-                && !sourceCharacter)
+                && !sourceCharacter && !sourceDialogue)
                 DrawScreen();
             DrawCursorLabel();
         }
@@ -1019,7 +1022,7 @@ namespace Arcanum.Runtime.UI
         private void SyncInputGate()
         {
             _inputGate ??= GetComponent<PlayerInputGate>();
-            _inputGate?.SetBlocked(Controller?.IsModalOpen == true);
+            _inputGate?.SetBlocked(Controller?.BlocksWorldInput == true);
         }
 
         private void EnsureController()

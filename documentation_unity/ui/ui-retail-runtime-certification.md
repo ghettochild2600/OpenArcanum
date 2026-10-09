@@ -39,6 +39,8 @@ Rows use: **PASS**, **VISUAL MISMATCH**, **BEHAVIOR MISMATCH**, **MISSING**, **I
 | Gameplay | crash-site movement | click, Ctrl-click, NumLock | ordinary click walks; Ctrl-click runs; NumLock enables persistent Always Run; sustained Ctrl while Always Run stays running | production input now treats Ctrl and Always Run as independent run requests | `intgame.c` calls `turn_on_running` in the Ctrl branch before consulting Always Run; `anim.c::get_always_run` inversion is bypassed by this pointer-click path | PASS | old OpenArcanum XOR interpretation contradicted retail and the controlling source path | corrected at the production input boundary; no movement clock or animation authority changed |
 | Gameplay | combat readiness | `R` and HUD control | both enter and leave combat when legal; leaving is rejected while Virgil remains hostile | both routes delegate to coordinator-owned combat readiness | `intgame.c`; M8/UI-C authority | PASS | none observed | none |
 | Sleep/Wait | crash site | source menu | `S` opens seven wait rows in order: Advance Time One Hour, Two Hours, Four Hours, Eight Hours, One Day, to Morning, to Evening; no Until Healed row; ID 293 hover frame observed | production classifies the authentic crash-site sector as TownWait and exposes the same seven choices | `sleep_ui.c`; `TownMapInfo`; `townmap.mes [w:1]`; UI-C.5 tests/validator | BLOCKED | duration execution was interrupted; subsequent RetailSandbox restarts currently exit before creating a window | retain M3 as open; do not infer clock/recovery behavior from menu visibility alone |
+| Starting equipment | after Character Editor Continue | Shopkeeper transition | retail enters the shopping map before START_MAP | OpenArcanum currently finalizes directly into START_MAP | `gameinit.c` selects `MAP_TYPE_SHOPPING_MAP`; `mainmenu_ui.c` refreshes the first NPC and opens shared barter inventory | MISSING | required intermediate lifecycle and authored shopping actor/state do not yet exist | do not substitute a generic merchant; implement a bounded creation-to-shopping-to-start transaction after the retail process is available again |
+| Dialogue | Virgil at crash site | ordinary conversation | NPC speech is over the live world and PC responses occupy a lower live-world strip; pointer selection advances; number-key selection did not respond in the observed run | UI-F.1 now presents the authentic Virgil M5 transaction as a world bubble plus five-row 400 x 100 source-font strip above the persistent HUD; pointer selection physically advances and dialogue leaves world movement open | `dialog_ui.c`; `tc.c`; `intgame.c`; UI-F.1 tests and production validator | PASS | prior generic nine-choice blocking modal contradicted retail/source | corrected without moving dialogue authority into the view; physical retail audio parity remains unclaimed under `-nosound` |
 
 ## M0 DirectInput bridge
 
@@ -81,8 +83,11 @@ IDs are the source bindings used by the matching engine-owned prototype. Attribu
 
 M0, M1, and M2 are closed. M3 movement and combat are physically certified. M3 Sleep/Wait remains open only on
 executing the displayed retail duration rows and recording the resulting clock transitions; OpenArcanum's existing
-town-wait and wilderness-sleep transactions remain green. Shopping is the next independent gap assessment because
-retail Continue enters the Shopkeeper flow and OpenArcanum currently proceeds directly to START_MAP. The complete
+town-wait and wilderness-sleep transactions remain green. M4 is a confirmed gap: retail enters the authored
+Shopkeeper shopping map while OpenArcanum currently proceeds directly to START_MAP. Its implementation stays blocked
+until the exact retail transaction can be observed again and the intermediate lifecycle is bounded; a generic
+merchant substitute is rejected. M6 UI-F.1 ordinary dialogue presentation is implemented and green from the prior
+physical retail Virgil observation, controlling source, focused tests, and production Unity proof. The complete
 EditMode suite remains deferred to the single final batch gate after the authorized sequential phases.
 
 ## OpenArcanum-side revalidation
