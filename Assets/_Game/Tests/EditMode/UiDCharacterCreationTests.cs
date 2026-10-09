@@ -244,6 +244,23 @@ namespace Arcanum.Formats.Tests
         {
             Assert.That(_session.CharacterCreation.GetEffectiveAttribute(_controller.CreationDraft,
                 CharacterAttribute.Beauty), Is.EqualTo(8));
+            SourceUiBitmapText[] labels = _view.GetComponentsInChildren<SourceUiBitmapText>(true);
+            Assert.That(labels.Single(value => value.name == "Initial Strength").Text, Is.EqualTo("ST:8"));
+            Assert.That(labels.Single(value => value.name == "Initial Constitution").Text, Is.EqualTo("CN:8"));
+            Assert.That(labels.Single(value => value.name == "Initial Dexterity").Text, Is.EqualTo("DX:8"));
+            Assert.That(labels.Single(value => value.name == "Initial Willpower").Text, Is.EqualTo("WP:8"));
+            Assert.That(labels.Single(value => value.name == "Initial Derived 0").Text,
+                Is.EqualTo("Carry Weight:4000"));
+            Assert.That(labels.Single(value => value.name == "Initial Derived 1").Text,
+                Is.EqualTo("Damage Bonus:-1"));
+            Assert.That(labels.Single(value => value.name == "Initial Derived 2").Text,
+                Is.EqualTo("AC Adjustment:-2"));
+            Assert.That(labels.Single(value => value.name == "Initial Derived 3").Text, Is.EqualTo("Speed:8"));
+            Assert.That(labels.Single(value => value.name == "Initial Derived 4").Text, Is.EqualTo("Heal Rate:3"));
+            Assert.That(labels.Single(value => value.name == "Initial Derived 5").Text,
+                Is.EqualTo("Poison Recovery:8"));
+            Assert.That(labels.Single(value => value.name == "Initial Derived 6").Text,
+                Is.EqualTo("Reaction Modifier:-7"));
             Invoke("Next Background");
             Assert.That(_session.CharacterCreation.GetEffectiveAttribute(_controller.CreationDraft,
                 CharacterAttribute.Beauty), Is.EqualTo(7));
@@ -251,6 +268,10 @@ namespace Arcanum.Formats.Tests
             SourceUiBitmapText beauty = _view.GetComponentsInChildren<SourceUiBitmapText>(true)
                 .Single(value => value.name == "Initial Beauty");
             Assert.That(beauty.Text, Is.EqualTo("BE:7"));
+            SourceUiBitmapText reaction = _view.GetComponentsInChildren<SourceUiBitmapText>(true)
+                .Single(value => value.name == "Initial Derived 6");
+            Assert.That(reaction.Text,
+                Is.EqualTo("Reaction Modifier:-12"));
             Invoke("Previous Background");
             Assert.That(_session.CharacterCreation.GetEffectiveAttribute(_controller.CreationDraft,
                 CharacterAttribute.Beauty), Is.EqualTo(8));

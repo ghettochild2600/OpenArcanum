@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Arcanum.Formats.Objects;
 using Arcanum.Runtime.Character;
 using Arcanum.Runtime.Creation;
 using Arcanum.Runtime.World;
@@ -23,6 +22,12 @@ namespace Arcanum.Runtime.UI
         private static readonly Color SourceWhite = new Color32(231, 217, 174, 255);
         private static readonly Color SourceYellow = new Color32(245, 201, 65, 255);
         private static readonly Rect PortraitDraw = new(95f, 28f, 128f, 128f);
+        private static readonly CharacterAttribute[] InitialAttributeOrder =
+        {
+            CharacterAttribute.Strength, CharacterAttribute.Constitution, CharacterAttribute.Dexterity,
+            CharacterAttribute.Beauty, CharacterAttribute.Intelligence, CharacterAttribute.Willpower,
+            CharacterAttribute.Perception, CharacterAttribute.Charisma,
+        };
 
         private GameUiController _controller;
         private WorldMapSessionCoordinator _session;
@@ -43,6 +48,7 @@ namespace Arcanum.Runtime.UI
         private RectTransform _description;
         private SourceUiBitmapText _feedback;
         private readonly List<SourceUiBitmapText> _stats = new();
+        private readonly List<SourceUiBitmapText> _derivedStats = new();
         private readonly Dictionary<SourceUiBitmapText, Rect> _textBounds = new();
         private int _signature = int.MinValue;
 
@@ -133,6 +139,15 @@ namespace Arcanum.Runtime.UI
                 float y = 46f + 20f * (index % 4);
                 _stats.Add(AddText($"Stat {index}", new Rect(x, y, 50f, 15f), 26, SourceWhite));
             }
+            Rect[] derivedStats =
+            {
+                new(472f, 46f, 140f, 15f), new(472f, 66f, 140f, 15f),
+                new(472f, 86f, 140f, 15f), new(472f, 106f, 140f, 15f),
+                new(616f, 46f, 130f, 15f), new(616f, 66f, 130f, 15f),
+                new(616f, 86f, 130f, 15f),
+            };
+            for (int index = 0; index < derivedStats.Length; index++)
+                _derivedStats.Add(AddText($"Derived Stat {index}", derivedStats[index], 26, SourceWhite));
             _descriptionTitle = AddText("Description Title", RetailCharacterCreationLayout.DescriptionTitle,
                 27, SourceYellow);
             _description = AddRect("Description", _window, RetailCharacterCreationLayout.DescriptionBody);
@@ -149,7 +164,6 @@ namespace Arcanum.Runtime.UI
         {
             PregeneratedCharacterDefinition selected = _session.CharacterCreation.Catalog.PregeneratedCharacters
                 .First(value => value.SourceIndex == _controller.PregeneratedCharacterIndex);
-            ObjectProtoInfo prototype = _session.CharacterCreation.ResolvePregeneratedPrototype(selected);
             SetCentered(_name, selected.Name, SourceYellow);
             SetCentered(_gender, selected.Gender.ToString(), SourceWhite);
             SetCentered(_race, Friendly(selected.Race), SourceWhite);
@@ -166,9 +180,22 @@ namespace Arcanum.Runtime.UI
                     out PortraitDefinition portrait)
                 && _resolver.Original.TryResolvePortrait(portrait.SourceName, out RetailPortraitAsset asset))
                 _portrait.sprite = asset.Sprite;
-            string[] abbreviations = { "ST", "DX", "CN", "BE", "IN", "PE", "WP", "CH" };
+            CharacterCreationInitialStats initial = _session.CharacterCreation
+                .ProjectPregeneratedInitialStats(selected);
             for (int index = 0; index < _stats.Count; index++)
-                SetText(_stats[index], $"{abbreviations[index]}:{prototype?.StatBase?[index] ?? 0}", SourceWhite);
+            {
+                CharacterAttribute attribute = InitialAttributeOrder[index];
+                SetText(_stats[index], $"{Short(attribute)}:{initial.GetAttribute(attribute)}", SourceWhite);
+            }
+            string[] derived =
+            {
+                $"Carry Weight:{initial.CarryWeight}", $"Damage Bonus:{initial.DamageBonus}",
+                $"AC Adjustment:{initial.ArmorClassAdjustment}", $"Speed:{initial.Speed}",
+                $"Heal Rate:{initial.HealRate}", $"Poison Recovery:{initial.PoisonRecovery}",
+                $"Reaction Modifier:{initial.ReactionModifier}",
+            };
+            for (int index = 0; index < _derivedStats.Count; index++)
+                SetText(_derivedStats[index], derived[index], SourceWhite);
         }
 
         private void Cycle(int direction)
@@ -297,8 +324,18 @@ namespace Arcanum.Runtime.UI
             _bottomBackground = null;
             _portrait = null;
             _stats.Clear();
+            _derivedStats.Clear();
             _textBounds.Clear();
             _signature = int.MinValue;
         }
+
+        private static string Short(CharacterAttribute attribute) => attribute switch
+        {
+            CharacterAttribute.Strength => "ST", CharacterAttribute.Constitution => "CN",
+            CharacterAttribute.Dexterity => "DX", CharacterAttribute.Beauty => "BE",
+            CharacterAttribute.Intelligence => "IN", CharacterAttribute.Willpower => "WP",
+            CharacterAttribute.Perception => "PE", CharacterAttribute.Charisma => "CH",
+            _ => string.Empty,
+        };
     }
 }

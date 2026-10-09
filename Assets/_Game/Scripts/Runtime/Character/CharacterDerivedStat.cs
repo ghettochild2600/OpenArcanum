@@ -56,6 +56,9 @@ namespace Arcanum.Runtime.Character
     /// <summary>Audited identities, bounds, and innate race inputs for the M4D subset.</summary>
     public static class CharacterDerivedStatRules
     {
+        private static readonly int[] BeautyReactionModifiers =
+            { -65, -52, -42, -33, -25, -18, -12, -7, -3, 0, 3, 7, 12, 18, 25, 33, 42, 52, 65, 75 };
+
         public const int AlignmentSourceSlot = 19;
         public const int MagickPointsSourceSlot = 22;
         public const int TechPointsSourceSlot = 23;
@@ -93,6 +96,36 @@ namespace Arcanum.Runtime.Character
                     "Unknown source resistance type.");
         }
 
+        public static int CarryWeightFromStrength(int strength)
+            => Clamp(500 * strength, 300, 10000);
+
+        public static int MeleeDamageBonusFromStrength(int strength)
+        {
+            int value = strength - 10;
+            if (value < 0) value /= 2;
+            if (strength >= 20) value *= 2;
+            return Clamp(value, -50, 50);
+        }
+
+        public static int ArmorClassAdjustmentFromDexterity(int dexterity)
+            => Clamp(dexterity - 10, -9, 95);
+
+        public static int SpeedFromDexterity(int dexterity)
+            => Clamp(dexterity + (dexterity >= 20 ? 5 : 0), 1, 100);
+
+        public static int HealRateFromConstitution(int constitution)
+            => Clamp((constitution + 1) / 3, 0, 6);
+
+        public static int PoisonRecoveryFromConstitution(int constitution)
+            => Clamp(constitution, 1, 20);
+
+        public static int BeautyReactionModifierFromBeauty(int beauty)
+        {
+            beauty = Math.Max(CharacterAttributeSet.SourceMinimum, beauty);
+            int value = beauty >= 20 ? 2 * (5 * beauty - 50) : BeautyReactionModifiers[beauty - 1];
+            return Clamp(value, -65, 200);
+        }
+
         internal static int AptitudePointAdjustment(CharacterRace race, bool magick)
         {
             CharacterAttributeRules.ValidateRace(race);
@@ -117,5 +150,8 @@ namespace Arcanum.Runtime.Character
                 _ => 0,
             };
         }
+
+        private static int Clamp(int value, int minimum, int maximum)
+            => Math.Max(minimum, Math.Min(maximum, value));
     }
 }

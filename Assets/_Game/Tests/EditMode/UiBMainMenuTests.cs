@@ -213,6 +213,29 @@ namespace Arcanum.Formats.Tests
         }
 
         [Test]
+        [Category("UID2CharacterCreation")]
+        public void PickCharacterProjectsTheRetailMerwinInitialStatsInsteadOfRawPrototypeDefaults()
+        {
+            RetailMainMenuModel model = Model();
+            model.Submit(RetailMainMenuCommand.SinglePlayer);
+            model.Submit(RetailMainMenuCommand.NewGame);
+            model.Submit(RetailMainMenuCommand.PickCharacter);
+            RetailPregeneratedCharacterView view = _root.AddComponent<RetailPregeneratedCharacterView>();
+            view.Bind(_controller, _session, _skin);
+            view.Synchronize();
+
+            Dictionary<string, string> text = view.GetComponentsInChildren<SourceUiBitmapText>(true)
+                .ToDictionary(value => value.name, value => value.Text);
+            Assert.That(Enumerable.Range(0, 8).Select(index => text[$"Stat {index}"]), Is.EqualTo(new[]
+                { "ST:5", "CN:8", "DX:10", "BE:8", "IN:8", "WP:8", "PE:8", "CH:8" }));
+            Assert.That(Enumerable.Range(0, 7).Select(index => text[$"Derived Stat {index}"]), Is.EqualTo(new[]
+            {
+                "Carry Weight:2500", "Damage Bonus:-2", "AC Adjustment:0", "Speed:10",
+                "Heal Rate:3", "Poison Recovery:8", "Reaction Modifier:-7",
+            }));
+        }
+
+        [Test]
         public void ExitRequiresConfirmationAndInvokesBoundQuitExactlyOnce()
         {
             int quits = 0;

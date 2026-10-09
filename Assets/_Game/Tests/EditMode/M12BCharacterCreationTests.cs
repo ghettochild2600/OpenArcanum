@@ -259,6 +259,32 @@ namespace Arcanum.Formats.Tests
         }
 
         [Test]
+        public void PregeneratedInitialStatsApplyRaceGenderBackgroundAndSharedDerivedRules()
+        {
+            PregeneratedCharacterDefinition selected = _session.CharacterCreation.Catalog.PregeneratedCharacters
+                .Single(value => value.SourceIndex == 1);
+            CharacterCreationInitialStats stats = _session.CharacterCreation
+                .ProjectPregeneratedInitialStats(selected);
+
+            Assert.That(new[]
+            {
+                stats.GetAttribute(CharacterAttribute.Strength),
+                stats.GetAttribute(CharacterAttribute.Constitution),
+                stats.GetAttribute(CharacterAttribute.Dexterity),
+                stats.GetAttribute(CharacterAttribute.Beauty),
+                stats.GetAttribute(CharacterAttribute.Intelligence),
+                stats.GetAttribute(CharacterAttribute.Willpower),
+                stats.GetAttribute(CharacterAttribute.Perception),
+                stats.GetAttribute(CharacterAttribute.Charisma),
+            }, Is.EqualTo(new[] { 5, 8, 10, 8, 8, 8, 8, 8 }));
+            Assert.That(new[]
+            {
+                stats.CarryWeight, stats.DamageBonus, stats.ArmorClassAdjustment, stats.Speed,
+                stats.HealRate, stats.PoisonRecovery, stats.ReactionModifier,
+            }, Is.EqualTo(new[] { 2500, -2, 0, 10, 3, 8, -7 }));
+        }
+
+        [Test]
         public void PregeneratedPrototypeFinalizesExactlyOnceWithSourceIdentityInventoryFlagAndSaveLoad()
         {
             CharacterCreationFinalizeResult result = _session.CharacterCreation.FinalizePregeneratedCharacter(1);

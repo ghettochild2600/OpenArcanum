@@ -72,6 +72,44 @@ namespace Arcanum.Runtime.Creation
         }
     }
 
+    /// <summary>Read-only source Initial Stats projection used by both new and pregenerated character screens.</summary>
+    public readonly struct CharacterCreationInitialStats
+    {
+        private readonly int[] _attributes;
+
+        public int CarryWeight { get; }
+        public int DamageBonus { get; }
+        public int ArmorClassAdjustment { get; }
+        public int Speed { get; }
+        public int HealRate { get; }
+        public int PoisonRecovery { get; }
+        public int ReactionModifier { get; }
+
+        internal CharacterCreationInitialStats(int[] attributes)
+        {
+            if (attributes == null || attributes.Length < CharacterAttributeSet.Count)
+                throw new ArgumentException("A complete source attribute projection is required.", nameof(attributes));
+            _attributes = attributes.ToArray();
+            int strength = attributes[(int)CharacterAttribute.Strength];
+            int constitution = attributes[(int)CharacterAttribute.Constitution];
+            int dexterity = attributes[(int)CharacterAttribute.Dexterity];
+            int beauty = attributes[(int)CharacterAttribute.Beauty];
+            CarryWeight = CharacterDerivedStatRules.CarryWeightFromStrength(strength);
+            DamageBonus = CharacterDerivedStatRules.MeleeDamageBonusFromStrength(strength);
+            ArmorClassAdjustment = CharacterDerivedStatRules.ArmorClassAdjustmentFromDexterity(dexterity);
+            Speed = CharacterDerivedStatRules.SpeedFromDexterity(dexterity);
+            HealRate = CharacterDerivedStatRules.HealRateFromConstitution(constitution);
+            PoisonRecovery = CharacterDerivedStatRules.PoisonRecoveryFromConstitution(constitution);
+            ReactionModifier = CharacterDerivedStatRules.BeautyReactionModifierFromBeauty(beauty);
+        }
+
+        public int GetAttribute(CharacterAttribute attribute)
+        {
+            CharacterAttributeRules.ValidateAttribute(attribute);
+            return _attributes[(int)attribute];
+        }
+    }
+
     /// <summary>UI-independent, reversible source choices. This editor state is never saved in Session V1.</summary>
     public sealed class CharacterCreationSpecification
     {
@@ -893,6 +931,36 @@ namespace Arcanum.Runtime.Creation
             if (Catalog == null || !Catalog.TryGetBackground(source.BackgroundId,
                     out BackgroundDefinition background)) return source.GetAttribute(attribute);
             return EffectiveAttribute(source, background, attribute);
+        }
+
+        public CharacterCreationInitialStats ProjectInitialStats(CharacterCreationSpecification source)
+        {
+            if (source == null) throw new ArgumentNullException(nameof(source));
+            var attributes = new int[CharacterAttributeSet.Count];
+            foreach (CharacterAttribute attribute in CharacterStatService.AllAttributes)
+                attributes[(int)attribute] = GetEffectiveAttribute(source, attribute);
+            return new CharacterCreationInitialStats(attributes);
+        }
+
+        public CharacterCreationInitialStats ProjectPregeneratedInitialStats(
+            PregeneratedCharacterDefinition source)
+        {
+            if (source == null) throw new ArgumentNullException(nameof(source));
+            ObjectProtoInfo prototype = ResolvePregeneratedPrototype(source);
+            if (prototype?.StatBase == null || prototype.StatBase.Length < CharacterAttributeSet.Count)
+                throw new InvalidOperationException($"Retail PC prototype {source.PrototypeNumber} is unavailable or incomplete.");
+            BackgroundDefinition background = null;
+            if (Catalog != null) Catalog.TryGetBackground(source.BackgroundId, out background);
+            var attributes = new int[CharacterAttributeSet.Count];
+            foreach (CharacterAttribute attribute in CharacterStatService.AllAttributes)
+            {
+                int value = prototype.StatBase[(int)attribute]
+                            + CharacterAttributeSet.SourceAdjustment(source.Race, source.Gender, attribute)
+                            + (background?.AttributeModifiers.GetValueOrDefault(attribute) ?? 0);
+                attributes[(int)attribute] = Math.Max(CharacterAttributeSet.SourceMinimum,
+                    Math.Min(CharacterAttributeSet.SourceMaximumFor(source.Race, attribute), value));
+            }
+            return new CharacterCreationInitialStats(attributes);
         }
 
         public int GetEffectiveSkillRank(CharacterCreationSpecification source, CharacterSkill skill)

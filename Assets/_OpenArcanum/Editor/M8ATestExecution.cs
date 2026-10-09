@@ -785,6 +785,7 @@ internal sealed class M8ATestExecution : ScriptableObject, ICallbacks
 
     private void RunNext()
     {
+        if (!_active || _filters == null || _labels == null) return;
         if (_index >= _filters.Length)
         {
             _active = false;

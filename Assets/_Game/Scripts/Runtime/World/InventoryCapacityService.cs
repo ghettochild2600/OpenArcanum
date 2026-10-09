@@ -75,7 +75,7 @@ namespace Arcanum.Runtime.World
             if (type is not ObjectType.Pc and not ObjectType.Npc)
                 throw new ArgumentException($"{type} does not have a carry-weight stat.", nameof(actorIdentity));
             int strength = _session.Characters.GetEffectiveAttribute(actorIdentity, CharacterAttribute.Strength);
-            return Math.Max(MinimumCarryCapacity, Math.Min(MaximumCarryCapacity, 500 * strength));
+            return CharacterDerivedStatRules.CarryWeightFromStrength(strength);
         }
 
         int ICharacterCarryWeightProvider.GetCarryWeight(ArcanumObjectId identity) => GetCarryCapacity(identity);

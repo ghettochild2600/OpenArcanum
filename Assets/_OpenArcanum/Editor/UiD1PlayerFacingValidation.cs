@@ -159,6 +159,28 @@ namespace OpenArcanum.Editor
             IReadOnlyList<PregeneratedCharacterDefinition> pregens = session.CharacterCreation.Catalog
                 .PregeneratedCharacters;
             Check(pregens.Count == 12, "the retail corpus exposes exactly twelve pregenerated PCs");
+            int[][] expectedRetailStats =
+            {
+                new[] { 5, 8, 10, 8, 8, 8, 8, 8, 2500, -2, 0, 10, 3, 8, -7 },
+                new[] { 8, 6, 8, 8, 8, 10, 8, 8, 4000, -1, -2, 8, 2, 6, -7 },
+                new[] { 8, 7, 9, 9, 8, 8, 8, 8, 4000, -1, -1, 9, 2, 7, -3 },
+                new[] { 12, 8, 8, 7, 4, 8, 8, 8, 6000, 2, -2, 8, 3, 8, -12 },
+                new[] { 7, 6, 9, 9, 8, 9, 8, 8, 3500, -1, -1, 9, 2, 6, -3 },
+                new[] { 8, 8, 8, 8, 8, 8, 8, 8, 4000, -1, -2, 8, 3, 8, -7 },
+                new[] { 9, 9, 8, 6, 8, 8, 8, 6, 4500, 0, -2, 8, 3, 9, -18 },
+                new[] { 9, 9, 7, 8, 8, 8, 8, 7, 4500, 0, -3, 7, 3, 9, -7 },
+                new[] { 7, 9, 8, 8, 8, 8, 8, 8, 3500, -1, -2, 8, 3, 9, -7 },
+                new[] { 6, 7, 9, 9, 8, 9, 8, 8, 3000, -2, -1, 9, 2, 7, -3 },
+                new[] { 8, 10, 8, 6, 8, 8, 8, 6, 4000, -1, -2, 8, 3, 10, -18 },
+                new[] { 7, 8, 9, 9, 8, 8, 8, 8, 3500, -1, -1, 9, 3, 8, -3 },
+            };
+            CharacterAttribute[] initialOrder =
+            {
+                CharacterAttribute.Strength, CharacterAttribute.Constitution, CharacterAttribute.Dexterity,
+                CharacterAttribute.Beauty, CharacterAttribute.Intelligence, CharacterAttribute.Willpower,
+                CharacterAttribute.Perception, CharacterAttribute.Charisma,
+            };
+            string[] initialAbbreviations = { "ST", "CN", "DX", "BE", "IN", "WP", "PE", "CH" };
             var visited = new HashSet<int>();
             for (int index = 0; index < pregens.Count; index++)
             {
@@ -167,9 +189,41 @@ namespace OpenArcanum.Editor
                 Check(selected.PrototypeNumber == CharacterCreationRules.PlayerPrototypeNumber + selected.SourceIndex
                       && !string.IsNullOrWhiteSpace(selected.Name),
                     $"pregenerated source {selected.SourceIndex} retains its retail prototype and name mapping");
+                int[] expected = expectedRetailStats[selected.SourceIndex - pregens[0].SourceIndex];
+                CharacterCreationInitialStats initial = session.CharacterCreation
+                    .ProjectPregeneratedInitialStats(selected);
+                SourceUiBitmapText[] displayed = pregen.GetComponentsInChildren<SourceUiBitmapText>(true);
+                SourceUiBitmapText[] displayedNames = displayed
+                    .Where(value => value.name == "Name")
+                    .ToArray();
+                Check(displayedNames.Any(value => value.Text == selected.Name),
+                    $"pregenerated source {selected.SourceIndex} displays retail name {selected.Name}");
+                Check(pregen.PortraitImage.sprite != null,
+                    $"pregenerated source {selected.SourceIndex} displays its retail portrait");
+                for (int attributeIndex = 0; attributeIndex < initialOrder.Length; attributeIndex++)
+                {
+                    Check(initial.GetAttribute(initialOrder[attributeIndex]) == expected[attributeIndex]
+                          && displayed.Single(value => value.name == $"Stat {attributeIndex}").Text
+                          == $"{initialAbbreviations[attributeIndex]}:{expected[attributeIndex]}",
+                        $"pregenerated source {selected.SourceIndex} displays retail initial stat {initialAbbreviations[attributeIndex]}");
+                }
+                string[] expectedDerived =
+                {
+                    $"Carry Weight:{expected[8]}", $"Damage Bonus:{expected[9]}",
+                    $"AC Adjustment:{expected[10]}", $"Speed:{expected[11]}",
+                    $"Heal Rate:{expected[12]}", $"Poison Recovery:{expected[13]}",
+                    $"Reaction Modifier:{expected[14]}",
+                };
+                for (int derivedIndex = 0; derivedIndex < expectedDerived.Length; derivedIndex++)
+                {
+                    Check(displayed.Single(value => value.name == $"Derived Stat {derivedIndex}").Text
+                          == expectedDerived[derivedIndex],
+                        $"pregenerated source {selected.SourceIndex} displays retail derived stat {derivedIndex}");
+                }
                 visited.Add(selected.SourceIndex);
                 FindButton(pregen, "Next Portrait").onClick.Invoke();
                 pregen.Synchronize();
+                yield return null;
             }
             Check(visited.Count == pregens.Count && pregen.SelectedSourceIndex == pregens[0].SourceIndex,
                 "Next cycles every pregenerated PC exactly once and wraps deterministically");
@@ -268,7 +322,7 @@ namespace OpenArcanum.Editor
             Debug.Log("UI-D.1 PHYSICAL VALIDATION: PASS; portrait=128x128; selectors=100 cycles/no drift; "
                       + "gender=Human/Elf/Half-Elf/Half-Orc female and Dwarf/Gnome/Halfling/Half-Ogre male-only; "
                       + "attribute=one/two digit centered; gauge=ID623 120x27 sourceLevel/20 and refund; "
-                      + "pregen=ID766/12 entries/all prototype-backed/first+second start/V1 round-trip; "
+                      + "pregen=ID766/12 entries/exact retail initial+derived stats/all prototype-backed/first+second start/V1 round-trip; "
                       + "HUD=Skills rotating window/Spells/Schematics/Combat authority; "
                       + "skill icons=IDs279/280/282/278 frames0..1 only; unsupported gameplay authorities=fail closed/no mutation; "
                       + "resolutions=800x600/1024x768/1080p/1440p/4K; presenters=1; EventSystems=1. "

@@ -21,9 +21,6 @@ namespace Arcanum.Runtime.Character
     /// <summary>Authoritative deterministic M4D queries keyed by persistent character identity.</summary>
     public sealed class CharacterDerivedStatService
     {
-        private static readonly int[] BeautyReactionModifiers =
-            { -65, -52, -42, -33, -25, -18, -12, -7, -3, 0, 3, 7, 12, 18, 25, 33, 42, 52, 65, 75 };
-
         private static readonly int[,] RaceReactionModifiers =
         {
             { 0, 0, 5, 5, 0, 10, -5, -5 },
@@ -104,16 +101,20 @@ namespace Arcanum.Runtime.Character
             {
                 CharacterDerivedStat.CarryWeight => _carryWeight?.GetCarryWeight(identity)
                     ?? throw new InvalidOperationException("Carry weight requires the existing inventory-capacity authority."),
-                CharacterDerivedStat.MeleeDamageBonus => GetMeleeDamageBonus(identity),
-                CharacterDerivedStat.ArmorClassAdjustment => Clamp(
-                    Effective(identity, CharacterAttribute.Dexterity) - 10, -9, 95),
-                CharacterDerivedStat.Speed => Clamp(Effective(identity, CharacterAttribute.Dexterity)
-                    + (Effective(identity, CharacterAttribute.Dexterity) >= 20 ? 5 : 0), 1, 100),
-                CharacterDerivedStat.HealRate => Clamp((Effective(identity, CharacterAttribute.Constitution) + 1) / 3,
-                    0, 6),
-                CharacterDerivedStat.PoisonRecovery => Clamp(Effective(identity, CharacterAttribute.Constitution),
-                    1, 20),
-                CharacterDerivedStat.BeautyReactionModifier => GetBeautyReactionModifier(identity),
+                CharacterDerivedStat.MeleeDamageBonus => CharacterDerivedStatRules.MeleeDamageBonusFromStrength(
+                    Effective(identity, CharacterAttribute.Strength)),
+                CharacterDerivedStat.ArmorClassAdjustment =>
+                    CharacterDerivedStatRules.ArmorClassAdjustmentFromDexterity(
+                        Effective(identity, CharacterAttribute.Dexterity)),
+                CharacterDerivedStat.Speed => CharacterDerivedStatRules.SpeedFromDexterity(
+                    Effective(identity, CharacterAttribute.Dexterity)),
+                CharacterDerivedStat.HealRate => CharacterDerivedStatRules.HealRateFromConstitution(
+                    Effective(identity, CharacterAttribute.Constitution)),
+                CharacterDerivedStat.PoisonRecovery => CharacterDerivedStatRules.PoisonRecoveryFromConstitution(
+                    Effective(identity, CharacterAttribute.Constitution)),
+                CharacterDerivedStat.BeautyReactionModifier =>
+                    CharacterDerivedStatRules.BeautyReactionModifierFromBeauty(
+                        Effective(identity, CharacterAttribute.Beauty)),
                 CharacterDerivedStat.MaximumFollowers => Clamp(
                     Effective(identity, CharacterAttribute.Charisma) / 4
                     + (_progression.GetTrainingLevel(identity, CharacterSkill.Persuasion) >= SkillTrainingLevel.Expert
@@ -280,22 +281,6 @@ namespace Arcanum.Runtime.Character
 
         private int Effective(ArcanumObjectId identity, CharacterAttribute attribute)
             => _characters.GetEffectiveAttribute(identity, attribute);
-
-        private int GetMeleeDamageBonus(ArcanumObjectId identity)
-        {
-            int strength = Effective(identity, CharacterAttribute.Strength);
-            int value = strength - 10;
-            if (value < 0) value /= 2;
-            if (strength >= 20) value *= 2;
-            return Clamp(value, -50, 50);
-        }
-
-        private int GetBeautyReactionModifier(ArcanumObjectId identity)
-        {
-            int beauty = Effective(identity, CharacterAttribute.Beauty);
-            int value = beauty >= 20 ? 2 * (5 * beauty - 50) : BeautyReactionModifiers[beauty - 1];
-            return Clamp(value, -65, 200);
-        }
 
         private int GetEffectiveMagickPoints(PersistentCharacterDerivedState state)
             => Clamp(state.Source.MagickPoints + CharacterDerivedStatRules.AptitudePointAdjustment(

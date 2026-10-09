@@ -85,6 +85,12 @@ namespace Arcanum.Runtime.UI
             CharacterAttribute.Beauty, CharacterAttribute.Intelligence, CharacterAttribute.Perception,
             CharacterAttribute.Willpower, CharacterAttribute.Charisma,
         };
+        private static readonly CharacterAttribute[] InitialAttributeOrder =
+        {
+            CharacterAttribute.Strength, CharacterAttribute.Constitution, CharacterAttribute.Dexterity,
+            CharacterAttribute.Beauty, CharacterAttribute.Intelligence, CharacterAttribute.Willpower,
+            CharacterAttribute.Perception, CharacterAttribute.Charisma,
+        };
         private static readonly int[] SpellCollegeIcons =
             { 11, 44, 38, 92, 50, 86, 56, 98, 62, 68, 74, 104, 110, 80, 116, 122 };
         private static readonly Vector2[] SpellCollegePositions =
@@ -131,6 +137,7 @@ namespace Arcanum.Runtime.UI
         private SourceUiBitmapText _identityFeedbackText;
         private SourceUiBitmapText _editorFeedbackText;
         private readonly List<SourceUiBitmapText> _identityStats = new();
+        private readonly List<SourceUiBitmapText> _identityDerivedStats = new();
         private readonly Dictionary<CharacterAttribute, SourceUiBitmapText> _attributeValues = new();
         private readonly Dictionary<CharacterAttribute, (SourceUiButton Minus, SourceUiButton Plus)> _attributeButtons = new();
         private readonly Dictionary<RetailCreationEditorPage, SourceUiButton> _pageButtons = new();
@@ -357,7 +364,17 @@ namespace Arcanum.Runtime.UI
                 new(406f, 86f, 50f, 15f), new(406f, 106f, 50f, 15f),
             };
             for (int index = 0; index < stats.Length; index++)
-                _identityStats.Add(AddText($"Initial {Attributes[index]}", _identity, stats[index],
+                _identityStats.Add(AddText($"Initial {InitialAttributeOrder[index]}", _identity, stats[index],
+                    string.Empty, 26, SourceWhite));
+            Rect[] derivedStats =
+            {
+                new(472f, 46f, 140f, 15f), new(472f, 66f, 140f, 15f),
+                new(472f, 86f, 140f, 15f), new(472f, 106f, 140f, 15f),
+                new(616f, 46f, 130f, 15f), new(616f, 66f, 130f, 15f),
+                new(616f, 86f, 130f, 15f),
+            };
+            for (int index = 0; index < derivedStats.Length; index++)
+                _identityDerivedStats.Add(AddText($"Initial Derived {index}", _identity, derivedStats[index],
                     string.Empty, 26, SourceWhite));
             _descriptionTitle = AddText("Description Title", _identity,
                 RetailCharacterCreationLayout.DescriptionTitle, "Background", 27, SourceYellow);
@@ -448,12 +465,13 @@ namespace Arcanum.Runtime.UI
             BackgroundDefinition background = CurrentBackground(draft);
             SetCenteredText(_backgroundText, background?.Name ?? "Unavailable");
             SetPortrait(_identityPortrait, draft);
-            for (int index = 0; index < Attributes.Length; index++)
+            CharacterCreationInitialStats initial = _session.CharacterCreation.ProjectInitialStats(draft);
+            for (int index = 0; index < InitialAttributeOrder.Length; index++)
             {
-                CharacterAttribute attribute = Attributes[index];
-                int effective = _session.CharacterCreation.GetEffectiveAttribute(draft, attribute);
-                SetText(_identityStats[index], $"{Short(attribute)}:{effective}");
+                CharacterAttribute attribute = InitialAttributeOrder[index];
+                SetText(_identityStats[index], $"{Short(attribute)}:{initial.GetAttribute(attribute)}");
             }
+            SetInitialDerivedStats(_identityDerivedStats, initial);
             SetText(_descriptionTitle, background?.Name ?? "Background");
             RebuildWrappedText(_identityDescription, background?.Description ?? string.Empty, 52, 11);
             SetText(_identityFeedbackText, _controller.Feedback);
@@ -1044,6 +1062,7 @@ namespace Arcanum.Runtime.UI
             _identityPortrait = null;
             _editorPortrait = null;
             _identityStats.Clear();
+            _identityDerivedStats.Clear();
             _attributeValues.Clear();
             _attributeButtons.Clear();
             _pageButtons.Clear();
@@ -1055,6 +1074,20 @@ namespace Arcanum.Runtime.UI
             _wasVisible = false;
             _identitySignature = int.MinValue;
             _editorSignature = int.MinValue;
+        }
+
+        private void SetInitialDerivedStats(IReadOnlyList<SourceUiBitmapText> targets,
+            CharacterCreationInitialStats stats)
+        {
+            string[] values =
+            {
+                $"Carry Weight:{stats.CarryWeight}", $"Damage Bonus:{stats.DamageBonus}",
+                $"AC Adjustment:{stats.ArmorClassAdjustment}", $"Speed:{stats.Speed}",
+                $"Heal Rate:{stats.HealRate}", $"Poison Recovery:{stats.PoisonRecovery}",
+                $"Reaction Modifier:{stats.ReactionModifier}",
+            };
+            for (int index = 0; index < targets.Count; index++)
+                SetText(targets[index], values[index]);
         }
     }
 }
