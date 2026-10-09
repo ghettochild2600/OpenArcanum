@@ -42,6 +42,7 @@ namespace Arcanum.Runtime.UI
         private RetailInventoryEquipmentView _retailInventory;
         private RetailCharacterSheetView _retailCharacterSheet;
         private RetailDialogueView _retailDialogue;
+        private RetailLogbookView _retailLogbook;
         private Vector2 _scroll;
         private Rect _panelRect;
         private bool _showHud = true;
@@ -111,6 +112,8 @@ namespace Arcanum.Runtime.UI
             _retailCharacterSheet.Bind(_controller, _session, _retailGameplayHud.Resolver);
             _retailDialogue = GetComponent<RetailDialogueView>() ?? gameObject.AddComponent<RetailDialogueView>();
             _retailDialogue.Bind(_controller, _session, _retailGameplayHud.Resolver);
+            _retailLogbook = GetComponent<RetailLogbookView>() ?? gameObject.AddComponent<RetailLogbookView>();
+            _retailLogbook.Bind(_controller, _session, _retailGameplayHud.Resolver);
             DisableLegacyPresenters();
         }
 
@@ -151,6 +154,7 @@ namespace Arcanum.Runtime.UI
             _retailInventory?.Synchronize();
             _retailCharacterSheet?.Synchronize();
             _retailDialogue?.Synchronize();
+            _retailLogbook?.Synchronize();
             if (Controller.Screen == GameUiScreen.MainMenu && _retailMainMenu?.IsAvailable == true)
                 return;
 
@@ -344,6 +348,7 @@ namespace Arcanum.Runtime.UI
             if (_retailCharacterSheet?.ContainsScreenPoint(mouse) == true) return true;
             if (_retailInventory?.ContainsScreenPoint(mouse) == true) return true;
             if (_retailDialogue?.ContainsScreenPoint(mouse) == true) return true;
+            if (_retailLogbook?.ContainsScreenPoint(mouse) == true) return true;
             if (_retailGameplayHud?.ContainsScreenPoint(mouse) == true) return true;
             Vector2 guiPoint = new(mouse.x, Screen.height - mouse.y);
             if (_retailGameplayHud?.IsAvailable == true) return _panelRect.Contains(guiPoint);
@@ -362,6 +367,7 @@ namespace Arcanum.Runtime.UI
             _retailInventory?.Synchronize();
             _retailCharacterSheet?.Synchronize();
             _retailDialogue?.Synchronize();
+            _retailLogbook?.Synchronize();
             bool sourceMainMenu = Controller.Screen == GameUiScreen.MainMenu
                                   && _retailMainMenu?.IsAvailable == true;
             bool sourceCharacterCreation = Controller.Screen == GameUiScreen.CharacterCreation
@@ -374,10 +380,12 @@ namespace Arcanum.Runtime.UI
                                    && _retailCharacterSheet?.IsAvailable == true;
             bool sourceDialogue = Controller.Screen == GameUiScreen.Dialogue
                                   && _retailDialogue?.IsAvailable == true;
+            bool sourceLogbook = Controller.Screen == GameUiScreen.Journal
+                                 && _retailLogbook?.IsAvailable == true;
             GUI.depth = -120;
             if (_showHud && _retailGameplayHud?.IsAvailable != true) DrawHud();
             if (Controller.IsModalOpen && !sourceMainMenu && !sourceCharacterCreation && !sourcePregeneratedCharacter && !sourceInventory
-                && !sourceCharacter && !sourceDialogue)
+                && !sourceCharacter && !sourceDialogue && !sourceLogbook)
                 DrawScreen();
             DrawCursorLabel();
         }

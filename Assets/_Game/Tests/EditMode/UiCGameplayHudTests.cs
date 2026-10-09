@@ -154,7 +154,7 @@ namespace Arcanum.Formats.Tests
         }
 
         [Test]
-        public void ManagementSheetsKeepHudVisibleButOtherModalScreensHideItWithoutChangingAuthority()
+        public void ManagementSheetsAndLogbookKeepHudVisibleButOtherModalScreensHideItWithoutChangingAuthority()
         {
             PersistentPlayerState player = _session.PlayerState;
             Assert.That(_controller.Open(GameUiScreen.Inventory), Is.True);
@@ -164,6 +164,9 @@ namespace Arcanum.Formats.Tests
             _view.Synchronize(true);
             Assert.That(_view.IsVisible, Is.True);
             Assert.That(_controller.Open(GameUiScreen.Journal), Is.True);
+            _view.Synchronize(true);
+            Assert.That(_view.IsVisible, Is.True);
+            Assert.That(_controller.Open(GameUiScreen.Options), Is.True);
             _view.Synchronize(true);
             Assert.That(_view.IsVisible, Is.False);
             Assert.That(_session.PlayerState, Is.SameAs(player));

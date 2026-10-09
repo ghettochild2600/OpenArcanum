@@ -224,7 +224,7 @@ namespace Arcanum.Runtime.UI
             if (!IsAvailable || _controller == null) return;
             bool visible = show && _controller.HasPlayer
                                 && _controller.Screen is GameUiScreen.None or GameUiScreen.Inventory
-                                    or GameUiScreen.Character or GameUiScreen.Dialogue;
+                                    or GameUiScreen.Character or GameUiScreen.Dialogue or GameUiScreen.Journal;
             if (_canvasRoot.activeSelf != visible) _canvasRoot.SetActive(visible);
             ManageWorldViewport(visible);
             if (!visible) return;
