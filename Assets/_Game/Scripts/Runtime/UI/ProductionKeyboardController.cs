@@ -63,7 +63,10 @@ namespace Arcanum.Runtime.UI
         public bool ControlHeld { get; private set; }
         public bool ShiftHeld { get; private set; }
         public bool AltHeld { get; private set; }
-        public bool EffectiveRun => AlwaysRun ^ ControlHeld;
+        // intgame.c gives Ctrl explicit precedence in every single-player ground-click branch: it calls
+        // turn_on_running before consulting the persistent Always Run setting.  Ctrl therefore requests a run
+        // whether Always Run is off or already on; it is not an inversion modifier for pointer locomotion.
+        public bool EffectiveRun => AlwaysRun || ControlHeld;
 
         public void SetModifiers(bool control, bool shift, bool alt)
         {

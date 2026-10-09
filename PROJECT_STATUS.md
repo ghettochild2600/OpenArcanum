@@ -2742,7 +2742,8 @@ The bounded correction pass is complete. It did not begin UI-F or introduce new 
   restores transactional HP/Fatigue point controls and source hover help, and correctly decodes retail portrait
   prefixes (`HA` Halfling, `HE` Half-Elf). A fresh Female Half-Elf selection now chooses the matching retail portrait.
 - Player locomotion uses retail WALK action 1 and RUN action 6 with action-specific timing. Ordinary click, Ctrl-run,
-  NumLock Always Run, and Ctrl inversion retain a single navigation authority.
+  and NumLock Always Run retain a single navigation authority. The later retail/source certification corrected the
+  old XOR claim: Ctrl remains a run request when Always Run is already enabled.
 - Combat ID 470 and `R` share the coordinator-owned combat-readiness transaction; the HUD owns no combat state.
 - Sleep/Wait source rows now execute the established SourceTime transaction. Authentic crash-site `[w:1]` town wait,
   One Hour, Two Hours, and Until Evening were physically proven. IDs 137/293 use only frame 0 normal and frame 1

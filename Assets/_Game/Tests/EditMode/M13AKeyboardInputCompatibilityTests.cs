@@ -125,16 +125,18 @@ namespace Arcanum.Formats.Tests
         }
 
         [Test]
-        public void NumLockDefaultAndControlHeldTemporarilyInvertRunWalk()
+        public void NumLockAndControlIndependentlyRequestRunning()
         {
             Assert.That(_keyboard.EffectiveRun, Is.False);
             _keyboard.SetModifiers(true, false, false);
             Assert.That(_keyboard.EffectiveRun, Is.True);
             _keyboard.Dispatch(KeyCode.Numlock, ProductionKeyPhase.Down, Hud(), _commands);
-            Assert.That((_keyboard.AlwaysRun, _keyboard.EffectiveRun), Is.EqualTo((true, false)));
+            Assert.That((_keyboard.AlwaysRun, _keyboard.EffectiveRun), Is.EqualTo((true, true)));
             _keyboard.SetModifiers(false, true, true);
             Assert.That((_keyboard.EffectiveRun, _keyboard.ShiftHeld, _keyboard.AltHeld),
                 Is.EqualTo((true, true, true)));
+            _keyboard.Dispatch(KeyCode.Numlock, ProductionKeyPhase.Down, Hud(), _commands);
+            Assert.That((_keyboard.AlwaysRun, _keyboard.EffectiveRun), Is.EqualTo((false, false)));
         }
 
         [Test]

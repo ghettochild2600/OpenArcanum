@@ -1,7 +1,9 @@
 # Retail Runtime UI Certification
 
-Status: M0 DirectInput tooling and M1 Character Creation / Pick Character certification complete (2026-10-08).
-The next sequential gate is M2 Inventory retail certification.
+Status: M0 DirectInput tooling, M1 Character Creation / Pick Character, and M2 Inventory certification complete
+(2026-10-08). M3 Movement / Combat / Sleep is in progress: movement and combat are physically certified; the retail
+Sleep/Wait option menu is physically observed, but duration execution remains open after the disposable sandbox
+process exited with its interrupted helper session.
 
 ## Method and status vocabulary
 
@@ -33,6 +35,10 @@ Rows use: **PASS**, **VISUAL MISMATCH**, **BEHAVIOR MISMATCH**, **MISSING**, **I
 | Character Editor | all pages | attributes, HP/Fatigue, Skills/Magic/Technology, hover help, Back and Continue | all displayed attribute and vitality +/- controls, skill categories and +/- controls, Magic, Technology, Back, and Continue were physically exercised | production view submits intent to the existing M4/M10/M12B authorities and fails unsupported actions closed | `charedit_ui.c`; UI-D/UI-D.1 validation | PASS | no bounded M1 discrepancy remains | post-creation Shopkeeper is intentionally deferred to the shopping/inventory boundary |
 | Pick Character | index 0 | selected candidate | Merwin Tumblebrook, Male Halfling; ST 5, CN 8, DX 10, BE 8, IN 8, WP 8, PE 8, CH 8; Carry 2500; Damage -2; AC 0; Speed 10; Heal 3; Poison 8; Reaction -7 | source prototype-backed candidate projection exists | retail physical observation; prototypes 16067-16078; UI-B.1 tests | PASS | none observed at first candidate | none |
 | Pick Character | cycle matrix | Next/Previous and all 12 candidates | all twelve retail candidates were physically cycled and recorded; Back and Continue respond | all twelve are prototype-backed and now display their effective initial and derived stats in retail order | `mainmenu_ui_pregen_char_refresh`; prototypes 16067-16078; UI-D.1 validator | PASS | prior UI projected raw prototype defaults, used the wrong order, and omitted derived values | corrected through shared character-derived-stat rules and M12B projection; no presenter-owned hardcoded stat table |
+| Inventory | ordinary PC inventory | composition and transactions | fixed paper doll plus inventory grid; live PC lens; footprints/stacks; inspection; drag/drop; Arrange; equip/unequip; Defense 8 -> 6 -> 8; quick-slot assignment; Gold/ammo/weight/encumbrance/speed/attack/defense counters | production UI-E projects and submits to existing inventory/equipment/shortcut authorities; matching actions were already physically validated in Unity | `inven_ui.c`; UI-E, M3C, M3E, M12C tests | PASS | no bounded M2 mismatch observed | none |
+| Gameplay | crash-site movement | click, Ctrl-click, NumLock | ordinary click walks; Ctrl-click runs; NumLock enables persistent Always Run; sustained Ctrl while Always Run stays running | production input now treats Ctrl and Always Run as independent run requests | `intgame.c` calls `turn_on_running` in the Ctrl branch before consulting Always Run; `anim.c::get_always_run` inversion is bypassed by this pointer-click path | PASS | old OpenArcanum XOR interpretation contradicted retail and the controlling source path | corrected at the production input boundary; no movement clock or animation authority changed |
+| Gameplay | combat readiness | `R` and HUD control | both enter and leave combat when legal; leaving is rejected while Virgil remains hostile | both routes delegate to coordinator-owned combat readiness | `intgame.c`; M8/UI-C authority | PASS | none observed | none |
+| Sleep/Wait | crash site | source menu | `S` opens seven wait rows in order: Advance Time One Hour, Two Hours, Four Hours, Eight Hours, One Day, to Morning, to Evening; no Until Healed row; ID 293 hover frame observed | production classifies the authentic crash-site sector as TownWait and exposes the same seven choices | `sleep_ui.c`; `TownMapInfo`; `townmap.mes [w:1]`; UI-C.5 tests/validator | BLOCKED | duration execution was interrupted; subsequent RetailSandbox restarts currently exit before creating a window | retain M3 as open; do not infer clock/recovery behavior from menu visibility alone |
 
 ## M0 DirectInput bridge
 
@@ -73,11 +79,11 @@ IDs are the source bindings used by the matching engine-owned prototype. Attribu
 
 ## Current gate
 
-M0 and M1 are closed. The safe local bridge removed the click-only blocker, and the complete retail New Character,
-Character Editor, and Pick Character matrices were physically exercised. M2 Inventory is the next sequential gate.
-Shopping remains outside M1: retail Continue enters the Shopkeeper flow, while OpenArcanum's existing documentation
-already classifies that presentation as deferred. No shopping implementation was invented during this correction.
-The complete EditMode suite remains deferred to the single final batch gate after the authorized sequential phases.
+M0, M1, and M2 are closed. M3 movement and combat are physically certified. M3 Sleep/Wait remains open only on
+executing the displayed retail duration rows and recording the resulting clock transitions; OpenArcanum's existing
+town-wait and wilderness-sleep transactions remain green. Shopping is the next independent gap assessment because
+retail Continue enters the Shopkeeper flow and OpenArcanum currently proceeds directly to START_MAP. The complete
+EditMode suite remains deferred to the single final batch gate after the authorized sequential phases.
 
 ## OpenArcanum-side revalidation
 
