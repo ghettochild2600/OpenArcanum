@@ -17,6 +17,17 @@ ordering, day/night tint, placed lights/blends/nocturnal scenery, source shadow 
 appearance. README-only claims were not treated as authority. See
 [`documentation_unity/external/unity-arcanum-comparison-audit.md`](documentation_unity/external/unity-arcanum-comparison-audit.md).
 
+## User Physical Review Corrections (2026-10-09)
+
+The bounded screenshot-driven correction pass is complete. Character Editor help now follows the source title/body
+split and exact bounded message rectangles; production HUD item/readiness text resolves description names instead of
+prototype numbers; successful dialogue choices no longer inject `Response selected.`; and ordinary NPC speech uses
+the transparent, speaker-relative source bitmap-bubble path instead of a modern dark panel. Production Play Mode
+proofs are green at 800x600, the affected dialogue presentation was physically rebuilt at 1920x1080, and the
+integrated M12C path is green with zero warnings/errors. The final EditMode gate passed 1323/1323. Corpse `LOOT`
+hover styling remains explicitly source ambiguous and unchanged pending a reliable retail side-by-side capture. See
+[`documentation_unity/player-facing-visual-message-correction-audit.md`](documentation_unity/player-facing-visual-message-correction-audit.md).
+
 ## Current Objective
 
 M1 traversal, the bounded M2 interaction/SAP_USE kernel, M3A-M3E inventory/command/equipment/stack/capacity state,
