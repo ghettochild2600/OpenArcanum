@@ -2788,7 +2788,7 @@ Character Editor, and Shopping. Those unrelated screens were not reconstructed b
 
 ## Next Recommended Milestone
 
-### Retail runtime certification gate (2026-10-07)
+### Retail runtime certification — M0/M1 complete (2026-10-08)
 
 Retail startup and the keyboard-accessible Main Menu/New Game paths were observed from an isolated byte-identical
 copy of retail 1.0.7.4 at native 800 x 600. The no-argument process reaches the movie surface but faults in the host
@@ -2797,19 +2797,25 @@ movie ID 8 -> Main Menu ordering is confirmed, Escape skips the active logo, and
 `modules/Arcanum/movies/50000.bik`. The clean read-only Steam reference remained unchanged. See
 [`documentation_unity/ui/ui-startup-sequence-audit.md`](documentation_unity/ui/ui-startup-sequence-audit.md).
 
-The retail backend captures the 800 x 600 surface and delivers keyboard accelerators, but it cannot drive the game's
-separate DirectInput gold cursor. The initial New Character and Pick Character screens, three-window ownership,
-Back behavior, first pregenerated candidate, and keyboard routes were observed; click-only race/gender/portrait,
-editor, and twelve-candidate matrices remain physically blocked. Phase 2 is therefore open and dependent Phases 3-6
-must not be declared complete from inference. See
+The native pointer/retail DirectInput mismatch is no longer a certification blocker. A safe local-only helper outside
+Git uses relative Win32 `SendInput` packets after exact RetailSandbox PID/HWND/title/class/foreground validation.
+Native 800 x 600 calibration was 1:1, and more than twenty visually closed-looped moves/clicks completed without an
+unintended desktop or Unity click. The helper, sandbox, and comparison captures remain outside the repository.
+
+M1 physically exhausted New Character, Character Editor, and Pick Character controls and recorded all twelve retail
+pregenerated characters. This exposed one bounded OpenArcanum defect: Pick Character displayed raw prototype defaults
+in the wrong attribute order and omitted the seven derived Initial Stats. New Character also omitted those derived
+values. The correction now projects effective M12B inputs through shared M4-derived rules and renders retail
+`ST/CN/DX/BE/IN/WP/PE/CH` plus Carry/Damage/AC/Speed/Heal/Poison/Reaction; the presenter owns no gameplay table.
+Retail Continue's Shopkeeper transition remains the already-documented later shopping boundary. See
 [`documentation_unity/ui/ui-retail-runtime-certification.md`](documentation_unity/ui/ui-retail-runtime-certification.md).
 
-OpenArcanum-side revalidation remains green at the stop gate: the UI-D.1, UI-B.1, UI-C.5, UI-E.2, M12B, and
-production input gates passed 44/44, 23/23, 70/70, 20/20, 16/16, and 23/23 respectively, and the production UI-D.1
-Play Mode validator passed across all five target resolutions. A stale editor-only assertion was corrected to verify
-the current M12C combat-readiness authority (`Combat ready`) instead of obsolete `Inactive` feedback; no production
-runtime behavior changed. The prior complete-suite baseline remains 1304/1304 because the batch's final full-suite
-gate was not reached after the required retail physical stop.
+OpenArcanum-side validation is green: UI-D.1 **44/44**, UI-B.1 **24/24**, UI-C.5 **70/70**, UI-E.2 **20/20**,
+M12B **17/17**, UI-D.2 **8/8**, M4D **25/25**, and production input **23/23**, all with zero failed, skipped, or
+inconclusive. The production UI-D.1 Play Mode proof passed the exact twelve-entry retail initial/derived matrix, two
+prototype-backed campaign starts, V1 round-trip, HUD authority, Original/Enhanced rebuild independence, and all five
+target resolutions. The complete-suite baseline remains **1304/1304** until the single final authorized batch gate.
+M2 Inventory retail certification is now the next sequential gate; M3-M5 remain gated behind it.
 
 Future presentation compatibility includes the complete retail startup sequence loaded from the user's legitimate
 local installation: rotating splash, Sierra and Troika logos, intro movie ID 8, source transitions/audio/skip

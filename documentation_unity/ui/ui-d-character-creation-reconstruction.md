@@ -181,6 +181,27 @@ is committed.
 - Production uniqueness: one Character Creation view, presenter/controller, and EventSystem.
 - Final cleared Unity Console: 0 logs, 0 warnings, 0 errors. `git diff --check`: clean.
 
+## Retail runtime M1 correction (2026-10-08)
+
+A safe local DirectInput bridge made the retail New Character, Character Editor, and Pick Character screens fully
+interactive at native 800 x 600. Every displayed control was physically exercised, and all twelve pregenerated
+characters were cycled and recorded. Retail Pick Character presents effective Initial Stats in
+`ST/CN/DX/BE/IN/WP/PE/CH` order followed by Carry Weight, Damage Bonus, AC Adjustment, Speed, Heal Rate, Poison
+Recovery, and Reaction Modifier. The values vary by prototype race/gender effects rather than exposing the basic
+prototype's raw all-eight inputs.
+
+OpenArcanum previously showed raw prototype attributes in a different order and omitted the derived block. The
+bounded correction adds one M12B projection for custom and pregenerated initial stats and reuses shared M4-derived
+rules already consumed by runtime character and inventory-capacity services. Both Character Creation views remain
+pure projections; they contain no duplicate retail stat table and do not own mutation or legality.
+
+Validation passed UI-D.1 **44/44**, UI-B.1 **24/24**, UI-D.2 **8/8**, M12B **17/17**, M4D **25/25**, UI-C.5
+**70/70**, UI-E.2 **20/20**, and production keyboard/input **23/23**, with no failures, skips, or inconclusive results.
+The production Play Mode proof rendered and checked every raw and derived value for all twelve candidates, two
+prototype-backed starts, V1 round-trip, Original/Enhanced rebuild independence, and the five target resolutions.
+At 800 x 600 the two stat columns are aligned and unclipped. Post-creation Shopkeeper presentation remains a later
+shopping/inventory boundary.
+
 ## Boundary
 
 UI-D owns source-faithful presentation, fixed composition, portrait pixel resolution, and intent forwarding only.

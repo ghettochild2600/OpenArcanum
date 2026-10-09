@@ -1,8 +1,7 @@
 # Retail Runtime UI Certification
 
-Status: framework active; startup and the keyboard-accessible portion of Phase 2 were observed on 2026-10-07.
-Click-only retail controls are blocked by the current native automation boundary, so Phase 2 and dependent phases
-are not certified complete.
+Status: M0 DirectInput tooling and M1 Character Creation / Pick Character certification complete (2026-10-08).
+The next sequential gate is M2 Inventory retail certification.
 
 ## Method and status vocabulary
 
@@ -23,57 +22,88 @@ Rows use: **PASS**, **VISUAL MISMATCH**, **BEHAVIOR MISMATCH**, **MISSING**, **I
 | Startup | later run | Escape | Escape skips the active logo; missing sandbox movie ID 8 then permits rapid Main Menu arrival | no startup media to skip | movie call has no keyboard-ignore flag | PASS | n/a for current menu handoff | retain as future startup acceptance criterion |
 | Main Menu | top level | composition | fixed 800 x 600 still life with five centered entries | source ID 329 fixed 800 x 600 composition and five-entry order | `mainmenu_ui.c`; `mes/mainmenu.mes`; UI-B tests | PASS | none observed | none |
 | Main Menu | Single Player | keyboard accelerator | `S` opens Single Player | UI-B models the same route | `mainmenu_ui` mnemonic dispatch | PASS | none observed | none |
-| Single Player | normal | visible entries | New Game, Load Game, Last Save, View Intro, Cancel | New Game and Load are functional; unavailable routes remain bounded notices or absent per UI-B boundary | IDs 331 and source rows 50-54 | BLOCKED | all visible retail entries were observed, but click/transition exhaustion was not physically possible | re-run with a backend capable of retail DirectInput pointer control |
+| Single Player | normal | visible entries | New Game, Load Game, Last Save, View Intro, Cancel; pointer hover/click routes respond | New Game and Load are functional; unavailable routes remain bounded notices or absent per UI-B boundary | IDs 331 and source rows 50-54 | PASS | none for the certified New Game path | keep unavailable routes bounded |
 | Single Player | New Game highlighted | `N` | opens Pick Character / New Character / Cancel | existing UI-B New Game choice models these routes | source row group 420 and window transition | PASS | none observed | none |
 | New Game choice | normal | `N` New Character | opens ID 765 identity composition | opens production `RetailCharacterCreationView` identity stage | `mainmenu_ui_new_char_create`; interface ID 765 | PASS | none observed | none |
 | New Game choice | normal | `P` Pick Character | opens ID 766 on first pregenerated character | opens production ID 766 selector | `mainmenu_ui_pregen_char_refresh`; UI-B.1 tests | PASS | none observed | none |
 | New Character | initial Human Male | full composition | top 336, center 765, bottom 335; portrait and center arrows are separated from bottom Back/Continue | current UI-D.2 uses the same three-region ownership and geometry | button flags and window handles in `mainmenu_ui.c`; UI-D.2 tests | PASS | prior ownership defect is already corrected | none |
 | New Character | initial Human Male | initial stats | ST/CN/DX/BE/IN/WP/PE/CH all 8; Carry 4000; Damage -1; AC -2; Speed 8; Heal 3; Poison 8; Reaction -7 | projected from authoritative creation draft | retail physical observation; M12B projection | PASS | none visible in initial state | retain automated projection checks |
 | New Character | identity navigation | Back / Escape | Escape returns to Pick/New choice | UI-D HandleEscape returns to Main Menu flow | source keyboard handler and ID 323 | PASS | none observed | none |
-| New Character | identity permutations | race/gender/portrait/background arrows | click-only in retail | automated UI-D.1 and M12B coverage exists, but retail physical permutations were not driven this session | IDs 283/284/757/758; `background_clear`, `background_set`, effect authority | BLOCKED | native automation moves the Windows pointer, not the retail gold DirectInput cursor | do not infer; resume with compatible native pointer control |
-| Character Editor | all pages | attributes, HP/Fatigue, Skills/Magic/Technology and hover help | click-only path not reached in retail session | existing production view and focused validators cover the bounded authority | `charedit_ui.c`; UI-D/UI-D.1 validation | BLOCKED | same DirectInput boundary | dependent Phase 2 closure withheld |
+| New Character | identity permutations | race/gender/portrait/background arrows and name field | every visible control was physically exercised; selection, hover/pressed state, legality, background projection, and name editing respond | UI-D.1 delegates legality and projection to M12B and preserves the source three-window composition | IDs 283/284/757/758; `background_clear`, `background_set`, effect authority | PASS | none remaining in the bounded identity flow | none |
+| Character Editor | all pages | attributes, HP/Fatigue, Skills/Magic/Technology, hover help, Back and Continue | all displayed attribute and vitality +/- controls, skill categories and +/- controls, Magic, Technology, Back, and Continue were physically exercised | production view submits intent to the existing M4/M10/M12B authorities and fails unsupported actions closed | `charedit_ui.c`; UI-D/UI-D.1 validation | PASS | no bounded M1 discrepancy remains | post-creation Shopkeeper is intentionally deferred to the shopping/inventory boundary |
 | Pick Character | index 0 | selected candidate | Merwin Tumblebrook, Male Halfling; ST 5, CN 8, DX 10, BE 8, IN 8, WP 8, PE 8, CH 8; Carry 2500; Damage -2; AC 0; Speed 10; Heal 3; Poison 8; Reaction -7 | source prototype-backed candidate projection exists | retail physical observation; prototypes 16067-16078; UI-B.1 tests | PASS | none observed at first candidate | none |
-| Pick Character | cycle matrix | Next/Previous and all 12 candidates | click-only in retail | automated source order, varying projection, restore, start, and Save V1 checks exist | `mainmenu_ui_pregen_char_refresh`; UI-D.1 validator | BLOCKED | retail DirectInput cursor cannot be driven by the current backend | do not claim the 12-entry physical matrix complete |
+| Pick Character | cycle matrix | Next/Previous and all 12 candidates | all twelve retail candidates were physically cycled and recorded; Back and Continue respond | all twelve are prototype-backed and now display their effective initial and derived stats in retail order | `mainmenu_ui_pregen_char_refresh`; prototypes 16067-16078; UI-D.1 validator | PASS | prior UI projected raw prototype defaults, used the wrong order, and omitted derived values | corrected through shared character-derived-stat rules and M12B projection; no presenter-owned hardcoded stat table |
 
-## Automation boundary proof
+## M0 DirectInput bridge
 
-The native backend captures the retail 800 x 600 surface and sends keyboard input successfully. It also moves a
-separate Windows pointer, visible as a white pointer, while the gold retail cursor remains at its DirectInput
-position. Attempts to click portrait/pregenerated arrows therefore changed only the Windows pointer and did not
-advance retail state. The failure is observable and repeatable. Under the requested stop policy, no result from a
-click-only control is marked PASS unless independently observed.
+The original blocker was confirmed: ordinary native pointer movement moved the Windows cursor but not retail
+Arcanum's independent gold DirectInput cursor. A local-only helper was built outside Git under
+`UIReference/RuntimeComparison/Tools/DirectInputMouse`. It uses standard `user32.dll` `SendInput` relative mouse
+packets and button packets through a named-pipe command surface. Before every input it resolves the expected
+RetailSandbox process, validates PID/HWND/title/class, brings that exact window to the foreground, and refuses to
+send if foreground ownership does not match.
+
+Calibration at the native 800 x 600 retail surface established an effective 1:1 relative-delta scale in both axes.
+Positive, negative, short, and long corrections were visually closed-looped against the gold cursor. Hover, click,
+Back, Continue, previous/next portrait, and previous/next pregenerated-character controls all produced the expected
+retail transitions. More than twenty deliberate movements/clicks completed without a desktop or Unity misclick.
+No Windows mouse setting, retail executable, DirectInput DLL, or clean reference file was changed. The helper and
+all comparison captures remain local-only and uncommitted.
+
+## M1 pregenerated retail matrix
+
+The retail order is zero-based below; OpenArcanum's persisted source index is one-based. Portrait and background
+IDs are the source bindings used by the matching engine-owned prototype. Attribute order is retail
+`ST/CN/DX/BE/IN/WP/PE/CH`; derived order is Carry, Damage, AC, Speed, Heal, Poison, Reaction.
+
+| Order | Name | Sex / race | Portrait / background | Attributes | Derived |
+|---:|---|---|---|---|---|
+| 0 | Merwin Tumblebrook | Male Halfling | 1017 / 39 | 5/8/10/8/8/8/8/8 | 2500/-2/0/10/3/8/-7 |
+| 1 | Godfrey Castleburger | Male Gnome | 1002 / 40 | 8/6/8/8/8/10/8/8 | 4000/-1/-2/8/2/6/-7 |
+| 2 | Horace McGinley | Male Half-Elf | 1032 / 41 | 8/7/9/9/8/8/8/8 | 4000/-1/-1/9/2/7/-3 |
+| 3 | Muck Evil Eye | Male Half-Ogre | 1027 / 42 | 12/8/8/7/4/8/8/8 | 6000/2/-2/8/3/8/-12 |
+| 4 | D'ren L'elor | Male Elf | 1033 / 43 | 7/6/9/9/8/9/8/8 | 3500/-1/-1/9/2/6/-3 |
+| 5 | Solomon Doone | Male Human | 1005 / 44 | 8/8/8/8/8/8/8/8 | 4000/-1/-2/8/3/8/-7 |
+| 6 | Merik Luggerton | Male Half-Orc | 1030 / 45 | 9/9/8/6/8/8/8/6 | 4500/0/-2/8/3/9/-18 |
+| 7 | Lugard Bloodstone | Male Dwarf | 1020 / 46 | 9/9/7/8/8/8/8/7 | 4500/0/-3/7/3/9/-7 |
+| 8 | Victoria Warrington | Female Human | 1025 / 47 | 7/9/8/8/8/8/8/8 | 3500/-1/-2/8/3/9/-7 |
+| 9 | B'elan T'Seraa | Female Elf | 1024 / 48 | 6/7/9/9/8/9/8/8 | 3000/-2/-1/9/2/7/-3 |
+| 10 | Clarisse Vorak | Female Half-Orc | 1031 / 49 | 8/10/8/6/8/8/8/6 | 4000/-1/-2/8/3/10/-18 |
+| 11 | Ker'ee Melange | Female Half-Elf | 1029 / 50 | 7/8/9/9/8/8/8/8 | 3500/-1/-1/9/3/8/-3 |
 
 ## Current gate
 
-Source-backed review and existing automated tests may continue, but Phase 2 cannot be closed and Phases 3-6 cannot
-be started as dependent implementation milestones until the retail click-only matrix is physically exercisable.
-The last complete-suite OpenArcanum baseline remains HEAD `83a6ff0f227764d8e234f51b9cab41d47d0b5d86`, complete EditMode
-1304/1304, with a clean worktree before these documentation additions. The complete suite was not repeated after the
-retail DirectInput stop gate because the requested batch requires that run only after the dependent phases complete.
+M0 and M1 are closed. The safe local bridge removed the click-only blocker, and the complete retail New Character,
+Character Editor, and Pick Character matrices were physically exercised. M2 Inventory is the next sequential gate.
+Shopping remains outside M1: retail Continue enters the Shopkeeper flow, while OpenArcanum's existing documentation
+already classifies that presentation as deferred. No shopping implementation was invented during this correction.
+The complete EditMode suite remains deferred to the single final batch gate after the authorized sequential phases.
 
 ## OpenArcanum-side revalidation
 
-The existing Unity 6000.0.71f1 Editor remained responsive and compiled the bounded editor-validation correction
-cleanly. The focused gates were rerun after that correction:
+The existing Unity 6000.0.71f1 Editor remained responsive and compiled the bounded runtime/test correction cleanly.
+The M1-focused and directly affected gates passed:
 
 - UI-D.1 Character Creation: 44/44;
-- UI-B.1 Main Menu / Pick Character: 23/23;
+- UI-B.1 Main Menu / Pick Character: 24/24;
 - UI-C.5 gameplay HUD: 70/70;
 - UI-E.2 Character / Skills: 20/20;
-- M12B Character Creation: 16/16;
+- M12B Character Creation: 17/17;
+- UI-D.2 partial-window ownership: 8/8;
+- M4D derived statistics: 25/25;
 - production keyboard/input: 23/23.
 
-All six gates reported zero failures, skips, and inconclusive results. The run emitted the two established original
+Every gate reported zero failures, skips, and inconclusive results. The run emitted the two established original
 asset diagnostics for UI source IDs 302 and 304 requesting palette 2 where the source resource exposes only palette
 0; no Unity error was emitted.
 
-The UI-D.1 production Play Mode validator also passed. It proved the 128 x 128 portrait path, 100 selector cycles
-without drift, source race/gender restrictions, one- and two-digit attribute centering, source gauge ID 623,
-prototype-backed 12-entry pregenerated selection and Save V1 round-trip, Skills/Spells/Schematics routing, current
-combat-readiness authority, fail-closed unsupported authorities, five target resolutions, one presenter, and one
-EventSystem. The validator previously expected obsolete `Inactive` feedback even though the current M12C combat
-authority correctly enters combat and reports `Combat ready`; only that editor assertion was updated. No production
-runtime code changed.
+The UI-D.1 production Play Mode validator also passed. It proved the exact retail raw and derived values for all
+twelve entries on the rendered ID 766 screen, 128 x 128 portraits, 100 selector cycles without drift, source
+race/gender restrictions, one- and two-digit attribute centering, source gauge ID 623, two prototype-backed campaign
+starts and Save V1 round-trip, Skills/Spells/Schematics routing, current combat-readiness authority, fail-closed
+unsupported authorities, five target resolutions, one presenter, and one EventSystem. Original-mode 800 x 600
+inspection showed the two stat columns aligned and unclipped.
 
-After the validation logs were reviewed, the final Unity Console was cleared and physically verified at 0 logs,
-0 warnings, and 0 errors.
+The bounded correction centralizes already-established carry/damage/AC/speed/heal/poison/reaction rules, projects
+effective pregenerated/background stats through M12B, and leaves the UI as a pure consumer. It does not add a
+presenter-owned retail table or change character authority.
