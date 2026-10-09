@@ -2837,15 +2837,24 @@ Pointer selection advances the existing M5 transaction; source dialogue world mo
 not invent a response shortcut; and more than five eligible options fail closed. Focused UI-F.1/M5/keyboard
 validation passed **84/84**. The production 800 x 600 proof passed with pointer advancement, one presenter, one
 EventSystem, and a cleared 0-warning/0-error Console; deterministic native-geometry checks cover 768p, 1080p, 1440p,
-and 4K. Followers use a persistent six-slot left HUD stack rather than a modal Party screen. The exact Logbook
-book/tabs/page composition is bounded, but only Quests has a complete source projection. Party still needs
-portrait/poison projection and selected-follower command authority. See
+and 4K. UI-F.2a now implements the exact fixed Logbook book/tabs/page composition over the authoritative Quests
+projection. Focused UI-F.2 plus affected regressions passed **76/76**. Production 800 x 600 Play Mode passed exact
+source-art composition, pointer page 1-2 -> 3-4 navigation, fail-closed unsupported tabs, persistent HUD, one
+presenter/EventSystem, target-resolution geometry, and Original -> Enhanced -> Original rebuilding; the corrected
+rerun ended at 0 warnings and 0 errors. Retail Logbook/audio certification remains blocked because RetailSandbox
+currently exits before creating a window, and the current campaign-relative quest timestamps are explicitly shown
+as `Day N` rather than an invented source-calendar conversion. Followers use a persistent six-slot left HUD stack
+rather than a modal Party screen and still need portrait/poison projection and selected-follower command authority. See
 [`documentation_unity/ui/ui-f-dialogue-journal-party-audit.md`](documentation_unity/ui/ui-f-dialogue-journal-party-audit.md).
 
-The next independent implementation boundary is **UI-F.2a — Source Logbook Shell + Quests**: exact fixed book art,
-seven-tab shell, two-page quest pagination, source typography, PC-lens close, page turns, and existing authoritative
-quest projection. The six tabs without complete data authority must remain visibly unavailable rather than showing
-fake empty data. RetailSandbox currently exits before creating a window, so physical retail Logbook certification is
-blocked; do not call UI-F.2a complete without that proof. Do not start the follower HUD until UI-F.2a is green, and do
-not use unproven dialogue ID 822 or invent unsupported dialogue special transitions.
-Continue M13A only from concrete user-discovered campaign defects; do not start an autonomous campaign playthrough.
+The final complete EditMode suite passed **1322/1322**, with 0 failed, 0 skipped, and 0 inconclusive. The first full
+run exposed one stale Journal-HUD assertion; the repaired regression now proves the source Logbook keeps the HUD
+visible while an unrelated modal still hides it. Compilation and `git diff --check` are clean.
+
+The next independent UI-F implementation boundary would be **UI-F.2b — Remaining Logbook Data Authority**, one
+source-traced domain at a time, followed by UI-F.3 follower authority/presentation. Neither starts in this batch:
+retail Logbook certification is blocked, M3 Sleep execution remains partial, and M4's authored post-creation
+Shopping lifecycle is a confirmed unimplemented prerequisite. Do not infer a green sequential gate from the
+source/production UI-F.2a result, fabricate empty non-quest data, use unproven dialogue ID 822, or invent unsupported
+dialogue transitions. Continue M13A only from concrete user-discovered campaign defects; do not start an autonomous
+campaign playthrough.

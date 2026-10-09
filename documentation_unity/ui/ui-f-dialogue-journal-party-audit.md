@@ -2,10 +2,12 @@
 
 ## Status and boundary
 
-The source audit is complete and **UI-F.1 — Source Dialogue Presentation** is now implemented and physically
-validated in the production scene. The audit still defines the unimplemented UI-F.2 Logbook and UI-F.3 follower
-boundaries. OpenArcanum dialogue gameplay authority remains unchanged: the new view observes the existing M5
-transaction and submits response selection; it does not own dialogue state or script effects.
+The source audit is complete. **UI-F.1 — Source Dialogue Presentation** is implemented and physically validated in
+the production scene. **UI-F.2a — Source Logbook Shell + Quests** is also implemented and green against controlling
+source, focused automation, and production Play Mode, but remains **retail-certification pending** because the
+disposable retail process currently exits before creating a window. UI-F.2b non-quest authority and UI-F.3 follower
+boundaries remain unimplemented. OpenArcanum gameplay authorities remain unchanged: these views project existing
+M5 dialogue and campaign/quest state and submit bounded UI intent; they do not own script or quest effects.
 
 The principal result is that UI-F is not one safe presentation-only milestone:
 
@@ -209,11 +211,31 @@ The current generic Journal draws only quest rows. It does not own book art, tab
 or source typography. `ProductionJournalPresenter` is legacy/minimal and is disabled by the unified production
 presenter; it is not a second authority to preserve.
 
-### Safe Logbook follow-up boundary
+### Implemented UI-F.2a boundary and validation
 
-`UI-F.2a — Source Logbook Shell + Quests` may implement the exact fixed book composition, Quests tab, two-page
-pagination, source fonts/colors, PC lens close, hover feedback, and audio over the existing quest projection. The six
-non-quest tabs must be visibly unavailable/fail closed rather than presenting an empty list as authoritative absence.
+`UI-F.2a — Source Logbook Shell + Quests` now owns the exact fixed 800 x 400 shell, source IDs 198/260/261/264-273,
+seven-tab composition, Quests projection, deterministic two-page pagination, source bitmap typography and quest
+state colors/strikethrough, PC-lens close, page controls, and persistent gameplay HUD. The view reads
+`JournalProjectionService` through the production controller. It does not duplicate campaign state or mutate quests.
+The six non-quest tabs remain visibly unavailable and fail closed without changing the selected Quests tab, page,
+campaign state, or presenter authority.
+
+Focused UI-F.2 plus directly affected M5B/M6A/keyboard regression coverage passed **76/76**, with zero failures,
+skips, or inconclusive results. Production Play Mode passed at 800 x 600 with one presenter and one EventSystem,
+pointer-driven page 1-2 -> 3-4 navigation, pointer-driven unsupported-tab rejection, persistent HUD, and
+Original -> Enhanced -> Original presentation rebuild. Deterministic native-size geometry checks cover 768p, 1080p,
+1440p, and 4K. The initial physical run exposed a positional `UiAssetKey` bug that treated frame 1 as palette 1;
+the button bindings now use explicit frame arguments, and the rerun ended with 0 warnings and 0 errors.
+
+Two source-completeness limits remain explicit. Existing quest timestamps are bounded campaign-relative values, so
+the view labels them as `Day N` rather than inventing an original calendar conversion. Logbook open/close/tab/page
+audio is not claimed while retail audio certification remains unavailable. Because RetailSandbox currently exits
+before creating a window, exact retail side-by-side Logbook certification is still blocked; this implementation is
+source/production green, not a completed retail-certification claim.
+
+The final complete EditMode suite passed **1322/1322** with 0 failed, 0 skipped, and 0 inconclusive. Its first run
+correctly caught a stale pre-Logbook HUD assertion; that regression now explicitly proves that Inventory, Character,
+and source Logbook preserve the HUD while an unrelated modal still hides it. The repaired suite is the recorded gate.
 
 `UI-F.2b — Remaining Logbook Data Authority` is a gameplay/data milestone, not a view task. It should add one domain
 at a time only after tracing the corresponding original `rumor_*`, `reputation_*`, `bless_*`, `curse_*`,
@@ -305,8 +327,8 @@ source strip; it must not reopen a modal follower list.
    presentation/input ownership. Gate on a physical retail check of ID 354's ordinary-dialogue role, a five-response
    real-data fixture, world movement/scroll without dialogue loss, voice/bubble lifetime, special-view fail-closed
    behavior, and Original/Enhanced rebuild.
-2. **UI-F.2a — Source Logbook Shell + Quests.** Use only current quest authority. Gate on exact 800 x 400 geometry,
-   page fitting, colors, page turns, tab fail-closed behavior, lens close, audio, and rebuild/page preservation.
+2. **UI-F.2a — Source Logbook Shell + Quests.** Source/production implementation is green. Retail side-by-side and
+   audio certification remain open; do not promote UI-F.2 overall while those or the six unsupported tabs remain.
 3. **UI-F.2b — Non-quest Logbook Authority.** Separate gameplay/data milestones; no presentation completion claim
    until each supported tab has source text/state/timestamp/save behavior.
 4. **UI-F.3a — Follower Command/Projection Closure.** Close portrait, poison, selected-follower order, Wait,
@@ -331,6 +353,7 @@ and graphics/presentation rebuild independence.
 
 ## Audit conclusion
 
-The read-only UI-F archaeology is complete. The exact source compositions are now bounded, two prior documentation
-assumptions are rejected (ornate portrait Dialogue and modal Party), and the next implementation may begin only with
-the separately scoped UI-F.1 Dialogue presentation slice above. No production code or retail asset was changed.
+The UI-F archaeology is complete. The exact source compositions are bounded, two prior documentation assumptions
+are rejected (ornate portrait Dialogue and modal Party), and the separately scoped UI-F.1 and source-backed UI-F.2a
+implementations are green. Retail Logbook certification, UI-F.2b authority, and UI-F.3 remain open. No retail asset
+was changed.

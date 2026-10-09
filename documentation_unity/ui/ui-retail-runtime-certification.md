@@ -41,6 +41,7 @@ Rows use: **PASS**, **VISUAL MISMATCH**, **BEHAVIOR MISMATCH**, **MISSING**, **I
 | Sleep/Wait | crash site | source menu | `S` opens seven wait rows in order: Advance Time One Hour, Two Hours, Four Hours, Eight Hours, One Day, to Morning, to Evening; no Until Healed row; ID 293 hover frame observed | production classifies the authentic crash-site sector as TownWait and exposes the same seven choices | `sleep_ui.c`; `TownMapInfo`; `townmap.mes [w:1]`; UI-C.5 tests/validator | BLOCKED | duration execution was interrupted; subsequent RetailSandbox restarts currently exit before creating a window | retain M3 as open; do not infer clock/recovery behavior from menu visibility alone |
 | Starting equipment | after Character Editor Continue | Shopkeeper transition | retail enters the shopping map before START_MAP | OpenArcanum currently finalizes directly into START_MAP | `gameinit.c` selects `MAP_TYPE_SHOPPING_MAP`; `mainmenu_ui.c` refreshes the first NPC and opens shared barter inventory | MISSING | required intermediate lifecycle and authored shopping actor/state do not yet exist | do not substitute a generic merchant; implement a bounded creation-to-shopping-to-start transaction after the retail process is available again |
 | Dialogue | Virgil at crash site | ordinary conversation | NPC speech is over the live world and PC responses occupy a lower live-world strip; pointer selection advances; number-key selection did not respond in the observed run | UI-F.1 now presents the authentic Virgil M5 transaction as a world bubble plus five-row 400 x 100 source-font strip above the persistent HUD; pointer selection physically advances and dialogue leaves world movement open | `dialog_ui.c`; `tc.c`; `intgame.c`; UI-F.1 tests and production validator | PASS | prior generic nine-choice blocking modal contradicted retail/source | corrected without moving dialogue authority into the view; physical retail audio parity remains unclaimed under `-nosound` |
+| Logbook | retail launch unavailable | Quests shell, tabs, and page controls | not re-observed in this run because RetailSandbox exits before creating a window | source-backed fixed 800 x 400 shell uses IDs 198/260/261/264-273, authoritative Quests, two-page flow, HUD persistence, and fail-closed unsupported tabs; production pointer and rebuild proofs pass | `logbook_ui.c`; UI-F.2 focused tests and production validator | BLOCKED | retail oracle startup is unavailable; source and OpenArcanum validation cannot replace the missing side-by-side observation | keep retail/audio certification open; do not start UI-F.2b or follower presentation from this result |
 
 ## M0 DirectInput bridge
 
@@ -89,6 +90,18 @@ until the exact retail transaction can be observed again and the intermediate li
 merchant substitute is rejected. M6 UI-F.1 ordinary dialogue presentation is implemented and green from the prior
 physical retail Virgil observation, controlling source, focused tests, and production Unity proof. The complete
 EditMode suite remains deferred to the single final batch gate after the authorized sequential phases.
+
+M7 UI-F.2a is implemented from controlling `logbook_ui.c` evidence and green in production Unity. Focused and
+directly affected coverage passed **76/76**. The 800 x 600 Play Mode proof exercised real pointer page turning and
+unsupported-tab rejection, persistent HUD, exact source-art composition, deterministic target-resolution geometry,
+one presenter/EventSystem, and Original -> Enhanced -> Original rebuilding with 0 final warnings/errors. The six
+non-quest tabs fail closed. Retail Logbook and sound parity remain blocked by the same startup failure, and the
+campaign-relative quest clock is displayed honestly as `Day N`; neither limitation is treated as completed source
+authority. Sequential advancement to follower UI remains gated.
+
+The final complete EditMode suite passed **1322/1322**, with 0 failed, 0 skipped, and 0 inconclusive. The first full
+run identified one stale Journal-HUD expectation; the corrected regression now preserves the source Logbook HUD
+contract while still proving that unrelated modal screens hide it.
 
 ## OpenArcanum-side revalidation
 
