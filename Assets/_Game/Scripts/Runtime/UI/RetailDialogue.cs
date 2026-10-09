@@ -14,7 +14,11 @@ namespace Arcanum.Runtime.UI
     public static class RetailDialogueLayout
     {
         public const int ResponseFontSourceId = 229;
+        public const int NpcBubbleFontSourceId = 229;
         public const int MaximumResponses = 5;
+        public const float NpcBubbleMaximumWidth = 200f;
+        public const float NpcBubbleMaximumHeight = 200f;
+        public const float NpcBubbleLineHeight = 14f;
         public const float ResponseWidth = 400f;
         public const float ResponseHeight = 100f;
         public const float BottomHudHeight = 159f;
@@ -62,7 +66,7 @@ namespace Arcanum.Runtime.UI
         private GameObject _canvasRoot;
         private RectTransform _responsePanel;
         private RectTransform _bubble;
-        private Text _bubbleText;
+        private string _bubbleValue = string.Empty;
 
         public bool IsAvailable => _resolver != null && _canvasRoot != null;
         public bool IsVisible => IsAvailable && _canvasRoot.activeSelf;
@@ -132,8 +136,13 @@ namespace Arcanum.Runtime.UI
                     _responseButtons[index].interactable = true;
             }
 
-            _bubbleText.text = dialogue.NpcText ?? string.Empty;
-            _bubble.gameObject.SetActive(!string.IsNullOrWhiteSpace(_bubbleText.text));
+            string npcText = dialogue.NpcText ?? string.Empty;
+            if (!string.Equals(_bubbleValue, npcText, StringComparison.Ordinal))
+            {
+                _bubbleValue = npcText;
+                RebuildNpcBubble(npcText);
+            }
+            _bubble.gameObject.SetActive(!string.IsNullOrWhiteSpace(npcText));
             PositionNpcBubble(dialogue.NpcIdentity);
         }
 
@@ -182,28 +191,88 @@ namespace Arcanum.Runtime.UI
             _bubble = AddRect("Retail Dialogue NPC Bubble", root);
             _bubble.anchorMin = _bubble.anchorMax = Vector2.zero;
             _bubble.pivot = new Vector2(.5f, 0f);
-            _bubble.sizeDelta = new Vector2(320f, 72f);
-            Image bubbleBackdrop = _bubble.gameObject.AddComponent<Image>();
-            bubbleBackdrop.color = new Color32(5, 5, 5, 190);
-            bubbleBackdrop.raycastTarget = false;
-            var textObject = new GameObject("NPC Speech", typeof(RectTransform), typeof(Text), typeof(Shadow));
-            RectTransform textRect = textObject.GetComponent<RectTransform>();
-            textRect.SetParent(_bubble, worldPositionStays: false);
-            textRect.anchorMin = Vector2.zero;
-            textRect.anchorMax = Vector2.one;
-            textRect.offsetMin = new Vector2(8f, 6f);
-            textRect.offsetMax = new Vector2(-8f, -6f);
-            _bubbleText = textObject.GetComponent<Text>();
-            _bubbleText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            _bubbleText.fontSize = 14;
-            _bubbleText.color = Color.white;
-            _bubbleText.alignment = TextAnchor.MiddleCenter;
-            _bubbleText.horizontalOverflow = HorizontalWrapMode.Wrap;
-            _bubbleText.verticalOverflow = VerticalWrapMode.Truncate;
-            _bubbleText.raycastTarget = false;
-            Shadow shadow = textObject.GetComponent<Shadow>();
-            shadow.effectColor = ResponseShadow;
-            shadow.effectDistance = new Vector2(1f, -1f);
+            _bubble.sizeDelta = new Vector2(RetailDialogueLayout.NpcBubbleMaximumWidth,
+                RetailDialogueLayout.NpcBubbleLineHeight);
+        }
+
+        private void RebuildNpcBubble(string value)
+        {
+            for (int index = _bubble.childCount - 1; index >= 0; index--)
+            {
+                GameObject child = _bubble.GetChild(index).gameObject;
+                child.SetActive(false);
+                if (Application.isPlaying) Object.Destroy(child); else Object.DestroyImmediate(child);
+            }
+            if (string.IsNullOrWhiteSpace(value)) return;
+
+            List<string> lines = WrapNpcText(value, RetailDialogueLayout.NpcBubbleMaximumWidth);
+            for (int index = 0; index < lines.Count; index++)
+            {
+                SourceUiBitmapText shadow = AddBubbleLine($"NPC Speech Shadow {index + 1}", lines[index],
+                    ResponseShadow, index, 1f);
+                SourceUiBitmapText text = AddBubbleLine($"NPC Speech {index + 1}", lines[index],
+                    Color.white, index, 0f);
+                CenterBubbleLine(shadow, shadow.LogicalSize.x, 1f);
+                CenterBubbleLine(text, text.LogicalSize.x, 0f);
+            }
+            _bubble.sizeDelta = new Vector2(RetailDialogueLayout.NpcBubbleMaximumWidth,
+                Mathf.Min(RetailDialogueLayout.NpcBubbleMaximumHeight,
+                    lines.Count * RetailDialogueLayout.NpcBubbleLineHeight));
+        }
+
+        private SourceUiBitmapText AddBubbleLine(string name, string value, Color tint, int row, float offset)
+        {
+            RectTransform line = AddRect(name, _bubble);
+            line.anchorMin = line.anchorMax = new Vector2(0f, 1f);
+            line.pivot = new Vector2(0f, 1f);
+            line.anchoredPosition = new Vector2(offset,
+                -row * RetailDialogueLayout.NpcBubbleLineHeight - offset);
+            SourceUiBitmapText text = line.gameObject.AddComponent<SourceUiBitmapText>();
+            text.Bind(_resolver, value, tint, RetailDialogueLayout.NpcBubbleFontSourceId);
+            return text;
+        }
+
+        private void CenterBubbleLine(SourceUiBitmapText text, float width, float offset)
+        {
+            RectTransform line = (RectTransform)text.transform;
+            line.anchoredPosition = new Vector2((_bubble.sizeDelta.x - width) * .5f + offset,
+                line.anchoredPosition.y);
+        }
+
+        private List<string> WrapNpcText(string value, float maximumWidth)
+        {
+            var lines = new List<string>();
+            string current = string.Empty;
+            foreach (string word in value.Split((char[])null, StringSplitOptions.RemoveEmptyEntries))
+            {
+                string candidate = current.Length == 0 ? word : current + " " + word;
+                if (MeasureSourceText(candidate) <= maximumWidth) current = candidate;
+                else
+                {
+                    if (current.Length > 0) lines.Add(current);
+                    current = word;
+                    if ((lines.Count + 1) * RetailDialogueLayout.NpcBubbleLineHeight
+                        >= RetailDialogueLayout.NpcBubbleMaximumHeight) break;
+                }
+            }
+            if (current.Length > 0
+                && lines.Count * RetailDialogueLayout.NpcBubbleLineHeight
+                < RetailDialogueLayout.NpcBubbleMaximumHeight) lines.Add(current);
+            return lines;
+        }
+
+        private float MeasureSourceText(string value)
+        {
+            float width = 0f;
+            foreach (char character in value)
+            {
+                int frame = (byte)character - 31;
+                if (frame >= 0 && _resolver.TryResolve(
+                        new UiAssetKey(RetailDialogueLayout.NpcBubbleFontSourceId, frame: frame),
+                        out UiResolvedAsset asset))
+                    width += asset.Hotspot.x > 0 ? asset.Hotspot.x : asset.LogicalSize.x;
+            }
+            return width;
         }
 
         private void AddResponseRow(int index)
@@ -292,7 +361,7 @@ namespace Arcanum.Runtime.UI
             _canvasRoot = null;
             _responsePanel = null;
             _bubble = null;
-            _bubbleText = null;
+            _bubbleValue = string.Empty;
             _resolver = null;
             CurrentResponseCount = 0;
             OverflowDetected = false;

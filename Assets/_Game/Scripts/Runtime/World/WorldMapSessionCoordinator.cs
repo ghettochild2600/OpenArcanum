@@ -38,6 +38,7 @@ namespace Arcanum.Runtime.World
         private ISectorPresentationOwner _terrainOwner;
         private ISectorPresentationOwner _objectOwner;
         private Func<int, ObjectProtoInfo> _resolvePrototype;
+        private Func<int, string> _resolveDescription;
         private Func<uint?, InventoryFootprint> _resolveInventoryFootprint;
         private CharacterStatService _characters;
         private InventoryCapacityService _inventoryCapacity;
@@ -300,8 +301,19 @@ namespace Arcanum.Runtime.World
         public void BindPrototypeSource(Func<int, ObjectProtoInfo> resolvePrototype)
             => _resolvePrototype = resolvePrototype ?? throw new ArgumentNullException(nameof(resolvePrototype));
 
+        public void BindDescriptionSource(Func<int, string> resolveDescription)
+            => _resolveDescription = resolveDescription ?? throw new ArgumentNullException(nameof(resolveDescription));
+
         internal ObjectProtoInfo ResolvePrototype(int prototypeNumber)
             => _resolvePrototype?.Invoke(prototypeNumber);
+
+        public string ResolveDisplayName(PersistentObjectState state)
+        {
+            if (state == null) return string.Empty;
+            int? description = ResolvePrototype(state.PrototypeNumber)?.Description;
+            string value = description.HasValue ? _resolveDescription?.Invoke(description.Value) : null;
+            return !string.IsNullOrWhiteSpace(value) ? value.Trim() : state.Type.ToString();
+        }
 
         internal InventoryFootprint ResolveInventoryFootprint(uint? inventoryArtId)
             => _resolveInventoryFootprint?.Invoke(inventoryArtId) ?? InventoryFootprint.OneCell;

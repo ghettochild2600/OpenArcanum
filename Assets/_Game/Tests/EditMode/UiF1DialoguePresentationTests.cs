@@ -44,6 +44,10 @@ namespace Arcanum.Formats.Tests
                 Is.EqualTo(new Rect(6f, 80f, 388f, 20f)));
             Assert.That(RetailDialogueLayout.VisibleResponseCount(9), Is.EqualTo(5));
             Assert.Throws<ArgumentOutOfRangeException>(() => RetailDialogueLayout.ResponseRowRect(5));
+            Assert.That(RetailDialogueLayout.NpcBubbleFontSourceId, Is.EqualTo(229));
+            Assert.That((RetailDialogueLayout.NpcBubbleMaximumWidth,
+                    RetailDialogueLayout.NpcBubbleMaximumHeight),
+                Is.EqualTo((200f, 200f)));
         }
 
         [TestCase(1024, 768)]

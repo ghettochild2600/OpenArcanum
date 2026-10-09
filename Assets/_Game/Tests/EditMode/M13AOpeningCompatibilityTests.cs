@@ -450,6 +450,8 @@ namespace Arcanum.Formats.Tests
                 Assert.That(examineIndex, Is.GreaterThanOrEqualTo(0),
                     "ss/ia filtering must admit the source-valid examination response");
                 Assert.That(controller.SelectDialogueResponse(examineIndex), Is.True);
+                Assert.That(controller.Feedback, Is.Empty,
+                    "accepted source dialogue choices do not emit a synthetic HUD confirmation");
                 Assert.That(controller.Screen, Is.EqualTo(GameUiScreen.Character));
                 Assert.That(controller.CharacterTarget, Is.EqualTo(Virgil));
                 Assert.That(controller.CharacterReadOnly, Is.True);

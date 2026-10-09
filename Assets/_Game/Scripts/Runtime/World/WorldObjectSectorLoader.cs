@@ -1145,6 +1145,8 @@ namespace Arcanum.Runtime.World
             _prototypes = new ProtoLibrary(protoDirectory ?? string.Empty);
             _art = new ObjectArtResolvers(_vfs);
             Session.BindPrototypeSource(_prototypes.Get);
+            MesFile descriptions = MesReader.Read(_vfs.ReadAllBytes("mes/description.mes"));
+            Session.BindDescriptionSource(id => descriptions.Get(id));
             Session.BindInventoryFootprintSource(ResolveInventoryFootprint);
             Session.BindCraftingSource(SchematicCatalog.FromMes(
                 MesReader.Read(_vfs.ReadAllBytes("rules/schematic.mes")),

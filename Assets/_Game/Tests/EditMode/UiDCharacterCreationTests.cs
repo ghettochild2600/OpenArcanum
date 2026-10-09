@@ -356,11 +356,28 @@ namespace Arcanum.Formats.Tests
             SourceHoverHintTarget hint = _view.GetComponentsInChildren<SourceHoverHintTarget>(true)
                 .First(value => value.name == "Strength Value");
             hint.OnPointerEnter(null);
-            SourceUiBitmapText panel = _view.GetComponentsInChildren<SourceUiBitmapText>(true)
-                .Single(value => value.name == "Editor Feedback");
-            Assert.That(panel.Text, Is.Not.Empty);
-            Assert.That(panel.Text, Does.Contain("CP"));
+            SourceUiBitmapText title = _view.GetComponentsInChildren<SourceUiBitmapText>(true)
+                .Single(value => value.name == "Editor Message Title");
+            RectTransform body = _view.GetComponentsInChildren<RectTransform>(true)
+                .Single(value => value.name == "Editor Message Body");
+            SourceUiBitmapText[] bodyLines = body.GetComponentsInChildren<SourceUiBitmapText>(true);
+            Assert.That(title.Text, Is.EqualTo("Strength"));
+            Assert.That(string.Join(" ", bodyLines.Select(value => value.Text)), Is.Not.Empty);
+            Assert.That(title.transform.parent, Is.SameAs(_view.EditorBottomRegionRoot));
+            Assert.That(body.parent, Is.SameAs(_view.EditorBottomRegionRoot));
+            Assert.That(((RectTransform)title.transform).anchoredPosition, Is.EqualTo(new Vector2(290f, -63f)));
+            Assert.That(body.anchoredPosition, Is.EqualTo(new Vector2(290f, -87f)));
+            Assert.That(bodyLines, Has.Length.LessThanOrEqualTo(3));
             hint.OnPointerExit(null);
+        }
+
+        [Test]
+        public void SourceMessageProjectionSeparatesTitleAndWrappedBody()
+        {
+            RetailMessageWindowProjection message = RetailMessageWindowProjection.FromSource(
+                "Constitution\nThe endurance of the character.");
+            Assert.That(message.Title, Is.EqualTo("Constitution"));
+            Assert.That(message.Body, Is.EqualTo("The endurance of the character."));
         }
 
         [TestCase(8)]

@@ -36,8 +36,10 @@ namespace Arcanum.Formats.Tests
             _pc = ProductionPlayerLifecycle.DefaultPlayerIdentity;
             PersistentPlayerState player = _session.GetOrCreatePlayer(_pc, Sector, Vector2.one, 0x28100000u);
             _session.BindPlayer(Sector, player, Runtime("Player", ObjectType.Pc));
-            _armorPrototype = new ObjectProtoInfo(8100, ObjectType.Armor, 0x70000000u, weight: 3);
+            _armorPrototype = new ObjectProtoInfo(8100, ObjectType.Armor, 0x70000000u,
+                description: 4242, weight: 3);
             _session.BindPrototypeSource(number => number == 8100 ? _armorPrototype : null);
+            _session.BindDescriptionSource(id => id == 4242 ? "Leather Armour" : null);
             _session.BindInventoryFootprintSource(_ => InventoryFootprint.OneCell);
             _controller = new GameUiController(_session, new EmptySlots());
         }
@@ -104,7 +106,8 @@ namespace Arcanum.Formats.Tests
             PersistentObjectState armor = AddArmor(1);
             GameUiItemView view = _controller.ProjectInventory().Single();
             Assert.That((view.Identity, view.Name, view.Type, view.Quantity),
-                Is.EqualTo((armor.Identity, "Armor 8100", ObjectType.Armor, 1)));
+                Is.EqualTo((armor.Identity, "Leather Armour", ObjectType.Armor, 1)));
+            Assert.That(view.Name, Does.Not.Contain("8100"));
             Assert.That(view.IsEquipped, Is.False);
         }
 

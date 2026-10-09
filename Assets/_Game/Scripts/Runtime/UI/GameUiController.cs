@@ -1221,7 +1221,7 @@ namespace Arcanum.Runtime.UI
                 if (Open(GameUiScreen.Character)) _character = examination;
             }
             else Refresh();
-            return Complete(accepted, accepted ? "Response selected."
+            return Complete(accepted, accepted ? string.Empty
                 : _session.Dialogue.LastFailure ?? status.ToString());
         }
 
@@ -1347,11 +1347,11 @@ namespace Arcanum.Runtime.UI
         }
 
         private string ItemName(PersistentObjectState value)
-            => $"{value.Type} {value.PrototypeNumber}";
+            => _session.ResolveDisplayName(value);
 
         private string ObjectName(ArcanumObjectId identity)
             => _session.TryGetObjectState(identity, out PersistentObjectState state)
-                ? $"{state.Type} {state.PrototypeNumber}"
+                ? _session.ResolveDisplayName(state)
                 : identity.ToString();
 
         private bool Complete(bool success, string message)

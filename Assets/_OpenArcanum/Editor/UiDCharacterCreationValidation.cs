@@ -135,6 +135,24 @@ namespace OpenArcanum.Editor
                     "Continue enters source char_maint 22 at 800x400");
                 Check(view.EditorPanelRoot.GetComponentInChildren<SourceUiImage>(true)?.Key.SourceId == 29,
                     "editor opens the source skills subpanel 29");
+                SourceHoverHintTarget strengthHint = view.GetComponentsInChildren<SourceHoverHintTarget>(true)
+                    .First(value => value.name == "Strength Value" && value.gameObject.activeInHierarchy);
+                strengthHint.OnPointerEnter(null);
+                yield return null;
+                SourceUiBitmapText helpTitle = view.GetComponentsInChildren<SourceUiBitmapText>(true)
+                    .Single(value => value.name == "Editor Message Title");
+                RectTransform helpBody = view.GetComponentsInChildren<RectTransform>(true)
+                    .Single(value => value.name == "Editor Message Body");
+                SourceUiBitmapText[] helpLines = helpBody.GetComponentsInChildren<SourceUiBitmapText>(true);
+                Check(helpTitle.Text == "Strength"
+                      && ((RectTransform)helpTitle.transform).anchoredPosition == new Vector2(290f, -63f)
+                      && helpBody.anchoredPosition == new Vector2(290f, -87f)
+                      && helpBody.sizeDelta == new Vector2(291f, 54f)
+                      && helpLines.Length is >= 1 and <= 3
+                      && helpBody.GetComponentInChildren<InputField>(true) == null,
+                    "source help uses separate title/body, bounded wrapping, and no editable caret");
+                yield return new WaitForSecondsRealtime(3f);
+                strengthHint.OnPointerExit(null);
                 int autoLevelStrength = draft.GetAttribute(CharacterAttribute.Strength);
                 int autoLevelPoints = controller.CreationValidation.RemainingCharacterPoints;
                 FindButton(view, "Auto-Level Schemes").onClick.Invoke();
@@ -245,6 +263,7 @@ namespace OpenArcanum.Editor
 
                 Debug.Log("UI-D PHYSICAL VALIDATION: PASS; source flow=765 identity>22 editor; "
                           + "identity=name/portrait/gender/race/background arrows; invalid name=no mutation; "
+                          + "help=separate Strength title/bounded 291x54 body/no caret; "
                           + "editor=attributes/skills/magic/technology; points=4 spent/1 remaining; "
                           + "ID568=auto-level schemes/fail-closed/no mutation; bottom-bar Back/Continue=draft preserved; "
                           + "partial-window y=41; no global ScrollRect; "
@@ -267,7 +286,8 @@ namespace OpenArcanum.Editor
         }
 
         private static Button FindButton(RetailCharacterCreationView view, string name)
-            => view.GetComponentsInChildren<Button>(true).Single(value => value.name == name);
+            => view.GetComponentsInChildren<Button>(true).Single(value =>
+                value.name == name && value.gameObject.activeInHierarchy && value.interactable);
 
         private static T Require<T>(T value, string description) where T : class
             => value ?? throw new InvalidOperationException("Missing " + description + ".");

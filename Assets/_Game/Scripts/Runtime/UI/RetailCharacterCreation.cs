@@ -17,6 +17,27 @@ namespace Arcanum.Runtime.UI
     public enum RetailCharacterCreationStage { Identity, Editor }
     public enum RetailCreationEditorPage { Skills, Technology, Magic }
 
+    public readonly struct RetailMessageWindowProjection
+    {
+        public string Title { get; }
+        public string Body { get; }
+
+        public RetailMessageWindowProjection(string title, string body)
+        {
+            Title = title ?? string.Empty;
+            Body = body ?? string.Empty;
+        }
+
+        public static RetailMessageWindowProjection FromSource(string value)
+        {
+            string normalized = (value ?? string.Empty).Replace("\r\n", "\n").Replace('\r', '\n');
+            int newline = normalized.IndexOf('\n');
+            return newline >= 0
+                ? new RetailMessageWindowProjection(normalized[..newline].Trim(), normalized[(newline + 1)..].Trim())
+                : new RetailMessageWindowProjection(string.Empty, normalized.Trim());
+        }
+    }
+
     /// <summary>Source coordinates proven by mainmenu_ui.c and charedit_ui.c.</summary>
     public static class RetailCharacterCreationLayout
     {
@@ -135,7 +156,8 @@ namespace Arcanum.Runtime.UI
         private (SourceUiButton Minus, SourceUiButton Plus) _hitPointButtons;
         private (SourceUiButton Minus, SourceUiButton Plus) _fatigueButtons;
         private SourceUiBitmapText _identityFeedbackText;
-        private SourceUiBitmapText _editorFeedbackText;
+        private SourceUiBitmapText _editorMessageTitle;
+        private RectTransform _editorMessageBody;
         private readonly List<SourceUiBitmapText> _identityStats = new();
         private readonly List<SourceUiBitmapText> _identityDerivedStats = new();
         private readonly Dictionary<CharacterAttribute, SourceUiBitmapText> _attributeValues = new();
@@ -445,8 +467,10 @@ namespace Arcanum.Runtime.UI
 
             _pointsText = AddText("Character Points", _editor, new Rect(212f, 56f, 220f, 19f),
                 string.Empty, 27, SourceYellow);
-            _editorFeedbackText = AddText("Editor Feedback", _editor, new Rect(49f, 323f, 430f, 18f),
-                string.Empty, 26, new Color32(245, 130, 95, 255));
+            _editorMessageTitle = AddText("Editor Message Title", _editorNavigation,
+                new Rect(290f, 63f, 291f, 19f), string.Empty, 27, SourceWhite);
+            _editorMessageBody = AddRect("Editor Message Body", _editorNavigation,
+                new Rect(290f, 87f, 291f, 54f));
             _editorPanel = AddRect("Editor Subpanel", _editor, RetailCharacterCreationLayout.EditorSubpanel);
         }
 
@@ -503,7 +527,7 @@ namespace Arcanum.Runtime.UI
             _fatigueButtons.Plus.SetInteractable(CanAdjustVitality(draft, false, 1));
             foreach (var pair in _pageButtons) pair.Value.SetSelected(pair.Key == EditorPage);
             SetText(_pointsText, $"Character Points: {_controller.CreationValidation.RemainingCharacterPoints}");
-            SetText(_editorFeedbackText, _controller.Feedback);
+            RebuildEditorMessage(_controller.Feedback);
             RebuildEditorPanel(draft);
         }
 
@@ -789,12 +813,10 @@ namespace Arcanum.Runtime.UI
         {
             string value = _resolver.Original.TryReadMessage("mes/charedit.mes", sourceMessageId,
                 out string source) ? source : string.Empty;
-            if (cost > 0 && sourceMessageId is >= 106 and <= 116)
-                value = string.IsNullOrEmpty(value) ? $"CP cost: {cost}" : $"{value}  CP cost: {cost}";
-            SetText(_editorFeedbackText, value);
+            RebuildEditorMessage(value);
         }
 
-        private void ClearHint() => SetText(_editorFeedbackText, _controller?.Feedback ?? string.Empty);
+        private void ClearHint() => RebuildEditorMessage(_controller?.Feedback ?? string.Empty);
 
         private InputField AddNameInput(RectTransform parent, Rect rect)
         {
@@ -942,6 +964,14 @@ namespace Arcanum.Runtime.UI
                     lines[index], 26, SourceWhite);
         }
 
+        private void RebuildEditorMessage(string value)
+        {
+            RetailMessageWindowProjection message = RetailMessageWindowProjection.FromSource(value);
+            SetText(_editorMessageTitle, message.Title);
+            if (_editorMessageBody != null)
+                RebuildWrappedText(_editorMessageBody, message.Body, 44, 3);
+        }
+
         private static List<string> WrapText(string value, int columns, int maxLines)
         {
             var lines = new List<string>();
@@ -1053,6 +1083,8 @@ namespace Arcanum.Runtime.UI
             _editorNavigation = null;
             _identityDescription = null;
             _editorPanel = null;
+            _editorMessageTitle = null;
+            _editorMessageBody = null;
             _identityBackground = null;
             _editorBackground = null;
             _topBackground = null;
