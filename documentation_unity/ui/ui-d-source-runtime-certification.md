@@ -85,5 +85,6 @@ arcanum-ce results to `RETAIL-PHYSICALLY-CERTIFIED`.
   editor, SHOPPING_MAP/Human Shopkeeper, a real purchase, START_MAP, and Save V1 restoration. It also preserved one
   presenter and one EventSystem through Original -> exact-4x Enhanced -> Original rebuilds and 800 x 600, 1024 x
   768, 1920 x 1080, 2560 x 1440, and 3840 x 2160 checks.
-- Complete EditMode: recorded in `PROJECT_STATUS.md` after the one final batch gate.
-
+- Complete EditMode: **1342/1342**, with 0 failed, 0 skipped, and 0 inconclusive (1323 baseline plus 19 justified
+  cases). This was the single final complete-suite run after implementation and directly affected regressions were
+  green.

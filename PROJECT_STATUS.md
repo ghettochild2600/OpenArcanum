@@ -2818,6 +2818,9 @@ branch. The production walkthrough passed twice after the final toggle-art corre
 and through Save V1. Focused UI-D passed **64/64** and directly affected regressions passed **231/231**. See
 [`documentation_unity/ui/ui-d-source-runtime-certification.md`](documentation_unity/ui/ui-d-source-runtime-certification.md).
 
+The single final complete EditMode gate passed **1342/1342**, with 0 failed, 0 skipped, and 0 inconclusive (1323
+baseline plus 19 justified Character Creation/starting-equipment cases). Unity compilation is clean.
+
 The evidence classes remain explicit: `C:\Arcanum - Modded` is the windowed retail-derived physical reference;
 arcanum-ce is the source-runtime automation reference; and `D:\OpenArcanum\Source\Steam-Clean` is the pristine retail
 control. No arcanum-ce observation is called retail-physically-certified.
