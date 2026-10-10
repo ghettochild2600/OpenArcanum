@@ -50,6 +50,9 @@ namespace Arcanum.Runtime.UI
         public const int MagicPanelSourceId = 31;
         public const int MinusSourceId = 23;
         public const int PlusSourceId = 24;
+        public const int FeedbackIconSourceId = 444;
+        public const int AlignmentMarkerSourceId = 254;
+        public const int AptitudeMarkerSourceId = 255;
 
         public const float MainMenuWindowTop = 41f;
         public const float BottomBarTop = 441f;
@@ -68,6 +71,16 @@ namespace Arcanum.Runtime.UI
         public static readonly Rect DescriptionBody = new(350f, 185f, 395f, 182f);
         public static readonly Rect EditorPortrait = new(12f, 10f, 89f, 89f);
         public static readonly Rect EditorSubpanel = new(503f, 4f, 235f, 325f);
+        public static readonly Rect EditorName = new(212f, 56f, 270f, 19f);
+        public static readonly Rect EditorLevel = new(212f, 75f, 120f, 19f);
+        public static readonly Rect EditorPoints = new(212f, 94f, 120f, 19f);
+        public static readonly Rect EditorExperienceNext = new(212f, 113f, 150f, 19f);
+        public static readonly Rect EditorRace = new(337f, 75f, 150f, 19f);
+        public static readonly Rect EditorGender = new(337f, 94f, 150f, 19f);
+        public static readonly Rect EditorAge = new(337f, 113f, 120f, 19f);
+        public static readonly Rect EditorMessageIcon = new(212f, 102f, 64f, 64f);
+        public static readonly Rect EditorMessageTitle = new(290f, 63f, 291f, 19f);
+        public static readonly Rect EditorMessageBody = new(290f, 87f, 291f, 54f);
 
         public static readonly Vector2[] AttributePlus =
         {
@@ -86,7 +99,7 @@ namespace Arcanum.Runtime.UI
             336, 335, 765, 321, 323, 283, 284, 757, 758,
             22, 23, 24, 29, 30, 31, 34, 35, 36, 568,
             302, 303, 304, 305, 306, 307, 308, 309, 310, 311, 312, 313,
-            624, 625, 647, 648,
+            624, 625, 647, 648, 444, 254, 255,
         };
     }
 
@@ -97,6 +110,8 @@ namespace Arcanum.Runtime.UI
     [DisallowMultipleComponent]
     public sealed class RetailCharacterCreationView : MonoBehaviour
     {
+        private enum IdentityContext { Background, Gender, Race }
+
         private static readonly Color SourceWhite = new Color32(231, 217, 174, 255);
         private static readonly Color SourceYellow = new Color32(245, 201, 65, 255);
         private static readonly Color SourceBlue = new Color32(108, 155, 215, 255);
@@ -150,14 +165,30 @@ namespace Arcanum.Runtime.UI
         private SourceUiBitmapText _raceText;
         private SourceUiBitmapText _backgroundText;
         private SourceUiBitmapText _descriptionTitle;
+        private SourceUiBitmapText _identityMessageText;
+        private SourceUiBitmapText _identityMessageTitle;
+        private RectTransform _identityMessageBody;
+        private SourceUiImage _identityMessageIcon;
         private SourceUiBitmapText _pointsText;
+        private SourceUiBitmapText _editorNameText;
+        private SourceUiBitmapText _editorLevelText;
+        private SourceUiBitmapText _editorExperienceText;
+        private SourceUiBitmapText _editorRaceText;
+        private SourceUiBitmapText _editorGenderText;
+        private SourceUiBitmapText _editorAgeText;
         private SourceUiBitmapText _hitPointValue;
         private SourceUiBitmapText _fatigueValue;
         private (SourceUiButton Minus, SourceUiButton Plus) _hitPointButtons;
         private (SourceUiButton Minus, SourceUiButton Plus) _fatigueButtons;
-        private SourceUiBitmapText _identityFeedbackText;
         private SourceUiBitmapText _editorMessageTitle;
+        private SourceUiBitmapText _editorMessageRequirement;
         private RectTransform _editorMessageBody;
+        private SourceUiImage _editorMessageIcon;
+        private SourceUiImage _aptitudeMarker;
+        private SourceUiBitmapText _magickAptitudeText;
+        private SourceUiBitmapText _technologyAptitudeText;
+        private readonly List<SourceUiBitmapText> _editorDerivedStats = new();
+        private readonly List<SourceUiBitmapText> _editorResistances = new();
         private readonly List<SourceUiBitmapText> _identityStats = new();
         private readonly List<SourceUiBitmapText> _identityDerivedStats = new();
         private readonly Dictionary<CharacterAttribute, SourceUiBitmapText> _attributeValues = new();
@@ -171,6 +202,8 @@ namespace Arcanum.Runtime.UI
         private int _skillGroup;
         private SpellCollege _selectedCollege;
         private TechnologyDiscipline _selectedTechnology;
+        private IdentityContext _identityContext = IdentityContext.Background;
+        private string _identityValidation = string.Empty;
 
         public bool IsAvailable => _canvasRoot != null && _resolver != null;
         public bool IsVisible => IsAvailable && _canvasRoot.activeSelf;
@@ -252,6 +285,8 @@ namespace Arcanum.Runtime.UI
                 _skillGroup = 0;
                 _selectedCollege = SpellCollege.Conveyance;
                 _selectedTechnology = TechnologyDiscipline.Herbology;
+                _identityContext = IdentityContext.Background;
+                _identityValidation = string.Empty;
                 _identitySignature = int.MinValue;
                 _editorSignature = int.MinValue;
             }
@@ -281,7 +316,15 @@ namespace Arcanum.Runtime.UI
         {
             if (!IsVisible || Stage != RetailCharacterCreationStage.Identity) return;
             _controller.SetCreationName(_nameInput?.text ?? string.Empty);
-            if (!_controller.CreationValidation.Succeeded) { RefreshIdentity(force: true); return; }
+            if (!_controller.CreationValidation.Succeeded)
+            {
+                _identityValidation = _controller.CreationValidation.Failure == CharacterCreationFailure.InvalidName
+                    ? ReadMainMenuMessage(506, "You must choose a name.")
+                    : _controller.CreationValidation.Message;
+                RefreshIdentity(force: true);
+                return;
+            }
+            _identityValidation = string.Empty;
             Stage = RetailCharacterCreationStage.Editor;
             _editorSignature = int.MinValue;
             Synchronize();
@@ -344,11 +387,13 @@ namespace Arcanum.Runtime.UI
             // The portrait is a 128x128 draw into a 64x64 invalidation region. Source buttons are widgets
             // painted above that draw, so create the portrait before the overlapping arrow controls.
             _identityPortrait = AddPortraitImage("Portrait", _identity, RetailCharacterCreationLayout.PortraitDraw);
-            AddSourceButtonTopLeft("Identity Continue", _identityNavigation, 321,
+            SourceUiButton continueButton = AddSourceButtonTopLeft("Identity Continue", _identityNavigation, 321,
                 BottomBarLocal(RetailCharacterCreationLayout.ContinueButton), ContinueToEditor);
-            AddSourceButtonTopLeft("Identity Back", _identityNavigation, 323,
+            SourceUiButton backButton = AddSourceButtonTopLeft("Identity Back", _identityNavigation, 323,
                 BottomBarLocal(RetailCharacterCreationLayout.BackButton),
                 () => _controller.Open(GameUiScreen.MainMenu));
+            BindNavigationHint(continueButton.gameObject, true, true);
+            BindNavigationHint(backButton.gameObject, false, true);
             AddSourceButtonTopLeft("Previous Portrait", _identity, 283, MainWindowLocal(new Vector2(43f, 118f)),
                 () => CyclePortrait(-1));
             AddSourceButtonTopLeft("Next Portrait", _identity, 284, MainWindowLocal(new Vector2(244f, 118f)),
@@ -375,6 +420,17 @@ namespace Arcanum.Runtime.UI
                 SourceWhite);
             _backgroundText = AddText("Background", _identity, RetailCharacterCreationLayout.Background,
                 string.Empty, 27, SourceWhite);
+            Button genderContext = AddTransparentButton("Gender Context", _identity,
+                new Rect(22f, 231f, 276f, 39f), () => { });
+            Button raceContext = AddTransparentButton("Race Context", _identity,
+                new Rect(22f, 281f, 276f, 40f), () => { });
+            Button backgroundContext = AddTransparentButton("Background Context", _identity,
+                new Rect(22f, 331f, 276f, 50f), () => { });
+            foreach (Button context in new[] { genderContext, raceContext, backgroundContext })
+                context.transform.SetAsFirstSibling();
+            BindIdentityHint(genderContext.gameObject, IdentityContext.Gender);
+            BindIdentityHint(raceContext.gameObject, IdentityContext.Race);
+            BindIdentityHint(backgroundContext.gameObject, IdentityContext.Background);
             AddText("Initial Stats", _identity, RetailCharacterCreationLayout.InitialStatsTitle,
                 "Initial Stats", 27, SourceYellow);
 
@@ -402,8 +458,15 @@ namespace Arcanum.Runtime.UI
                 RetailCharacterCreationLayout.DescriptionTitle, "Background", 27, SourceYellow);
             _identityDescription = AddRect("Description Body", _identity,
                 RetailCharacterCreationLayout.DescriptionBody);
-            _identityFeedbackText = AddText("Creation Feedback", _identity, new Rect(350f, 371f, 395f, 18f),
-                string.Empty, 26, new Color32(245, 130, 95, 255));
+            _identityMessageIcon = AddSourceImage("Identity Message Icon", _identityNavigation,
+                RetailCharacterCreationLayout.FeedbackIconSourceId, RetailCharacterCreationLayout.EditorMessageIcon);
+            _identityMessageTitle = AddText("Identity Message Title", _identityNavigation,
+                RetailCharacterCreationLayout.EditorMessageTitle, string.Empty, 27, SourceWhite);
+            _identityMessageBody = AddRect("Identity Message Body", _identityNavigation,
+                RetailCharacterCreationLayout.EditorMessageBody);
+            _identityMessageText = AddText("Identity Validation", _identityNavigation,
+                new Rect(205f, 78f, 390f, 19f), string.Empty, 26, SourceWhite);
+            SetIdentityBottomMessage(string.Empty, string.Empty, false);
         }
 
         private void BuildEditor()
@@ -460,18 +523,69 @@ namespace Arcanum.Runtime.UI
             BindHint(_pageButtons[RetailCreationEditorPage.Magic].gameObject, 134, () => 0);
             AddSourceButtonTopLeft("Auto-Level Schemes", _editor, 568, new Vector2(754f, 21f),
                 RejectAutoLevelSchemes);
-            AddSourceButtonTopLeft("Editor Continue", _editorNavigation, 321,
+            SourceUiButton continueButton = AddSourceButtonTopLeft("Editor Continue", _editorNavigation, 321,
                 BottomBarLocal(RetailCharacterCreationLayout.ContinueButton), FinalizeCharacter);
-            AddSourceButtonTopLeft("Editor Back", _editorNavigation, 323,
+            SourceUiButton backButton = AddSourceButtonTopLeft("Editor Back", _editorNavigation, 323,
                 BottomBarLocal(RetailCharacterCreationLayout.BackButton), HandleEscape);
+            BindNavigationHint(continueButton.gameObject, true, false);
+            BindNavigationHint(backButton.gameObject, false, false);
 
-            _pointsText = AddText("Character Points", _editor, new Rect(212f, 56f, 220f, 19f),
+            _editorNameText = AddText("Editor Name", _editor, RetailCharacterCreationLayout.EditorName,
                 string.Empty, 27, SourceYellow);
+            _editorLevelText = AddText("Editor Level", _editor, RetailCharacterCreationLayout.EditorLevel,
+                string.Empty, 27, SourceWhite);
+            _pointsText = AddText("Character Points", _editor, RetailCharacterCreationLayout.EditorPoints,
+                string.Empty, 27, SourceWhite);
+            _editorExperienceText = AddText("Editor Experience Next", _editor,
+                RetailCharacterCreationLayout.EditorExperienceNext, string.Empty, 27, SourceWhite);
+            _editorRaceText = AddText("Editor Race", _editor, RetailCharacterCreationLayout.EditorRace,
+                string.Empty, 27, SourceWhite);
+            _editorGenderText = AddText("Editor Gender", _editor, RetailCharacterCreationLayout.EditorGender,
+                string.Empty, 27, SourceWhite);
+            _editorAgeText = AddText("Editor Age", _editor, RetailCharacterCreationLayout.EditorAge,
+                string.Empty, 27, SourceWhite);
+
+            Rect[] derivedStats =
+            {
+                new(49f, 349f, 126f, 15f), new(49f, 367f, 126f, 15f),
+                new(49f, 385f, 126f, 15f), new(49f, 403f, 126f, 15f),
+                new(178f, 349f, 140f, 15f), new(178f, 367f, 140f, 15f),
+                new(178f, 385f, 140f, 15f), new(178f, 403f, 140f, 15f),
+            };
+            for (int index = 0; index < derivedStats.Length; index++)
+                _editorDerivedStats.Add(AddText($"Editor Derived {index}", _editor, derivedStats[index],
+                    string.Empty, 26, SourceWhite));
+            Rect[] resistances =
+            {
+                new(322f, 342f, 105f, 15f), new(322f, 358f, 105f, 15f),
+                new(322f, 374f, 105f, 15f), new(322f, 390f, 105f, 15f),
+                new(322f, 406f, 105f, 15f),
+            };
+            for (int index = 0; index < resistances.Length; index++)
+                _editorResistances.Add(AddText($"Editor Resistance {index}", _editor, resistances[index],
+                    string.Empty, 26, SourceWhite));
+
+            AddSourceImageTopLeft("Alignment Marker", _editor,
+                RetailCharacterCreationLayout.AlignmentMarkerSourceId, new Vector2(78f, 236f));
+            _aptitudeMarker = AddSourceImageTopLeft("Aptitude Marker", _editor,
+                RetailCharacterCreationLayout.AptitudeMarkerSourceId, new Vector2(754f, 221f));
+            AddText("Alignment Value", _editor, new Rect(50f, 237f, 30f, 18f), "0", 27, SourceWhite);
+            _magickAptitudeText = AddText("Magick Aptitude Value", _editor,
+                new Rect(752f, 107f, 35f, 18f), string.Empty, 27, SourceWhite);
+            _technologyAptitudeText = AddText("Technology Aptitude Value", _editor,
+                new Rect(752f, 406f, 35f, 18f), string.Empty, 27, SourceWhite);
+
+            _editorMessageIcon = AddSourceImage("Editor Message Icon", _editorNavigation,
+                RetailCharacterCreationLayout.FeedbackIconSourceId, RetailCharacterCreationLayout.EditorMessageIcon);
             _editorMessageTitle = AddText("Editor Message Title", _editorNavigation,
-                new Rect(290f, 63f, 291f, 19f), string.Empty, 27, SourceWhite);
+                RetailCharacterCreationLayout.EditorMessageTitle, string.Empty, 27, SourceWhite);
+            _editorMessageRequirement = AddText("Editor Message Requirement", _editorNavigation,
+                RetailCharacterCreationLayout.EditorMessageTitle, string.Empty, 27,
+                new Color32(244, 43, 25, 255));
             _editorMessageBody = AddRect("Editor Message Body", _editorNavigation,
-                new Rect(290f, 87f, 291f, 54f));
+                RetailCharacterCreationLayout.EditorMessageBody);
             _editorPanel = AddRect("Editor Subpanel", _editor, RetailCharacterCreationLayout.EditorSubpanel);
+            RebuildEditorMessage(string.Empty);
         }
 
         private void RefreshIdentity(bool force = false)
@@ -496,9 +610,11 @@ namespace Arcanum.Runtime.UI
                 SetText(_identityStats[index], $"{Short(attribute)}:{initial.GetAttribute(attribute)}");
             }
             SetInitialDerivedStats(_identityDerivedStats, initial);
-            SetText(_descriptionTitle, background?.Name ?? "Background");
-            RebuildWrappedText(_identityDescription, background?.Description ?? string.Empty, 52, 11);
-            SetText(_identityFeedbackText, _controller.Feedback);
+            RefreshIdentityContext(draft, background);
+            if (!string.IsNullOrEmpty(_identityValidation))
+                SetIdentityBottomValidation(_identityValidation);
+            else
+                SetIdentityBottomMessage(string.Empty, string.Empty, false);
         }
 
         private void RefreshEditor()
@@ -510,6 +626,14 @@ namespace Arcanum.Runtime.UI
             if (signature == _editorSignature) return;
             _editorSignature = signature;
             SetPortrait(_editorPortrait, draft);
+            CharacterCreationInitialStats initial = _session.CharacterCreation.ProjectInitialStats(draft);
+            SetText(_editorNameText, draft.Name ?? string.Empty);
+            SetText(_editorLevelText, "LEVEL: 1");
+            SetText(_pointsText, $"POINTS: {_controller.CreationValidation.RemainingCharacterPoints}");
+            SetText(_editorExperienceText, "XP NEXT: 2100");
+            SetText(_editorRaceText, $"RACE: {Friendly(draft.Race).ToUpperInvariant()}");
+            SetText(_editorGenderText, $"GENDER: {Friendly(draft.Gender).ToUpperInvariant()}");
+            SetText(_editorAgeText, $"AGE: {draft.Age}");
             foreach (CharacterAttribute attribute in Attributes)
             {
                 int effective = _session.CharacterCreation.GetEffectiveAttribute(draft, attribute);
@@ -526,7 +650,14 @@ namespace Arcanum.Runtime.UI
             _fatigueButtons.Minus.SetInteractable(CanAdjustVitality(draft, false, -1));
             _fatigueButtons.Plus.SetInteractable(CanAdjustVitality(draft, false, 1));
             foreach (var pair in _pageButtons) pair.Value.SetSelected(pair.Key == EditorPage);
-            SetText(_pointsText, $"Character Points: {_controller.CreationValidation.RemainingCharacterPoints}");
+            SetEditorDerivedStats(initial);
+            SetEditorResistances(initial);
+            int aptitude = initial.MagickTechAptitude;
+            SetCenteredText(_magickAptitudeText, Math.Max(0, aptitude).ToString(), SourceWhite);
+            SetCenteredText(_technologyAptitudeText, Math.Max(0, -aptitude).ToString(), SourceWhite);
+            if (_aptitudeMarker != null)
+                ((RectTransform)_aptitudeMarker.transform).anchoredPosition =
+                    new Vector2(754f, -(221f - aptitude * 128f / 100f));
             RebuildEditorMessage(_controller.Feedback);
             RebuildEditorPanel(draft);
         }
@@ -574,16 +705,18 @@ namespace Arcanum.Runtime.UI
                 SourceUiBitmapText name = AddText($"{skill} Name", _editorPanel,
                     new Rect(17f, 63f + 66f * row, 170f, 18f), Friendly(skill), 27, SourceWhite);
                 foreach (GameObject target in new[] { minus.gameObject, plus.gameObject, name.gameObject })
-                    BindHint(target, 1000 + (int)skill, () => 1);
+                    BindSkillHint(target, skill);
                 int sourceLevel = draft.GetSkillPoints(skill) * CharacterSkillRules.SkillUnitsPerPoint
                                   + (CurrentBackground(draft)?.SkillModifiers.GetValueOrDefault(skill) ?? 0);
                 sourceLevel = Mathf.Clamp(sourceLevel, 0, 20);
                 _skillGauges[skill] = AddSkillGauge($"{skill} Gauge", _editorPanel,
                     new Rect(59f, 87f + 66f * row, 120f, 27f), sourceLevel);
                 SourceUiBitmapText rank = AddText($"{skill} Rank", _editorPanel,
-                    new Rect(104f, 90f + 66f * row, 40f, 18f),
-                    draft.GetSkillPoints(skill).ToString(), 27, SourceYellow);
-                SetCenteredText(rank, draft.GetSkillPoints(skill).ToString(), SourceYellow);
+                    new Rect(17f, 163f + 66f * row, 38f, 18f),
+                    sourceLevel.ToString(), 27, SourceYellow);
+                SetCenteredText(rank, sourceLevel.ToString(), SourceYellow);
+                BindSkillHint(_skillGauges[skill].gameObject, skill);
+                BindSkillHint(rank.gameObject, skill);
             }
         }
 
@@ -809,14 +942,133 @@ namespace Arcanum.Runtime.UI
             hint.Bind(() => ShowHint(sourceMessageId, cost?.Invoke() ?? 0), ClearHint);
         }
 
+        private void BindSkillHint(GameObject target, CharacterSkill skill)
+        {
+            if (target.GetComponent<Graphic>() == null)
+            {
+                Image hitArea = target.AddComponent<Image>();
+                hitArea.color = Color.clear;
+                hitArea.raycastTarget = true;
+            }
+            SourceHoverHintTarget hint = target.GetComponent<SourceHoverHintTarget>()
+                                         ?? target.AddComponent<SourceHoverHintTarget>();
+            hint.Bind(() => ShowSkillHint(skill), ClearHint);
+        }
+
+        private void BindNavigationHint(GameObject target, bool next, bool identity)
+        {
+            SourceHoverHintTarget hint = target.GetComponent<SourceHoverHintTarget>()
+                                         ?? target.AddComponent<SourceHoverHintTarget>();
+            hint.Bind(() =>
+            {
+                string title = ReadMainMenuMessage(6999, "Action:");
+                string body = ReadMainMenuMessage(next ? 7003 : 7002,
+                    next ? "Next Screen" : "Previous Screen");
+                if (identity) SetIdentityBottomMessage(title, body, true);
+                else RebuildEditorMessage(title, body, string.Empty, true);
+            }, () =>
+            {
+                if (identity)
+                {
+                    if (!string.IsNullOrEmpty(_identityValidation)) SetIdentityBottomValidation(_identityValidation);
+                    else SetIdentityBottomMessage(string.Empty, string.Empty, false);
+                }
+                else ClearHint();
+            });
+        }
+
+        private void BindIdentityHint(GameObject target, IdentityContext context)
+        {
+            SourceHoverHintTarget hint = target.GetComponent<SourceHoverHintTarget>()
+                                         ?? target.AddComponent<SourceHoverHintTarget>();
+            hint.Bind(() =>
+            {
+                _identityContext = context;
+                CharacterCreationSpecification draft = _controller?.CreationDraft;
+                if (draft != null) RefreshIdentityContext(draft, CurrentBackground(draft));
+            }, () =>
+            {
+                _identityContext = IdentityContext.Background;
+                CharacterCreationSpecification draft = _controller?.CreationDraft;
+                if (draft != null) RefreshIdentityContext(draft, CurrentBackground(draft));
+            });
+        }
+
         private void ShowHint(int sourceMessageId, int cost)
         {
             string value = _resolver.Original.TryReadMessage("mes/charedit.mes", sourceMessageId,
                 out string source) ? source : string.Empty;
-            RebuildEditorMessage(value);
+            RetailMessageWindowProjection message = RetailMessageWindowProjection.FromSource(value);
+            RebuildEditorMessage(message.Title, message.Body, string.Empty, true);
+        }
+
+        private void ShowSkillHint(CharacterSkill skill)
+        {
+            int sourceIndex = (int)skill;
+            string title = _resolver.Original.TryReadMessage("mes/skill.mes", sourceIndex,
+                out string sourceName) ? sourceName.Trim() : Friendly(skill);
+            const int firstSkillDescriptionId = CharacterSkillRules.SkillCount
+                                                + (int)SkillTrainingLevel.Master + 1;
+            string body = _resolver.Original.TryReadMessage("mes/skill.mes",
+                firstSkillDescriptionId + sourceIndex, out string sourceDescription)
+                ? sourceDescription.Trim()
+                : string.Empty;
+            CharacterCreationSpecification draft = _controller?.CreationDraft;
+            int current = draft == null ? 0 : _session.CharacterCreation.GetEffectiveSkillRank(draft, skill);
+            int required = CharacterSkillRules.MinimumAttributeForRank(
+                Math.Min(CharacterSkillRules.MaximumEffectiveRank,
+                    current + CharacterSkillRules.SkillUnitsPerPoint));
+            string requirement = $"Minimum {Short(CharacterSkillRules.GoverningAttribute(skill))} to raise: {required}";
+            RebuildEditorMessage(string.IsNullOrEmpty(title) ? Friendly(skill) : title,
+                body, requirement, true);
         }
 
         private void ClearHint() => RebuildEditorMessage(_controller?.Feedback ?? string.Empty);
+
+        private string ReadMainMenuMessage(int id, string fallback)
+            => _resolver.Original.TryReadMessage(RetailMainMenuSource.MessageTable, id, out string source)
+               && !string.IsNullOrWhiteSpace(source) ? source.Trim() : fallback;
+
+        private void RefreshIdentityContext(CharacterCreationSpecification draft, BackgroundDefinition background)
+        {
+            switch (_identityContext)
+            {
+                case IdentityContext.Gender:
+                    SetText(_descriptionTitle, string.Empty);
+                    RebuildWrappedText(_identityDescription,
+                        ReadMainMenuMessage(742 + (int)draft.Gender, string.Empty), 52, 11);
+                    break;
+                case IdentityContext.Race:
+                    SetText(_descriptionTitle, ReadMainMenuMessage(745, "Race"));
+                    RebuildWrappedText(_identityDescription,
+                        ReadMainMenuMessage(770 + 2 * (int)draft.Race + (int)draft.Gender, string.Empty),
+                        52, 11);
+                    break;
+                default:
+                    RetailMessageWindowProjection projection = RetailMessageWindowProjection.FromSource(
+                        background?.Description ?? string.Empty);
+                    SetText(_descriptionTitle, background?.Name ?? projection.Title);
+                    RebuildWrappedText(_identityDescription,
+                        string.IsNullOrEmpty(projection.Body) ? projection.Title : projection.Body, 52, 11);
+                    break;
+            }
+        }
+
+        private void SetIdentityBottomValidation(string value)
+        {
+            if (_identityMessageIcon != null) _identityMessageIcon.gameObject.SetActive(false);
+            SetText(_identityMessageTitle, string.Empty);
+            if (_identityMessageBody != null) ClearChildren(_identityMessageBody);
+            SetCenteredText(_identityMessageText, value ?? string.Empty, SourceWhite);
+        }
+
+        private void SetIdentityBottomMessage(string title, string body, bool showIcon)
+        {
+            if (_identityMessageIcon != null) _identityMessageIcon.gameObject.SetActive(showIcon);
+            SetText(_identityMessageText, string.Empty);
+            SetText(_identityMessageTitle, title ?? string.Empty);
+            if (_identityMessageBody != null) RebuildWrappedText(_identityMessageBody, body, 44, 3);
+        }
 
         private InputField AddNameInput(RectTransform parent, Rect rect)
         {
@@ -872,6 +1124,14 @@ namespace Arcanum.Runtime.UI
             SourceUiImage source = target.gameObject.AddComponent<SourceUiImage>();
             source.Bind(_resolver, new UiAssetKey(sourceId));
             return source;
+        }
+
+        private SourceUiImage AddSourceImageTopLeft(string name, RectTransform parent, int sourceId,
+            Vector2 topLeft)
+        {
+            Vector2 size = _resolver.TryResolve(new UiAssetKey(sourceId), out UiResolvedAsset asset)
+                ? asset.LogicalSize : new Vector2(16f, 16f);
+            return AddSourceImage(name, parent, sourceId, new Rect(topLeft, size));
         }
 
         private Image AddSkillGauge(string name, RectTransform parent, Rect rect, int sourceLevel)
@@ -949,6 +1209,14 @@ namespace Arcanum.Runtime.UI
                 -bounds.y);
         }
 
+        private void SetRightAlignedText(SourceUiBitmapText text, string value, Rect bounds, Color tint)
+        {
+            if (text == null) return;
+            text.Bind(_resolver, value ?? string.Empty, tint, text.FontSourceId);
+            RectTransform rect = (RectTransform)text.transform;
+            rect.anchoredPosition = new Vector2(bounds.xMax - rect.sizeDelta.x, -bounds.y);
+        }
+
         private void SetText(SourceUiBitmapText text, string value)
         {
             if (text == null || text.Text == (value ?? string.Empty)) return;
@@ -967,9 +1235,17 @@ namespace Arcanum.Runtime.UI
         private void RebuildEditorMessage(string value)
         {
             RetailMessageWindowProjection message = RetailMessageWindowProjection.FromSource(value);
-            SetText(_editorMessageTitle, message.Title);
-            if (_editorMessageBody != null)
-                RebuildWrappedText(_editorMessageBody, message.Body, 44, 3);
+            RebuildEditorMessage(message.Title, message.Body, string.Empty, false);
+        }
+
+        private void RebuildEditorMessage(string title, string body, string requirement, bool showIcon)
+        {
+            if (_editorMessageIcon != null) _editorMessageIcon.gameObject.SetActive(showIcon);
+            SetText(_editorMessageTitle, title ?? string.Empty);
+            SetRightAlignedText(_editorMessageRequirement, requirement ?? string.Empty,
+                RetailCharacterCreationLayout.EditorMessageTitle,
+                new Color32(244, 43, 25, 255));
+            if (_editorMessageBody != null) RebuildWrappedText(_editorMessageBody, body, 44, 3);
         }
 
         private static List<string> WrapText(string value, int columns, int maxLines)
@@ -1083,8 +1359,15 @@ namespace Arcanum.Runtime.UI
             _editorNavigation = null;
             _identityDescription = null;
             _editorPanel = null;
+            _identityMessageText = null;
+            _identityMessageTitle = null;
+            _identityMessageBody = null;
+            _identityMessageIcon = null;
             _editorMessageTitle = null;
+            _editorMessageRequirement = null;
             _editorMessageBody = null;
+            _editorMessageIcon = null;
+            _aptitudeMarker = null;
             _identityBackground = null;
             _editorBackground = null;
             _topBackground = null;
@@ -1095,6 +1378,8 @@ namespace Arcanum.Runtime.UI
             _editorPortrait = null;
             _identityStats.Clear();
             _identityDerivedStats.Clear();
+            _editorDerivedStats.Clear();
+            _editorResistances.Clear();
             _attributeValues.Clear();
             _attributeButtons.Clear();
             _pageButtons.Clear();
@@ -1106,6 +1391,8 @@ namespace Arcanum.Runtime.UI
             _wasVisible = false;
             _identitySignature = int.MinValue;
             _editorSignature = int.MinValue;
+            _identityContext = IdentityContext.Background;
+            _identityValidation = string.Empty;
         }
 
         private void SetInitialDerivedStats(IReadOnlyList<SourceUiBitmapText> targets,
@@ -1120,6 +1407,33 @@ namespace Arcanum.Runtime.UI
             };
             for (int index = 0; index < targets.Count; index++)
                 SetText(targets[index], values[index]);
+        }
+
+        private void SetEditorDerivedStats(CharacterCreationInitialStats stats)
+        {
+            string[] values =
+            {
+                $"Carry Weight: {stats.CarryWeight}", $"Damage Bonus: {stats.DamageBonus}",
+                $"AC Adjustment: {stats.ArmorClassAdjustment}", $"Speed: {stats.Speed}",
+                $"Heal Rate: {stats.HealRate}", $"Poison Recovery: {stats.PoisonRecovery}",
+                $"Reaction Modifier: {stats.ReactionModifier}", $"Max Followers: {stats.MaximumFollowers}",
+            };
+            for (int index = 0; index < _editorDerivedStats.Count; index++)
+                SetText(_editorDerivedStats[index], values[index]);
+        }
+
+        private void SetEditorResistances(CharacterCreationInitialStats stats)
+        {
+            string[] values =
+            {
+                $"Damage: {stats.GetResistance(CharacterResistance.Normal)}",
+                $"Magick: {stats.GetResistance(CharacterResistance.Magic)}",
+                $"Fire: {stats.GetResistance(CharacterResistance.Fire)}",
+                $"Poison: {stats.GetResistance(CharacterResistance.Poison)}",
+                $"Electrical: {stats.GetResistance(CharacterResistance.Electrical)}",
+            };
+            for (int index = 0; index < _editorResistances.Count; index++)
+                SetText(_editorResistances[index], values[index]);
         }
     }
 }

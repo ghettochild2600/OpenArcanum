@@ -121,6 +121,18 @@ namespace Arcanum.Runtime.Character
             return 20;
         }
 
+        /// <summary>
+        /// Inverse of the source governing-attribute cap used by Character Editor help. The editor asks for the
+        /// minimum stat that can support the next four source skill units, so a zero-rank skill reports six.
+        /// </summary>
+        public static int MinimumAttributeForRank(int sourceRank)
+        {
+            int requiredRank = Math.Max(0, Math.Min(MaximumEffectiveRank, sourceRank));
+            for (int attribute = CharacterAttributeSet.SourceMinimum; attribute <= 20; attribute++)
+                if (MaximumRankForAttribute(attribute) >= requiredRank) return attribute;
+            return 20;
+        }
+
         public static int MinimumRankForTraining(SkillTrainingLevel training)
         {
             ValidateTraining(training);
