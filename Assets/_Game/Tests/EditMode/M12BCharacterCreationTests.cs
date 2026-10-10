@@ -34,7 +34,7 @@ namespace Arcanum.Formats.Tests
             var armor = new ObjectProtoInfo(8157, ObjectType.Armor, 0x70000000u, invAid: 0);
             var pregenerated = PregeneratedPrototype();
             _session.BindPrototypeSource(number => number == 9056 ? gold
-                : number == 8157 ? armor : number == 16067 ? pregenerated : null);
+                : number == 8157 ? armor : StartingPrototype(number) ?? (number == 16067 ? pregenerated : null));
             _session.BindEconomySource(InventorySourceCatalog.FromMes(
                 Mes((108, "Merwin: 0 0 100 8137")), null));
             _session.BindCharacterCreationSource(CreateCatalog());
@@ -161,7 +161,7 @@ namespace Arcanum.Formats.Tests
         }
 
         [Test]
-        public void AuthenticStartingGoldItemAndNaturalEquipmentUseM3Authority()
+        public void AuthenticStartingGoldAndBackgroundItemRemainInTheShopInventory()
         {
             CharacterCreationSpecification source = Default(); source.BackgroundId = 3;
             Assert.That(_session.CharacterCreation.FinalizeNewGame(source).Succeeded, Is.True);
@@ -169,8 +169,78 @@ namespace Arcanum.Formats.Tests
             Assert.That(_session.GetGold(pc), Is.EqualTo(400));
             PersistentObjectState armor = _session.States.Values.Single(value => value.PrototypeNumber == 8157);
             Assert.That(armor.ParentIdentity, Is.EqualTo(pc));
-            Assert.That(armor.Placement.Kind, Is.EqualTo(ObjectPlacementKind.Equipped));
-            Assert.That(armor.Placement.WornLocation, Is.EqualTo(WornLocation.Armor));
+            Assert.That(armor.Placement.Kind, Is.EqualTo(ObjectPlacementKind.Contained));
+        }
+
+        [TestCase(CharacterRace.Human, CharacterGender.Male, 8049)]
+        [TestCase(CharacterRace.Human, CharacterGender.Female, 8133)]
+        [TestCase(CharacterRace.Dwarf, CharacterGender.Male, 8065)]
+        [TestCase(CharacterRace.Gnome, CharacterGender.Male, 8065)]
+        [TestCase(CharacterRace.HalfOrc, CharacterGender.Male, 8049)]
+        [TestCase(CharacterRace.HalfOrc, CharacterGender.Female, 8133)]
+        [TestCase(CharacterRace.HalfOgre, CharacterGender.Male, 8069)]
+        public void SourceRaceGenderClothingMatrixMatchesItemGenerateInventory(CharacterRace race,
+            CharacterGender gender, int expectedPrototype)
+            => Assert.That(CharacterCreationRules.DefaultClothingPrototype(race, gender),
+                Is.EqualTo(expectedPrototype));
+
+        [TestCase(8049, ObjectType.Armor)]
+        [TestCase(8065, ObjectType.Armor)]
+        [TestCase(8069, ObjectType.Armor)]
+        [TestCase(8133, ObjectType.Armor)]
+        [TestCase(8134, ObjectType.Armor)]
+        [TestCase(8135, ObjectType.Armor)]
+        [TestCase(15178, ObjectType.Generic)]
+        [TestCase(15179, ObjectType.Generic)]
+        public void SourceBaseStartingPrototypesResolveWithoutLooseOverrides(int prototype, ObjectType type)
+        {
+            ObjectProtoInfo resolved = new ProtoLibrary(string.Empty).Get(prototype);
+            Assert.That(resolved, Is.Not.Null);
+            Assert.That(resolved.Type, Is.EqualTo(type));
+            Assert.That(resolved.Description, Is.EqualTo(prototype));
+            Assert.That(resolved.InvAid, Is.Not.Null);
+        }
+
+        [Test]
+        public void SourceBaseNiceSuitAndSkillItemsPreserveProtoCArtAndItemFields()
+        {
+            var library = new ProtoLibrary(string.Empty);
+            ObjectProtoInfo suit = library.Get(8049);
+            Assert.That(suit.CurrentArtId, Is.EqualTo(0x60000202u));
+            Assert.That(suit.InvAid, Is.EqualTo(0x60001202u));
+            Assert.That(suit.ArmorAc, Is.EqualTo(2));
+            Assert.That(suit.ArmorResist[0], Is.EqualTo(1));
+            ObjectProtoInfo lockpicks = library.Get(15178);
+            Assert.That(lockpicks.CurrentArtId, Is.EqualTo(0x60140009u));
+            Assert.That(lockpicks.InvAid, Is.EqualTo(0x60141009u));
+            Assert.That(lockpicks.ItemComplexity, Is.EqualTo(-20));
+            Assert.That(lockpicks.ItemFlags, Is.EqualTo(0x180));
+            ObjectProtoInfo bandages = library.Get(15179);
+            Assert.That(bandages.CurrentArtId, Is.EqualTo(0x61600009u));
+            Assert.That(bandages.InvAid, Is.EqualTo(0x61601009u));
+            Assert.That(bandages.GenericFlags, Is.EqualTo(0x8));
+        }
+
+        [Test]
+        public void DefaultHumanClothingIsCreatedContainedForStartingEquipment()
+        {
+            Assert.That(_session.CharacterCreation.FinalizeNewGame(Default()).Succeeded, Is.True);
+            PersistentObjectState clothing = _session.States.Values.Single(value => value.PrototypeNumber == 8049);
+            Assert.That(clothing.ParentIdentity, Is.EqualTo(ProductionPlayerLifecycle.DefaultPlayerIdentity));
+            Assert.That(clothing.Placement.Kind, Is.EqualTo(ObjectPlacementKind.Contained));
+        }
+
+        [Test]
+        public void PurchasedPickLocksAndHealAddTheirSourceStartingItems()
+        {
+            CharacterCreationSpecification source = Default();
+            source.SetSkillPoints(CharacterSkill.PickLocks, 1);
+            source.SetSkillPoints(CharacterSkill.Heal, 1);
+            Assert.That(_session.CharacterCreation.FinalizeNewGame(source).Succeeded, Is.True);
+            Assert.That(_session.States.Values.Any(value =>
+                value.PrototypeNumber == CharacterCreationRules.CrudeLockpicksPrototype), Is.True);
+            Assert.That(_session.States.Values.Any(value =>
+                value.PrototypeNumber == CharacterCreationRules.BandagesPrototype), Is.True);
         }
 
         [Test]
@@ -380,6 +450,18 @@ namespace Arcanum.Formats.Tests
                 HpPoints = 0,
                 FatiguePoints = 0,
             };
+        }
+
+        private static ObjectProtoInfo StartingPrototype(int number)
+        {
+            int[] clothing = { 8049, 8065, 8069, 8133, 8134, 8135 };
+            if (clothing.Contains(number))
+                return new ObjectProtoInfo(number, ObjectType.Armor, 0x70000000u,
+                    description: number, invAid: (uint)number);
+            if (number is 15178 or 15179)
+                return new ObjectProtoInfo(number, ObjectType.Generic, 0x70000000u,
+                    description: number, invAid: (uint)number);
+            return null;
         }
 
         private static MesFile Mes(params (int key, string value)[] values)

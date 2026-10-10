@@ -182,6 +182,8 @@ namespace Arcanum.Runtime.Creation
         public const int SourceStartingAge = 20;
         public const int MaximumNameLength = 23;
         public const int PlayerPrototypeNumber = 16066;
+        public const int CrudeLockpicksPrototype = 15178;
+        public const int BandagesPrototype = 15179;
         private static readonly int[] SpellWillpower = { 0, 6, 9, 12, 15, 18 };
         private static readonly int[] SpellLevel = { 0, 1, 1, 5, 10, 15 };
         private static readonly int[] TechnologyIntelligence = { 0, 5, 8, 11, 13, 15, 17, 19 };
@@ -197,6 +199,16 @@ namespace Arcanum.Runtime.Creation
         public static int SpellWillpowerRequirement(int rank) => SpellWillpower[rank];
         public static int SpellLevelRequirement(int rank) => SpellLevel[rank];
         public static int TechnologyIntelligenceRequirement(int rank) => TechnologyIntelligence[rank];
+
+        /// <summary>Source <c>item_generate_inventory</c> race-size/gender clothing selection.</summary>
+        public static int DefaultClothingPrototype(CharacterRace race, CharacterGender gender)
+        {
+            bool small = race is CharacterRace.Dwarf or CharacterRace.Gnome or CharacterRace.Halfling;
+            bool large = race == CharacterRace.HalfOgre;
+            if (gender == CharacterGender.Female)
+                return small ? 8134 : large ? 8135 : 8133;
+            return small ? 8065 : large ? 8069 : 8049;
+        }
 
         public static uint BuildPlayerArt(CharacterRace race, CharacterGender gender)
         {
@@ -742,7 +754,7 @@ namespace Arcanum.Runtime.Creation
             if (!validation.Succeeded)
                 return new CharacterCreationFinalizeResult(validation.Failure, validation.Message);
             Catalog.TryGetBackground(source.BackgroundId, out BackgroundDefinition background);
-            foreach (int prototype in background.StartingItems.Append(9056))
+            foreach (int prototype in RequiredStartingPrototypes(source, background))
                 if (_world.ResolvePrototype(prototype) == null)
                     return new CharacterCreationFinalizeResult(CharacterCreationFailure.MissingStartingPrototype,
                         $"Starting prototype {prototype} is absent.");
@@ -799,13 +811,6 @@ namespace Arcanum.Runtime.Creation
                 failure = "No starting-equipment transaction is active.";
                 return false;
             }
-
-            ArcanumObjectId pc = _world.PlayerState.Identity;
-            foreach (ArcanumObjectId item in _world.ChildrenOf(pc).ToArray())
-                if (_world.TryGetObjectState(item, out PersistentObjectState state)
-                    && WorldMapSessionCoordinator.TryGetNaturalWornLocation(state, out WornLocation location)
-                    && !_world.TryGetEquippedItem(pc, location, out _))
-                    _world.EquipItem(pc, item, location);
 
             string previousSector = _world.SelectedSector;
             Vector2 previousTile = _world.PlayerState.TilePosition;
@@ -946,10 +951,41 @@ namespace Arcanum.Runtime.Creation
             {
                 ItemCreationResult created = _world.CreateItem(prototype, ObjectPlacement.ContainedBy(pc));
                 if (!created.Succeeded) throw new InvalidOperationException($"Starting item {prototype}: {created.Code}.");
-                if (WorldMapSessionCoordinator.TryGetNaturalWornLocation(created.State, out WornLocation location)
-                    && !_world.TryGetEquippedItem(pc, location, out _))
-                    _world.EquipItem(pc, created.State.Identity, location);
             }
+            if (!BackgroundProvidesArmor(value.Background))
+                CreateStartingItem(pc, CharacterCreationRules.DefaultClothingPrototype(value.Race, value.Gender));
+            if (value.Skills[(int)CharacterSkill.PickLocks] > 0)
+                CreateStartingItem(pc, CharacterCreationRules.CrudeLockpicksPrototype);
+            if (value.Skills[(int)CharacterSkill.Heal] > 0)
+                CreateStartingItem(pc, CharacterCreationRules.BandagesPrototype);
+        }
+
+        private IEnumerable<int> RequiredStartingPrototypes(CharacterCreationSpecification source,
+            BackgroundDefinition background)
+        {
+            foreach (int prototype in background.StartingItems) yield return prototype;
+            yield return 9056;
+            if (!BackgroundProvidesArmor(background))
+                yield return CharacterCreationRules.DefaultClothingPrototype(source.Race, source.Gender);
+            if (source.GetSkillPoints(CharacterSkill.PickLocks) > 0)
+                yield return CharacterCreationRules.CrudeLockpicksPrototype;
+            if (source.GetSkillPoints(CharacterSkill.Heal) > 0)
+                yield return CharacterCreationRules.BandagesPrototype;
+        }
+
+        private bool BackgroundProvidesArmor(BackgroundDefinition background)
+            => background.StartingItems.Any(prototype =>
+            {
+                ObjectProtoInfo item = _world.ResolvePrototype(prototype);
+                return item?.Type == ObjectType.Armor
+                       && item.InvAid.HasValue
+                       && ((item.InvAid.Value >> 14) & 0x7) == 0;
+            });
+
+        private void CreateStartingItem(ArcanumObjectId owner, int prototype)
+        {
+            ItemCreationResult created = _world.CreateItem(prototype, ObjectPlacement.ContainedBy(owner));
+            if (!created.Succeeded) throw new InvalidOperationException($"Starting item {prototype}: {created.Code}.");
         }
 
         internal CharacterCreationSaveData ExportSaveData()

@@ -267,6 +267,66 @@ namespace Arcanum.Formats.Objects
                 Portrait = portrait,
             };
         }
+
+        /// <summary>
+        /// Reconstructs the source base prototypes used by new-character inventory generation. Retail creates
+        /// these records in <c>proto.c</c>; consequently a clean install has no loose <c>data/proto/*.pro</c>
+        /// override for the resolver to read.
+        /// </summary>
+        public static ObjectProtoInfo CreateEngineOwnedStartingItem(int protoNumber)
+        {
+            switch (protoNumber)
+            {
+                case 8049: return CreateStartingClothing(protoNumber, 0);   // Nice Suit
+                case 8065: return CreateStartingClothing(protoNumber, 1);   // Small Nice Suit
+                case 8069: return CreateStartingClothing(protoNumber, 2);   // Large Nice Suit
+                case 8133:
+                case 8134:
+                case 8135:
+                    return CreateStartingClothing(protoNumber, 5);           // source women's city clothes
+                case 15178:
+                    return new ObjectProtoInfo(protoNumber, ObjectType.Generic,
+                        ItemArtId(10, 0, 0, 9), description: protoNumber,
+                        invAid: ItemArtId(10, 1, 0, 9), weight: 10, worth: 10)
+                    {
+                        HpPoints = 10,
+                        Material = 5,
+                        ItemDiscipline = 5,
+                        ItemComplexity = -20,
+                        GenericFlags = 0x2,
+                        ItemFlags = 0x180,
+                    };
+                case 15179:
+                    return new ObjectProtoInfo(protoNumber, ObjectType.Generic,
+                        ItemArtId(176, 0, 0, 9), description: protoNumber,
+                        invAid: ItemArtId(176, 1, 0, 9), weight: 10, worth: 20)
+                    {
+                        HpPoints = 5,
+                        Material = 7,
+                        GenericFlags = 0x8,
+                        ItemFlags = 0x180,
+                    };
+                default:
+                    return null;
+            }
+        }
+
+        private static ObjectProtoInfo CreateStartingClothing(int protoNumber, int artNumber)
+            => new ObjectProtoInfo(protoNumber, ObjectType.Armor,
+                ItemArtId(artNumber, 0, 8, 2), description: protoNumber,
+                invAid: ItemArtId(artNumber, 1, 8, 2), weight: 40, worth: 50)
+            {
+                HpPoints = 30,
+                Material = 7,
+                ArmorAc = 2,
+                ArmorResist = new[] { 1, 0, 0, 0, 0 },
+            };
+
+        private static uint ItemArtId(int number, int disposition, int subtype, int type, int armorCoverage = 0,
+            int palette = 0)
+            => 0x60000000u | ((uint)(number & 0x7FF) << 17) | ((uint)(armorCoverage & 0x7) << 14)
+                           | ((uint)(disposition & 0x3) << 12) | ((uint)(subtype & 0xF) << 6)
+                           | ((uint)(palette & 0x3) << 4) | (uint)(type & 0xF);
     }
 
     /// <summary>
@@ -402,14 +462,14 @@ namespace Arcanum.Formats.Objects
             ObjectProtoInfo info = null;
             if (_pathByNumber.TryGetValue(protoNumber, out string path))
                 ObjectProtoReader.TryReadInfo(File.ReadAllBytes(path), out info);
-            // The original engine constructs its base prototypes in proto.c; they need not have loose .pro
-            // overrides. BP_GOLD is the one such source prototype needed by the bounded dialogue reward path.
+            // The original engine constructs base prototypes in proto.c; they need not have loose .pro overrides.
             if (info == null && protoNumber == 9056)
                 info = new ObjectProtoInfo(9056, ObjectType.Gold, 0x60000003u,
                     description: 9056, invAid: 0x60001003u, worth: 1)
                 {
                     GoldQuantity = 1,
                 };
+            if (info == null) info = ObjectProtoInfo.CreateEngineOwnedStartingItem(protoNumber);
             _cache[protoNumber] = info;
             return info;
         }

@@ -193,6 +193,7 @@ namespace Arcanum.Runtime.Economy
         }
         public void BindInventorySources(InventorySourceCatalog catalog)
             => _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
+        public bool HasInventorySource(int sourceId) => _catalog?.TryGet(sourceId, out _) == true;
         public void BindDifficultyProvider(Func<EconomyGameDifficulty> provider)
             => _difficulty = provider ?? throw new ArgumentNullException(nameof(provider));
         public void BindBuyObjectAcceptance(Func<ArcanumObjectId, ArcanumObjectId, ArcanumObjectId, bool> evaluator)

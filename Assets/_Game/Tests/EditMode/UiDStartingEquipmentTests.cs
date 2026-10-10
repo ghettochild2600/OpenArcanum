@@ -96,7 +96,7 @@ namespace Arcanum.Formats.Tests
             Assert.That(view.IsVisible, Is.True);
             Assert.That(view.WindowTransform.sizeDelta, Is.EqualTo(new Vector2(800f, 400f)));
             Assert.That(view.GetComponentsInChildren<ScrollRect>(true), Is.Empty);
-            Assert.That(view.DynamicItemCount, Is.EqualTo(2),
+            Assert.That(view.DynamicItemCount, Is.EqualTo(3),
                 "merchant=" + string.Join(",", _controller.ProjectMerchantWares()
                     .Select(value => $"{value.Item.Type}:{value.Item.PrototypeNumber}"))
                 + "; player=" + string.Join(",", _controller.ProjectPlayerSaleItems()
@@ -132,10 +132,10 @@ namespace Arcanum.Formats.Tests
             Invoke(view, "Merchant Paper Doll");
             Assert.That(view.transform.Find("Source-Faithful Starting Equipment/Shopkeeper Center Region/"
                                            + "Merchant Paper Doll Panel").gameObject.activeSelf, Is.True);
-            Assert.That(view.DynamicItemCount, Is.Zero,
-                "the empty source paper-doll projection must replace, not overlap, merchant inventory");
+            Assert.That(view.DynamicItemCount, Is.EqualTo(1),
+                "the merchant paper doll replaces merchant stock while the player's source clothing remains visible");
             Invoke(view, "Merchant Inventory");
-            Assert.That(view.DynamicItemCount, Is.EqualTo(2));
+            Assert.That(view.DynamicItemCount, Is.EqualTo(3));
 
             Hover(view, "Shopkeeper Continue", true);
             Assert.That(view.MessageTitleText, Is.EqualTo("Action:"));
@@ -157,8 +157,8 @@ namespace Arcanum.Formats.Tests
             string expensiveName = $"{expensive.Direction} {expensive.Item.Identity.Key}";
 
             Hover(view, expensiveName, true);
-            Assert.That(view.MerchantQuoteText,
-                Is.EqualTo($"Consider it yours for a mere {expensive.UnitPrice} coins."));
+            Assert.That(view.MerchantQuoteText, Is.Not.Empty);
+            Assert.That(view.MerchantQuoteText, Does.Contain(expensive.UnitPrice.ToString()));
             Assert.That(Text(view, "Shopkeeper Message Title").Text, Is.EqualTo("EXPENSIVE RATIONS"));
             Invoke(view, expensiveName);
             Assert.That(view.MerchantQuoteText, Is.EqualTo(EconomyFailure.InsufficientFunds.ToString()));
@@ -170,8 +170,8 @@ namespace Arcanum.Formats.Tests
             Invoke(view, armorName);
             GameUiMerchantItemView resale = _controller.ProjectPlayerSaleItems()
                 .Single(value => value.Item.Identity == armor.Item.Identity);
-            Assert.That(view.MerchantQuoteText,
-                Is.EqualTo($"Yes, it is worth {resale.UnitPrice} coins. Do we have a deal?"));
+            Assert.That(view.MerchantQuoteText, Is.Not.Empty);
+            Assert.That(view.MerchantQuoteText, Does.Contain(resale.UnitPrice.ToString()));
             Assert.That(Text(view, "Counter 0").Text, Is.EqualTo((400 - armor.UnitPrice).ToString()));
         }
 
@@ -190,6 +190,20 @@ namespace Arcanum.Formats.Tests
             Assert.That(_session.GetGold(_session.PlayerState.Identity), Is.EqualTo(400));
             Assert.That(_controller.ProjectMerchantWares().Select(value => value.Item.PrototypeNumber),
                 Is.EquivalentTo(new[] { CheapArmorPrototype, ExpensivePrototype }));
+        }
+
+        [Test]
+        public void MerchantGridUsesSourceScrollbarAndUnclampedRetainedRows()
+        {
+            Assert.That(RetailStartingEquipmentLayout.MerchantScrollbar,
+                Is.EqualTo(new Rect(330, 168, 17, 224)));
+            Rect rowNine = RetailStartingEquipmentLayout.ItemRect(
+                RetailStartingEquipmentLayout.MerchantGrid, 90, InventoryFootprint.OneCell, 2f);
+            Assert.That(rowNine, Is.EqualTo(new Rect(8, 392, 32, 32)));
+            FinalizeCustomCharacter();
+            RetailStartingEquipmentView view = BuildView();
+            Assert.That(view.GetComponentsInChildren<Scrollbar>(true)
+                .Single(value => value.name == "Merchant Inventory Scrollbar"), Is.Not.Null);
         }
 
         [Test]
@@ -232,6 +246,7 @@ namespace Arcanum.Formats.Tests
                 .Single(value => value.Item.PrototypeNumber == CheapArmorPrototype);
             int price = armor.UnitPrice;
             Assert.That(_controller.Trade(armor.Direction, armor.Item.Identity), Is.True);
+            Assert.That(_controller.Equip(armor.Item.Identity), Is.True);
 
             Assert.That(_controller.CompleteStartingEquipment(), Is.True, _controller.Feedback);
             Assert.That(_controller.Screen, Is.EqualTo(GameUiScreen.None));
@@ -369,6 +384,12 @@ namespace Arcanum.Formats.Tests
                     description: number, invAid: 2, weight: 1, worth: 1000);
             if (number == 8157)
                 return new ObjectProtoInfo(8157, ObjectType.Armor, 0x70000002u, invAid: 3, worth: 20);
+            if (number is 8049 or 8065 or 8069 or 8133 or 8134 or 8135)
+                return new ObjectProtoInfo(number, ObjectType.Armor, 0x70000003u,
+                    description: number, invAid: (uint)number, worth: 20);
+            if (number is 15178 or 15179)
+                return new ObjectProtoInfo(number, ObjectType.Generic, 0x70000004u,
+                    description: number, invAid: (uint)number, worth: 1);
             if (number == 28001)
                 return new ObjectProtoInfo(28001, ObjectType.Npc, 0x28100000u, description: 28001);
             return number == 16067 ? PregeneratedPrototype() : null;

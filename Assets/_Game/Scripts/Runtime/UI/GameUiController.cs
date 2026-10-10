@@ -86,6 +86,16 @@ namespace Arcanum.Runtime.UI
         public IReadOnlyList<int> Ammunition { get; internal set; }
     }
 
+    public sealed class GameUiWorldTargetView
+    {
+        public ArcanumObjectId Identity { get; internal set; }
+        public string Name { get; internal set; }
+        public ObjectType Type { get; internal set; }
+        public bool Dead { get; internal set; }
+        public bool Hostile { get; internal set; }
+        public int IconSourceId { get; internal set; }
+    }
+
     public readonly struct GameUiAttributeView
     {
         public CharacterAttribute Attribute { get; }
@@ -839,11 +849,44 @@ namespace Arcanum.Runtime.UI
                 .Select(ProjectItem).ToArray();
         }
 
-        public GameUiInventorySummaryView ProjectInventorySummary()
+        public GameUiWorldTargetView ProjectWorldTarget(ArcanumObjectId identity)
         {
-            if (!HasPlayer) return null;
-            long weight = _session.InventoryCapacity.GetInventoryLoad(Player);
-            int capacity = _session.InventoryCapacity.GetCarryCapacity(Player);
+            if (!_session.TryGetObjectState(identity, out PersistentObjectState state)
+                || state.Type is not (ObjectType.Pc or ObjectType.Npc)
+                || !_session.Characters.TryGet(identity, out PersistentCharacterState character)) return null;
+            bool dead = _session.Vitality.TryGet(identity, out _) && _session.Vitality.IsDead(identity);
+            bool hostile = state.Type == ObjectType.Npc && HasPlayer && !dead
+                           && (_session.Social.IsRememberedHostile(identity, Player)
+                               || _session.Social.IsReactionHostile(identity, Player)
+                               || _session.Social.IsAlignmentHostile(identity, Player));
+            return new GameUiWorldTargetView
+            {
+                Identity = identity,
+                Name = _session.ResolveDisplayName(state),
+                Type = state.Type,
+                Dead = dead,
+                Hostile = hostile,
+                IconSourceId = character.Race switch
+                {
+                    CharacterRace.Human => 375,
+                    CharacterRace.Dwarf => 378,
+                    CharacterRace.Elf => 376,
+                    CharacterRace.HalfElf => 377,
+                    CharacterRace.Gnome => 379,
+                    CharacterRace.Halfling => 380,
+                    CharacterRace.HalfOrc => 381,
+                    CharacterRace.HalfOgre => 382,
+                    _ => 375,
+                },
+            };
+        }
+
+        public GameUiInventorySummaryView ProjectInventorySummary(ArcanumObjectId owner = default)
+        {
+            if (owner.IsNull) owner = Player;
+            if (!owner.IsPersistent || !_session.Characters.TryGet(owner, out _)) return null;
+            long weight = _session.InventoryCapacity.GetInventoryLoad(owner);
+            int capacity = _session.InventoryCapacity.GetCarryCapacity(owner);
             int[] ratios = { 15, 30, 45, 60, 75, 90, 100 };
             int level = ratios.Length - 1;
             for (int index = 0; index < ratios.Length; index++)
@@ -854,7 +897,7 @@ namespace Arcanum.Runtime.UI
                 }
             var ammunition = new int[4];
             foreach (PersistentObjectState item in _session.States.Values)
-                if (item.ParentIdentity == Player && item.Placement.Kind == ObjectPlacementKind.Contained
+                if (item.ParentIdentity == owner && item.Placement.Kind == ObjectPlacementKind.Contained
                     && item.Type == ObjectType.Ammo && item.AmmoItemType is >= 0 and <= 3)
                     ammunition[item.AmmoItemType.Value] = checked(ammunition[item.AmmoItemType.Value]
                                                                + item.StackQuantity.GetValueOrDefault());
@@ -864,10 +907,10 @@ namespace Arcanum.Runtime.UI
                 CarryCapacity = capacity,
                 EncumbranceLevel = level,
                 EncumbranceThreshold = ratios[level] * capacity / 100,
-                Speed = _session.DerivedStats.GetDerivedStat(Player, CharacterDerivedStat.Speed),
-                TotalAttack = ProjectTotalAttack(),
-                TotalDefense = ProjectTotalDefense(),
-                Gold = _session.GetGold(Player),
+                Speed = _session.DerivedStats.GetDerivedStat(owner, CharacterDerivedStat.Speed),
+                TotalAttack = ProjectTotalAttack(owner),
+                TotalDefense = ProjectTotalDefense(owner),
+                Gold = _session.GetGold(owner),
                 Ammunition = ammunition,
             };
         }
@@ -1185,6 +1228,10 @@ namespace Arcanum.Runtime.UI
                 : ProjectInventory().Where(value => !value.IsEquipped).Select(value =>
                     MerchantView(_session.States[value.Identity], EconomyTransactionDirection.SellToMerchant)).ToArray();
 
+        public IReadOnlyList<GameUiItemView> ProjectMerchantEquipment()
+            => !_merchant.IsPersistent ? Array.Empty<GameUiItemView>()
+                : ProjectInventory(_merchant).Where(value => value.IsEquipped).ToArray();
+
         public bool Trade(EconomyTransactionDirection direction, ArcanumObjectId item, int quantity = 1)
         {
             EconomyTransactionResult result = _session.Economy.Execute(
@@ -1326,9 +1373,9 @@ namespace Arcanum.Runtime.UI
                     ? value.Placement.WornLocation : null,
             };
 
-        private int ProjectTotalAttack()
+        private int ProjectTotalAttack(ArcanumObjectId owner)
         {
-            Weapon weapon = _session.TryGetEquippedItem(Player, WornLocation.Weapon,
+            Weapon weapon = _session.TryGetEquippedItem(owner, WornLocation.Weapon,
                                 out PersistentObjectState equipped)
                             && equipped.Type == ObjectType.Weapon && equipped.WeaponData != null
                 ? equipped.WeaponData : Weapon.Unarmed();
@@ -1339,14 +1386,14 @@ namespace Arcanum.Runtime.UI
                 WeaponSkill.Firearms => CharacterSkill.Firearms,
                 _ => CharacterSkill.Melee,
             };
-            int effectiveness = checked(5 * _session.Progression.GetEffectiveSkillRank(Player, skill) + 25);
-            if (_session.Characters.GetEffectiveAttribute(Player, CharacterAttribute.Intelligence) >= 20)
+            int effectiveness = checked(5 * _session.Progression.GetEffectiveSkillRank(owner, skill) + 25);
+            if (_session.Characters.GetEffectiveAttribute(owner, CharacterAttribute.Intelligence) >= 20)
                 effectiveness += 10;
             int weighted = 15 * effectiveness;
             int divisor = 15;
             int[] weights = { 12, 12, 18, 15, 12 };
             int meleeBonus = weapon.Skill == WeaponSkill.Melee
-                ? _session.DerivedStats.GetDerivedStat(Player, CharacterDerivedStat.MeleeDamageBonus) : 0;
+                ? _session.DerivedStats.GetDerivedStat(owner, CharacterDerivedStat.MeleeDamageBonus) : 0;
             for (int index = 0; index < Weapon.DamageTypeCount; index++)
             {
                 int minimum = weapon.DamageMin[index] + (index == (int)DamageType.Normal ? meleeBonus : 0);
@@ -1357,14 +1404,14 @@ namespace Arcanum.Runtime.UI
             return weighted / (divisor + 6);
         }
 
-        private int ProjectTotalDefense()
+        private int ProjectTotalDefense(ArcanumObjectId owner)
         {
-            int weighted = 24 * _session.DerivedStats.GetArmorClass(Player);
+            int weighted = 24 * _session.DerivedStats.GetArmorClass(owner);
             int divisor = 24;
             int[] weights = { 25, 15, 10, 16, 15 };
             for (int index = 0; index < weights.Length; index++)
             {
-                weighted += weights[index] * _session.DerivedStats.GetResistance(Player,
+                weighted += weights[index] * _session.DerivedStats.GetResistance(owner,
                     (CharacterResistance)index);
                 divisor += weights[index];
             }

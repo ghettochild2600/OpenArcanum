@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Arcanum.Formats.Objects;
+using Arcanum.Runtime.Character;
 using Arcanum.Runtime.Economy;
 using Arcanum.Runtime.World;
 using OpenArcanum.UI;
@@ -37,7 +39,40 @@ namespace Arcanum.Runtime.UI
         public static readonly Rect MerchantName = new(89f, 102f, 253f, 20f);
         public static readonly Rect MerchantQuote = new(89f, 128f, 253f, 30f);
         public static readonly Rect MerchantGrid = new(8f, 168f, 320f, 224f);
+        public static readonly Rect MerchantScrollbar = new(330f, 168f, 17f, 224f);
         public static readonly Rect PlayerGrid = new(368f, 8f, 320f, 384f);
+        public static readonly Rect PlayerAttackValue = new(422f, 358f, 23f, 35f);
+        public static readonly Rect PlayerDefenseValue = new(606f, 358f, 23f, 35f);
+        public static readonly Rect MerchantAttackValue = new(105f, 354f, 22f, 16f);
+        public static readonly Rect MerchantDefenseValue = new(227f, 354f, 22f, 16f);
+        public static readonly Rect PlayerAttackIcon = new(374f, 318f, 48f, 75f);
+        public static readonly Rect PlayerDefenseIcon = new(599f, 319f, 48f, 74f);
+        public static readonly IReadOnlyDictionary<WornLocation, Rect> PlayerPaperDollSlots =
+            new Dictionary<WornLocation, Rect>
+            {
+                [WornLocation.Helmet] = new(496f, 107f, 64f, 64f),
+                [WornLocation.Ring1] = new(592f, 107f, 32f, 32f),
+                [WornLocation.Ring2] = new(624f, 107f, 32f, 32f),
+                [WornLocation.Medallion] = new(592f, 139f, 64f, 32f),
+                [WornLocation.Weapon] = new(368f, 170f, 96f, 128f),
+                [WornLocation.Shield] = new(592f, 171f, 96f, 128f),
+                [WornLocation.Armor] = new(464f, 171f, 128f, 160f),
+                [WornLocation.Gauntlet] = new(400f, 107f, 64f, 64f),
+                [WornLocation.Boots] = new(495f, 331f, 64f, 64f),
+            };
+        public static readonly IReadOnlyDictionary<WornLocation, Rect> MerchantPaperDollSlots =
+            new Dictionary<WornLocation, Rect>
+            {
+                [WornLocation.Helmet] = new(157f, 182f, 42f, 42f),
+                [WornLocation.Ring1] = new(220f, 182f, 21f, 21f),
+                [WornLocation.Ring2] = new(241f, 182f, 21f, 21f),
+                [WornLocation.Medallion] = new(220f, 203f, 42f, 21f),
+                [WornLocation.Weapon] = new(73f, 223f, 63f, 85f),
+                [WornLocation.Shield] = new(220f, 224f, 63f, 85f),
+                [WornLocation.Armor] = new(136f, 224f, 84f, 106f),
+                [WornLocation.Gauntlet] = new(94f, 182f, 42f, 42f),
+                [WornLocation.Boots] = new(156f, 330f, 42f, 42f),
+            };
         public static readonly Rect[] CounterRects =
         {
             new(729f, 70f, 58f, 20f), new(729f, 93f, 58f, 20f), new(729f, 116f, 58f, 20f),
@@ -54,14 +89,23 @@ namespace Arcanum.Runtime.UI
         };
 
         public static Rect ItemRect(Rect grid, int location, InventoryFootprint footprint)
+            => ItemRect(grid, location, footprint, 0f);
+
+        public static Rect ItemRect(Rect grid, int location, InventoryFootprint footprint, float rowOffset)
         {
             int columns = Mathf.Max(1, Mathf.FloorToInt(grid.width / CellSize));
-            int rows = Mathf.Max(1, Mathf.FloorToInt(grid.height / CellSize));
-            int bounded = Mathf.Clamp(location, 0, columns * rows - 1);
+            int bounded = Mathf.Max(0, location);
             return new Rect(grid.x + CellSize * (bounded % columns),
-                grid.y + CellSize * (bounded / columns),
+                grid.y + CellSize * (bounded / columns - rowOffset),
                 CellSize * Mathf.Max(1, footprint.Width), CellSize * Mathf.Max(1, footprint.Height));
         }
+    }
+
+    public sealed class RetailStartingEquipmentScrollTarget : MonoBehaviour, IScrollHandler
+    {
+        private Action<float> _scroll;
+        public void Bind(Action<float> scroll) => _scroll = scroll;
+        public void OnScroll(PointerEventData eventData) => _scroll?.Invoke(eventData?.scrollDelta.y ?? 0f);
     }
 
     /// <summary>Source barter accepts either a normal click or a drag into the opposite inventory grid.</summary>
@@ -116,6 +160,13 @@ namespace Arcanum.Runtime.UI
         private SourceUiBitmapText _merchantName;
         private SourceUiBitmapText _merchantQuote;
         private SourceUiBitmapText _messageTitle;
+        private SourceUiBitmapText _playerAttack;
+        private SourceUiBitmapText _playerDefense;
+        private SourceUiBitmapText _merchantAttack;
+        private SourceUiBitmapText _merchantDefense;
+        private SourceUiImage _playerAttackIcon;
+        private SourceUiImage _playerDefenseIcon;
+        private Scrollbar _merchantScrollbar;
         private RectTransform _messageBody;
         private SourceUiImage _messageIcon;
         private readonly SourceUiBitmapText[] _counters = new SourceUiBitmapText[5];
@@ -123,6 +174,8 @@ namespace Arcanum.Runtime.UI
         private bool _dirty = true;
         private bool _merchantInventoryMode = true;
         private bool _playerInventoryMode = true;
+        private float _merchantScrollRow;
+        private int _merchantMaximumScrollRow;
 
         public bool IsAvailable => _canvasRoot != null && _resolver != null;
         public bool IsVisible => IsAvailable && _canvasRoot.activeSelf;
@@ -175,6 +228,14 @@ namespace Arcanum.Runtime.UI
             {
                 SetText(_counters[0], summary.Gold.ToString());
                 for (int index = 0; index < 4; index++) SetText(_counters[index + 1], summary.Ammunition[index].ToString());
+                SetText(_playerAttack, summary.TotalAttack.ToString(), SourceWhite);
+                SetText(_playerDefense, summary.TotalDefense.ToString(), SourceWhite);
+            }
+            GameUiInventorySummaryView merchantSummary = _controller.ProjectInventorySummary(_controller.MerchantTarget);
+            if (merchantSummary != null)
+            {
+                SetText(_merchantAttack, merchantSummary.TotalAttack.ToString(), SourceWhite);
+                SetText(_merchantDefense, merchantSummary.TotalDefense.ToString(), SourceWhite);
             }
         }
 
@@ -210,10 +271,22 @@ namespace Arcanum.Runtime.UI
             _merchantName = AddText("Human Shopkeeper Name", _window,
                 RetailStartingEquipmentLayout.MerchantName, 27, SourceWhite);
             _merchantQuote = AddText("Human Shopkeeper Quote", _window,
-                RetailStartingEquipmentLayout.MerchantQuote, 26, SourceText);
+                RetailStartingEquipmentLayout.MerchantQuote, 229, SourceWhite);
             for (int index = 0; index < _counters.Length; index++)
                 _counters[index] = AddText($"Counter {index}", _window,
-                    RetailStartingEquipmentLayout.CounterRects[index], 26, SourceText);
+                    RetailStartingEquipmentLayout.CounterRects[index], 171, SourceWhite);
+            _playerAttackIcon = AddSourceImage("Player Total Attack", _window, 676,
+                RetailStartingEquipmentLayout.PlayerAttackIcon);
+            _playerDefenseIcon = AddSourceImage("Player Total Defense", _window, 677,
+                RetailStartingEquipmentLayout.PlayerDefenseIcon);
+            _playerAttack = AddText("Player Attack", _window,
+                RetailStartingEquipmentLayout.PlayerAttackValue, 486, SourceWhite);
+            _playerDefense = AddText("Player Defense", _window,
+                RetailStartingEquipmentLayout.PlayerDefenseValue, 486, SourceWhite);
+            _merchantAttack = AddText("Merchant Attack", _window,
+                RetailStartingEquipmentLayout.MerchantAttackValue, 486, SourceWhite);
+            _merchantDefense = AddText("Merchant Defense", _window,
+                RetailStartingEquipmentLayout.MerchantDefenseValue, 486, SourceWhite);
 
             _merchantPaperDollToggle = AddSourceToggle("Merchant Paper Doll", _window,
                 RetailStartingEquipmentLayout.PaperDollToggleSourceId,
@@ -252,9 +325,15 @@ namespace Arcanum.Runtime.UI
             ClearMessage();
             _merchantDropTarget = AddRect("Merchant Inventory Drop Target", _window,
                 RetailStartingEquipmentLayout.MerchantGrid);
+            Image merchantScrollInput = _merchantDropTarget.gameObject.AddComponent<Image>();
+            merchantScrollInput.color = Color.clear;
+            merchantScrollInput.raycastTarget = true;
+            _merchantDropTarget.gameObject.AddComponent<RetailStartingEquipmentScrollTarget>()
+                .Bind(ScrollMerchant);
             _playerDropTarget = AddRect("Player Inventory Drop Target", _window,
                 RetailStartingEquipmentLayout.PlayerGrid);
             _dynamic = AddRect("Shopkeeper Items", _window, RetailStartingEquipmentLayout.Window);
+            _merchantScrollbar = AddScrollbar(_window, RetailStartingEquipmentLayout.MerchantScrollbar);
 
             var cursor = new GameObject("Shopkeeper Cursor",
                 typeof(RectTransform), typeof(Image), typeof(SourceUiImage), typeof(RetailMainMenuCursorView));
@@ -266,20 +345,37 @@ namespace Arcanum.Runtime.UI
             IReadOnlyList<GameUiMerchantItemView> player)
         {
             ClearDynamic();
+            _merchantMaximumScrollRow = MaximumScrollRow(wares);
+            _merchantScrollRow = Mathf.Clamp(_merchantScrollRow, 0f, _merchantMaximumScrollRow);
             RectTransform merchantItems = AddClippedItemLayer("Merchant Inventory Items",
                 RetailStartingEquipmentLayout.MerchantGrid);
+            merchantItems.gameObject.AddComponent<RetailStartingEquipmentScrollTarget>().Bind(ScrollMerchant);
             RectTransform playerItems = AddClippedItemLayer("Player Inventory Items",
                 RetailStartingEquipmentLayout.PlayerGrid);
             if (_merchantInventoryMode)
                 foreach (GameUiMerchantItemView item in wares)
                     AddTradeItem(merchantItems, item, LocalItemRect(
                         RetailStartingEquipmentLayout.MerchantGrid, item.Item.InventoryLocation,
-                        item.Item.InventoryFootprint));
+                        item.Item.InventoryFootprint, _merchantScrollRow));
             if (_playerInventoryMode)
                 foreach (GameUiMerchantItemView item in player)
                     AddTradeItem(playerItems, item, LocalItemRect(
                         RetailStartingEquipmentLayout.PlayerGrid, item.Item.InventoryLocation,
                         item.Item.InventoryFootprint));
+            if (!_merchantInventoryMode)
+                foreach (GameUiItemView item in _controller.ProjectMerchantEquipment())
+                    AddPaperDollItem(item, RetailStartingEquipmentLayout.MerchantPaperDollSlots);
+            if (!_playerInventoryMode)
+                foreach (GameUiItemView item in _controller.ProjectInventory().Where(value => value.IsEquipped))
+                    AddPaperDollItem(item, RetailStartingEquipmentLayout.PlayerPaperDollSlots);
+            if (_merchantScrollbar != null)
+            {
+                _merchantScrollbar.gameObject.SetActive(_merchantInventoryMode && _merchantMaximumScrollRow > 0);
+                _merchantScrollbar.SetValueWithoutNotify(_merchantMaximumScrollRow == 0
+                    ? 1f : 1f - _merchantScrollRow / _merchantMaximumScrollRow);
+                _merchantScrollbar.size = _merchantMaximumScrollRow == 0 ? 1f
+                    : Mathf.Clamp01(7f / (7f + _merchantMaximumScrollRow));
+            }
             DynamicItemCount = (_merchantInventoryMode ? wares.Count : 0)
                                + (_playerInventoryMode ? player.Count : 0);
         }
@@ -310,6 +406,12 @@ namespace Arcanum.Runtime.UI
             _merchantInventoryToggle?.SetSelected(_merchantInventoryMode);
             _playerPaperDollToggle?.SetSelected(!_playerInventoryMode);
             _playerInventoryToggle?.SetSelected(_playerInventoryMode);
+            if (_playerAttackIcon != null) _playerAttackIcon.gameObject.SetActive(!_playerInventoryMode);
+            if (_playerDefenseIcon != null) _playerDefenseIcon.gameObject.SetActive(!_playerInventoryMode);
+            if (_playerAttack != null) _playerAttack.gameObject.SetActive(!_playerInventoryMode);
+            if (_playerDefense != null) _playerDefense.gameObject.SetActive(!_playerInventoryMode);
+            if (_merchantAttack != null) _merchantAttack.gameObject.SetActive(!_merchantInventoryMode);
+            if (_merchantDefense != null) _merchantDefense.gameObject.SetActive(!_merchantInventoryMode);
             if (_merchantDropTarget != null) _merchantDropTarget.gameObject.SetActive(_merchantInventoryMode);
             if (_playerDropTarget != null) _playerDropTarget.gameObject.SetActive(_playerInventoryMode);
         }
@@ -321,10 +423,66 @@ namespace Arcanum.Runtime.UI
             return layer;
         }
 
-        private static Rect LocalItemRect(Rect grid, int location, InventoryFootprint footprint)
+        private static Rect LocalItemRect(Rect grid, int location, InventoryFootprint footprint,
+            float rowOffset = 0f)
         {
-            Rect absolute = RetailStartingEquipmentLayout.ItemRect(grid, location, footprint);
+            Rect absolute = RetailStartingEquipmentLayout.ItemRect(grid, location, footprint, rowOffset);
             return new Rect(absolute.x - grid.x, absolute.y - grid.y, absolute.width, absolute.height);
+        }
+
+        private int MaximumScrollRow(IReadOnlyList<GameUiMerchantItemView> wares)
+        {
+            int rows = 0;
+            foreach (GameUiMerchantItemView view in wares)
+                rows = Math.Max(rows, view.Item.InventoryLocation / RetailStartingEquipmentLayout.GridColumns
+                                      + Math.Max(1, view.Item.InventoryFootprint.Height));
+            return Math.Max(0, rows - 7);
+        }
+
+        private void ScrollMerchant(float delta)
+        {
+            if (!_merchantInventoryMode || _merchantMaximumScrollRow == 0) return;
+            _merchantScrollRow = Mathf.Clamp(_merchantScrollRow - Mathf.Sign(delta), 0f, _merchantMaximumScrollRow);
+            _dirty = true;
+            Synchronize();
+        }
+
+        private Scrollbar AddScrollbar(RectTransform parent, Rect rect)
+        {
+            RectTransform root = AddRect("Merchant Inventory Scrollbar", parent, rect);
+            Image track = root.gameObject.AddComponent<Image>();
+            track.color = new Color32(35, 27, 18, 180);
+            Scrollbar scrollbar = root.gameObject.AddComponent<Scrollbar>();
+            RectTransform handle = AddRect("Handle", root, new Rect(2f, 2f, rect.width - 4f, 40f));
+            Image handleImage = handle.gameObject.AddComponent<Image>();
+            handleImage.color = SourceText;
+            scrollbar.handleRect = handle;
+            scrollbar.targetGraphic = handleImage;
+            scrollbar.direction = Scrollbar.Direction.BottomToTop;
+            scrollbar.numberOfSteps = 0;
+            scrollbar.onValueChanged.AddListener(value =>
+            {
+                _merchantScrollRow = (1f - value) * _merchantMaximumScrollRow;
+                _dirty = true;
+                Synchronize();
+            });
+            return scrollbar;
+        }
+
+        private void AddPaperDollItem(GameUiItemView item,
+            IReadOnlyDictionary<WornLocation, Rect> slots)
+        {
+            if (!item.WornLocation.HasValue || !slots.TryGetValue(item.WornLocation.Value, out Rect bounds)) return;
+            RectTransform root = AddRect($"Equipped {item.Identity.Key}", _dynamic, bounds);
+            if (item.InventoryArtId.HasValue
+                && _resolver.Original.TryResolveInventoryItem(item.InventoryArtId.Value,
+                    out RetailItemArtAsset asset))
+            {
+                Image image = root.gameObject.AddComponent<Image>();
+                image.sprite = asset.Sprite;
+                image.preserveAspect = true;
+                image.raycastTarget = false;
+            }
         }
 
         private void AddTradeItem(RectTransform layer, GameUiMerchantItemView view, Rect bounds)
@@ -394,16 +552,12 @@ namespace Arcanum.Runtime.UI
                     : _controller.ProjectMerchantWares())
                 .FirstOrDefault(value => value.Item.Identity == view.Item.Identity);
             int reversePrice = reverseView?.UnitPrice ?? 0;
-            SetText(_merchantQuote, reverse == EconomyTransactionDirection.SellToMerchant
-                ? $"Yes, it is worth {reversePrice} coins. Do we have a deal?"
-                : $"Consider it yours for a mere {reversePrice} coins.");
+            SetText(_merchantQuote, MerchantLine(reverse, reversePrice, view.Item.Identity));
         }
 
         private void ShowItem(GameUiMerchantItemView view)
         {
-            SetText(_merchantQuote, view.Direction == EconomyTransactionDirection.BuyFromMerchant
-                ? $"Consider it yours for a mere {view.UnitPrice} coins."
-                : $"Yes, it is worth {view.UnitPrice} coins. Do we have a deal?");
+            SetText(_merchantQuote, MerchantLine(view.Direction, view.UnitPrice, view.Item.Identity));
             SetText(_messageTitle, view.Item.Name?.ToUpperInvariant() ?? string.Empty, SourceWhite);
             string details = $"Price: {view.UnitPrice}   Weight: {view.Item.Weight}";
             if (_session.TryGetObjectState(view.Item.Identity, out PersistentObjectState state)
@@ -419,6 +573,25 @@ namespace Arcanum.Runtime.UI
             }
             RebuildWrappedText(_messageBody, details, 42, 2);
             _messageIcon.gameObject.SetActive(true);
+        }
+
+        private string MerchantLine(EconomyTransactionDirection direction, int price, ArcanumObjectId item)
+        {
+            bool merchantFemale = _session.Characters.TryGet(_controller.MerchantTarget, out var merchant)
+                                  && merchant.Gender == CharacterGender.Female;
+            bool pcFemale = _session.Characters.TryGet(_controller.Player, out var pc)
+                            && pc.Gender == CharacterGender.Female;
+            string path = $"mes/gd_npc_{(merchantFemale ? "f" : "m")}2{(pcFemale ? "f" : "m")}.mes";
+            int first = direction == EconomyTransactionDirection.BuyFromMerchant ? 800 : 1100;
+            int seed = item.GetHashCode() & int.MaxValue;
+            for (int offset = 0; offset < 100; offset++)
+            {
+                int id = first + (seed + offset) % 100;
+                if (!_resolver.Original.TryReadMessage(path, id, out string value)
+                    || string.IsNullOrWhiteSpace(value)) continue;
+                return value.Trim().Replace("%d", price.ToString());
+            }
+            return string.Empty;
         }
 
         private void BindNavigationHint(GameObject target, bool next)
@@ -470,7 +643,7 @@ namespace Arcanum.Runtime.UI
             if (current.Length > 0 && lines.Count < maxLines) lines.Add(current);
             for (int index = 0; index < lines.Count; index++)
                 AddText($"Line {index + 1}", parent, new Rect(0f, index * 15f, parent.rect.width, 15f),
-                    26, SourceWhite).Bind(_resolver, lines[index], SourceWhite, 26);
+                    229, SourceWhite).Bind(_resolver, lines[index], SourceWhite, 229);
         }
 
         private SourceUiImage AddSourceImage(string name, RectTransform parent, int sourceId, Rect rect)
