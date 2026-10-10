@@ -20,7 +20,7 @@ namespace Arcanum.Runtime.UI
 {
     public enum GameUiScreen
     {
-        None, MainMenu, CharacterCreation, PregeneratedCharacter, Inventory, Character, Skills, Magic, Technology, Crafting, Options,
+        None, MainMenu, CharacterCreation, PregeneratedCharacter, StartingEquipment, Inventory, Character, Skills, Magic, Technology, Crafting, Options,
         Journal, Map, Party, Merchant, SaveLoad, Dialogue, Corpse,
     }
 
@@ -215,6 +215,7 @@ namespace Arcanum.Runtime.UI
         public ArcanumObjectId SelectedItem { get; private set; }
         public ArcanumObjectId SelectedWorldTarget { get; private set; }
         public ArcanumObjectId Corpse => _corpse;
+        public ArcanumObjectId MerchantTarget => _merchant;
         public ArcanumObjectId CharacterTarget => _character.IsNull ? Player : _character;
         public bool CharacterReadOnly => CharacterTarget != Player;
         public string Feedback { get; private set; } = string.Empty;
@@ -435,10 +436,43 @@ namespace Arcanum.Runtime.UI
             if (CreationDraft == null) return Reject("No character is being created.");
             CharacterCreationFinalizeResult result = _session.CharacterCreation.FinalizeNewGame(CreationDraft);
             if (!result.Succeeded) return Reject(result.Message ?? result.Failure.ToString());
-            CreationDraft = null;
             CreationValidation = default;
+            if (_session.CharacterCreation.StartingEquipmentActive)
+            {
+                _merchant = _session.CharacterCreation.StartingEquipmentMerchant;
+                Screen = GameUiScreen.StartingEquipment;
+            }
+            else
+            {
+                CreationDraft = null;
+                Screen = GameUiScreen.None;
+            }
+            Feedback = string.Empty;
+            return true;
+        }
+
+        public bool CompleteStartingEquipment()
+        {
+            if (Screen != GameUiScreen.StartingEquipment)
+                return Reject("No starting-equipment transaction is active.");
+            if (!_session.CharacterCreation.CompleteStartingEquipment(out string failure))
+                return Reject(failure);
+            CreationDraft = null;
+            _merchant = default;
             Screen = GameUiScreen.None;
             Feedback = string.Empty;
+            return true;
+        }
+
+        public bool ReturnToCharacterEditor()
+        {
+            if (Screen != GameUiScreen.StartingEquipment || CreationDraft == null)
+                return Reject("No finalized character can return to the Character Editor.");
+            if (!_session.CharacterCreation.CancelStartingEquipment(out string failure))
+                return Reject(failure);
+            _merchant = default;
+            Screen = GameUiScreen.CharacterCreation;
+            RefreshCreationValidation();
             return true;
         }
 

@@ -38,6 +38,7 @@ namespace Arcanum.Runtime.UI
         private RetailMainMenuView _retailMainMenu;
         private RetailCharacterCreationView _retailCharacterCreation;
         private RetailPregeneratedCharacterView _retailPregeneratedCharacter;
+        private RetailStartingEquipmentView _retailStartingEquipment;
         private RetailGameplayHudView _retailGameplayHud;
         private RetailInventoryEquipmentView _retailInventory;
         private RetailCharacterSheetView _retailCharacterSheet;
@@ -104,6 +105,9 @@ namespace Arcanum.Runtime.UI
             _retailPregeneratedCharacter = GetComponent<RetailPregeneratedCharacterView>()
                                            ?? gameObject.AddComponent<RetailPregeneratedCharacterView>();
             _retailPregeneratedCharacter.Bind(_controller, _session, _retailGameplayHud.Resolver);
+            _retailStartingEquipment = GetComponent<RetailStartingEquipmentView>()
+                                       ?? gameObject.AddComponent<RetailStartingEquipmentView>();
+            _retailStartingEquipment.Bind(_controller, _session, _retailGameplayHud.Resolver);
             _retailInventory = GetComponent<RetailInventoryEquipmentView>()
                                ?? gameObject.AddComponent<RetailInventoryEquipmentView>();
             _retailInventory.Bind(_controller, _session, _retailGameplayHud.Resolver);
@@ -150,6 +154,7 @@ namespace Arcanum.Runtime.UI
             _retailMainMenu?.Synchronize();
             _retailPregeneratedCharacter?.Synchronize();
             _retailCharacterCreation?.Synchronize();
+            _retailStartingEquipment?.Synchronize();
             _retailGameplayHud?.Synchronize(_showHud);
             _retailInventory?.Synchronize();
             _retailCharacterSheet?.Synchronize();
@@ -195,6 +200,12 @@ namespace Arcanum.Runtime.UI
                 && _retailPregeneratedCharacter?.IsVisible == true)
             {
                 _retailPregeneratedCharacter.HandleEscape();
+                return;
+            }
+            if (Controller.Screen == GameUiScreen.StartingEquipment
+                && _retailStartingEquipment?.IsVisible == true)
+            {
+                _retailStartingEquipment.HandleEscape();
                 return;
             }
             if (Controller.Screen == GameUiScreen.Dialogue) Controller.CancelDialogue();
@@ -345,6 +356,7 @@ namespace Arcanum.Runtime.UI
         {
             if (_retailCharacterCreation?.IsVisible == true) return true;
             if (_retailPregeneratedCharacter?.IsVisible == true) return true;
+            if (_retailStartingEquipment?.IsVisible == true) return true;
             if (_retailCharacterSheet?.ContainsScreenPoint(mouse) == true) return true;
             if (_retailInventory?.ContainsScreenPoint(mouse) == true) return true;
             if (_retailDialogue?.ContainsScreenPoint(mouse) == true) return true;
@@ -363,6 +375,7 @@ namespace Arcanum.Runtime.UI
             _retailMainMenu?.Synchronize();
             _retailCharacterCreation?.Synchronize();
             _retailPregeneratedCharacter?.Synchronize();
+            _retailStartingEquipment?.Synchronize();
             _retailGameplayHud?.Synchronize(_showHud);
             _retailInventory?.Synchronize();
             _retailCharacterSheet?.Synchronize();
@@ -374,6 +387,8 @@ namespace Arcanum.Runtime.UI
                                            && _retailCharacterCreation?.IsAvailable == true;
             bool sourcePregeneratedCharacter = Controller.Screen == GameUiScreen.PregeneratedCharacter
                                                && _retailPregeneratedCharacter?.IsAvailable == true;
+            bool sourceStartingEquipment = Controller.Screen == GameUiScreen.StartingEquipment
+                                           && _retailStartingEquipment?.IsAvailable == true;
             bool sourceInventory = Controller.Screen == GameUiScreen.Inventory
                                    && _retailInventory?.IsAvailable == true;
             bool sourceCharacter = Controller.Screen == GameUiScreen.Character
@@ -384,7 +399,8 @@ namespace Arcanum.Runtime.UI
                                  && _retailLogbook?.IsAvailable == true;
             GUI.depth = -120;
             if (_showHud && _retailGameplayHud?.IsAvailable != true) DrawHud();
-            if (Controller.IsModalOpen && !sourceMainMenu && !sourceCharacterCreation && !sourcePregeneratedCharacter && !sourceInventory
+            if (Controller.IsModalOpen && !sourceMainMenu && !sourceCharacterCreation && !sourcePregeneratedCharacter
+                && !sourceStartingEquipment && !sourceInventory
                 && !sourceCharacter && !sourceDialogue && !sourceLogbook)
                 DrawScreen();
             DrawCursorLabel();
@@ -502,6 +518,7 @@ namespace Arcanum.Runtime.UI
             {
                 case GameUiScreen.MainMenu: DrawMainMenu(); break;
                 case GameUiScreen.CharacterCreation: DrawCharacterCreation(); break;
+                case GameUiScreen.StartingEquipment: DrawMerchant(); break;
                 case GameUiScreen.Inventory: DrawInventory(); break;
                 case GameUiScreen.Character: DrawCharacter(); break;
                 case GameUiScreen.Skills: DrawSkills(); break;
@@ -1060,6 +1077,7 @@ namespace Arcanum.Runtime.UI
         {
             GameUiScreen.MainMenu => "MAIN MENU",
             GameUiScreen.CharacterCreation => "CHARACTER CREATION",
+            GameUiScreen.StartingEquipment => "HUMAN SHOPKEEPER",
             GameUiScreen.Inventory => "INVENTORY",
             GameUiScreen.Character => "CHARACTER",
             GameUiScreen.Skills => "SKILLS",

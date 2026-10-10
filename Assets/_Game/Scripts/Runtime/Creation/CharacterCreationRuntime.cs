@@ -76,6 +76,7 @@ namespace Arcanum.Runtime.Creation
     public readonly struct CharacterCreationInitialStats
     {
         private readonly int[] _attributes;
+        private readonly int[] _resistances;
 
         public int CarryWeight { get; }
         public int DamageBonus { get; }
@@ -84,8 +85,17 @@ namespace Arcanum.Runtime.Creation
         public int HealRate { get; }
         public int PoisonRecovery { get; }
         public int ReactionModifier { get; }
+        public int MaximumFollowers { get; }
+        public int MagickTechAptitude { get; }
 
         internal CharacterCreationInitialStats(int[] attributes)
+            : this(attributes, CharacterRace.Human, null, 0, 0)
+        {
+        }
+
+        internal CharacterCreationInitialStats(int[] attributes, CharacterRace race,
+            IReadOnlyDictionary<CharacterResistance, int> resistanceModifiers,
+            int magickPoints, int technologyPoints)
         {
             if (attributes == null || attributes.Length < CharacterAttributeSet.Count)
                 throw new ArgumentException("A complete source attribute projection is required.", nameof(attributes));
@@ -101,12 +111,35 @@ namespace Arcanum.Runtime.Creation
             HealRate = CharacterDerivedStatRules.HealRateFromConstitution(constitution);
             PoisonRecovery = CharacterDerivedStatRules.PoisonRecoveryFromConstitution(constitution);
             ReactionModifier = CharacterDerivedStatRules.BeautyReactionModifierFromBeauty(beauty);
+            MaximumFollowers = Math.Max(1, Math.Min(7,
+                attributes[(int)CharacterAttribute.Charisma] / 4));
+            int effectiveMagick = Math.Max(0, Math.Min(CharacterDerivedStatRules.MaximumAptitudePoints,
+                magickPoints + CharacterDerivedStatRules.AptitudePointAdjustment(race, true)));
+            int effectiveTechnology = Math.Max(0, Math.Min(CharacterDerivedStatRules.MaximumAptitudePoints,
+                technologyPoints + CharacterDerivedStatRules.AptitudePointAdjustment(race, false)));
+            MagickTechAptitude = Math.Max(-100, Math.Min(100,
+                (50 * effectiveMagick - 55 * effectiveTechnology) / 10));
+            _resistances = new int[CharacterDerivedStatRules.ResistanceCount];
+            foreach (CharacterResistance resistance in CharacterDerivedStatRules.AllResistances)
+            {
+                int value = resistanceModifiers?.GetValueOrDefault(resistance) ?? 0;
+                value += CharacterDerivedStatRules.ResistanceAdjustment(race, resistance);
+                if (resistance == CharacterResistance.Poison)
+                    value += Math.Max(0, 5 * (constitution - 4));
+                _resistances[(int)resistance] = Math.Max(0, Math.Min(95, value));
+            }
         }
 
         public int GetAttribute(CharacterAttribute attribute)
         {
             CharacterAttributeRules.ValidateAttribute(attribute);
             return _attributes[(int)attribute];
+        }
+
+        public int GetResistance(CharacterResistance resistance)
+        {
+            CharacterDerivedStatRules.ValidateResistance(resistance);
+            return _resistances[(int)resistance];
         }
     }
 
@@ -291,9 +324,13 @@ namespace Arcanum.Runtime.Creation
         public MapListEntry StartMap { get; }
         public string StartSector { get; }
         public Vector2 StartTile { get; }
+        public MapListEntry? ShoppingMap { get; }
+        public string ShoppingSector { get; }
+        public Vector2 ShoppingTile { get; }
+        public bool HasShoppingMap => ShoppingMap.HasValue;
 
         private CharacterCreationCatalog(Dictionary<int, BackgroundDefinition> backgrounds,
-            Dictionary<int, PortraitDefinition> portraits, MapListEntry startMap,
+            Dictionary<int, PortraitDefinition> portraits, MapListEntry startMap, MapListEntry? shoppingMap,
             IReadOnlyList<PregeneratedCharacterDefinition> pregeneratedCharacters)
         {
             _backgrounds = backgrounds;
@@ -304,6 +341,16 @@ namespace Arcanum.Runtime.Creation
             SectorCoordinate sector = SectorCoordinate.FromGlobal(mapPath, global);
             StartSector = sector.Path;
             StartTile = sector.ToLocal(global);
+            ShoppingMap = shoppingMap;
+            if (shoppingMap.HasValue)
+            {
+                MapListEntry shop = shoppingMap.Value;
+                string shopPath = "maps/" + shop.Name.ToLowerInvariant();
+                var shopGlobal = new Vector2(shop.X, shop.Y);
+                SectorCoordinate shopSector = SectorCoordinate.FromGlobal(shopPath, shopGlobal);
+                ShoppingSector = shopSector.Path;
+                ShoppingTile = shopSector.ToLocal(shopGlobal);
+            }
             PregeneratedCharacters = pregeneratedCharacters;
         }
 
@@ -363,7 +410,9 @@ namespace Arcanum.Runtime.Creation
                     portraitDefinitions[entry.Key] = new PortraitDefinition(entry.Key, entry.Value.Trim(), race, gender);
 
             MapListEntry start = maps.Entries.Single(entry => entry.Type == MapType.StartMap);
-            return new CharacterCreationCatalog(definitions, portraitDefinitions, start,
+            MapListEntry? shopping = maps.Entries.Where(entry => entry.Type == MapType.ShoppingMap)
+                .Select(entry => (MapListEntry?)entry).SingleOrDefault();
+            return new CharacterCreationCatalog(definitions, portraitDefinitions, start, shopping,
                 BuildPregeneratedCharacters(gameLevelNames, mainMenu));
         }
 
@@ -589,6 +638,8 @@ namespace Arcanum.Runtime.Creation
         public CharacterCreationCatalog Catalog { get; private set; }
         public bool IsFinalized => Finalized != null;
         public FinalizedCharacterSpecification Finalized { get; private set; }
+        public bool StartingEquipmentActive { get; private set; }
+        public ArcanumObjectId StartingEquipmentMerchant { get; private set; }
 
         internal CharacterCreationStateService(WorldMapSessionCoordinator world,
             CharacterCreationCatalog catalog = null)
@@ -596,7 +647,12 @@ namespace Arcanum.Runtime.Creation
 
         internal void BindCatalog(CharacterCreationCatalog catalog)
             => Catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
-        internal void ClearFinalized() => Finalized = null;
+        internal void ClearFinalized()
+        {
+            Finalized = null;
+            StartingEquipmentActive = false;
+            StartingEquipmentMerchant = default;
+        }
 
         public CharacterCreationValidationResult Validate(CharacterCreationSpecification source)
         {
@@ -699,10 +755,16 @@ namespace Arcanum.Runtime.Creation
                 // Reset replaces all authoritative domains, including the session-owned HUD observer. Recreate it
                 // before starting items, progression, quests, or map discovery can raise source notification events.
                 _ = _world.GameplayHud;
-                Commit(finalized);
+                bool shopping = Catalog.HasShoppingMap;
+                Commit(finalized, shopping ? Catalog.ShoppingSector : finalized.StartSector,
+                    shopping ? Catalog.ShoppingTile : finalized.StartTile);
                 Finalized = finalized;
-                if (!_world.SelectSector(finalized.StartSector))
-                    throw new InvalidOperationException("The authentic START_MAP sector could not be presented.");
+                string initialSector = shopping ? Catalog.ShoppingSector : finalized.StartSector;
+                if (!_world.SelectSector(initialSector))
+                    throw new InvalidOperationException(shopping
+                        ? "The authentic SHOPPING_MAP sector could not be presented."
+                        : "The authentic START_MAP sector could not be presented.");
+                if (shopping) BeginStartingEquipment();
                 return new CharacterCreationFinalizeResult(CharacterCreationFailure.None, character: finalized);
             }
             catch (Exception ex)
@@ -710,6 +772,69 @@ namespace Arcanum.Runtime.Creation
                 _world.ResetAuthoritativeSession();
                 return new CharacterCreationFinalizeResult(CharacterCreationFailure.CommitFailed, ex.Message);
             }
+        }
+
+        private void BeginStartingEquipment()
+        {
+            PersistentObjectState merchant = _world.States.Values
+                .Where(value => value.Type == ObjectType.Npc
+                                && value.Placement.Kind == ObjectPlacementKind.World
+                                && string.Equals(value.Placement.Sector, _world.SelectedSector,
+                                    StringComparison.OrdinalIgnoreCase))
+                .OrderBy(value => value.Identity.Key, StringComparer.Ordinal)
+                .FirstOrDefault(value => _world.Economy.TryResolveMerchant(value.Identity, out _, out _));
+            if (merchant == null)
+                throw new InvalidOperationException("The authentic SHOPPING_MAP Human Shopkeeper is unavailable.");
+            if (!_world.Economy.RestockNow(merchant.Identity, out string failure))
+                throw new InvalidOperationException(failure ?? "The Human Shopkeeper inventory could not be generated.");
+            StartingEquipmentMerchant = merchant.Identity;
+            StartingEquipmentActive = true;
+        }
+
+        public bool CompleteStartingEquipment(out string failure)
+        {
+            failure = null;
+            if (!StartingEquipmentActive || Finalized == null || _world.PlayerState == null)
+            {
+                failure = "No starting-equipment transaction is active.";
+                return false;
+            }
+
+            ArcanumObjectId pc = _world.PlayerState.Identity;
+            foreach (ArcanumObjectId item in _world.ChildrenOf(pc).ToArray())
+                if (_world.TryGetObjectState(item, out PersistentObjectState state)
+                    && WorldMapSessionCoordinator.TryGetNaturalWornLocation(state, out WornLocation location)
+                    && !_world.TryGetEquippedItem(pc, location, out _))
+                    _world.EquipItem(pc, item, location);
+
+            string previousSector = _world.SelectedSector;
+            Vector2 previousTile = _world.PlayerState.TilePosition;
+            uint previousArt = _world.PlayerState.ArtId;
+            _world.ClearSelectedSector();
+            _world.PlayerState.EnterSector(Finalized.StartSector, Finalized.StartTile, previousArt);
+            if (!_world.SelectSector(Finalized.StartSector))
+            {
+                _world.PlayerState.EnterSector(previousSector, previousTile, previousArt);
+                _world.SelectSector(previousSector);
+                failure = "The authentic START_MAP sector could not be presented.";
+                return false;
+            }
+
+            StartingEquipmentActive = false;
+            StartingEquipmentMerchant = default;
+            return true;
+        }
+
+        public bool CancelStartingEquipment(out string failure)
+        {
+            failure = null;
+            if (!StartingEquipmentActive)
+            {
+                failure = "No starting-equipment transaction is active.";
+                return false;
+            }
+            _world.ResetAuthoritativeSession();
+            return true;
         }
 
         public CharacterCreationFinalizeResult FinalizePregeneratedCharacter(int sourceIndex)
@@ -787,7 +912,7 @@ namespace Arcanum.Runtime.Creation
             }
         }
 
-        private void Commit(FinalizedCharacterSpecification value)
+        private void Commit(FinalizedCharacterSpecification value, string initialSector, Vector2 initialTile)
         {
             var attributes = new CharacterAttributeSet(value.Attributes, value.Race);
             var basic = new int[CharacterSkillRules.BasicSkillCount];
@@ -813,7 +938,7 @@ namespace Arcanum.Runtime.Creation
             Array.Copy(value.Technology, 0, spellTech, 17, value.Technology.Length);
 
             ArcanumObjectId pc = ProductionPlayerLifecycle.DefaultPlayerIdentity;
-            _world.InitializeCreatedPlayer(pc, value.StartSector, value.StartTile, value.ArtId,
+            _world.InitializeCreatedPlayer(pc, initialSector, initialTile, value.ArtId,
                 attributes, value.Race, value.Gender, progression, derived, vitality, spellTech);
             ApplyPersistentModifiers(pc, value.Background);
             if (value.Background.StartingGold > 0) _world.AddGold(pc, value.Background.StartingGold);
@@ -939,7 +1064,13 @@ namespace Arcanum.Runtime.Creation
             var attributes = new int[CharacterAttributeSet.Count];
             foreach (CharacterAttribute attribute in CharacterStatService.AllAttributes)
                 attributes[(int)attribute] = GetEffectiveAttribute(source, attribute);
-            return new CharacterCreationInitialStats(attributes);
+            Catalog.TryGetBackground(source.BackgroundId, out BackgroundDefinition background);
+            int magickPoints = source.CopySpells().Sum()
+                                + (background?.MagicPointModifier ?? 0);
+            int technologyPoints = source.CopyTechnology().Sum()
+                                   + (background?.TechnologyPointModifier ?? 0);
+            return new CharacterCreationInitialStats(attributes, source.Race,
+                background?.ResistanceModifiers, magickPoints, technologyPoints);
         }
 
         public CharacterCreationInitialStats ProjectPregeneratedInitialStats(
@@ -960,7 +1091,20 @@ namespace Arcanum.Runtime.Creation
                 attributes[(int)attribute] = Math.Max(CharacterAttributeSet.SourceMinimum,
                     Math.Min(CharacterAttributeSet.SourceMaximumFor(source.Race, attribute), value));
             }
-            return new CharacterCreationInitialStats(attributes);
+            var resistances = new Dictionary<CharacterResistance, int>();
+            if (prototype.Resistances != null)
+                foreach (CharacterResistance resistance in CharacterDerivedStatRules.AllResistances)
+                    if ((int)resistance < prototype.Resistances.Length)
+                        resistances[resistance] = prototype.Resistances[(int)resistance];
+            if (background != null)
+                foreach (var pair in background.ResistanceModifiers)
+                    resistances[pair.Key] = resistances.GetValueOrDefault(pair.Key) + pair.Value;
+            int magickPoints = prototype.StatBase.Length > CharacterDerivedStatRules.MagickPointsSourceSlot
+                ? prototype.StatBase[CharacterDerivedStatRules.MagickPointsSourceSlot] : 0;
+            int technologyPoints = prototype.StatBase.Length > CharacterDerivedStatRules.TechPointsSourceSlot
+                ? prototype.StatBase[CharacterDerivedStatRules.TechPointsSourceSlot] : 0;
+            return new CharacterCreationInitialStats(attributes, source.Race, resistances,
+                magickPoints, technologyPoints);
         }
 
         public int GetEffectiveSkillRank(CharacterCreationSpecification source, CharacterSkill skill)
