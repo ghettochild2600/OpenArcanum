@@ -80,7 +80,12 @@ namespace OpenArcanum.Editor
                 controller.SetCreationBackground(3);
                 controller.AdjustCreationSpell(SpellCollege.Earth, 1);
                 Check(controller.CreationValidation.Succeeded, "bounded source-valid character is ready");
-                Check(controller.FinalizeNewGame(), "fresh New Game reaches START_MAP 1");
+                Check(controller.FinalizeNewGame(), "fresh New Game enters its authoritative campaign transition");
+                Check(controller.Screen == GameUiScreen.StartingEquipment
+                      && session.CharacterCreation.StartingEquipmentActive,
+                    "fresh custom character routes through the restored Shopkeeper lifecycle");
+                Check(controller.CompleteStartingEquipment(),
+                    "source Shopkeeper completion reaches START_MAP 1");
                 yield return null;
                 yield return null;
 
