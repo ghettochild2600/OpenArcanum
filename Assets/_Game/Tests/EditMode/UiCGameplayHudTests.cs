@@ -93,6 +93,41 @@ namespace Arcanum.Formats.Tests
         }
 
         [Test]
+        public void WorldTargetProjectionSharesNameDispositionDeathAndSourceLensGeometry()
+        {
+            ArcanumObjectId npc = Parse("G_0000C001_0000_0000_0000_000000000000");
+            var source = new ObjectInstance(ObjectType.Npc, 30000, 0L, 0x28100000u, 0, 0);
+            _session.GetOrCreate(source, npc, Sector, source.CurrentArtId.Value, false, false,
+                nameIndex: 30000);
+            int[] stats = new int[CharacterAttributeSet.SourceStatArrayCount];
+            for (int index = 0; index < CharacterAttributeSet.Count; index++) stats[index] = 8;
+            stats[CharacterAttributeSet.GenderSourceSlot] = (int)CharacterGender.Male;
+            stats[CharacterAttributeSet.RaceSourceSlot] = (int)CharacterRace.Elf;
+            _session.Characters.GetOrCreateSourceCharacter(npc, ObjectType.Npc, 30000, stats, null);
+            _session.Vitality.GetOrCreateSourceCharacter(npc, ObjectType.Npc, 30000,
+                CharacterVitalitySource.Resolve(stats, null, null, 0, null, 0, null, 0,
+                    null, 0, null, 0, null, 0));
+            _session.BindPrototypeSource(number => number == 30000
+                ? new ObjectProtoInfo(30000, ObjectType.Npc, 0x28100000u, description: 30000) : null);
+            _session.BindDescriptionSource(id => id == 30000 ? "Virgil" : null);
+
+            GameUiWorldTargetView friendly = _controller.ProjectWorldTarget(npc);
+            Assert.That((friendly.Name, friendly.Dead, friendly.Hostile, friendly.IconSourceId),
+                Is.EqualTo(("Virgil", false, false, 376)));
+            Assert.That(_session.Social.SetHostile(npc, _session.PlayerState.Identity), Is.True);
+            Assert.That(_controller.ProjectWorldTarget(npc).Hostile, Is.True);
+            _session.Vitality.ApplyHitPointDamage(npc, 1000);
+            GameUiWorldTargetView corpse = _controller.ProjectWorldTarget(npc);
+            Assert.That((corpse.Dead, corpse.Hostile), Is.EqualTo((true, false)));
+            _view.SetWorldTarget(corpse);
+            _view.Synchronize(true);
+            Assert.That(_view.WorldTarget, Is.SameAs(corpse));
+            Assert.That(RetailGameplayHudLayout.WorldTargetIcon, Is.EqualTo(new Rect(217, 510, 64, 64)));
+            Assert.That(RetailGameplayHudLayout.WorldTargetName, Is.EqualTo(new Rect(290, 504, 291, 19)));
+            Assert.That(RetailGameplayHudLayout.WorldTargetStatus, Is.EqualTo(new Rect(290, 528, 291, 18)));
+        }
+
+        [Test]
         public void SourceGeometryPreservesTopWorldAndBottomPartition()
         {
             Assert.That(RetailGameplayHudLayout.TopInterface, Is.EqualTo(new Rect(0, 0, 800, 41)));

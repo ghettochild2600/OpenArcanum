@@ -48,6 +48,8 @@ namespace Arcanum.Runtime.UI
         private Rect _panelRect;
         private bool _showHud = true;
         private bool _interactionSubscribed;
+        private WorldObject _hoveredWorldObject;
+        private Color _hoveredOriginalColor;
         private int _quickSlotAssignment;
         private readonly ProductionKeyboardController _keyboard = new();
         private static readonly KeyCode[] DownKeys =
@@ -123,12 +125,14 @@ namespace Arcanum.Runtime.UI
 
         private void OnDisable()
         {
+            ClearWorldHover();
             Controller?.Close();
             _inputGate?.SetBlocked(false);
         }
 
         private void OnDestroy()
         {
+            ClearWorldHover();
             if (_interaction != null && _interactionSubscribed)
                 _interaction.Resolved -= OnInteractionResolved;
             _interactionSubscribed = false;
@@ -155,6 +159,7 @@ namespace Arcanum.Runtime.UI
             _retailPregeneratedCharacter?.Synchronize();
             _retailCharacterCreation?.Synchronize();
             _retailStartingEquipment?.Synchronize();
+            RefreshWorldHover();
             _retailGameplayHud?.Synchronize(_showHud);
             _retailInventory?.Synchronize();
             _retailCharacterSheet?.Synchronize();
@@ -1007,12 +1012,7 @@ namespace Arcanum.Runtime.UI
         private void DrawCursorLabel()
         {
             Vector3 mouse = Event.current.mousePosition;
-            if (Controller.CursorMode == GameUiCursorMode.Default)
-            {
-                if (!TryGetCorpseHoverLabel(out string corpseLabel)) return;
-                GUI.Box(new Rect(mouse.x + 16f, mouse.y + 16f, 82f, 24f), corpseLabel);
-                return;
-            }
+            if (Controller.CursorMode == GameUiCursorMode.Default) return;
             string label = Controller.CursorMode switch
             {
                 GameUiCursorMode.SpellTarget => "SPELL",
@@ -1030,21 +1030,54 @@ namespace Arcanum.Runtime.UI
             GUI.Box(new Rect(mouse.x + 16f, mouse.y + 16f, 82f, 24f), label);
         }
 
-        private bool TryGetCorpseHoverLabel(out string label)
+        private void RefreshWorldHover()
         {
-            label = null;
-            if (Controller.IsModalOpen || _loader == null || PointerOverInterface(Input.mousePosition)) return false;
+            if (Controller.IsModalOpen || _loader == null || PointerOverInterface(Input.mousePosition))
+            {
+                ClearWorldHover();
+                _retailGameplayHud?.SetWorldTarget(null);
+                return;
+            }
             Camera camera = Camera.main;
-            if (camera == null) return false;
+            if (camera == null)
+            {
+                ClearWorldHover();
+                _retailGameplayHud?.SetWorldTarget(null);
+                return;
+            }
             Vector3 screen = Input.mousePosition;
             screen.z = Mathf.Abs(camera.transform.position.z - _loader.transform.position.z);
             Vector3 world = camera.ScreenToWorldPoint(screen);
             if (!WorldObjectTargetSelector.TrySelectInteractionTarget(_loader.SpriteOwners, world,
                     out ArcanumObjectId target, out ObjectType type)
-                || type != ObjectType.Npc || !_session.Vitality.TryGet(target, out _)
-                || !_session.Vitality.IsDead(target)) return false;
-            label = "LOOT";
-            return true;
+                || type is not (ObjectType.Pc or ObjectType.Npc))
+            {
+                ClearWorldHover();
+                _retailGameplayHud?.SetWorldTarget(null);
+                return;
+            }
+            WorldObject selected = _loader.SpriteOwners.Select(value => value?.WorldObject)
+                .FirstOrDefault(value => value != null && value.Identity == target);
+            if (!ReferenceEquals(selected, _hoveredWorldObject))
+            {
+                ClearWorldHover();
+                _hoveredWorldObject = selected;
+                if (_hoveredWorldObject?.View != null)
+                {
+                    _hoveredOriginalColor = _hoveredWorldObject.View.color;
+                    _hoveredWorldObject.View.color = new Color(1f, .82f, .38f,
+                        _hoveredOriginalColor.a);
+                }
+            }
+            _retailGameplayHud?.SetWorldTarget(Controller.ProjectWorldTarget(target));
+        }
+
+        private void ClearWorldHover()
+        {
+            if (_hoveredWorldObject?.View != null)
+                _hoveredWorldObject.View.color = _hoveredOriginalColor;
+            _hoveredWorldObject = null;
+            _retailGameplayHud?.SetWorldTarget(null);
         }
 
         private void SyncInputGate()

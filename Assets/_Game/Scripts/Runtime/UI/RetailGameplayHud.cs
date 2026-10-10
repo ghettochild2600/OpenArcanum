@@ -40,6 +40,9 @@ namespace Arcanum.Runtime.UI
         public static readonly Rect ClockFrame = new Rect(648f, 5f, 128f, 30f);
         public static readonly Rect MessageWindow = new Rect(196f, 492f, 410f, 107f);
         public static readonly Rect MessageText = new Rect(211f, 503f, 383f, 82f);
+        public static readonly Rect WorldTargetIcon = new Rect(217f, 510f, 64f, 64f);
+        public static readonly Rect WorldTargetName = new Rect(290f, 504f, 291f, 19f);
+        public static readonly Rect WorldTargetStatus = new Rect(290f, 528f, 291f, 18f);
         public static readonly Rect AmmoButton = new Rect(61f, 509f, 37f, 24f);
         public static readonly Rect[] RecentActions =
             { new Rect(69f, 548f, 32f, 32f), new Rect(114f, 548f, 32f, 32f) };
@@ -151,6 +154,10 @@ namespace Arcanum.Runtime.UI
         private SourceUiBitmapText _contextText;
         private SourceUiBitmapText _messageLineOne;
         private SourceUiBitmapText _messageLineTwo;
+        private SourceUiImage _worldTargetIcon;
+        private SourceUiBitmapText _worldTargetName;
+        private SourceUiBitmapText _worldTargetStatus;
+        private GameUiWorldTargetView _worldTarget;
         private SourceUiImage _ammoImage;
         private readonly SourceUiBitmapText[] _slotLabels = new SourceUiBitmapText[10];
         private readonly RetailQuickSlotPresentation[] _slots = new RetailQuickSlotPresentation[10];
@@ -191,6 +198,9 @@ namespace Arcanum.Runtime.UI
         public float FatigueFill { get; private set; }
         public GameUiHudView LastProjection { get; private set; }
         public RetailClockPeriod ClockPeriod { get; private set; }
+        public GameUiWorldTargetView WorldTarget => _worldTarget;
+
+        public void SetWorldTarget(GameUiWorldTargetView target) => _worldTarget = target;
 
         public void Bind(GameUiController controller, WorldMapSessionCoordinator session,
             Action<GameUiScreen> openScreen, UiSkinResolver resolver = null)
@@ -241,13 +251,31 @@ namespace Arcanum.Runtime.UI
             SetCounter(_fatigueText, Mathf.Max(0, LastProjection.Fatigue));
             RefreshMaintainedSpellSlots(LastProjection.MaintainedSpellSlotCapacity, LastProjection.ActiveEffects);
 
-            string feedback = string.IsNullOrWhiteSpace(_controller.Feedback)
-                ? LastProjection.Weapon : _controller.Feedback;
-            SetText(_messageLineOne, Clip(feedback, 46), SourceText);
-            string combat = LastProjection.CombatActive
-                ? $"{LastProjection.CombatMode}  AP {LastProjection.ActionPoints}/{LastProjection.MaximumActionPoints}  {LastProjection.Readiness}"
-                : $"{LastProjection.Readiness}  {LastProjection.Weapon}";
-            SetText(_messageLineTwo, Clip(combat, 46), SourceText);
+            bool targetVisible = _worldTarget != null && _controller.Screen == GameUiScreen.None;
+            _worldTargetIcon.gameObject.SetActive(targetVisible);
+            _worldTargetName.gameObject.SetActive(targetVisible);
+            _worldTargetStatus.gameObject.SetActive(targetVisible);
+            _messageLineOne.gameObject.SetActive(!targetVisible);
+            _messageLineTwo.gameObject.SetActive(!targetVisible);
+            if (targetVisible)
+            {
+                _worldTargetIcon.SetKey(new UiAssetKey(_worldTarget.IconSourceId));
+                SetText(_worldTargetName, Clip(_worldTarget.Name, 38),
+                    _worldTarget.Hostile ? new Color32(244, 43, 25, 255) : SourceText);
+                SetText(_worldTargetStatus, _worldTarget.Dead
+                    ? SourceMessage("mes/intgame.mes", 16, string.Empty) : string.Empty,
+                    new Color32(244, 43, 25, 255));
+            }
+            else
+            {
+                string feedback = string.IsNullOrWhiteSpace(_controller.Feedback)
+                    ? LastProjection.Weapon : _controller.Feedback;
+                SetText(_messageLineOne, Clip(feedback, 46), SourceText);
+                string combat = LastProjection.CombatActive
+                    ? $"{LastProjection.CombatMode}  AP {LastProjection.ActionPoints}/{LastProjection.MaximumActionPoints}  {LastProjection.Readiness}"
+                    : $"{LastProjection.Readiness}  {LastProjection.Weapon}";
+                SetText(_messageLineTwo, Clip(combat, 46), SourceText);
+            }
             SetCounter(_fateText, Mathf.Max(0, LastProjection.FatePoints), 2);
             SetCounter(_contextText, Mathf.Max(0, LastProjection.ContextQuantity), 6);
             if (_ammoImage != null) _ammoImage.SetKey(new UiAssetKey(LastProjection.ContextIconSourceId));
@@ -364,6 +392,12 @@ namespace Arcanum.Runtime.UI
                 RetailGameplayHudLayout.TextFontSourceId);
             _messageLineTwo = AddText("Combat State", textClip, new Rect(4f, 25f, 375f, 14f), string.Empty,
                 RetailGameplayHudLayout.TextFontSourceId);
+            _worldTargetIcon = AddImage("World Target Icon", _bottomWindow, new UiAssetKey(375),
+                RetailGameplayHudLayout.BottomWindowLocal(RetailGameplayHudLayout.WorldTargetIcon), false);
+            _worldTargetName = AddText("World Target Name", _bottomWindow,
+                RetailGameplayHudLayout.BottomWindowLocal(RetailGameplayHudLayout.WorldTargetName), string.Empty, 27);
+            _worldTargetStatus = AddText("World Target Status", _bottomWindow,
+                RetailGameplayHudLayout.BottomWindowLocal(RetailGameplayHudLayout.WorldTargetStatus), string.Empty, 229);
 
             _ammoImage = AddImage("Ammo", _bottomWindow, new UiAssetKey(251),
                 RetailGameplayHudLayout.BottomWindowLocal(RetailGameplayHudLayout.AmmoButton), false);
