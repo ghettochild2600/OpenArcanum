@@ -2825,6 +2825,38 @@ The evidence classes remain explicit: `C:\Arcanum - Modded` is the windowed reta
 arcanum-ce is the source-runtime automation reference; and `D:\OpenArcanum\Source\Steam-Clean` is the pristine retail
 control. No arcanum-ce observation is called retail-physically-certified.
 
+## Character / Technology / Magic / Shopkeeper / World-Hover Source-Runtime Parity Correction (2026-10-10)
+
+This bounded correction closes the player-visible parity defects exposed by the supplied retail screenshots and the
+arcanum-ce source runtime. Character Editor now uses the source bitmap typography and panel geometry, reports whole
+effective attributes under the source Derived Stats and Resistance headings, and renders actual spell and technology
+rows from authoritative catalogs. Technology expertise now affects schematic availability, and degree-granted source
+schematics are projected through the existing crafting authority rather than presentation-owned placeholders.
+
+Custom-character starting inventory now follows `item_generate_inventory` and `background_generate_inventory`:
+background gold/items are created first; missing torso armor receives race/sex-sized default clothing; invested Pick
+Locks and Heal add prototype 15178 Crude Lockpicks and 15179 Bandages. These engine-owned `proto.c` base prototypes
+are represented with source art, material, weight, worth, durability, armor, and complexity fields without creating
+or committing proprietary loose `.pro` data. Inventory source 0 remains the source sentinel, and items remain
+contained until the explicit Shopping purchase/equip flow.
+
+Shopping now presents the source 800 x 400 composition with merchant stock, player inventory, scroll state, paper
+doll, Attack/AC, chatter variants, and real purchase/equip/save-load transactions. World hover uses the shared source
+highlight and bottom target readout for living and dead critters; it no longer invents floating LOOT labels. Clicking
+a corpse remains a distinct action that opens the authoritative corpse inventory.
+
+Production validation passed in the existing Unity Editor: the corrected UI-D New Character -> Character Editor ->
+Shopping -> START_MAP flow survived Save V1, and an authentic dead Human Noble was physically highlighted with the
+source icon, name, and localized `Dead` state before a separate corpse click opened loot. The source runtime was
+compared at 800 x 600 for Character Editor, Herbology, Conveyance, and Shopping. Pre-gate focused EditMode results
+are M11A **21/21**, UI-D **66/66**, UI-C **71/71**, and M12B **44/44**, all with zero failed, skipped, or
+inconclusive.
+
+Evidence classification remains unchanged: `C:\Arcanum - Modded` is the **WINDOWED RETAIL-DERIVED PHYSICAL
+REFERENCE**; arcanum-ce is the **SOURCE-RUNTIME AUTOMATION REFERENCE** and its observations are
+**SOURCE-RUNTIME-PHYSICALLY-CERTIFIED**; `D:\OpenArcanum\Source\Steam-Clean` is the **PRISTINE RETAIL CONTROL**.
+The supplied screenshots from the modded retail executable remain the player-visible control.
+
 ## Next Recommended Milestone
 
 ### Retail runtime certification — M0/M1 complete (2026-10-08)

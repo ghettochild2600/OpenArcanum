@@ -256,7 +256,8 @@ namespace OpenArcanum.Editor
                       && session.CharacterCreation.StartingEquipmentActive
                       && session.SelectedSector == session.CharacterCreation.Catalog.ShoppingSector
                       && controller.Screen == GameUiScreen.StartingEquipment && shop.IsVisible,
-                    "Accept atomically creates one PC and routes that same authority through SHOPPING_MAP");
+                    "Accept atomically creates one PC and routes that same authority through SHOPPING_MAP"
+                    + $" [feedback={controller.Feedback}]");
                 Check(shop.WindowTransform.sizeDelta == new Vector2(800f, 400f)
                       && shop.GetComponentsInChildren<ScrollRect>(true).Length == 0
                       && shop.DynamicItemCount > 0,
@@ -312,6 +313,21 @@ namespace OpenArcanum.Editor
                 finalHud.Synchronize(true);
                 Check(finalHud.IsVisible && !view.IsVisible,
                     "successful finalization closes creation and reveals the existing source HUD");
+
+                Camera camera = Camera.main;
+                if (camera != null)
+                    foreach (PersistentObjectState state in session.States.Values
+                                 .Where(value => value.Type == Arcanum.Formats.Objects.ObjectType.Npc
+                                                 && session.TryGetLoadedObject(value.Identity, out _))
+                                 .OrderBy(value => value.Identity.Key, StringComparer.Ordinal))
+                    {
+                        session.TryGetLoadedObject(state.Identity, out WorldObject runtime);
+                        Vector3 center = runtime.View != null ? runtime.View.bounds.center : runtime.transform.position;
+                        Vector3 screen = camera.WorldToScreenPoint(center);
+                        GameUiWorldTargetView target = controller.ProjectWorldTarget(state.Identity);
+                        Debug.Log($"UI-D WORLD TARGET: name={target?.Name}; dead={target?.Dead}; "
+                                  + $"screen=({screen.x:F1},{screen.y:F1}); identity={state.Identity.Key}");
+                    }
 
                 Debug.Log("UI-D PHYSICAL VALIDATION: PASS; source flow=765 identity>22 editor; "
                           + "identity=name/portrait/gender/race/background arrows; invalid name=no mutation; "
