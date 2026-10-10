@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using Arcanum.Runtime.Character;
 using Arcanum.Runtime.Creation;
+using Arcanum.Runtime.Economy;
 using Arcanum.Runtime.Magic;
 using Arcanum.Runtime.Technology;
 using Arcanum.Runtime.UI;
@@ -246,11 +247,62 @@ namespace OpenArcanum.Editor
                 FindButton(view, "Editor Continue").onClick.Invoke();
                 yield return null;
                 yield return null;
+                RetailStartingEquipmentView shop = Require(
+                    Object.FindFirstObjectByType<RetailStartingEquipmentView>(),
+                    "source starting-equipment Shopkeeper view");
+                shop.Synchronize();
                 Check(session.PlayerState != null && session.CharacterCreation.IsFinalized
                       && session.CharacterCreation.Finalized.Name == "UI-D Human"
-                      && session.SelectedSector.Contains("arcanum1-024-fixed")
+                      && session.CharacterCreation.StartingEquipmentActive
+                      && session.SelectedSector == session.CharacterCreation.Catalog.ShoppingSector
+                      && controller.Screen == GameUiScreen.StartingEquipment && shop.IsVisible,
+                    "Accept atomically creates one PC and routes that same authority through SHOPPING_MAP");
+                Check(shop.WindowTransform.sizeDelta == new Vector2(800f, 400f)
+                      && shop.GetComponentsInChildren<ScrollRect>(true).Length == 0
+                      && shop.DynamicItemCount > 0,
+                    "Human Shopkeeper uses the source 800x400 barter composition and generated inventory");
+                // Keep the source-native Shopkeeper state visible long enough for a Sky capture in the physical
+                // acceptance workflow before the validator performs its authoritative purchase and transition.
+                yield return new WaitForSecondsRealtime(12f);
+                SourceHoverHintTarget shopContinue = shop.GetComponentsInChildren<SourceHoverHintTarget>(true)
+                    .Single(value => value.name == "Shopkeeper Continue");
+                shopContinue.OnPointerEnter(null);
+                yield return null;
+                Check(shop.MessageTitleText == "Action:",
+                    "Shopkeeper Continue reuses source navigation contextual help");
+                shopContinue.OnPointerExit(null);
+
+                GameUiMerchantItemView purchase = controller.ProjectMerchantWares()
+                    .First(value => value.Failure == EconomyFailure.None);
+                int goldBefore = controller.PlayerGold;
+                Button purchaseButton = shop.GetComponentsInChildren<Button>(true)
+                    .Single(value => value.name == $"{purchase.Direction} {purchase.Item.Identity.Key}");
+                purchaseButton.onClick.Invoke();
+                yield return null;
+                shop.Synchronize();
+                Check(controller.PlayerGold == goldBefore - purchase.UnitPrice
+                      && session.TryGetObjectState(purchase.Item.Identity, out PersistentObjectState purchased)
+                      && purchased.ParentIdentity == session.PlayerState.Identity,
+                    "source Shopkeeper purchase debits authoritative Gold and transfers authoritative inventory");
+
+                shop.GetComponentsInChildren<Button>(true)
+                    .Single(value => value.name == "Shopkeeper Continue").onClick.Invoke();
+                yield return null;
+                yield return null;
+                Check(!session.CharacterCreation.StartingEquipmentActive && !shop.IsVisible
+                      && session.SelectedSector == session.CharacterCreation.Catalog.StartSector
+                      && session.TryGetObjectState(purchase.Item.Identity, out PersistentObjectState arrived)
+                      && arrived.ParentIdentity == session.PlayerState.Identity
                       && controller.Screen == GameUiScreen.None,
-                    "Accept atomically creates exactly one PC and enters authentic START_MAP 1");
+                    "Shopkeeper completion moves the same PC and purchased item to authentic START_MAP");
+                string roundTrip = session.SaveGames.SerializeCurrentSession();
+                Check(session.SaveGames.LoadJson(roundTrip).Succeeded
+                      && session.CharacterCreation.Finalized.Name == "UI-D Human"
+                      && session.GetGold(session.PlayerState.Identity) == goldBefore - purchase.UnitPrice
+                      && session.TryGetObjectState(purchase.Item.Identity, out PersistentObjectState restored)
+                      && restored.ParentIdentity == session.PlayerState.Identity
+                      && session.SelectedSector == session.CharacterCreation.Catalog.StartSector,
+                    "post-shopping Save V1 reload preserves identity, Gold, inventory, and campaign sector");
                 ProductionPlayerLifecycle lifecycle = Require(
                     Object.FindFirstObjectByType<ProductionPlayerLifecycle>(), "production player lifecycle");
                 if (lifecycle.Presentation == null) Check(lifecycle.SpawnAndBind(), "production PC binds");
@@ -269,7 +321,8 @@ namespace OpenArcanum.Editor
                           + "partial-window y=41; no global ScrollRect; "
                           + "skin=Original>Enhanced exact-4x 765+22>Original with stage/panel/state preserved; "
                           + "resolutions=800x600/1024x768/1080p/1440p/4K accessible; "
-                          + "finalize=ID321/one PC/authentic START_MAP/source HUD; presenters=1; EventSystems=1. "
+                          + "finalize=ID321/one PC>SHOPPING_MAP/Human Shopkeeper/purchase>START_MAP; "
+                          + "SaveV1=identity/Gold/item/sector preserved; source HUD; presenters=1; EventSystems=1. "
                           + "Play Mode remains open at the crash site for visual proof.");
             }
             finally

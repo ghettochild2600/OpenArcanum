@@ -315,6 +315,34 @@ namespace Arcanum.Formats.Tests
             _view.ContinueToEditor();
             Assert.That(_view.Stage, Is.EqualTo(RetailCharacterCreationStage.Identity));
             Assert.That(_controller.CreationValidation.Failure, Is.EqualTo(CharacterCreationFailure.InvalidName));
+            SourceUiBitmapText validation = Text("Identity Validation");
+            Assert.That(validation.Text, Is.EqualTo("You must choose a name."));
+            Assert.That(validation.transform.parent, Is.SameAs(_view.IdentityBottomRegionRoot));
+            Assert.That(_view.IdentityBottomRegionRoot.Find("Identity Message Icon").gameObject.activeSelf, Is.False);
+        }
+
+        [TestCase("Identity Continue", "Next Screen")]
+        [TestCase("Identity Back", "Previous Screen")]
+        public void IdentityNavigationUsesSharedSourceContextHelp(string control, string expectedBody)
+        {
+            Hover(control, true);
+            Assert.That(Text("Identity Message Title").Text, Is.EqualTo("Action:"));
+            Assert.That(Wrapped("Identity Message Body"), Is.EqualTo(expectedBody));
+            Assert.That(_view.IdentityBottomRegionRoot.Find("Identity Message Icon").gameObject.activeSelf, Is.True);
+            Hover(control, false);
+            Assert.That(Text("Identity Message Title").Text, Is.Empty);
+        }
+
+        [Test]
+        public void IdentityContextUsesSourceGenderAndRaceDescriptions()
+        {
+            Hover("Gender Context", true);
+            Assert.That(Text("Description Title").Text, Is.Empty);
+            Assert.That(Wrapped("Description Body"), Does.Contain("male gender"));
+            Hover("Gender Context", false);
+            Hover("Race Context", true);
+            Assert.That(Text("Description Title").Text, Is.EqualTo("Race"));
+            Assert.That(Wrapped("Description Body"), Is.Not.Empty);
         }
 
         [Test]
@@ -326,6 +354,38 @@ namespace Arcanum.Formats.Tests
             Assert.That(_controller.CreationValidation.RemainingCharacterPoints, Is.EqualTo(4));
             Invoke("Decrease Strength");
             Assert.That(_controller.CreationDraft.GetAttribute(CharacterAttribute.Strength), Is.EqualTo(8));
+        }
+
+        [Test]
+        public void EditorProjectsSourceIdentityDerivedResistanceAndAptitudeValues()
+        {
+            _view.NameInput.text = "Ada";
+            _view.ContinueToEditor();
+            Assert.That(Text("Editor Name").Text, Is.EqualTo("Ada"));
+            Assert.That(Text("Editor Level").Text, Is.EqualTo("LEVEL: 1"));
+            Assert.That(Text("Character Points").Text, Is.EqualTo("POINTS: 5"));
+            Assert.That(Text("Editor Experience Next").Text, Is.EqualTo("XP NEXT: 2100"));
+            Assert.That(Text("Editor Race").Text, Is.EqualTo("RACE: HUMAN"));
+            Assert.That(Text("Editor Gender").Text, Is.EqualTo("GENDER: MALE"));
+            Assert.That(Text("Editor Age").Text, Is.EqualTo("AGE: 20"));
+            Assert.That(Text("Editor Derived 0").Text, Is.EqualTo("Carry Weight: 4000"));
+            Assert.That(Text("Editor Derived 7").Text, Is.EqualTo("Max Followers: 2"));
+            Assert.That(Text("Editor Resistance 0").Text, Is.EqualTo("Damage: 0"));
+            Assert.That(Text("Editor Resistance 3").Text, Is.EqualTo("Poison: 20"));
+            Assert.That(Text("Magick Aptitude Value").Text, Is.EqualTo("0"));
+            Assert.That(Text("Technology Aptitude Value").Text, Is.EqualTo("0"));
+        }
+
+        [TestCase("Editor Continue", "Next Screen")]
+        [TestCase("Editor Back", "Previous Screen")]
+        public void EditorNavigationUsesSharedSourceContextHelp(string control, string expectedBody)
+        {
+            _view.ContinueToEditor();
+            Hover(control, true);
+            Assert.That(Text("Editor Message Title").Text, Is.EqualTo("Action:"));
+            Assert.That(Wrapped("Editor Message Body"), Is.EqualTo(expectedBody));
+            Assert.That(_view.EditorBottomRegionRoot.Find("Editor Message Icon").gameObject.activeSelf, Is.True);
+            Hover(control, false);
         }
 
         [Test]
@@ -414,6 +474,37 @@ namespace Arcanum.Formats.Tests
             Assert.That(_view.SkillGroup, Is.EqualTo(3));
             Invoke("Increase Repair");
             Assert.That(_controller.CreationDraft.GetSkillPoints(CharacterSkill.Repair), Is.EqualTo(1));
+        }
+
+        [Test]
+        public void SkillRowsProjectSourceUnitsAndDynamicGoverningRequirement()
+        {
+            _view.ContinueToEditor();
+            Assert.That(_retail.TryReadMessage("mes/skill.mes", 20, out string sourceDescription), Is.True);
+            Assert.That(sourceDescription, Does.Contain("dependent upon your dexterity"));
+            Assert.That(Text("Bow Rank").Text, Is.EqualTo("0"));
+            Hover("Bow Name", true);
+            Assert.That(Text("Editor Message Title").Text, Is.EqualTo("Bow"));
+            Assert.That(Text("Editor Message Requirement").Text, Is.EqualTo("Minimum DX to raise: 6"));
+            Assert.That(Wrapped("Editor Message Body"), Does.Contain("dependent upon your dexterity"));
+            Invoke("Increase Bow");
+            Assert.That(Text("Bow Rank").Text, Is.EqualTo("4"));
+            Hover("Bow Name", true);
+            Assert.That(Text("Editor Message Requirement").Text, Is.EqualTo("Minimum DX to raise: 9"));
+        }
+
+        [TestCase(0, CharacterSkill.Bow, "DX")]
+        [TestCase(1, CharacterSkill.Prowling, "PE")]
+        [TestCase(2, CharacterSkill.Haggle, "WP")]
+        [TestCase(3, CharacterSkill.Repair, "IN")]
+        public void EverySkillFamilyUsesItsAuthoritativeGoverningAttribute(int group, CharacterSkill skill,
+            string abbreviation)
+        {
+            _view.ContinueToEditor();
+            Invoke($"Skill Group {group}");
+            Hover($"{skill} Name", true);
+            Assert.That(Text("Editor Message Requirement").Text,
+                Is.EqualTo($"Minimum {abbreviation} to raise: 6"));
         }
 
         [Test]
@@ -508,6 +599,24 @@ namespace Arcanum.Formats.Tests
             Assert.That(button.interactable, Is.True, name);
             button.onClick.Invoke();
             _view.Synchronize();
+        }
+
+        private void Hover(string name, bool entered)
+        {
+            SourceHoverHintTarget hint = _view.GetComponentsInChildren<SourceHoverHintTarget>(true)
+                .Single(value => value.name == name);
+            if (entered) hint.OnPointerEnter(null); else hint.OnPointerExit(null);
+        }
+
+        private SourceUiBitmapText Text(string name)
+            => _view.GetComponentsInChildren<SourceUiBitmapText>(true).Single(value => value.name == name);
+
+        private string Wrapped(string name)
+        {
+            RectTransform body = _view.GetComponentsInChildren<RectTransform>(true)
+                .Single(value => value.name == name);
+            return string.Join(" ", body.GetComponentsInChildren<SourceUiBitmapText>(true)
+                .Select(value => value.Text));
         }
 
         private void AssertTopLeft(string name, Vector2 expected)
