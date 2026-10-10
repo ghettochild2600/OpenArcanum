@@ -105,6 +105,22 @@ namespace Arcanum.Formats.Tests
             Assert.That(Text(view, "Counter 0").Text, Is.EqualTo("400"));
             for (int index = 1; index < 5; index++)
                 Assert.That(Text(view, $"Counter {index}").Text, Is.EqualTo("0"));
+            Assert.That(RetailStartingEquipmentLayout.MessageIcon, Is.EqualTo(new Rect(217, 69, 64, 64)));
+            Assert.That(RetailStartingEquipmentLayout.MessageTitle, Is.EqualTo(new Rect(290, 63, 291, 19)));
+            Assert.That(RetailStartingEquipmentLayout.MessageBody, Is.EqualTo(new Rect(290, 87, 291, 54)));
+
+            RectTransform merchantItems = view.GetComponentsInChildren<RectTransform>(true)
+                .Single(value => value.name == "Merchant Inventory Items");
+            RectTransform playerItems = view.GetComponentsInChildren<RectTransform>(true)
+                .Single(value => value.name == "Player Inventory Items");
+            Assert.That(merchantItems.GetComponent<RectMask2D>(), Is.Not.Null);
+            Assert.That(playerItems.GetComponent<RectMask2D>(), Is.Not.Null);
+            Assert.That(merchantItems.sizeDelta, Is.EqualTo(RetailStartingEquipmentLayout.MerchantGrid.size));
+            Assert.That(playerItems.sizeDelta, Is.EqualTo(RetailStartingEquipmentLayout.PlayerGrid.size));
+            foreach (RectTransform item in merchantItems.Cast<Transform>().Cast<RectTransform>())
+                AssertContainedBy(item, merchantItems, "merchant stock");
+            foreach (RectTransform item in playerItems.Cast<Transform>().Cast<RectTransform>())
+                AssertContainedBy(item, playerItems, "player inventory");
 
             AssertTopLeft(view, "Merchant Paper Doll", RetailStartingEquipmentLayout.MerchantPaperDollToggle.position);
             AssertTopLeft(view, "Merchant Inventory", RetailStartingEquipmentLayout.MerchantInventoryToggle.position);
@@ -317,6 +333,18 @@ namespace Arcanum.Formats.Tests
             RectTransform rect = view.GetComponentsInChildren<RectTransform>(true)
                 .Single(value => value.name == name);
             Assert.That(rect.anchoredPosition, Is.EqualTo(new Vector2(expected.x, -expected.y)));
+        }
+
+        private static void AssertContainedBy(RectTransform item, RectTransform grid, string description)
+        {
+            float left = item.anchoredPosition.x;
+            float top = -item.anchoredPosition.y;
+            Assert.That(left, Is.GreaterThanOrEqualTo(0f), description + " left");
+            Assert.That(top, Is.GreaterThanOrEqualTo(0f), description + " top");
+            Assert.That(left + item.sizeDelta.x, Is.LessThanOrEqualTo(grid.sizeDelta.x),
+                description + " right");
+            Assert.That(top + item.sizeDelta.y, Is.LessThanOrEqualTo(grid.sizeDelta.y),
+                description + " bottom");
         }
 
         private static string Wrapped(RetailStartingEquipmentView view, string name)

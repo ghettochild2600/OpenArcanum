@@ -20,7 +20,7 @@ namespace Arcanum.Runtime.UI
         public const int PlusSourceId = 24;
         public static readonly Rect Window = new(0f, 41f, 800f, 400f);
         public static readonly Rect Portrait = new(12f, 10f, 89f, 89f);
-        public static readonly Rect SkillsPanel = new(503f, 4f, 235f, 325f);
+        public static readonly Rect SkillsPanel = new(503f, 63f, 235f, 325f);
 
         public static readonly CharacterAttribute[] Attributes =
         {
@@ -178,13 +178,15 @@ namespace Arcanum.Runtime.UI
             blockerImage.raycastTarget = true;
 
             _portrait = AddPortrait("Portrait", _window, RetailCharacterSheetLayout.Portrait);
-            _points = AddText("Character Points", _window, new Rect(212f, 94f, 90f, 18f), 27, SourceWhite);
-            _level = AddText("Level", _window, new Rect(212f, 75f, 90f, 18f), 27, SourceWhite);
-            _experience = AddText("Experience", _window, new Rect(212f, 113f, 110f, 18f), 27, SourceWhite);
-            _name = AddText("Name", _window, new Rect(212f, 56f, 243f, 18f), 27, SourceYellow);
-            _race = AddText("Race", _window, new Rect(337f, 75f, 150f, 18f), 27, SourceWhite);
-            _gender = AddText("Gender", _window, new Rect(337f, 94f, 150f, 18f), 27, SourceWhite);
-            _age = AddText("Age", _window, new Rect(337f, 113f, 150f, 18f), 27, SourceWhite);
+            // charedit_ui.c stores these basic-info rectangles in desktop coordinates;
+            // sub_55B880 subtracts the big-window origin (y=41) before drawing.
+            _points = AddText("Character Points", _window, new Rect(212f, 53f, 120f, 19f), 27, SourceWhite);
+            _level = AddText("Level", _window, new Rect(212f, 34f, 120f, 19f), 27, SourceWhite);
+            _experience = AddText("Experience", _window, new Rect(212f, 72f, 150f, 19f), 27, SourceWhite);
+            _name = AddText("Name", _window, new Rect(212f, 15f, 270f, 19f), 27, SourceYellow);
+            _race = AddText("Race", _window, new Rect(337f, 34f, 150f, 18f), 27, SourceWhite);
+            _gender = AddText("Gender", _window, new Rect(337f, 53f, 150f, 18f), 27, SourceWhite);
+            _age = AddText("Age", _window, new Rect(337f, 72f, 120f, 19f), 27, SourceWhite);
 
             for (int index = 0; index < RetailCharacterSheetLayout.Attributes.Length; index++)
             {
@@ -211,8 +213,8 @@ namespace Arcanum.Runtime.UI
                 new Vector2(409f, 214f), () => AdjustVitality(false, -1));
             SourceUiButton fatiguePlus = AddSourceButtonTopLeft("Increase Fatigue", _window, 24,
                 new Vector2(465f, 214f), () => AdjustVitality(false, 1));
-            _hitPointValue = AddText("Hit Point Value", _window, new Rect(429f, 184f, 36f, 18f), 27, SourceWhite);
-            _fatigueValue = AddText("Fatigue Value", _window, new Rect(429f, 254f, 36f, 18f), 27, SourceWhite);
+            _hitPointValue = AddText("Hit Point Value", _window, new Rect(429f, 143f, 36f, 18f), 27, SourceWhite);
+            _fatigueValue = AddText("Fatigue Value", _window, new Rect(429f, 213f, 36f, 18f), 27, SourceWhite);
             foreach (GameObject target in new[] { hpMinus.gameObject, hpPlus.gameObject, _hitPointValue.gameObject })
                 BindHint(target, 106, () => 1);
             foreach (GameObject target in new[] { fatigueMinus.gameObject, fatiguePlus.gameObject, _fatigueValue.gameObject })
@@ -220,9 +222,10 @@ namespace Arcanum.Runtime.UI
 
             SourceUiButton skills = AddSourceButtonTopLeft("Skills", _window, 34, new Vector2(527f, 11f), () => { });
             SourceUiButton technology = AddSourceButtonTopLeft("Technology", _window, 35, new Vector2(595f, 11f),
-                () => _controller.ShowFeedback("Technology advancement is outside UI-E.2; use the Technology route."));
+                () => _controller.Open(GameUiScreen.Technology));
             SourceUiButton magic = AddSourceButtonTopLeft("Magic", _window, 36, new Vector2(663f, 11f),
-                () => _controller.ShowFeedback("Magic advancement is outside UI-E.2; use the Magic route."));
+                () => _controller.Open(GameUiScreen.Magic));
+            skills.SetSelected(true);
             BindHint(skills.gameObject, 132, () => 0);
             BindHint(technology.gameObject, 133, () => 0);
             BindHint(magic.gameObject, 134, () => 0);
@@ -231,8 +234,6 @@ namespace Arcanum.Runtime.UI
 
             BuildDerivedLabels();
             _skillsPanel = AddRect("Skills Subpanel", _window, RetailCharacterSheetLayout.SkillsPanel);
-            _feedback = AddText("Character Feedback", _window, new Rect(112f, 312f, 380f, 18f), 26,
-                new Color32(245, 130, 95, 255));
         }
 
         private void BuildDerivedLabels()
@@ -249,7 +250,8 @@ namespace Arcanum.Runtime.UI
             {
                 float x = index < 4 ? 49f : 178f;
                 float y = 308f + 18f * (index % 4);
-                AddText($"Derived {stats[index]}", _window, new Rect(x, y, 126f, 16f), 28, SourceWhite)
+                float width = index < 4 ? 126f : 140f;
+                AddText($"Derived {stats[index]}", _window, new Rect(x, y, width, 15f), 26, SourceWhite)
                     .gameObject.name = names[index];
             }
             CharacterResistance[] resistances =
@@ -259,19 +261,19 @@ namespace Arcanum.Runtime.UI
             };
             for (int index = 0; index < resistances.Length; index++)
                 AddText($"Resistance {resistances[index]}", _window,
-                    new Rect(322f, 301f + 16f * index, 170f, 15f), 28, SourceWhite);
+                    new Rect(322f, 301f + 16f * index, 105f, 15f), 26, SourceWhite);
         }
 
         private void RefreshCharacter(GameUiCharacterView view)
         {
             SetPortrait(view.PortraitId);
             SetText(_name, view.Name);
-            SetText(_points, $": {view.CharacterPoints}");
-            SetText(_level, $": {view.Level}");
-            SetText(_experience, $": {view.ExperienceToNextLevel}");
-            SetText(_race, $": {view.Race}");
-            SetText(_gender, $": {view.Gender}");
-            SetText(_age, view.Age > 0 ? $": {view.Age}" : string.Empty);
+            SetText(_points, $"POINTS: {view.CharacterPoints}");
+            SetText(_level, $"LEVEL: {view.Level}");
+            SetText(_experience, $"XP NEXT: {view.ExperienceToNextLevel}");
+            SetText(_race, $"RACE: {Friendly(view.Race).ToUpperInvariant()}");
+            SetText(_gender, $"GENDER: {Friendly(view.Gender).ToUpperInvariant()}");
+            SetText(_age, view.Age > 0 ? $"AGE: {view.Age}" : string.Empty);
             foreach (GameUiAttributeView attribute in view.Attributes)
                 SetCenteredText(_attributeValues[attribute.Attribute], attribute.Base == attribute.Effective
                     ? attribute.Base.ToString() : $"{attribute.Base}/{attribute.Effective}");
@@ -323,14 +325,12 @@ namespace Arcanum.Runtime.UI
                     () => AdjustSkill(skill.Skill, -1));
                 AddSourceButtonTopLeft($"Increase {skill.Skill}", _skillsPanel, 624, new Vector2(192f, y),
                     () => AdjustSkill(skill.Skill, 1));
+                string training = skill.Training == SkillTrainingLevel.None
+                    ? string.Empty : $" ({Friendly(skill.Training)})";
                 AddText($"{skill.Skill} Name", _skillsPanel, new Rect(17f, 63f + 66f * row, 175f, 18f),
-                    27, SourceWhite).Bind(_resolver, Friendly(skill.Skill), SourceWhite, 27);
+                    27, SourceWhite).Bind(_resolver, Friendly(skill.Skill) + training, SourceWhite, 27);
                 _skillGauges[skill.Skill] = AddSkillGauge($"{skill.Skill} Gauge", _skillsPanel,
                     new Rect(59f, 87f + 66f * row, 120f, 27f), skill.EffectiveRank);
-                string rank = $"{skill.PurchasedPoints}  {skill.EffectiveRank}/20  {Friendly(skill.Training)}";
-                SourceUiBitmapText rankText = AddText($"{skill.Skill} Rank", _skillsPanel,
-                    new Rect(58f, 90f + 66f * row, 130f, 18f), 26, SourceYellow);
-                SetCenteredText(rankText, rank, SourceYellow);
             }
         }
 
@@ -451,8 +451,9 @@ namespace Arcanum.Runtime.UI
             target.gameObject.AddComponent<Button>();
             target.gameObject.AddComponent<SourceUiImage>();
             SourceUiButton source = target.gameObject.AddComponent<SourceUiButton>();
-            source.Bind(_resolver, new UiAssetKey(sourceId, 0), new UiAssetKey(sourceId, 1),
-                new UiAssetKey(sourceId, 2), new UiAssetKey(sourceId, 0), new UiAssetKey(sourceId, 2));
+            source.Bind(_resolver, new UiAssetKey(sourceId, frame: 0), new UiAssetKey(sourceId, frame: 1),
+                new UiAssetKey(sourceId, frame: 2), new UiAssetKey(sourceId, frame: 0),
+                new UiAssetKey(sourceId, frame: 2));
             source.Button.onClick.AddListener(() => clicked());
             return source;
         }

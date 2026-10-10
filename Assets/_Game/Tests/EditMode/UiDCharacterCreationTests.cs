@@ -108,6 +108,15 @@ namespace Arcanum.Formats.Tests
             Assert.That(RetailCharacterCreationLayout.Gender, Is.EqualTo(new Rect(66, 243, 186, 19)));
             Assert.That(RetailCharacterCreationLayout.Race, Is.EqualTo(new Rect(66, 293, 186, 19)));
             Assert.That(RetailCharacterCreationLayout.Background, Is.EqualTo(new Rect(66, 343, 186, 19)));
+            Assert.That(RetailCharacterCreationLayout.EditorSubpanel, Is.EqualTo(new Rect(503, 63, 235, 325)));
+            Assert.That(RetailCharacterCreationLayout.EditorName, Is.EqualTo(new Rect(212, 15, 270, 19)));
+            Assert.That(RetailCharacterCreationLayout.EditorLevel, Is.EqualTo(new Rect(212, 34, 120, 19)));
+            Assert.That(RetailCharacterCreationLayout.EditorPoints, Is.EqualTo(new Rect(212, 53, 120, 19)));
+            Assert.That(RetailCharacterCreationLayout.EditorExperienceNext,
+                Is.EqualTo(new Rect(212, 72, 150, 19)));
+            Assert.That(RetailCharacterCreationLayout.EditorMessageIcon, Is.EqualTo(new Rect(217, 69, 64, 64)));
+            Assert.That(RetailCharacterCreationLayout.EditorMessageTitle, Is.EqualTo(new Rect(290, 63, 291, 19)));
+            Assert.That(RetailCharacterCreationLayout.EditorMessageBody, Is.EqualTo(new Rect(290, 87, 291, 54)));
 
             AssertTopLeft("Previous Portrait", new Vector2(43, 118 - 41));
             AssertTopLeft("Next Portrait", new Vector2(244, 118 - 41));
@@ -338,11 +347,40 @@ namespace Arcanum.Formats.Tests
         {
             Hover("Gender Context", true);
             Assert.That(Text("Description Title").Text, Is.Empty);
-            Assert.That(Wrapped("Description Body"), Does.Contain("male gender"));
+            string gender = Wrapped("Description Body");
+            Assert.That(gender, Does.Contain("male gender"));
             Hover("Gender Context", false);
             Hover("Race Context", true);
             Assert.That(Text("Description Title").Text, Is.EqualTo("Race"));
-            Assert.That(Wrapped("Description Body"), Is.Not.Empty);
+            string race = Wrapped("Description Body");
+            Assert.That(race, Is.Not.Empty);
+            Hover("Race Context", false);
+            Hover("Background Context", true);
+            string backgroundTitle = Text("Description Title").Text;
+            string background = Wrapped("Description Body");
+            Assert.That(background, Is.Not.Empty);
+
+            foreach (string control in new[] { "Previous Gender", "Next Gender" })
+            {
+                Hover(control, true);
+                Assert.That(Text("Description Title").Text, Is.Empty, control);
+                Assert.That(Wrapped("Description Body"), Is.EqualTo(gender), control);
+                Hover(control, false);
+            }
+            foreach (string control in new[] { "Previous Race", "Next Race" })
+            {
+                Hover(control, true);
+                Assert.That(Text("Description Title").Text, Is.EqualTo("Race"), control);
+                Assert.That(Wrapped("Description Body"), Is.EqualTo(race), control);
+                Hover(control, false);
+            }
+            foreach (string control in new[] { "Previous Background", "Next Background" })
+            {
+                Hover(control, true);
+                Assert.That(Text("Description Title").Text, Is.EqualTo(backgroundTitle), control);
+                Assert.That(Wrapped("Description Body"), Is.EqualTo(background), control);
+                Hover(control, false);
+            }
         }
 
         [Test]
@@ -482,13 +520,15 @@ namespace Arcanum.Formats.Tests
             _view.ContinueToEditor();
             Assert.That(_retail.TryReadMessage("mes/skill.mes", 20, out string sourceDescription), Is.True);
             Assert.That(sourceDescription, Does.Contain("dependent upon your dexterity"));
-            Assert.That(Text("Bow Rank").Text, Is.EqualTo("0"));
+            Assert.That(_view.GetComponentsInChildren<SourceUiBitmapText>(true)
+                .Any(value => value.name == "Bow Rank"), Is.False,
+                "source draws the gauge and training name; no synthetic rank string overlays it");
             Hover("Bow Name", true);
             Assert.That(Text("Editor Message Title").Text, Is.EqualTo("Bow"));
             Assert.That(Text("Editor Message Requirement").Text, Is.EqualTo("Minimum DX to raise: 6"));
             Assert.That(Wrapped("Editor Message Body"), Does.Contain("dependent upon your dexterity"));
             Invoke("Increase Bow");
-            Assert.That(Text("Bow Rank").Text, Is.EqualTo("4"));
+            Assert.That(_view.SkillGauges[CharacterSkill.Bow].fillAmount, Is.EqualTo(.2f).Within(.001f));
             Hover("Bow Name", true);
             Assert.That(Text("Editor Message Requirement").Text, Is.EqualTo("Minimum DX to raise: 9"));
         }

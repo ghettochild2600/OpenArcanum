@@ -70,15 +70,19 @@ namespace Arcanum.Runtime.UI
         public static readonly Rect DescriptionTitle = new(350f, 159f, 395f, 19f);
         public static readonly Rect DescriptionBody = new(350f, 185f, 395f, 182f);
         public static readonly Rect EditorPortrait = new(12f, 10f, 89f, 89f);
-        public static readonly Rect EditorSubpanel = new(503f, 4f, 235f, 325f);
-        public static readonly Rect EditorName = new(212f, 56f, 270f, 19f);
-        public static readonly Rect EditorLevel = new(212f, 75f, 120f, 19f);
-        public static readonly Rect EditorPoints = new(212f, 94f, 120f, 19f);
-        public static readonly Rect EditorExperienceNext = new(212f, 113f, 150f, 19f);
-        public static readonly Rect EditorRace = new(337f, 75f, 150f, 19f);
-        public static readonly Rect EditorGender = new(337f, 94f, 150f, 19f);
-        public static readonly Rect EditorAge = new(337f, 113f, 120f, 19f);
-        public static readonly Rect EditorMessageIcon = new(212f, 102f, 64f, 64f);
+        // The independent source subwindows begin at desktop y=104 while the
+        // Character Editor center window begins at y=41.
+        public static readonly Rect EditorSubpanel = new(503f, 63f, 235f, 325f);
+        public static readonly Rect EditorName = new(212f, 15f, 270f, 19f);
+        public static readonly Rect EditorLevel = new(212f, 34f, 120f, 19f);
+        public static readonly Rect EditorPoints = new(212f, 53f, 120f, 19f);
+        public static readonly Rect EditorExperienceNext = new(212f, 72f, 150f, 19f);
+        public static readonly Rect EditorRace = new(337f, 34f, 150f, 19f);
+        public static readonly Rect EditorGender = new(337f, 53f, 150f, 19f);
+        public static readonly Rect EditorAge = new(337f, 72f, 120f, 19f);
+        // intgame_message_window_draw_image paints feedback ART at (217, 69) in the
+        // bottom interface window. These are bottom-window-local coordinates.
+        public static readonly Rect EditorMessageIcon = new(217f, 69f, 64f, 64f);
         public static readonly Rect EditorMessageTitle = new(290f, 63f, 291f, 19f);
         public static readonly Rect EditorMessageBody = new(290f, 87f, 291f, 54f);
 
@@ -398,20 +402,20 @@ namespace Arcanum.Runtime.UI
                 () => CyclePortrait(-1));
             AddSourceButtonTopLeft("Next Portrait", _identity, 284, MainWindowLocal(new Vector2(244f, 118f)),
                 () => CyclePortrait(1));
-            AddSourceButtonTopLeft("Previous Race", _identity, 757, MainWindowLocal(new Vector2(42f, 331f)),
-                () => CycleRace(-1));
-            AddSourceButtonTopLeft("Next Race", _identity, 758, MainWindowLocal(new Vector2(255f, 332f)),
-                () => CycleRace(1));
-            AddSourceButtonTopLeft("Previous Background", _identity, 757,
+            SourceUiButton previousRace = AddSourceButtonTopLeft("Previous Race", _identity, 757,
+                MainWindowLocal(new Vector2(42f, 331f)), () => CycleRace(-1));
+            SourceUiButton nextRace = AddSourceButtonTopLeft("Next Race", _identity, 758,
+                MainWindowLocal(new Vector2(255f, 332f)), () => CycleRace(1));
+            SourceUiButton previousBackground = AddSourceButtonTopLeft("Previous Background", _identity, 757,
                 MainWindowLocal(new Vector2(42f, 381f)),
                 () => CycleBackground(-1));
-            AddSourceButtonTopLeft("Next Background", _identity, 758,
+            SourceUiButton nextBackground = AddSourceButtonTopLeft("Next Background", _identity, 758,
                 MainWindowLocal(new Vector2(255f, 382f)),
                 () => CycleBackground(1));
-            AddSourceButtonTopLeft("Previous Gender", _identity, 757, MainWindowLocal(new Vector2(42f, 281f)),
-                () => CycleGender(-1));
-            AddSourceButtonTopLeft("Next Gender", _identity, 758, MainWindowLocal(new Vector2(255f, 282f)),
-                () => CycleGender(1));
+            SourceUiButton previousGender = AddSourceButtonTopLeft("Previous Gender", _identity, 757,
+                MainWindowLocal(new Vector2(42f, 281f)), () => CycleGender(-1));
+            SourceUiButton nextGender = AddSourceButtonTopLeft("Next Gender", _identity, 758,
+                MainWindowLocal(new Vector2(255f, 282f)), () => CycleGender(1));
 
             _nameInput = AddNameInput(_identity, RetailCharacterCreationLayout.Name);
             _genderText = AddText("Gender", _identity, RetailCharacterCreationLayout.Gender, string.Empty, 27,
@@ -431,6 +435,12 @@ namespace Arcanum.Runtime.UI
             BindIdentityHint(genderContext.gameObject, IdentityContext.Gender);
             BindIdentityHint(raceContext.gameObject, IdentityContext.Race);
             BindIdentityHint(backgroundContext.gameObject, IdentityContext.Background);
+            foreach (SourceUiButton button in new[] { previousGender, nextGender })
+                BindIdentityHint(button.gameObject, IdentityContext.Gender);
+            foreach (SourceUiButton button in new[] { previousRace, nextRace })
+                BindIdentityHint(button.gameObject, IdentityContext.Race);
+            foreach (SourceUiButton button in new[] { previousBackground, nextBackground })
+                BindIdentityHint(button.gameObject, IdentityContext.Background);
             AddText("Initial Stats", _identity, RetailCharacterCreationLayout.InitialStatsTitle,
                 "Initial Stats", 27, SourceYellow);
 
@@ -503,9 +513,9 @@ namespace Arcanum.Runtime.UI
                 new Vector2(465f, 214f), () => AdjustVitality(false, 1));
             _hitPointButtons = (hpMinus, hpPlus);
             _fatigueButtons = (fatigueMinus, fatiguePlus);
-            _hitPointValue = AddText("Hit Point Value", _editor, new Rect(429f, 184f, 36f, 18f),
+            _hitPointValue = AddText("Hit Point Value", _editor, new Rect(429f, 143f, 36f, 18f),
                 string.Empty, 27, SourceWhite);
-            _fatigueValue = AddText("Fatigue Value", _editor, new Rect(429f, 254f, 36f, 18f),
+            _fatigueValue = AddText("Fatigue Value", _editor, new Rect(429f, 213f, 36f, 18f),
                 string.Empty, 27, SourceWhite);
             foreach (GameObject target in new[] { hpMinus.gameObject, hpPlus.gameObject, _hitPointValue.gameObject })
                 BindHint(target, 106, () => 1);
@@ -547,19 +557,19 @@ namespace Arcanum.Runtime.UI
 
             Rect[] derivedStats =
             {
-                new(49f, 349f, 126f, 15f), new(49f, 367f, 126f, 15f),
-                new(49f, 385f, 126f, 15f), new(49f, 403f, 126f, 15f),
-                new(178f, 349f, 140f, 15f), new(178f, 367f, 140f, 15f),
-                new(178f, 385f, 140f, 15f), new(178f, 403f, 140f, 15f),
+                new(49f, 308f, 126f, 15f), new(49f, 326f, 126f, 15f),
+                new(49f, 344f, 126f, 15f), new(49f, 362f, 126f, 15f),
+                new(178f, 308f, 140f, 15f), new(178f, 326f, 140f, 15f),
+                new(178f, 344f, 140f, 15f), new(178f, 362f, 140f, 15f),
             };
             for (int index = 0; index < derivedStats.Length; index++)
                 _editorDerivedStats.Add(AddText($"Editor Derived {index}", _editor, derivedStats[index],
                     string.Empty, 26, SourceWhite));
             Rect[] resistances =
             {
-                new(322f, 342f, 105f, 15f), new(322f, 358f, 105f, 15f),
-                new(322f, 374f, 105f, 15f), new(322f, 390f, 105f, 15f),
-                new(322f, 406f, 105f, 15f),
+                new(322f, 301f, 105f, 15f), new(322f, 317f, 105f, 15f),
+                new(322f, 333f, 105f, 15f), new(322f, 349f, 105f, 15f),
+                new(322f, 365f, 105f, 15f),
             };
             for (int index = 0; index < resistances.Length; index++)
                 _editorResistances.Add(AddText($"Editor Resistance {index}", _editor, resistances[index],
@@ -569,11 +579,11 @@ namespace Arcanum.Runtime.UI
                 RetailCharacterCreationLayout.AlignmentMarkerSourceId, new Vector2(78f, 236f));
             _aptitudeMarker = AddSourceImageTopLeft("Aptitude Marker", _editor,
                 RetailCharacterCreationLayout.AptitudeMarkerSourceId, new Vector2(754f, 221f));
-            AddText("Alignment Value", _editor, new Rect(50f, 237f, 30f, 18f), "0", 27, SourceWhite);
+            AddText("Alignment Value", _editor, new Rect(50f, 198f, 30f, 18f), "0", 27, SourceWhite);
             _magickAptitudeText = AddText("Magick Aptitude Value", _editor,
-                new Rect(752f, 107f, 35f, 18f), string.Empty, 27, SourceWhite);
+                new Rect(752f, 66f, 35f, 18f), string.Empty, 27, SourceWhite);
             _technologyAptitudeText = AddText("Technology Aptitude Value", _editor,
-                new Rect(752f, 406f, 35f, 18f), string.Empty, 27, SourceWhite);
+                new Rect(752f, 365f, 35f, 18f), string.Empty, 27, SourceWhite);
 
             _editorMessageIcon = AddSourceImage("Editor Message Icon", _editorNavigation,
                 RetailCharacterCreationLayout.FeedbackIconSourceId, RetailCharacterCreationLayout.EditorMessageIcon);
@@ -711,12 +721,7 @@ namespace Arcanum.Runtime.UI
                 sourceLevel = Mathf.Clamp(sourceLevel, 0, 20);
                 _skillGauges[skill] = AddSkillGauge($"{skill} Gauge", _editorPanel,
                     new Rect(59f, 87f + 66f * row, 120f, 27f), sourceLevel);
-                SourceUiBitmapText rank = AddText($"{skill} Rank", _editorPanel,
-                    new Rect(17f, 163f + 66f * row, 38f, 18f),
-                    sourceLevel.ToString(), 27, SourceYellow);
-                SetCenteredText(rank, sourceLevel.ToString(), SourceYellow);
                 BindSkillHint(_skillGauges[skill].gameObject, skill);
-                BindSkillHint(rank.gameObject, skill);
             }
         }
 

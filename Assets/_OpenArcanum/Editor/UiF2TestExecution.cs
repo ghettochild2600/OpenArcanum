@@ -7,6 +7,7 @@ using Arcanum.Runtime.Creation;
 using Arcanum.Runtime.UI;
 using Arcanum.Runtime.World;
 using OpenArcanum.Rendering;
+using OpenArcanum.UI;
 using UnityEditor;
 using UnityEditor.TestTools.TestRunner.Api;
 using UnityEngine;
@@ -118,9 +119,26 @@ namespace OpenArcanum.Editor
             Check(view.CurrentLeftPage == 1, "left page control returns to the prior spread");
 
             view.SelectTab(RetailLogbookTab.Reputations);
-            Check(view.SelectedTab == RetailLogbookTab.Quests
-                  && controller.Feedback.Contains("not available", StringComparison.OrdinalIgnoreCase),
-                "unsupported tab fails closed without replacing authoritative quest pages");
+            yield return null;
+            SourceUiBitmapText leftHeader = view.GetComponentsInChildren<SourceUiBitmapText>(true)
+                .Single(value => value.name == "Left Header");
+            SourceUiBitmapText unsupported = view.GetComponentsInChildren<SourceUiBitmapText>(true)
+                .Single(value => value.name == "Quest Text");
+            Check(view.SelectedTab == RetailLogbookTab.Reputations
+                  && leftHeader.Text == "-Reputations-"
+                  && unsupported.Text.Contains("No reputations entries", StringComparison.OrdinalIgnoreCase)
+                  && view.CurrentLeftPage == 1 && view.LastVisibleEntry == -1,
+                "unsupported tab remains selected and renders its contained empty state inside the book");
+            controller.Close();
+            view.Synchronize();
+            Check(!view.IsVisible, "Logbook closes without mutating selected-tab presentation state");
+            Check(controller.Open(GameUiScreen.Journal), "Logbook reopens through Journal authority");
+            view.Synchronize();
+            Check(view.IsVisible && view.SelectedTab == RetailLogbookTab.Reputations,
+                "Logbook reopen retains the selected tab");
+            view.SelectTab(RetailLogbookTab.Quests);
+            Check(view.SelectedTab == RetailLogbookTab.Quests && view.RenderedLineCount > 4,
+                "returning to Quests restores authoritative quest pages");
 
             foreach ((int width, int height) in new[]
                      {
@@ -155,7 +173,7 @@ namespace OpenArcanum.Editor
             loader.RebuildVisuals();
             controller.RebuildPresentation();
             Debug.Log("UI-F.2 PHYSICAL VALIDATION: PASS; source IDs=198/260/261/264-273; tabs=7; "
-                      + "Quests=authoritative/two-page; unsupported-tabs=fail-closed; pages=1-2->3-4->1-2; "
+                      + "Quests=authoritative/two-page; unsupported-tabs=selected+contained-empty-state; pages=1-2->3-4->1-2; "
                       + "HUD=visible; geometry=800x600/768p/1080p/1440p/4K; "
                       + "graphics=Original->Enhanced->Original; presenters=1; EventSystems=1. "
                       + "Play Mode remains open on the first Quest spread.");

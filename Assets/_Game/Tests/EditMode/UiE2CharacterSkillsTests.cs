@@ -71,8 +71,48 @@ namespace Arcanum.Formats.Tests
             Assert.That(_view.BackgroundAsset.Key.SourceId, Is.EqualTo(22));
             Assert.That(_view.WindowTransform.sizeDelta, Is.EqualTo(new Vector2(800, 400)));
             Assert.That(_view.WindowTransform.anchoredPosition, Is.EqualTo(new Vector2(0, 59)));
+            Assert.That(RetailCharacterSheetLayout.SkillsPanel, Is.EqualTo(new Rect(503, 63, 235, 325)));
+            Assert.That(_view.SkillsPanelTransform.anchoredPosition, Is.EqualTo(new Vector2(503, -63)));
+            Assert.That(_view.GetComponentsInChildren<RectTransform>(true)
+                .Single(value => value.name == "Name").anchoredPosition, Is.EqualTo(new Vector2(212, -15)));
+            Assert.That(_view.GetComponentsInChildren<RectTransform>(true)
+                .Single(value => value.name == "Hit Point Value").anchoredPosition,
+                Is.EqualTo(new Vector2(440, -143)));
+            Assert.That(_view.GetComponentsInChildren<RectTransform>(true)
+                .Single(value => value.name == "Fatigue Value").anchoredPosition,
+                Is.EqualTo(new Vector2(440, -213)));
             Assert.That(_view.GetComponentsInChildren<ScrollRect>(true), Is.Empty);
             Assert.That(Object.FindObjectsByType<RetailCharacterSheetView>(FindObjectsSortMode.None), Has.Length.EqualTo(1));
+        }
+
+        [Test]
+        public void RuntimeCharacterEditorRendersSourceLabelsAndButtonFrames()
+        {
+            SourceUiBitmapText[] text = _view.GetComponentsInChildren<SourceUiBitmapText>(true);
+            Assert.That(text.Single(value => value.name == "Character Points").Text, Does.StartWith("POINTS: "));
+            Assert.That(text.Single(value => value.name == "Level").Text, Does.StartWith("LEVEL: "));
+            Assert.That(text.Single(value => value.name == "Experience").Text, Does.StartWith("XP NEXT: "));
+            Assert.That(text.Single(value => value.name == "Race").Text, Does.StartWith("RACE: "));
+            Assert.That(text.Single(value => value.name == "Gender").Text, Does.StartWith("GENDER: "));
+            Assert.That(text.Single(value => value.name == "Age").Text,
+                Is.EqualTo(_controller.ProjectCharacter().Age > 0
+                    ? $"AGE: {_controller.ProjectCharacter().Age}"
+                    : string.Empty));
+
+            foreach (string name in new[]
+                     {
+                         "Skills", "Technology", "Magic", "Skill Group 0", "Skill Group 1",
+                         "Skill Group 2", "Skill Group 3",
+                     })
+            {
+                SourceUiImage image = _view.GetComponentsInChildren<SourceUiImage>(true)
+                    .Single(value => value.name == name);
+                Assert.That(image.CurrentAsset, Is.Not.Null, name);
+                Assert.That(image.CurrentAsset.Key.Palette, Is.Zero, name);
+            }
+
+            Assert.That(text.Single(value => value.name == "Carry").FontSourceId, Is.EqualTo(26));
+            Assert.That(text.Single(value => value.name == "Resistance Normal").FontSourceId, Is.EqualTo(26));
         }
 
         [TestCase(800, 600, 0, 41)]
@@ -164,6 +204,29 @@ namespace Arcanum.Formats.Tests
                 SkillTrainingLevel.Apprentice), Is.EqualTo(TrainingAssignmentResult.Success));
             Assert.That(_controller.ProjectCharacter().Skills.Single(value => value.Skill == CharacterSkill.Melee)
                 .Training, Is.EqualTo(SkillTrainingLevel.Apprentice));
+            _view.Synchronize();
+            SourceUiBitmapText name = _view.GetComponentsInChildren<SourceUiBitmapText>(true)
+                .Single(value => value.name == "Melee Name");
+            Assert.That(name.Text, Is.EqualTo("Melee (Apprentice)"));
+            Assert.That(_view.GetComponentsInChildren<SourceUiBitmapText>(true)
+                .Any(value => value.name.EndsWith(" Rank", StringComparison.Ordinal)), Is.False,
+                "source skill gauges must not be covered by synthetic purchased/rank/training strings");
+        }
+
+        [Test]
+        public void CharacterFamilyControlsRouteToTheirAuthoritativeScreens()
+        {
+            Button technology = _view.GetComponentsInChildren<Button>(true)
+                .Single(value => value.name == "Technology");
+            technology.onClick.Invoke();
+            Assert.That(_controller.Screen, Is.EqualTo(GameUiScreen.Technology));
+
+            Assert.That(_controller.Open(GameUiScreen.Character), Is.True);
+            _view.Synchronize();
+            Button magic = _view.GetComponentsInChildren<Button>(true)
+                .Single(value => value.name == "Magic");
+            magic.onClick.Invoke();
+            Assert.That(_controller.Screen, Is.EqualTo(GameUiScreen.Magic));
         }
 
         [Test]

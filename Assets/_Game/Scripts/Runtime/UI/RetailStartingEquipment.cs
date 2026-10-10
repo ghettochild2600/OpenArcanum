@@ -43,9 +43,9 @@ namespace Arcanum.Runtime.UI
             new(729f, 70f, 58f, 20f), new(729f, 93f, 58f, 20f), new(729f, 116f, 58f, 20f),
             new(729f, 139f, 58f, 20f), new(729f, 162f, 58f, 20f),
         };
-        public static readonly Rect MessageIcon = new(212f, 102f, 64f, 64f);
-        public static readonly Rect MessageTitle = new(282f, 101f, 306f, 20f);
-        public static readonly Rect MessageBody = new(282f, 125f, 306f, 34f);
+        public static readonly Rect MessageIcon = new(217f, 69f, 64f, 64f);
+        public static readonly Rect MessageTitle = new(290f, 63f, 291f, 19f);
+        public static readonly Rect MessageBody = new(290f, 87f, 291f, 54f);
         public static readonly int[] RequiredSourceIds =
         {
             BarterBackgroundSourceId, PlayerInventorySourceId, MerchantPaperDollSourceId,
@@ -266,14 +266,18 @@ namespace Arcanum.Runtime.UI
             IReadOnlyList<GameUiMerchantItemView> player)
         {
             ClearDynamic();
+            RectTransform merchantItems = AddClippedItemLayer("Merchant Inventory Items",
+                RetailStartingEquipmentLayout.MerchantGrid);
+            RectTransform playerItems = AddClippedItemLayer("Player Inventory Items",
+                RetailStartingEquipmentLayout.PlayerGrid);
             if (_merchantInventoryMode)
                 foreach (GameUiMerchantItemView item in wares)
-                    AddTradeItem(item, RetailStartingEquipmentLayout.ItemRect(
+                    AddTradeItem(merchantItems, item, LocalItemRect(
                         RetailStartingEquipmentLayout.MerchantGrid, item.Item.InventoryLocation,
                         item.Item.InventoryFootprint));
             if (_playerInventoryMode)
                 foreach (GameUiMerchantItemView item in player)
-                    AddTradeItem(item, RetailStartingEquipmentLayout.ItemRect(
+                    AddTradeItem(playerItems, item, LocalItemRect(
                         RetailStartingEquipmentLayout.PlayerGrid, item.Item.InventoryLocation,
                         item.Item.InventoryFootprint));
             DynamicItemCount = (_merchantInventoryMode ? wares.Count : 0)
@@ -310,9 +314,22 @@ namespace Arcanum.Runtime.UI
             if (_playerDropTarget != null) _playerDropTarget.gameObject.SetActive(_playerInventoryMode);
         }
 
-        private void AddTradeItem(GameUiMerchantItemView view, Rect bounds)
+        private RectTransform AddClippedItemLayer(string name, Rect bounds)
         {
-            RectTransform root = AddRect($"{view.Direction} {view.Item.Identity.Key}", _dynamic, bounds);
+            RectTransform layer = AddRect(name, _dynamic, bounds);
+            layer.gameObject.AddComponent<RectMask2D>();
+            return layer;
+        }
+
+        private static Rect LocalItemRect(Rect grid, int location, InventoryFootprint footprint)
+        {
+            Rect absolute = RetailStartingEquipmentLayout.ItemRect(grid, location, footprint);
+            return new Rect(absolute.x - grid.x, absolute.y - grid.y, absolute.width, absolute.height);
+        }
+
+        private void AddTradeItem(RectTransform layer, GameUiMerchantItemView view, Rect bounds)
+        {
+            RectTransform root = AddRect($"{view.Direction} {view.Item.Identity.Key}", layer, bounds);
             Image hit = root.gameObject.AddComponent<Image>();
             hit.color = Color.clear;
             hit.raycastTarget = true;

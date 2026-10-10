@@ -231,13 +231,6 @@ namespace Arcanum.Runtime.UI
 
         public void SelectTab(RetailLogbookTab tab)
         {
-            if (tab != RetailLogbookTab.Quests)
-            {
-                string label = Array.Find(RetailLogbookLayout.Tabs, value => value.Tab == tab).Label;
-                _controller.ShowFeedback(label + " data authority is not available yet.");
-                _notice.Bind(_resolver, label + " unavailable", Failed, RetailLogbookLayout.BodyFontSourceId);
-                return;
-            }
             _tab = tab;
             _spreadIndex = 0;
             _spreadStarts.Clear();
@@ -320,14 +313,24 @@ namespace Arcanum.Runtime.UI
             foreach ((RetailLogbookTab tab, SourceUiButton button) in _tabs)
                 button.SetSelected(tab == _tab);
 
-            AddCenteredText("Left Header", RetailLogbookLayout.LeftHeader, "-Quests-",
+            string tabLabel = Array.Find(RetailLogbookLayout.Tabs, value => value.Tab == _tab).Label;
+            AddCenteredText("Left Header", RetailLogbookLayout.LeftHeader, $"-{tabLabel}-",
                 RetailLogbookLayout.HeaderFontSourceId, Ink);
-            AddCenteredText("Right Header", RetailLogbookLayout.RightHeader, "-Quests-",
+            AddCenteredText("Right Header", RetailLogbookLayout.RightHeader, $"-{tabLabel}-",
                 RetailLogbookLayout.HeaderFontSourceId, Ink);
             AddCenteredText("Left Page", RetailLogbookLayout.LeftFooter, $"-{CurrentLeftPage}-",
                 RetailLogbookLayout.BodyFontSourceId, Ink);
             AddCenteredText("Right Page", RetailLogbookLayout.RightFooter, $"-{CurrentLeftPage + 1}-",
                 RetailLogbookLayout.BodyFontSourceId, Ink);
+
+            if (_tab != RetailLogbookTab.Quests)
+            {
+                _lastVisibleEntry = -1;
+                AddPageLine(0, 0, $"No {tabLabel.ToLowerInvariant()} entries are available.", Ink, false);
+                _left.SetInteractable(false);
+                _right.SetInteractable(false);
+                return;
+            }
 
             var blocks = new List<RetailLogbookQuestBlock>();
             foreach (QuestJournalEntry entry in entries)
