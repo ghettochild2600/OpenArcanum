@@ -199,6 +199,15 @@ namespace Arcanum.Runtime.Crafting
                 : _catalog.Definitions.Values.Where(value => Knows(identity, value.Id))
                     .OrderBy(value => value.Id.Value).ToArray();
 
+        /// <summary>All seven source-defined built-in schematics for a Character Editor discipline.</summary>
+        public IReadOnlyList<SchematicDefinition> ProjectBuiltIn(TechnologyDiscipline discipline)
+            => _catalog == null ? Array.Empty<SchematicDefinition>()
+                : _catalog.Definitions.Values
+                    .Where(value => value.Acquisition == SchematicAcquisition.BuiltIn
+                                    && value.BuiltInDiscipline == discipline)
+                    .OrderBy(value => value.BuiltInDegree)
+                    .ToArray();
+
         public SchematicLearningResult LearnFoundSchematic(ArcanumObjectId character, ArcanumObjectId writtenItem)
         {
             if (!_world.Characters.TryGet(character, out var source)) return LearnFailure(SchematicLearningFailure.InvalidCharacter);

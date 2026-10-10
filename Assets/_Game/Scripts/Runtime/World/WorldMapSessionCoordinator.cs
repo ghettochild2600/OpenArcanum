@@ -71,6 +71,7 @@ namespace Arcanum.Runtime.World
         private ProductionShortcutState _shortcuts;
         private GameplayHudStateService _gameplayHud;
         private MagicStateService _magic;
+        private SpellPresentationCatalog _spellPresentation;
         private TechnologyStateService _technology;
         private CraftingStateService _crafting;
         private SchematicCatalog _schematicSource;
@@ -122,6 +123,7 @@ namespace Arcanum.Runtime.World
         public SourceTimeService SourceTime => _sourceTime ??= new SourceTimeService();
         public ISleepLocationSource SleepLocations => _sleepLocations;
         public MagicStateService Magic => _magic ??= new MagicStateService(this);
+        public SpellPresentationCatalog SpellPresentation => _spellPresentation;
         public TechnologyStateService Technology => _technology ??= new TechnologyStateService(this);
         public CraftingStateService Crafting => _crafting ??= CreateCrafting();
         public EconomyStateService Economy => _economy ??= CreateEconomy();
@@ -314,6 +316,17 @@ namespace Arcanum.Runtime.World
             string value = description.HasValue ? _resolveDescription?.Invoke(description.Value) : null;
             return !string.IsNullOrWhiteSpace(value) ? value.Trim() : state.Type.ToString();
         }
+
+        public string ResolvePrototypeDisplayName(int prototypeNumber)
+        {
+            ObjectProtoInfo prototype = ResolvePrototype(prototypeNumber);
+            string value = prototype?.Description is int description
+                ? _resolveDescription?.Invoke(description) : null;
+            return !string.IsNullOrWhiteSpace(value) ? value.Trim() : prototypeNumber.ToString();
+        }
+
+        public void BindSpellPresentationSource(SpellPresentationCatalog source)
+            => _spellPresentation = source ?? throw new ArgumentNullException(nameof(source));
 
         internal InventoryFootprint ResolveInventoryFootprint(uint? inventoryArtId)
             => _resolveInventoryFootprint?.Invoke(inventoryArtId) ?? InventoryFootprint.OneCell;

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Arcanum.Runtime.Character;
 using Arcanum.Runtime.Creation;
+using Arcanum.Runtime.Crafting;
 using Arcanum.Runtime.Magic;
 using Arcanum.Runtime.Technology;
 using Arcanum.Runtime.World;
@@ -69,7 +70,7 @@ namespace Arcanum.Runtime.UI
         public static readonly Rect InitialStatsTitle = new(339f, 23f, 409f, 19f);
         public static readonly Rect DescriptionTitle = new(350f, 159f, 395f, 19f);
         public static readonly Rect DescriptionBody = new(350f, 185f, 395f, 182f);
-        public static readonly Rect EditorPortrait = new(12f, 10f, 89f, 89f);
+        public static readonly Rect EditorPortrait = new(141f, 21f, 66f, 66f);
         // The independent source subwindows begin at desktop y=104 while the
         // Character Editor center window begins at y=41.
         public static readonly Rect EditorSubpanel = new(503f, 63f, 235f, 325f);
@@ -116,9 +117,10 @@ namespace Arcanum.Runtime.UI
     {
         private enum IdentityContext { Background, Gender, Race }
 
-        private static readonly Color SourceWhite = new Color32(231, 217, 174, 255);
-        private static readonly Color SourceYellow = new Color32(245, 201, 65, 255);
+        private static readonly Color SourceWhite = new Color32(250, 250, 250, 255);
+        private static readonly Color SourceYellow = new Color32(255, 210, 0, 255);
         private static readonly Color SourceBlue = new Color32(108, 155, 215, 255);
+        private static readonly Color SourceGray = new Color32(135, 135, 135, 255);
         private static readonly CharacterAttribute[] Attributes =
         {
             CharacterAttribute.Strength, CharacterAttribute.Dexterity, CharacterAttribute.Constitution,
@@ -145,6 +147,7 @@ namespace Arcanum.Runtime.UI
             new(8f, 7f), new(34f, 29f), new(61f, 7f), new(88f, 28f),
             new(116f, 7f), new(142f, 29f), new(171f, 7f), new(198f, 29f),
         };
+        private static readonly int[] TechnologyDegreeIcons = { 653, 649, 650, 651, 652, 654, 655, 656 };
 
         private GameUiController _controller;
         private WorldMapSessionCoordinator _session;
@@ -230,6 +233,7 @@ namespace Arcanum.Runtime.UI
         public UiResolvedAsset TopBackgroundAsset => _topBackground?.CurrentAsset;
         public UiResolvedAsset IdentityBottomBackgroundAsset => _identityBottomBackground?.CurrentAsset;
         public Image IdentityPortraitImage => _identityPortrait;
+        public Image EditorPortraitImage => _editorPortrait;
         public IReadOnlyDictionary<CharacterSkill, Image> SkillGauges => _skillGauges;
 
         public void Bind(GameUiController controller, WorldMapSessionCoordinator session, UiSkinResolver resolver)
@@ -453,17 +457,17 @@ namespace Arcanum.Runtime.UI
             };
             for (int index = 0; index < stats.Length; index++)
                 _identityStats.Add(AddText($"Initial {InitialAttributeOrder[index]}", _identity, stats[index],
-                    string.Empty, 26, SourceWhite));
+                    string.Empty, 229, SourceWhite));
             Rect[] derivedStats =
             {
                 new(472f, 46f, 140f, 15f), new(472f, 66f, 140f, 15f),
                 new(472f, 86f, 140f, 15f), new(472f, 106f, 140f, 15f),
-                new(616f, 46f, 130f, 15f), new(616f, 66f, 130f, 15f),
-                new(616f, 86f, 130f, 15f),
+                new(618f, 46f, 142f, 15f), new(618f, 65f, 147f, 15f),
+                new(618f, 86f, 142f, 15f),
             };
             for (int index = 0; index < derivedStats.Length; index++)
                 _identityDerivedStats.Add(AddText($"Initial Derived {index}", _identity, derivedStats[index],
-                    string.Empty, 26, SourceWhite));
+                    string.Empty, 229, SourceWhite));
             _descriptionTitle = AddText("Description Title", _identity,
                 RetailCharacterCreationLayout.DescriptionTitle, "Background", 27, SourceYellow);
             _identityDescription = AddRect("Description Body", _identity,
@@ -554,6 +558,11 @@ namespace Arcanum.Runtime.UI
                 string.Empty, 27, SourceWhite);
             _editorAgeText = AddText("Editor Age", _editor, RetailCharacterCreationLayout.EditorAge,
                 string.Empty, 27, SourceWhite);
+
+            AddText("Derived Stats Heading", _editor, new Rect(51f, 282f, 253f, 18f),
+                "Derived Stats", 27, SourceWhite);
+            AddText("Resistance Heading", _editor, new Rect(315f, 282f, 136f, 18f),
+                "Resistance", 27, SourceWhite);
 
             Rect[] derivedStats =
             {
@@ -647,8 +656,7 @@ namespace Arcanum.Runtime.UI
             foreach (CharacterAttribute attribute in Attributes)
             {
                 int effective = _session.CharacterCreation.GetEffectiveAttribute(draft, attribute);
-                SetCenteredText(_attributeValues[attribute], effective == draft.GetAttribute(attribute)
-                    ? effective.ToString() : $"{draft.GetAttribute(attribute)}/{effective}", SourceWhite);
+                SetCenteredText(_attributeValues[attribute], effective.ToString(), SourceWhite);
                 (SourceUiButton minus, SourceUiButton plus) = _attributeButtons[attribute];
                 minus.SetInteractable(CanAdjustAttribute(draft, attribute, -1));
                 plus.SetInteractable(CanAdjustAttribute(draft, attribute, 1));
@@ -737,12 +745,27 @@ namespace Arcanum.Runtime.UI
                 button.SetSelected(discipline == _selectedTechnology);
             }
             int rank = draft.GetTechnologyRank(_selectedTechnology);
+            TechnologyDegree learnedDegree = (TechnologyDegree)rank;
             AddText("Technology Name", _editorPanel, new Rect(17f, 69f, 205f, 19f),
-                Friendly(_selectedTechnology), 27, SourceBlue);
-            string[] degrees = { "Layman", "Novice", "Assistant", "Associate", "Technician", "Engineer", "Professor", "Doctorate" };
-            for (int degree = 0; degree < degrees.Length; degree++)
-                AddText($"Degree {degree}", _editorPanel, new Rect(46f, 91f + 33f * degree, 175f, 16f),
-                    degrees[degree], 26, degree == rank ? SourceYellow : SourceWhite);
+                $"{Friendly(_selectedTechnology)} {Friendly(learnedDegree)}", 301, SourceWhite);
+            AddText("Technology Expertise", _editorPanel, new Rect(194f, 72f, 31f, 15f),
+                PhaseOneTechnologyCatalog.EffectiveLevel(learnedDegree).ToString(), 229, SourceBlue);
+            IReadOnlyList<SchematicDefinition> schematics = _session.Crafting.ProjectBuiltIn(_selectedTechnology);
+            for (int index = 0; index < schematics.Count; index++)
+            {
+                SchematicDefinition schematic = schematics[index];
+                int degree = (int)schematic.BuiltInDegree.Value;
+                Color tint = degree <= rank ? SourceWhite : degree == rank + 1 ? SourceYellow : SourceGray;
+                if (degree <= rank)
+                    AddSourceImageTopLeft($"Degree {degree} Icon", _editorPanel,
+                        TechnologyDegreeIcons[(int)_selectedTechnology], new Vector2(8f, 96f + 33f * index));
+                AddText($"Schematic {degree}", _editorPanel, new Rect(46f, 94f + 33f * index, 175f, 16f),
+                    schematic.Name, 301, tint);
+                string first = _session.ResolvePrototypeDisplayName(schematic.ComponentOneAliases[0]);
+                string second = _session.ResolvePrototypeDisplayName(schematic.ComponentTwoAliases[0]);
+                AddText($"Schematic Components {degree}", _editorPanel,
+                    new Rect(46f, 109f + 33f * index, 175f, 14f), $"{first} + {second}", 483, tint);
+            }
             if (rank < 7)
                 AddSourceButtonTopLeft("Increase Technology", _editorPanel, 647,
                     new Vector2(8f, 96f + rank * 33f), () => AdjustTechnology(1))
@@ -766,16 +789,18 @@ namespace Arcanum.Runtime.UI
             }
             int rank = draft.GetSpellRank(_selectedCollege);
             AddText("College Name", _editorPanel, new Rect(18f, 69f, 205f, 19f),
-                Friendly(_selectedCollege), 27, SourceBlue);
+                _session.SpellPresentation?.CollegeName(_selectedCollege) ?? string.Empty, 27, SourceBlue);
             for (int level = 0; level < 5; level++)
             {
-                string name = PhaseOneSpellCatalog.TryGet((int)_selectedCollege * 5 + level,
-                    out SpellDefinition spell) ? spell.Name : $"Spell {level + 1}";
-                AddText($"Spell {level + 1}", _editorPanel, new Rect(59f, 76f + 48f * (level + 1), 160f, 18f),
-                    name, 27, level < rank ? SourceWhite : level == rank ? SourceYellow : new Color32(135, 135, 135, 255));
+                int spellId = (int)_selectedCollege * 5 + level;
+                Color tint = level < rank ? SourceWhite : level == rank ? SourceYellow : SourceGray;
+                AddSourceImageTopLeft($"Spell {spellId} Icon", _editorPanel,
+                    SpellPresentationCatalog.IconSourceId(spellId), new Vector2(18f, 82f + 48f * level));
+                AddText($"Spell {level + 1}", _editorPanel, new Rect(59f, 76f + 48f * level, 160f, 18f),
+                    _session.SpellPresentation?.SpellName(spellId) ?? string.Empty, 27, tint);
                 AddText($"Spell Level {level + 1}", _editorPanel,
-                    new Rect(59f, 97f + 48f * (level + 1), 160f, 14f),
-                    $"Minimum Level: {new[] { 1, 1, 5, 10, 15 }[level]}", 28, SourceWhite);
+                    new Rect(59f, 97f + 48f * level, 160f, 14f),
+                    $"Minimum Level: {SpellPresentationCatalog.MinimumLevel(level + 1)}", 28, tint);
             }
             if (rank < 5)
                 AddSourceButtonTopLeft("Increase Spell", _editorPanel, 647,
@@ -1234,7 +1259,7 @@ namespace Arcanum.Runtime.UI
             List<string> lines = WrapText(value, columns, maxLines);
             for (int index = 0; index < lines.Count; index++)
                 AddText($"Line {index + 1}", parent, new Rect(0f, index * 15f, parent.rect.width, 15f),
-                    lines[index], 26, SourceWhite);
+                    lines[index], 229, SourceWhite);
         }
 
         private void RebuildEditorMessage(string value)

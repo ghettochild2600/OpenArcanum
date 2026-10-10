@@ -1147,6 +1147,8 @@ namespace Arcanum.Runtime.World
             Session.BindPrototypeSource(_prototypes.Get);
             MesFile descriptions = MesReader.Read(_vfs.ReadAllBytes("mes/description.mes"));
             Session.BindDescriptionSource(id => descriptions.Get(id));
+            Session.BindSpellPresentationSource(SpellPresentationCatalog.FromMes(
+                MesReader.Read(_vfs.ReadAllBytes("mes/spell.mes"))));
             Session.BindInventoryFootprintSource(ResolveInventoryFootprint);
             Session.BindCraftingSource(SchematicCatalog.FromMes(
                 MesReader.Read(_vfs.ReadAllBytes("rules/schematic.mes")),

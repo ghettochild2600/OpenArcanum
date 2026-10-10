@@ -79,6 +79,19 @@ namespace Arcanum.Runtime.Technology
             if (degree < TechnologyDegree.Novice || degree > TechnologyDegree.Doctorate) throw new ArgumentOutOfRangeException(nameof(degree));
             return 1990 + 200 * (int)discipline + 10 * (int)degree;
         }
+
+        public static int EffectiveLevel(TechnologyDegree degree) => degree switch
+        {
+            TechnologyDegree.Layman => 0,
+            TechnologyDegree.Novice => 10,
+            TechnologyDegree.Assistant => 20,
+            TechnologyDegree.Associate => 35,
+            TechnologyDegree.Technician => 50,
+            TechnologyDegree.Engineer => 65,
+            TechnologyDegree.Professor => 80,
+            TechnologyDegree.Doctorate => 100,
+            _ => 0,
+        };
     }
 
     public readonly struct TechnologyUseRequest
@@ -141,21 +154,7 @@ namespace Arcanum.Runtime.Technology
             return (TechnologyDegree)learned;
         }
         public int GetEffectiveLevel(ArcanumObjectId identity, TechnologyDiscipline discipline)
-        {
-            TechnologyDegree degree = GetEffectiveDegree(identity, discipline);
-            return degree switch
-            {
-                TechnologyDegree.Layman => 0,
-                TechnologyDegree.Novice => 10,
-                TechnologyDegree.Assistant => 20,
-                TechnologyDegree.Associate => 35,
-                TechnologyDegree.Technician => 50,
-                TechnologyDegree.Engineer => 65,
-                TechnologyDegree.Professor => 80,
-                TechnologyDegree.Doctorate => 100,
-                _ => 0,
-            };
-        }
+            => PhaseOneTechnologyCatalog.EffectiveLevel(GetEffectiveDegree(identity, discipline));
         public bool KnowsBuiltInSchematic(ArcanumObjectId identity, TechnologyDiscipline discipline, TechnologyDegree degree)
             => degree >= TechnologyDegree.Novice && degree <= GetEffectiveDegree(identity, discipline);
 

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Arcanum.Formats.Objects;
+using Arcanum.Formats.Text;
 using Arcanum.Runtime.Character;
 using Arcanum.Runtime.Combat;
 using Arcanum.Runtime.Save;
@@ -20,6 +21,47 @@ namespace Arcanum.Runtime.Magic
     public enum SpellTargetClass { LivingCritter, DamagedLivingCritter }
     public enum SpellEffectFamily { AttributeModifier, DirectDamage, Healing, CritterFlag }
     public enum SpellDisposition { Friendly, Aggressive }
+
+    /// <summary>Source-backed Character Editor labels and artwork for all eighty retail spells.</summary>
+    public sealed class SpellPresentationCatalog
+    {
+        private static readonly int[] SourceIcons =
+        {
+            12, 13, 14, 15, 16, 45, 46, 47, 48, 49, 39, 40, 41, 42, 43,
+            93, 94, 95, 96, 97, 51, 52, 53, 54, 55, 87, 88, 89, 90, 91,
+            57, 58, 59, 60, 61, 99, 100, 101, 102, 103, 63, 64, 65, 66, 67,
+            69, 70, 71, 72, 73, 75, 76, 77, 78, 79, 105, 106, 107, 108, 109,
+            111, 112, 113, 114, 115, 81, 82, 83, 84, 85, 117, 118, 119, 120, 121,
+            123, 124, 125, 126, 127,
+        };
+        private static readonly int[] MinimumLevels = { 1, 1, 5, 10, 15 };
+        private readonly string[] _spellNames;
+        private readonly string[] _collegeNames;
+
+        private SpellPresentationCatalog(string[] spellNames, string[] collegeNames)
+        {
+            _spellNames = spellNames;
+            _collegeNames = collegeNames;
+        }
+
+        public static SpellPresentationCatalog FromMes(MesFile spellText)
+        {
+            if (spellText == null) throw new ArgumentNullException(nameof(spellText));
+            var spells = new string[80];
+            var colleges = new string[16];
+            for (int id = 0; id < spells.Length; id++) spells[id] = spellText.Get(id)?.Trim();
+            for (int id = 0; id < colleges.Length; id++) colleges[id] = spellText.Get(500 + id)?.Trim();
+            return new SpellPresentationCatalog(spells, colleges);
+        }
+
+        public string SpellName(int id) => id >= 0 && id < _spellNames.Length ? _spellNames[id] : string.Empty;
+        public string CollegeName(SpellCollege college)
+            => Enum.IsDefined(typeof(SpellCollege), college) ? _collegeNames[(int)college] : string.Empty;
+        public static int IconSourceId(int id)
+            => id >= 0 && id < SourceIcons.Length ? SourceIcons[id] : 0;
+        public static int MinimumLevel(int rank)
+            => rank >= 1 && rank <= MinimumLevels.Length ? MinimumLevels[rank - 1] : 0;
+    }
 
     public sealed class SpellDefinition
     {

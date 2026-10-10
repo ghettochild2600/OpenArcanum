@@ -6,6 +6,7 @@ using Arcanum.Formats.Text;
 using Arcanum.Formats.World;
 using Arcanum.Runtime.Character;
 using Arcanum.Runtime.Creation;
+using Arcanum.Runtime.Crafting;
 using Arcanum.Runtime.Magic;
 using Arcanum.Runtime.Save;
 using Arcanum.Runtime.Technology;
@@ -48,6 +49,8 @@ namespace Arcanum.Formats.Tests
             _root = new GameObject(nameof(UiDCharacterCreationTests));
             _session = _root.AddComponent<WorldMapSessionCoordinator>();
             _session.BindCharacterCreationSource(CreateCatalog());
+            _session.BindSpellPresentationSource(SpellPresentationCatalog.FromMes(CreateSpellText()));
+            _session.BindCraftingSource(CreateSchematicCatalog());
             _controller = new GameUiController(_session, new EmptySlots());
             Assert.That(_controller.BeginNewGame(), Is.True);
             _view = _root.AddComponent<RetailCharacterCreationView>();
@@ -102,6 +105,7 @@ namespace Arcanum.Formats.Tests
             Assert.That(RetailCharacterCreationLayout.ContinueButton, Is.EqualTo(new Vector2(675, 496)));
             Assert.That(RetailCharacterCreationLayout.Portrait, Is.EqualTo(new Rect(95, 28, 64, 64)));
             Assert.That(RetailCharacterCreationLayout.PortraitDraw, Is.EqualTo(new Rect(95, 28, 128, 128)));
+            Assert.That(RetailCharacterCreationLayout.EditorPortrait, Is.EqualTo(new Rect(141, 21, 66, 66)));
             Assert.That(((RectTransform)_view.IdentityPortraitImage.transform).sizeDelta,
                 Is.EqualTo(new Vector2(128, 128)));
             Assert.That(RetailCharacterCreationLayout.Name, Is.EqualTo(new Rect(46, 183, 228, 18)));
@@ -570,6 +574,11 @@ namespace Arcanum.Formats.Tests
             Assert.That(_view.EditorPage, Is.EqualTo(RetailCreationEditorPage.Magic));
             Invoke("Increase Spell");
             Assert.That(_controller.CreationDraft.GetSpellRank(SpellCollege.Conveyance), Is.EqualTo(1));
+            Assert.That(Text("College Name").Text, Is.EqualTo("Conveyance Source"));
+            Assert.That(Text("Spell 1").Text, Is.EqualTo("Source Spell 0"));
+            Assert.That(Text("Spell Level 1").Text, Is.EqualTo("Minimum Level: 1"));
+            Assert.That(_view.GetComponentsInChildren<SourceUiImage>(true)
+                .Single(value => value.name == "Spell 0 Icon").Key.SourceId, Is.EqualTo(12));
         }
 
         [Test]
@@ -580,6 +589,22 @@ namespace Arcanum.Formats.Tests
             Assert.That(_view.EditorPage, Is.EqualTo(RetailCreationEditorPage.Technology));
             Invoke("Increase Technology");
             Assert.That(_controller.CreationDraft.GetTechnologyRank(TechnologyDiscipline.Herbology), Is.EqualTo(1));
+            Assert.That(Text("Technology Name").Text, Is.EqualTo("Herbology Novice"));
+            Assert.That(Text("Technology Expertise").Text, Is.EqualTo("10"));
+            Assert.That(Text("Schematic 1").Text, Is.EqualTo("Herbology Schematic 1"));
+        }
+
+        [Test]
+        public void EditorUsesEffectiveWholeAttributesAndRestoresSourceHeadings()
+        {
+            Invoke("Next Background");
+            _view.ContinueToEditor();
+            Assert.That(Text("Beauty Value").Text, Is.EqualTo("7"));
+            Assert.That(Text("Beauty Value").Text, Does.Not.Contain("/"));
+            Assert.That(Text("Derived Stats Heading").Text, Is.EqualTo("Derived Stats"));
+            Assert.That(Text("Resistance Heading").Text, Is.EqualTo("Resistance"));
+            Assert.That(((RectTransform)_view.EditorPortraitImage.transform).sizeDelta,
+                Is.EqualTo(new Vector2(66, 66)));
         }
 
         [Test]
@@ -703,6 +728,37 @@ namespace Arcanum.Formats.Tests
             MapList maps = MapList.Read(Mes((5000,
                 "Arcanum1-024-fixed, 92958, 82592, Type: START_MAP, WorldMap: 0")));
             return CharacterCreationCatalog.FromMes(rules, text, effects, portraits, maps);
+        }
+
+        private static MesFile CreateSpellText()
+        {
+            var rows = new List<KeyValuePair<int, string>>();
+            for (int id = 0; id < 80; id++) rows.Add(new KeyValuePair<int, string>(id, $"Source Spell {id}"));
+            for (int id = 0; id < 16; id++) rows.Add(new KeyValuePair<int, string>(500 + id,
+                id == 0 ? "Conveyance Source" : $"College {id}"));
+            return new MesFile(rows);
+        }
+
+        private static SchematicCatalog CreateSchematicCatalog()
+        {
+            var rules = new List<KeyValuePair<int, string>>();
+            var text = new List<KeyValuePair<int, string>>();
+            for (int degree = 1; degree <= 7; degree++)
+            {
+                int id = 1990 + degree * 10;
+                int name = 100 + degree;
+                int description = 200 + degree;
+                rules.Add(new(id, name.ToString()));
+                rules.Add(new(id + 1, description.ToString()));
+                rules.Add(new(id + 2, (300 + degree).ToString()));
+                rules.Add(new(id + 3, (6000 + degree).ToString()));
+                rules.Add(new(id + 4, (6100 + degree).ToString()));
+                rules.Add(new(id + 5, (6200 + degree).ToString()));
+                rules.Add(new(id + 6, "1"));
+                text.Add(new(name, $"Herbology Schematic {degree}"));
+                text.Add(new(description, $"Description {degree}"));
+            }
+            return SchematicCatalog.FromMes(new MesFile(rules), new MesFile(text));
         }
 
         private static MesFile Mes(params (int key, string value)[] values)
