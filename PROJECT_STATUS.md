@@ -94,7 +94,10 @@ player-facing manual save/load presentation, M7A bounded passive local map trans
   restrictions, and ID 623 gauges are corrected. New Character, Character Editor, and Pick Character now compose
   independent native ID 336 top, ID 765/22/766 center, and ID 335 bottom windows; IDs 321/323 are bottom-owned while
   portrait IDs 283/284 remain center-owned. Pick Character uses the twelve retail engine-owned PC prototypes
-  16067–16078 through the authentic inventory/equip/campaign/Save V1 path. **DONE UI-E.2 — Character / Skills:** the active ID 22 Character sheet and ID 29 Skills child panel
+  16067–16078 through the authentic inventory/equip/campaign/Save V1 path. The 2026-10-09 source-runtime pass closes
+  navigation help, empty-name validation, gender/race context, the full editor stat/skill/aptitude projection, dynamic
+  skill requirements, and the custom-PC Human Shopkeeper lifecycle through SHOPPING_MAP to START_MAP; pregenerated PCs
+  retain their authored direct-start branch. **DONE UI-E.2 — Character / Skills:** the active ID 22 Character sheet and ID 29 Skills child panel
   project M4 authority, legal same-open-session point adjustments are transactional, and `K` uses the source ID 472
   to ID 274 non-modal Skills route. The four unsupported source skill-action targets fail closed without mutation.
   **DONE M13A opening crash-site compatibility pass and bounded user follow-ups:** authentic Virgil dialogue 1324
@@ -2798,6 +2801,27 @@ Compilation is clean; the final cleared Console has 0 logs, 0 warnings, and 0 er
 The read-only source audit also found bottom-cover ownership in Load Game, Save Game, Pregenerated Character,
 Character Editor, and Shopping. Those unrelated screens were not reconstructed by this correction.
 
+## UI-D Character Creation Source-Runtime Closure (2026-10-09)
+
+All seven supplied Character Creation screenshot discrepancies are closed against controlling source, the automated
+800 x 600 arcanum-ce source runtime, and the windowed retail-derived visual references. New Character now supplies
+source navigation help, exact missing-name feedback, gender/race descriptions, and non-accumulating effective race
+stats. Character Editor now presents identity, Health, Fatigue, all eight attributes, complete derived and resistance
+blocks, all skill families and numeric gauges, source category navigation, Magick/Technology aptitude, and dynamic
+governing-attribute requirements over existing M4/M10/M12B authority.
+
+Custom finalization now creates one authoritative PC in SHOPPING_MAP, restocks the authentic Human Shopkeeper once,
+and presents source IDs 235/221/337-341/321/323/444 over existing M3/M11A transactions. A purchase changes real Gold
+and inventory; Continue auto-equips compatible best items and moves the same PC to START_MAP. Back and Save V1 do not
+duplicate the transaction. Pregenerated PCs bypass shopping and retain authored equipment, matching the source-runtime
+branch. The production walkthrough passed twice after the final toggle-art correction at all five target resolutions
+and through Save V1. Focused UI-D passed **64/64** and directly affected regressions passed **231/231**. See
+[`documentation_unity/ui/ui-d-source-runtime-certification.md`](documentation_unity/ui/ui-d-source-runtime-certification.md).
+
+The evidence classes remain explicit: `C:\Arcanum - Modded` is the windowed retail-derived physical reference;
+arcanum-ce is the source-runtime automation reference; and `D:\OpenArcanum\Source\Steam-Clean` is the pristine retail
+control. No arcanum-ce observation is called retail-physically-certified.
+
 ## Next Recommended Milestone
 
 ### Retail runtime certification — M0/M1 complete (2026-10-08)
@@ -2819,7 +2843,7 @@ pregenerated characters. This exposed one bounded OpenArcanum defect: Pick Chara
 in the wrong attribute order and omitted the seven derived Initial Stats. New Character also omitted those derived
 values. The correction now projects effective M12B inputs through shared M4-derived rules and renders retail
 `ST/CN/DX/BE/IN/WP/PE/CH` plus Carry/Damage/AC/Speed/Heal/Poison/Reaction; the presenter owns no gameplay table.
-Retail Continue's Shopkeeper transition remains the already-documented later shopping boundary. See
+Retail Continue's Shopkeeper transition was closed by the 2026-10-09 source-runtime certification pass. See
 [`documentation_unity/ui/ui-retail-runtime-certification.md`](documentation_unity/ui/ui-retail-runtime-certification.md).
 
 OpenArcanum-side validation is green: UI-D.1 **44/44**, UI-B.1 **24/24**, UI-C.5 **70/70**, UI-E.2 **20/20**,
@@ -2827,7 +2851,9 @@ M12B **17/17**, UI-D.2 **8/8**, M4D **25/25**, and production input **23/23**, a
 inconclusive. The production UI-D.1 Play Mode proof passed the exact twelve-entry retail initial/derived matrix, two
 prototype-backed campaign starts, V1 round-trip, HUD authority, Original/Enhanced rebuild independence, and all five
 target resolutions. The complete-suite baseline remains **1304/1304** until the single final authorized batch gate.
-M2 Inventory retail certification is now the next sequential gate; M3-M5 remain gated behind it.
+The next bounded step is the user's physical acceptance inspection of this Character Creation/Shopkeeper pass. After
+that approval, resume one independently scoped open certification boundary; do not infer authorization for Followers,
+later Spells UI, Schematics, Maps, or world-renderer work from this closure.
 
 Future presentation compatibility includes the complete retail startup sequence loaded from the user's legitimate
 local installation: rotating splash, Sierra and Troika logos, intro movie ID 8, source transitions/audio/skip
@@ -2864,8 +2890,8 @@ visible while an unrelated modal still hides it. Compilation and `git diff --che
 
 The next independent UI-F implementation boundary would be **UI-F.2b — Remaining Logbook Data Authority**, one
 source-traced domain at a time, followed by UI-F.3 follower authority/presentation. Neither starts in this batch:
-retail Logbook certification is blocked, M3 Sleep execution remains partial, and M4's authored post-creation
-Shopping lifecycle is a confirmed unimplemented prerequisite. Do not infer a green sequential gate from the
+retail Logbook certification is blocked and M3 Sleep execution remains partial. M4's authored post-creation
+Shopping lifecycle is now closed, but that does not authorize the later milestones. Do not infer a green sequential gate from the
 source/production UI-F.2a result, fabricate empty non-quest data, use unproven dialogue ID 822, or invent unsupported
 dialogue transitions. Continue M13A only from concrete user-discovered campaign defects; do not start an autonomous
 campaign playthrough.

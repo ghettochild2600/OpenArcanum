@@ -1,6 +1,6 @@
 # UI-D Character Creation Reconstruction
 
-Status: UI-D.2 source-window ownership correction complete (2026-10-07)
+Status: UI-D source-runtime certification and starting-equipment correction complete (2026-10-09)
 
 UI-D replaces the production Character Creation placeholder and its whole-screen `ScrollRect` with the two
 fixed, source-backed compositions used by retail Arcanum. It changes presentation only: M12B remains the sole
@@ -126,7 +126,8 @@ one `EventSystem`. The fixed source composition captures pointer input, but it d
 - Pregenerated Start creates exactly one source-prototype PC through the existing atomic New Game/campaign path.
   Save V1 retains optional `PregeneratedSourceIndex` metadata while committed character, inventory/equipment,
   campaign, world, and HUD authority remain in their existing V1 sections. Older V1 documents omit the field as zero.
-- Intro playback and retail post-creation shopping remain deferred.
+- Intro playback remains deferred. The source-runtime-certified post-creation shopping lifecycle is completed by the
+  2026-10-09 correction documented in `ui-d-source-runtime-certification.md`.
 
 ## Resolution and graphics behavior
 
@@ -199,16 +200,17 @@ Validation passed UI-D.1 **44/44**, UI-B.1 **24/24**, UI-D.2 **8/8**, M12B **17/
 **70/70**, UI-E.2 **20/20**, and production keyboard/input **23/23**, with no failures, skips, or inconclusive results.
 The production Play Mode proof rendered and checked every raw and derived value for all twelve candidates, two
 prototype-backed starts, V1 round-trip, Original/Enhanced rebuild independence, and the five target resolutions.
-At 800 x 600 the two stat columns are aligned and unclipped. Post-creation Shopkeeper presentation remains a later
-shopping/inventory boundary.
+At 800 x 600 the two stat columns are aligned and unclipped. The post-creation Shopkeeper boundary was subsequently
+closed by the 2026-10-09 source-runtime certification pass.
 
 ## Boundary
 
 UI-D owns source-faithful presentation, fixed composition, portrait pixel resolution, and intent forwarding only.
 M12B continues to own character legality and finalization; M4, M10A, and M10B continue to own the projected game
 facts. Runtime Character/Skills presentation belongs to UI-E.2. Pregenerated browsing and prototype-backed New Game
-are now closed. Intro playback, shopping, auto-level-scheme authority, new character rules, and any gameplay redesign
-remain outside UI-D.
+are now closed. Shopping is implemented as a separate source-backed starting-equipment view over existing authority;
+UI-D does not own its inventory/economy rules. Intro playback, auto-level-scheme authority, new character rules, and
+any gameplay redesign remain outside UI-D.
 
 ## Player-Facing Correctness Pass II
 
