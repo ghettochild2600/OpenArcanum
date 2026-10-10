@@ -774,6 +774,42 @@ namespace Arcanum.Runtime.Combat
         public CombatResult ToggleCombatReadiness(ArcanumObjectId actor)
             => IsCombatModeActive ? DeactivateCombatMode(actor) : ActivateCombatMode(actor);
 
+        /// <summary>
+        /// Source autonomous KOS acquisition. Each eligible hostile uses its own perception range and
+        /// navigation line of sight; the PC does not need to enter combat mode first.
+        /// </summary>
+        public bool TryStartAutonomousHostileEncounter()
+        {
+            if (IsActive || _world.PlayerState == null) return false;
+            ArcanumObjectId pc = _world.PlayerState.Identity;
+            if (!TryGetCombatPosition(pc, out Vector2Int pcPosition)) return false;
+            CombatActorSource? hostile = _sources.Values
+                .Where(source => source.ObjectType == ObjectType.Npc && IsEligible(source)
+                                 && IsSourceHostile(source)
+                                 && TryGetCombatPosition(source.Identity, out Vector2Int position)
+                                 && IsWithinPerception(source.Identity, position, pcPosition)
+                                 && (_navigationMap == null
+                                     || _navigationMap.HasProjectileLineOfFire(position, pcPosition)))
+                .OrderBy(source => SourceDistance(source.Identity, pcPosition))
+                .ThenBy(source => source.SourceOrder)
+                .ThenBy(source => source.Identity.Key, StringComparer.Ordinal)
+                .Cast<CombatActorSource?>().FirstOrDefault();
+            return hostile.HasValue
+                   && StartCombat(pc, hostile.Value.Identity, CombatMode.TurnBased).Succeeded;
+        }
+
+        private bool IsWithinPerception(ArcanumObjectId observer, Vector2Int position, Vector2Int target)
+        {
+            int perception = _world.Characters.GetEffectiveAttribute(observer, CharacterAttribute.Perception);
+            int range = Math.Max(10, perception / 2 + 5);
+            return Math.Abs(position.x - target.x) <= range && Math.Abs(position.y - target.y) <= range;
+        }
+
+        private int SourceDistance(ArcanumObjectId observer, Vector2Int target)
+            => TryGetCombatPosition(observer, out Vector2Int position)
+                ? Math.Max(Math.Abs(position.x - target.x), Math.Abs(position.y - target.y))
+                : int.MaxValue;
+
         /// <summary>Source Space-key combat-mode switch. Roster and committed world state stay authoritative.</summary>
         public CombatResult ToggleMode(ArcanumObjectId actor)
         {

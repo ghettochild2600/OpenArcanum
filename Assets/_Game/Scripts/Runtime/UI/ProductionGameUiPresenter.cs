@@ -1018,12 +1018,15 @@ namespace Arcanum.Runtime.UI
                 GameUiCursorMode.SpellTarget => "SPELL",
                 GameUiCursorMode.TechnologyTarget => "TECH",
                 GameUiCursorMode.MerchantTarget => "BARTER",
-                GameUiCursorMode.Invalid => "INVALID",
+                // The retail runtime communicates illegal placement through its cursor art and
+                // invalid-action sound; it never paints a synthetic status word beside the pointer.
+                GameUiCursorMode.Invalid => null,
                 GameUiCursorMode.Attack => "ATTACK",
                 GameUiCursorMode.Use => "USE",
                 GameUiCursorMode.Item => "ITEM",
                 _ => Controller.CursorMode.ToString().ToUpperInvariant(),
             };
+            if (string.IsNullOrEmpty(label)) return;
             GUI.Box(new Rect(mouse.x + 16f, mouse.y + 16f, 82f, 24f), label);
         }
 

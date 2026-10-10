@@ -219,6 +219,10 @@ internal static class M9ACombatAiValidation
                 Check(lifecycle.SpawnAndBind(), "production PC binds in the equipment sector");
             PersistentObjectState bow = Require(session, Bow, ObjectType.Weapon, 6055);
             PersistentObjectState arrows = Require(session, Arrows, ObjectType.Ammo, 7058);
+            // A failed PlayMode harness can leave fixture ownership mutated in the live session.
+            // Normalize the ranged items away from the bear before certifying its unarmed behavior.
+            MoveOwnedItem(session, bow, session.PlayerState.Identity);
+            MoveOwnedItem(session, arrows, session.PlayerState.Identity);
 
             Check(session.SelectSector(CombatSector), "authentic Polar Bear Cub sector loads");
             yield return null;
@@ -229,22 +233,20 @@ internal static class M9ACombatAiValidation
             WorldObject pcRuntime = lifecycle.Presentation;
             Check(session.TryGetLoadedObject(Bear, out WorldObject bearRuntime),
                 "authentic Polar Bear Cub production instance resolves");
-            MoveOwnedItem(session, bow, Bear);
-            MoveOwnedItem(session, arrows, Bear);
             baseline = session.SaveGames.SerializeCurrentSession();
             driver.enabled = false;
 
             Vector2Int meleeTile = FindMeleeTile(loader.NavigationMap, bearRuntime.Tile);
             MoveActor(session, loader, pc, pcRuntime, meleeTile, true);
             int pcHp = session.Vitality.GetCurrentHitPoints(pc);
-            Check(session.Combat.StartCombat(pc, Bear, CombatMode.TurnBased).Succeeded,
-                "turn-based production combat starts for autonomous melee");
-            int bearMaximumAp = session.Combat.MaximumActionPoints;
+            Check(!session.Combat.IsActive,
+                "production encounter remains inactive before hostile perception ticks");
             session.Combat.SetRandomSource(new SequenceRandom(100, 100));
             driver.enabled = true;
             yield return null;
             CombatAttackResult melee = session.Combat.LastAttackResult.GetValueOrDefault();
-            Check(melee.Succeeded && melee.Request.Attacker == Bear
+            CombatAiDecision autonomousDecision = driver.Controller.LastDecision;
+            Check(session.Combat.IsActive && melee.Succeeded && melee.Request.Attacker == Bear
                   && melee.Request.Target == pc && melee.Request.Mode == CombatAttackMode.BasicMelee
                   && melee.ActionPointsSpent == CombatStateService.UnarmedAttackActionPointCost
                   && session.Combat.CurrentParticipant != Bear
@@ -252,9 +254,12 @@ internal static class M9ACombatAiValidation
                 "production driver autonomously submits the legal bear melee miss, spends M8 AP, and advances turn "
                 + $"[succeeded={melee.Succeeded}; attacker={melee.Request.Attacker}; target={melee.Request.Target}; "
                 + $"mode={melee.Request.Mode}; spent={melee.ActionPointsSpent}; turn={session.Combat.CurrentParticipant}; "
-                + $"pcHp={session.Vitality.GetCurrentHitPoints(pc)}/{pcHp}]");
-            Check(bearMaximumAp >= melee.ActionPointsSpent,
-                "turn-based AI is bounded by the authoritative AP budget");
+                + $"pcHp={session.Vitality.GetCurrentHitPoints(pc)}/{pcHp}; "
+                + $"decision={autonomousDecision.Action}/{autonomousDecision.Failure}; "
+                + $"decisionActor={autonomousDecision.Actor}; decisionTarget={autonomousDecision.Target}; "
+                + $"decisionMode={autonomousDecision.AttackMode}; "
+                + $"weapon={driver.Controller.LastWeaponSelection.SelectedWeapon}/"
+                + $"{driver.Controller.LastWeaponSelection.Failure}]");
             driver.enabled = false;
             EndCombat(session, pc);
 
@@ -274,6 +279,8 @@ internal static class M9ACombatAiValidation
                 "out-of-range bear repeatedly re-evaluates through authoritative one-step movement and yields at AP limit");
             EndCombat(session, pc);
 
+            MoveOwnedItem(session, bow, Bear);
+            MoveOwnedItem(session, arrows, Bear);
             Check(session.EquipItem(Bear, Bow, WornLocation.Weapon).Succeeded,
                 "authentic Bow equips on the authentic hostile through equipment authority");
             FindBlockedPair(loader.NavigationMap, out Vector2Int blockedSource, out Vector2Int blockedTarget);
@@ -397,7 +404,7 @@ internal static class M9ACombatAiValidation
             Application.logMessageReceived -= Track;
             Check(_warnings == 0 && _errors == 0, $"warnings={_warnings}; errors={_errors}");
             Debug.Log("M9A PHASE 1 PLAYMODE VALIDATION PASS: fixtures=production PC+Polar Bear Cub+authentic Bow+arrows; "
-                      + "turnBased=autonomousMelee+AP+turnAdvance+pursuit+reevaluation; "
+                      + "turnBased=autonomousKOSentry+melee+AP+turnAdvance+pursuit+reevaluation; "
                       + "bow=clearShot+oneAmmo+hardBlockedApproach+zeroBlockedTransaction; "
                       + "realTime=READY+BUSY+sourceRecovery; defeat=unconsciousSuppressed+deadTargetInvalidated+combatTerminated; "
                       + "saveV1=AIIntentAndPendingActionNormalized; warnings=0; errors=0.");

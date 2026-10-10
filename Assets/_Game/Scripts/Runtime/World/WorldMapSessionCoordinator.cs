@@ -831,6 +831,24 @@ namespace Arcanum.Runtime.World
         public bool TrySetInventoryLocation(ArcanumObjectId owner, ArcanumObjectId item, int location)
             => InventoryCapacity.TrySetInventoryLocation(owner, item, location);
 
+        /// <summary>
+        /// Atomically places an owned contained or worn item at an exact inventory-grid origin.
+        /// An illegal equipped-item drop leaves both its worn location and inventory state unchanged.
+        /// </summary>
+        public bool TryMoveItemToInventory(ArcanumObjectId owner, ArcanumObjectId itemIdentity, int location)
+        {
+            if (!_states.TryGetValue(itemIdentity, out PersistentObjectState item)
+                || !InventoryCapacity.CanPlaceInInventory(owner, itemIdentity, location))
+                return false;
+            ObjectPlacement previous = item.Placement;
+            ObjectPlacement destination = ObjectPlacement.ContainedBy(owner);
+            item.Placement = destination;
+            item.InventoryLocation = location;
+            if (previous.Kind != destination.Kind || previous.ParentIdentity != destination.ParentIdentity)
+                ObjectPlacementChanged?.Invoke(item, previous, destination);
+            return true;
+        }
+
         /// <summary>Authoritative source arrange command; presentation owns no item positions.</summary>
         public bool ArrangeInventory(ArcanumObjectId owner)
             => InventoryCapacity.ArrangeInventory(owner);
@@ -1874,6 +1892,23 @@ namespace Arcanum.Runtime.World
                     return true;
                 }
             return false;
+        }
+
+        /// <summary>Projects the source combat-ready stand with the currently equipped weapon family.</summary>
+        public bool SetCombatReadyPresentation(ArcanumObjectId identity, bool ready)
+        {
+            if (PlayerState == null || PlayerState.Identity != identity) return false;
+            uint artId = CritterArtResolver.WithAnimRotation(PlayerState.ArtId, 0,
+                CritterArtResolver.RotationOf(PlayerState.ArtId)) & ~(0x1Fu << 14);
+            int weaponArt = 0;
+            if (ready && TryGetEquippedItem(identity, WornLocation.Weapon, out PersistentObjectState equipped)
+                      && equipped.Type == ObjectType.Weapon && equipped.WeaponData != null)
+            {
+                weaponArt = equipped.WeaponData.Skill == WeaponSkill.Bow
+                    ? 8 : (int)(equipped.ArtId >> 6) & 0xF;
+            }
+            artId = (artId & ~0xFu) | (uint)weaponArt;
+            return SetMovementState(identity, PlayerState.TilePosition, artId, false);
         }
 
         public void SetPlayerDestination(Vector2Int destination)

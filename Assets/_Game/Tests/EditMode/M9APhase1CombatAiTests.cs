@@ -302,6 +302,34 @@ namespace Arcanum.Formats.Tests
             Assert.That(_session.Combat.IsActive, Is.False);
         }
 
+        [Test]
+        public void ProductionDriverStartsKosEncounterWithoutManualCombatEntry()
+        {
+            ProductionCombatAiDriver driver = _root.AddComponent<ProductionCombatAiDriver>();
+            driver.Bind(_session);
+            Assert.That(_session.Combat.IsActive, Is.False);
+
+            driver.Tick();
+
+            Assert.That(_session.Combat.IsActive, Is.True);
+            Assert.That(_session.Combat.Participants.Any(value => value.Identity == _pc.Identity), Is.True);
+            Assert.That(_session.Combat.Participants.Any(value => value.Identity == _actor), Is.True);
+            Assert.That(driver.TickCount, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void AutonomousKosEncounterRequiresNavigationLineOfSight()
+        {
+            Move(_actor, _actorRuntime, new Vector2Int(3, 1));
+            BindMap(new Vector2Int(2, 1));
+            Assert.That(_session.Combat.TryStartAutonomousHostileEncounter(), Is.False);
+            Assert.That(_session.Combat.IsActive, Is.False);
+
+            BindMap();
+            Assert.That(_session.Combat.TryStartAutonomousHostileEncounter(), Is.True);
+            Assert.That(_session.Combat.IsActive, Is.True);
+        }
+
         private void Start(CombatMode mode)
             => Assert.That(_session.Combat.StartCombat(_pc.Identity, _actor, mode).Succeeded, Is.True);
 

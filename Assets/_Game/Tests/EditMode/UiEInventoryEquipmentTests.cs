@@ -163,6 +163,27 @@ namespace Arcanum.Formats.Tests
         }
 
         [Test]
+        public void EquippedItemDropPreflightsFootprintThenMovesThroughInventoryAuthority()
+        {
+            PersistentObjectState occupied = AddItem(24, ObjectType.Armor, 0,
+                new InventoryFootprint(2, 2));
+            PersistentObjectState armor = AddItem(25, ObjectType.Armor, 20,
+                new InventoryFootprint(2, 3));
+            Assert.That(_controller.Equip(armor.Identity), Is.True);
+            ObjectPlacement equipped = armor.Placement;
+
+            Assert.That(_controller.MoveInventoryItem(armor.Identity, 1), Is.False);
+            Assert.That(armor.Placement, Is.EqualTo(equipped),
+                "an illegal drop must not unequip or partially mutate the item");
+            Assert.That(occupied.InventoryLocation, Is.Zero);
+
+            Assert.That(_controller.MoveInventoryItem(armor.Identity, 22), Is.True);
+            Assert.That(armor.Placement.Kind, Is.EqualTo(ObjectPlacementKind.Contained));
+            Assert.That(armor.Placement.ParentIdentity, Is.EqualTo(_session.PlayerState.Identity));
+            Assert.That(armor.InventoryLocation, Is.EqualTo(22));
+        }
+
+        [Test]
         public void ViewProjectsRetainedItemIdentityArtFootprintAndPlacement()
         {
             PersistentObjectState item = AddItem(1, ObjectType.Armor, 13, new InventoryFootprint(2, 3));

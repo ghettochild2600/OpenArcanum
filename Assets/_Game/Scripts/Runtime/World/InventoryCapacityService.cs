@@ -270,6 +270,18 @@ namespace Arcanum.Runtime.World
             return true;
         }
 
+        /// <summary>Preflights an exact source-grid origin for an owned contained or worn item.</summary>
+        internal bool CanPlaceInInventory(ArcanumObjectId owner, ArcanumObjectId itemIdentity, int location)
+        {
+            PersistentObjectState item = Item(itemIdentity);
+            if (item.ParentIdentity != owner
+                || item.Placement.Kind is not (ObjectPlacementKind.Contained or ObjectPlacementKind.Equipped))
+                return false;
+            RequireOwner(owner, out ObjectType ownerType);
+            int rows = ownerType == ObjectType.Container ? ContainerGridRows : CritterGridRows;
+            return Fits(BuildGrid(owner, rows, itemIdentity), rows, location, item.InventoryFootprint);
+        }
+
         /// <summary>
         /// Source <c>item_arrange_inventory</c>: ignore worn items, order by descending height then width,
         /// and pack into the first horizontal free location.  All locations are preflighted before commit.

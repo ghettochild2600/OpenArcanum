@@ -328,20 +328,25 @@ namespace Arcanum.Runtime.UI
             Synchronize();
         }
 
-        private void OnInventoryDrop(ArcanumObjectId item, bool equipped, Vector2 screenPosition,
+        private bool OnInventoryDrop(ArcanumObjectId item, bool equipped, Vector2 screenPosition,
             Camera eventCamera)
         {
-            if (equipped || !RectTransformUtility.ScreenPointToLocalPointInRectangle(
-                    _window, screenPosition, eventCamera, out Vector2 local)) return;
-            float x = local.x - RetailInventoryEquipmentLayout.InventoryGrid.x;
-            float y = -local.y - RetailInventoryEquipmentLayout.InventoryGrid.y;
+            if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(
+                    _window, screenPosition, eventCamera, out Vector2 local)) return false;
+            float sourceX = local.x + _window.rect.width * _window.pivot.x;
+            float sourceY = _window.rect.height * (1f - _window.pivot.y) - local.y;
+            float x = sourceX - RetailInventoryEquipmentLayout.InventoryGrid.x;
+            float y = sourceY - RetailInventoryEquipmentLayout.InventoryGrid.y;
             if (x < 0f || y < 0f || x >= RetailInventoryEquipmentLayout.InventoryGrid.width
-                || y >= RetailInventoryEquipmentLayout.InventoryGrid.height) return;
+                || y >= RetailInventoryEquipmentLayout.InventoryGrid.height) return false;
             int column = Mathf.FloorToInt(x / RetailInventoryEquipmentLayout.CellSize);
             int row = Mathf.FloorToInt(y / RetailInventoryEquipmentLayout.CellSize);
-            if (_controller.MoveInventoryItem(item, row * RetailInventoryEquipmentLayout.GridColumns + column))
+            bool moved = _controller.MoveInventoryItem(item,
+                row * RetailInventoryEquipmentLayout.GridColumns + column);
+            if (moved)
                 _dirty = true;
             Synchronize();
+            return moved;
         }
 
         private void RefreshSelection()
@@ -559,25 +564,73 @@ namespace Arcanum.Runtime.UI
     }
 
     [DisallowMultipleComponent]
-    public sealed class RetailInventoryItemDragTarget : MonoBehaviour, IBeginDragHandler, IEndDragHandler
+    public sealed class RetailInventoryItemDragTarget : MonoBehaviour, IBeginDragHandler, IDragHandler,
+        IEndDragHandler, ICancelHandler
     {
         private RectTransform _window;
+        private RectTransform _itemTransform;
         private ArcanumObjectId _item;
         private bool _equipped;
-        private Action<ArcanumObjectId, bool, Vector2, Camera> _dropped;
+        private Func<ArcanumObjectId, bool, Vector2, Camera, bool> _dropped;
+        private CanvasGroup _canvasGroup;
+        private Vector2 _startPosition;
+        private Vector2 _pointerOffset;
+        private bool _dragging;
 
         public void Bind(RectTransform window, ArcanumObjectId item, bool equipped,
-            Action<ArcanumObjectId, bool, Vector2, Camera> dropped)
+            Func<ArcanumObjectId, bool, Vector2, Camera, bool> dropped)
         {
             _window = window;
+            _itemTransform = (RectTransform)transform;
             _item = item;
             _equipped = equipped;
             _dropped = dropped;
+            _canvasGroup = gameObject.GetComponent<CanvasGroup>() ?? gameObject.AddComponent<CanvasGroup>();
         }
 
-        public void OnBeginDrag(PointerEventData eventData) { }
+        public void OnBeginDrag(PointerEventData eventData)
+        {
+            if (_itemTransform == null || eventData == null) return;
+            _startPosition = _itemTransform.anchoredPosition;
+            _dragging = RectTransformUtility.ScreenPointToLocalPointInRectangle(
+                (RectTransform)_itemTransform.parent, eventData.position, eventData.pressEventCamera,
+                out Vector2 pointer);
+            if (!_dragging) return;
+            _pointerOffset = _startPosition - pointer;
+            _canvasGroup.alpha = .72f;
+            _canvasGroup.blocksRaycasts = false;
+            _itemTransform.SetAsLastSibling();
+        }
+
+        public void OnDrag(PointerEventData eventData)
+        {
+            if (!_dragging || eventData == null) return;
+            if (RectTransformUtility.ScreenPointToLocalPointInRectangle(
+                    (RectTransform)_itemTransform.parent, eventData.position, eventData.pressEventCamera,
+                    out Vector2 pointer))
+                _itemTransform.anchoredPosition = pointer + _pointerOffset;
+        }
 
         public void OnEndDrag(PointerEventData eventData)
-            => _dropped?.Invoke(_item, _equipped, eventData.position, eventData.pressEventCamera);
+        {
+            if (!_dragging) return;
+            RestorePresentation();
+            if (eventData != null)
+                _dropped?.Invoke(_item, _equipped, eventData.position, eventData.pressEventCamera);
+        }
+
+        public void OnCancel(BaseEventData eventData) => RestorePresentation();
+
+        private void RestorePresentation()
+        {
+            if (!_dragging) return;
+            _dragging = false;
+            if (_itemTransform != null) _itemTransform.anchoredPosition = _startPosition;
+            if (_canvasGroup != null)
+            {
+                _canvasGroup.alpha = 1f;
+                _canvasGroup.blocksRaycasts = true;
+            }
+        }
     }
 }

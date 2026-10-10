@@ -57,7 +57,7 @@ namespace Arcanum.Runtime.Combat
             if (!_session.Combat.IsActive)
             {
                 controller.ResetTransient();
-                return;
+                if (!_session.Combat.TryStartAutonomousHostileEncounter()) return;
             }
 
             if (_session.Combat.Mode == CombatMode.TurnBased)

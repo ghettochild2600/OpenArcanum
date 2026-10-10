@@ -555,7 +555,10 @@ namespace Arcanum.Runtime.UI
             CombatResult result = _session.Combat.ToggleCombatReadiness(Player);
             Combat.Refresh();
             if (result.Succeeded)
+            {
                 CursorMode = _session.Combat.IsCombatModeActive ? GameUiCursorMode.Attack : GameUiCursorMode.Default;
+                _session.SetCombatReadyPresentation(Player, _session.Combat.IsCombatModeActive);
+            }
             return Complete(result.Succeeded, result.Succeeded
                 ? (_session.Combat.IsCombatModeActive ? "Combat ready." : "Combat mode ended.")
                 : result.Failure.ToString());
@@ -871,7 +874,7 @@ namespace Arcanum.Runtime.UI
 
         public bool MoveInventoryItem(ArcanumObjectId item, int location)
         {
-            bool moved = _session.TrySetInventoryLocation(Player, item, location);
+            bool moved = _session.TryMoveItemToInventory(Player, item, location);
             string name = _session.TryGetObjectState(item, out PersistentObjectState state)
                 ? ItemName(state) : "item";
             return Complete(moved, moved ? $"Moved {name}." : $"{name} does not fit there.");
@@ -1392,6 +1395,7 @@ namespace Arcanum.Runtime.UI
         {
             Feedback = message ?? string.Empty;
             if (!success) CursorMode = GameUiCursorMode.Invalid;
+            else if (CursorMode == GameUiCursorMode.Invalid) CursorMode = GameUiCursorMode.Default;
             return success;
         }
 
