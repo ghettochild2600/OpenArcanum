@@ -106,6 +106,8 @@ namespace OpenArcanum.UI
                 texture.name = $"UI_Original_{key}";
                 texture.filterMode = FilterMode.Point;
                 texture.wrapMode = TextureWrapMode.Clamp;
+                if (UsesSourceFontAlpha(key.SourceId))
+                    ApplySourceFontAlpha(texture);
 
                 Vector2 pivot = Pivot(frame);
                 Vector4 border = SourceUiScaleMetadataCatalog.Get(key.SourceId).Border;
@@ -335,6 +337,26 @@ namespace OpenArcanum.UI
             int width = Mathf.Max(frame.Width, 1);
             int height = Mathf.Max(frame.Height, 1);
             return new Vector2(frame.HotX / (float)width, (height - frame.HotY) / (float)height);
+        }
+
+        private static bool UsesSourceFontAlpha(int sourceId)
+            => sourceId == SourceUiBitmapText.DefaultFontSourceId;
+
+        private static void ApplySourceFontAlpha(Texture2D texture)
+        {
+            // TIG's font blitter ignores the glyph palette RGB, paints the requested constant tint, and uses the
+            // palette red channel as per-pixel coverage (TIG_ART_BLT_BLEND_COLOR_CONST | BLEND_ALPHA_SRC).
+            // The ordinary ART texture path makes every non-zero palette index opaque, which turns the soft outer
+            // coverage of morph30font into a visibly oversized, heavy silhouette.
+            Color32[] pixels = texture.GetPixels32();
+            for (int index = 0; index < pixels.Length; index++)
+            {
+                Color32 pixel = pixels[index];
+                if (pixel.a == 0) continue;
+                pixels[index] = new Color32(byte.MaxValue, byte.MaxValue, byte.MaxValue, pixel.r);
+            }
+            texture.SetPixels32(pixels);
+            texture.Apply(updateMipmaps: false, makeNoLongerReadable: false);
         }
 
         private void ThrowIfDisposed()

@@ -13,6 +13,7 @@ using OpenArcanum.Rendering;
 using OpenArcanum.UI;
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.UI;
 using Object = UnityEngine.Object;
 
 namespace Arcanum.Formats.Tests
@@ -293,6 +294,47 @@ namespace Arcanum.Formats.Tests
                 Assert.That(passes.Select(value => value.FontSourceId),
                     Has.All.EqualTo(SourceUiBitmapText.DefaultFontSourceId));
             }
+        }
+
+        [Test]
+        public void MainMenuBitmapFontKeepsNativeMetricsAndSourceAlphaCoverage()
+        {
+            var expected = new Dictionary<string, (Vector2 Size, long AlphaCoverage)>
+            {
+                ["Options"] = (new Vector2(92f, 33f), 156207L),
+                ["Credits"] = (new Vector2(90f, 33f), 146444L),
+                ["Exit Game"] = (new Vector2(132f, 33f), 187067L),
+            };
+
+            foreach ((string label, (Vector2 size, long alphaCoverage)) in expected)
+            {
+                var target = new GameObject(label, typeof(RectTransform), typeof(SourceUiBitmapText));
+                target.transform.SetParent(_root.transform, worldPositionStays: false);
+                SourceUiBitmapText bitmap = target.GetComponent<SourceUiBitmapText>();
+                bitmap.Bind(_skin, label, Color.white);
+
+                Assert.That(bitmap.LogicalSize, Is.EqualTo(size), label);
+                Assert.That(bitmap.transform.localScale, Is.EqualTo(Vector3.one), label);
+                Assert.That(bitmap.GetComponentsInChildren<RectTransform>(true)
+                    .Skip(1).Select(rect => rect.localScale), Has.All.EqualTo(Vector3.one), label);
+
+                long renderedCoverage = bitmap.GetComponentsInChildren<UnityEngine.UI.Image>(true)
+                    .SelectMany(image => image.sprite.texture.GetPixels32())
+                    .Sum(pixel => (long)pixel.a);
+                Assert.That(renderedCoverage, Is.EqualTo(alphaCoverage), label);
+                Assert.That(bitmap.GetComponentsInChildren<UnityEngine.UI.Image>(true)
+                    .SelectMany(image => image.sprite.texture.GetPixels32())
+                    .Any(pixel => pixel.a > 0 && pixel.a < byte.MaxValue), Is.True, label);
+            }
+
+            var presentation = new GameObject("Presentation", typeof(RectTransform), typeof(Canvas),
+                typeof(CanvasScaler), typeof(SourceUiPresentationRoot));
+            presentation.transform.SetParent(_root.transform, worldPositionStays: false);
+            SourceUiPresentationRoot root = presentation.GetComponent<SourceUiPresentationRoot>();
+            root.ApplyResolution(new Vector2Int(800, 600));
+            Assert.That(root.Mapping.Scale, Is.EqualTo(1f));
+            Assert.That(root.ReferenceSurface.localScale, Is.EqualTo(Vector3.one));
+            Assert.That(presentation.GetComponent<CanvasScaler>().scaleFactor, Is.EqualTo(1f));
         }
 
         [Test]
