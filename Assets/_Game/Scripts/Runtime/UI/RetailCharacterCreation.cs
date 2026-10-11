@@ -115,7 +115,7 @@ namespace Arcanum.Runtime.UI
     [DisallowMultipleComponent]
     public sealed class RetailCharacterCreationView : MonoBehaviour
     {
-        private enum IdentityContext { Background, Gender, Race }
+        private enum IdentityContext { Resting, Background, Gender, Race }
 
         private static readonly Color SourceWhite = new Color32(250, 250, 250, 255);
         private static readonly Color SourceRed = new Color32(255, 50, 50, 255);
@@ -213,7 +213,7 @@ namespace Arcanum.Runtime.UI
         private TechnologyDiscipline _selectedTechnology;
         private bool _autoLevelSchemesOpen;
         private int _autoLevelSchemeOffset;
-        private IdentityContext _identityContext = IdentityContext.Background;
+        private IdentityContext _identityContext = IdentityContext.Resting;
         private string _identityValidation = string.Empty;
 
         public bool IsAvailable => _canvasRoot != null && _resolver != null;
@@ -297,7 +297,7 @@ namespace Arcanum.Runtime.UI
                 _skillGroup = 0;
                 _selectedCollege = SpellCollege.Conveyance;
                 _selectedTechnology = TechnologyDiscipline.Herbology;
-                _identityContext = IdentityContext.Background;
+                _identityContext = IdentityContext.Resting;
                 _identityValidation = string.Empty;
                 _identitySignature = int.MinValue;
                 _editorSignature = int.MinValue;
@@ -1119,7 +1119,7 @@ namespace Arcanum.Runtime.UI
                 if (draft != null) RefreshIdentityContext(draft, CurrentBackground(draft));
             }, () =>
             {
-                _identityContext = IdentityContext.Background;
+                _identityContext = IdentityContext.Resting;
                 CharacterCreationSpecification draft = _controller?.CreationDraft;
                 if (draft != null) RefreshIdentityContext(draft, CurrentBackground(draft));
             });
@@ -1162,7 +1162,12 @@ namespace Arcanum.Runtime.UI
 
         private void RefreshIdentityContext(CharacterCreationSpecification draft, BackgroundDefinition background)
         {
-            switch (_identityContext)
+            // mainmenu_ui_new_char_create starts in the source's idle mode. Its shared refresh displays the
+            // selected background only for source text rows above 1000; row 1000 falls back to Race.
+            IdentityContext context = _identityContext == IdentityContext.Resting
+                ? background?.TextId > 1000 ? IdentityContext.Background : IdentityContext.Race
+                : _identityContext;
+            switch (context)
             {
                 case IdentityContext.Gender:
                     SetCenteredText(_descriptionTitle, string.Empty, SourceWhite);
@@ -1598,7 +1603,7 @@ namespace Arcanum.Runtime.UI
             _wasVisible = false;
             _identitySignature = int.MinValue;
             _editorSignature = int.MinValue;
-            _identityContext = IdentityContext.Background;
+            _identityContext = IdentityContext.Resting;
             _identityValidation = string.Empty;
         }
 

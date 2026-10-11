@@ -453,6 +453,40 @@ namespace Arcanum.Formats.Tests
         }
 
         [Test]
+        public void FreshIdentityUsesRaceContextAndRefreshCannotReplaceItsOwner()
+        {
+            Assert.That(Text("Description Title").Text, Is.EqualTo("Race"));
+            string race = Wrapped("Description Body");
+            Assert.That(race,
+                Is.EqualTo("Humans have no special modifiers to their stats and abilities. Humans are the "
+                           + "most populous and distributed race by far, having numerous cities and "
+                           + "kingdoms throughout the world. They interact with the other races as much "
+                           + "as the gnomes, and they interbreed with everything (hence, half-elves, half- "
+                           + "ogres, and half-orcs). They are not inherently predisposed towards magick or "
+                           + "technology, but they are the front-runners in the latest technological race. "
+                           + "Being shorter-lived than most of the other races as well as fairly ingenious "
+                           + "tinkerers, they are probably attracted to the quick return on investment that "
+                           + "technology promises."));
+
+            Hover("Race Context", true);
+            _controller.SetCreationBackground(1);
+            _view.Synchronize();
+            Assert.That(Text("Description Title").Text, Is.EqualTo("Race"));
+            Assert.That(Wrapped("Description Body"), Is.EqualTo(race));
+
+            Hover("Race Context", false);
+            Assert.That(Text("Description Title").Text, Is.EqualTo("Snake Handler"));
+            Assert.That(Wrapped("Description Body"), Is.EqualTo("Poison and beauty tradeoffs."));
+
+            _controller.Close();
+            _view.Synchronize();
+            Assert.That(_controller.BeginNewGame(), Is.True);
+            _view.Synchronize();
+            Assert.That(Text("Description Title").Text, Is.EqualTo("Race"));
+            Assert.That(Wrapped("Description Body"), Is.EqualTo(race));
+        }
+
+        [Test]
         public void AttributeButtonsRouteThroughControllerAndCharacterPointValidation()
         {
             _view.ContinueToEditor();
