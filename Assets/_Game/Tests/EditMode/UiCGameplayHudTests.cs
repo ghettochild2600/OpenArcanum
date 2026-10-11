@@ -128,6 +128,68 @@ namespace Arcanum.Formats.Tests
         }
 
         [Test]
+        public void AuthoredDescriptionPrecedesPrototypeAndWorldItemsUseSharedInspection()
+        {
+            ArcanumObjectId named = Parse("G_0000C101_0000_0000_0000_000000000000");
+            ArcanumObjectId ordinary = Parse("G_0000C102_0000_0000_0000_000000000000");
+            var prototype = new ObjectProtoInfo(10093, ObjectType.Generic, 0x60000009u,
+                description: 10093, invAid: 0x60001009u, weight: 20) { HpPoints = 100 };
+            _session.BindPrototypeSource(number => number == 10093 ? prototype
+                : number == 9056 ? new ObjectProtoInfo(9056, ObjectType.Gold, 0x60000003u,
+                    invAid: 3) { GoldQuantity = 1 } : null);
+            _session.BindDescriptionSource(id => id switch
+            {
+                40001 => "Preston Radcliffe",
+                10093 => "Wine",
+                _ => null,
+            });
+            var namedSource = new ObjectInstance(ObjectType.Generic, 10093, 0L, 0x60000009u, 0, 0);
+            var ordinarySource = new ObjectInstance(ObjectType.Generic, 10093, 1L, 0x60000009u, 1, 0);
+            PersistentObjectState namedState = _session.GetOrCreate(namedSource, named, Sector,
+                namedSource.CurrentArtId.Value, false, false, inventoryArtId: prototype.InvAid,
+                unitWeight: 20, maximumHitPoints: 100, descriptionId: 40001);
+            PersistentObjectState ordinaryState = _session.GetOrCreate(ordinarySource, ordinary, Sector,
+                ordinarySource.CurrentArtId.Value, false, false, inventoryArtId: prototype.InvAid,
+                unitWeight: 20, maximumHitPoints: 100);
+
+            Assert.That(_session.ResolveDisplayName(namedState), Is.EqualTo("Preston Radcliffe"));
+            Assert.That(_session.ResolveDisplayName(ordinaryState), Is.EqualTo("Wine"));
+            GameUiWorldTargetView target = _controller.ProjectWorldTarget(ordinary);
+            Assert.That(target, Is.Not.Null);
+            Assert.That(target.Item.Name, Is.EqualTo("Wine"));
+            Assert.That(target.Item.Summary, Does.Contain("Weight: 20 stone"));
+            Assert.That(target.Item.Summary, Does.Contain("100/100"));
+        }
+
+        [Test]
+        public void WorldHoverOwnsTheInformationLensAndIdleDoesNotRestoreWeaponText()
+        {
+            ArcanumObjectId item = Parse("G_0000C103_0000_0000_0000_000000000000");
+            var prototype = new ObjectProtoInfo(10093, ObjectType.Generic, 0x60000009u,
+                description: 10093, invAid: 0x60001009u, weight: 20) { HpPoints = 100 };
+            _session.BindPrototypeSource(number => number == 10093 ? prototype : null);
+            _session.BindDescriptionSource(id => id == 10093 ? "Wine" : null);
+            var source = new ObjectInstance(ObjectType.Generic, 10093, 0L, 0x60000009u, 0, 0);
+            _session.GetOrCreate(source, item, Sector, source.CurrentArtId.Value, false, false,
+                inventoryArtId: prototype.InvAid, unitWeight: 20, maximumHitPoints: 100);
+
+            _controller.ShowFeedback("Combat ready.");
+            _view.SetWorldTarget(_controller.ProjectWorldTarget(item));
+            _view.Synchronize(true);
+            Transform message = Descendant("Message");
+            Transform targetName = Descendant("World Target Name");
+            Assert.That(message.gameObject.activeSelf, Is.False);
+            Assert.That(targetName.gameObject.activeSelf, Is.True);
+
+            _view.SetWorldTarget(null);
+            _controller.ShowFeedback(string.Empty);
+            _view.Synchronize(true);
+            Assert.That(message.gameObject.activeSelf, Is.True);
+            Assert.That(targetName.gameObject.activeSelf, Is.False);
+            Assert.That(_controller.Feedback, Is.Empty);
+        }
+
+        [Test]
         public void SourceGeometryPreservesTopWorldAndBottomPartition()
         {
             Assert.That(RetailGameplayHudLayout.TopInterface, Is.EqualTo(new Rect(0, 0, 800, 41)));
@@ -739,6 +801,9 @@ namespace Arcanum.Formats.Tests
             Assert.That(_retail.TryResolve(new UiAssetKey(sourceId), out UiResolvedAsset value), Is.True);
             return value;
         }
+
+        private Transform Descendant(string name)
+            => _root.GetComponentsInChildren<Transform>(true).Single(value => value.name == name);
 
         private PersistentObjectState AddStack(int sequence, int quantity)
         {

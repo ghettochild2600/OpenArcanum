@@ -374,6 +374,9 @@ namespace Arcanum.Runtime.Magic
             ranks[(int)college] = rank;
         }
 
+        public int GetKnownCollegeRank(ArcanumObjectId identity, SpellCollege college)
+            => _collegeRanks.TryGetValue(identity, out int[] ranks) ? ranks[(int)college] : 0;
+
         public void SetMastery(ArcanumObjectId identity, SpellCollege? college)
             => _masteries[identity] = college.HasValue ? (int)college.Value : -1;
 

@@ -312,7 +312,9 @@ namespace Arcanum.Runtime.World
         public string ResolveDisplayName(PersistentObjectState state)
         {
             if (state == null) return string.Empty;
-            int? description = ResolvePrototype(state.PrototypeNumber)?.Description;
+            int? description = state.DescriptionId > 0
+                ? state.DescriptionId
+                : ResolvePrototype(state.PrototypeNumber)?.Description;
             string value = description.HasValue ? _resolveDescription?.Invoke(description.Value) : null;
             return !string.IsNullOrWhiteSpace(value) ? value.Trim() : state.Type.ToString();
         }
@@ -667,7 +669,8 @@ namespace Arcanum.Runtime.World
             int? origin = null,
             int? faction = null,
             int? writtenSubtype = null,
-            int? writtenStartLine = null)
+            int? writtenStartLine = null,
+            int? descriptionId = null)
         {
             if (!identity.IsPersistent) return null;
             if (_removedObjectIdentities.Contains(identity)) return null;
@@ -681,7 +684,7 @@ namespace Arcanum.Runtime.World
                 inventoryLocation, nameIndex, socialClass, weaponData, ammoItemType, sourceWorth,
                 maximumHitPoints, hitPointDamage, retailPriceMultiplier, inventorySourceId,
                 substituteInventoryIdentity, npcFlags, buyObjectScriptNum, containerFlags, aiData, origin, faction,
-                writtenSubtype, writtenStartLine);
+                writtenSubtype, writtenStartLine, descriptionId);
             _states.Add(identity, state);
             return state;
         }
@@ -695,13 +698,13 @@ namespace Arcanum.Runtime.World
             int? inventorySourceId = null, ArcanumObjectId substituteInventoryIdentity = default,
             int npcFlags = 0, int buyObjectScriptNum = 0, int containerFlags = 0,
             int? aiData = null, int? origin = null, int? faction = null,
-            int? writtenSubtype = null, int? writtenStartLine = null)
+            int? writtenSubtype = null, int? writtenStartLine = null, int? descriptionId = null)
             => GetOrCreate(source, source.Identity, sector, artId, off, locked, itemFlags, inventoryArtId,
                 weaponFlags, genericFlags, stackQuantity, unitWeight, inventoryFootprint, inventoryLocation,
                 nameIndex, socialClass, weaponData, ammoItemType, sourceWorth, maximumHitPoints,
                 hitPointDamage, retailPriceMultiplier, inventorySourceId, substituteInventoryIdentity,
                 npcFlags, buyObjectScriptNum, containerFlags, aiData, origin, faction,
-                writtenSubtype, writtenStartLine);
+                writtenSubtype, writtenStartLine, descriptionId);
 
         public void Bind(string sector, PersistentObjectState state, WorldObject runtime)
         {

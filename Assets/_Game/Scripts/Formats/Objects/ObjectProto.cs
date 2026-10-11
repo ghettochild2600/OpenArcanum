@@ -322,6 +322,16 @@ namespace Arcanum.Formats.Objects
                 ArmorResist = new[] { 1, 0, 0, 0, 0 },
             };
 
+        /// <summary>
+        /// Source <c>proto.c</c> owns the generic base-prototype range. Those records have no loose
+        /// <c>data/proto</c> file, but their description ids are still authoritative and are used by
+        /// schematic component examination.
+        /// </summary>
+        public static ObjectProtoInfo CreateEngineOwnedBasePrototype(int protoNumber)
+            => protoNumber is >= 15065 and <= 15213
+                ? new ObjectProtoInfo(protoNumber, ObjectType.Generic, 0, description: protoNumber)
+                : null;
+
         private static uint ItemArtId(int number, int disposition, int subtype, int type, int armorCoverage = 0,
             int palette = 0)
             => 0x60000000u | ((uint)(number & 0x7FF) << 17) | ((uint)(armorCoverage & 0x7) << 14)
@@ -459,9 +469,14 @@ namespace Arcanum.Formats.Objects
         public ObjectProtoInfo Get(int protoNumber)
         {
             if (_cache.TryGetValue(protoNumber, out var cached)) return cached;
-            ObjectProtoInfo info = null;
+            // proto.c creates these base prototypes before the serialized prototype deltas are applied.
+            // Reading the shipped .pro delta as a complete object can otherwise leak values from the
+            // template it was authored from (for example, Plain Dress presents as Guard Plate).
+            ObjectProtoInfo info = ObjectProtoInfo.CreateEngineOwnedStartingItem(protoNumber);
             if (_pathByNumber.TryGetValue(protoNumber, out string path))
-                ObjectProtoReader.TryReadInfo(File.ReadAllBytes(path), out info);
+            {
+                if (info == null) ObjectProtoReader.TryReadInfo(File.ReadAllBytes(path), out info);
+            }
             // The original engine constructs base prototypes in proto.c; they need not have loose .pro overrides.
             if (info == null && protoNumber == 9056)
                 info = new ObjectProtoInfo(9056, ObjectType.Gold, 0x60000003u,
@@ -469,7 +484,7 @@ namespace Arcanum.Formats.Objects
                 {
                     GoldQuantity = 1,
                 };
-            if (info == null) info = ObjectProtoInfo.CreateEngineOwnedStartingItem(protoNumber);
+            if (info == null) info = ObjectProtoInfo.CreateEngineOwnedBasePrototype(protoNumber);
             _cache[protoNumber] = info;
             return info;
         }

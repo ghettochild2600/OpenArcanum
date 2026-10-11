@@ -94,6 +94,16 @@ namespace Arcanum.Runtime.UI
         public bool Dead { get; internal set; }
         public bool Hostile { get; internal set; }
         public int IconSourceId { get; internal set; }
+        public GameUiItemInspectionView Item { get; internal set; }
+    }
+
+    /// <summary>Shared source item-examination projection used by barter and world-hover presentation.</summary>
+    public sealed class GameUiItemInspectionView
+    {
+        public string Name { get; internal set; }
+        public uint? InventoryArtId { get; internal set; }
+        public IReadOnlyList<string> Lines { get; internal set; }
+        public string Summary => Lines == null ? string.Empty : string.Join("   ", Lines);
     }
 
     public readonly struct GameUiAttributeView
@@ -219,6 +229,8 @@ namespace Arcanum.Runtime.UI
         private int[] _acceptedCharacterSkills;
         private int _acceptedHitPointPoints;
         private int _acceptedFatiguePoints;
+        private readonly Func<long> _utcNowTicks;
+        private long _feedbackExpiresAt;
 
         public GameUiScreen Screen { get; private set; }
         public GameUiCursorMode CursorMode { get; private set; } = GameUiCursorMode.Default;
@@ -243,11 +255,12 @@ namespace Arcanum.Runtime.UI
         public bool IsHudPanelOpen => HudPanel != GameUiHudPanel.None;
 
         public GameUiController(WorldMapSessionCoordinator session, ISessionSaveSlotOperations saveOperations = null,
-            CombatUiController combat = null)
+            CombatUiController combat = null, Func<long> utcNowTicks = null)
         {
             _session = session ?? throw new ArgumentNullException(nameof(session));
             _saveOperations = saveOperations ?? session.SaveSlots;
             Combat = combat ?? new CombatUiController(session);
+            _utcNowTicks = utcNowTicks ?? (() => DateTime.UtcNow.Ticks);
             SaveLoad = new SaveLoadPanelController(_saveOperations);
             Screen = session.PlayerState == null ? GameUiScreen.MainMenu : GameUiScreen.None;
         }
@@ -257,6 +270,11 @@ namespace Arcanum.Runtime.UI
         public void Refresh()
         {
             Combat.Refresh();
+            if (_feedbackExpiresAt > 0 && _utcNowTicks() >= _feedbackExpiresAt)
+            {
+                Feedback = string.Empty;
+                _feedbackExpiresAt = 0;
+            }
             if (!HasPlayer)
             {
                 HudPanel = GameUiHudPanel.None;
@@ -517,7 +535,12 @@ namespace Arcanum.Runtime.UI
             if (wasOpen) _audio?.PresentInterface(InterfaceAudioCue.WindowClose);
         }
 
-        public void ShowFeedback(string message) => Feedback = message ?? string.Empty;
+        public void ShowFeedback(string message)
+        {
+            Feedback = message ?? string.Empty;
+            _feedbackExpiresAt = string.IsNullOrWhiteSpace(Feedback)
+                ? 0 : _utcNowTicks() + TimeSpan.FromSeconds(3).Ticks;
+        }
 
         public bool ToggleSkillsPanel()
         {
@@ -851,9 +874,19 @@ namespace Arcanum.Runtime.UI
 
         public GameUiWorldTargetView ProjectWorldTarget(ArcanumObjectId identity)
         {
-            if (!_session.TryGetObjectState(identity, out PersistentObjectState state)
-                || state.Type is not (ObjectType.Pc or ObjectType.Npc)
-                || !_session.Characters.TryGet(identity, out PersistentCharacterState character)) return null;
+            if (!_session.TryGetObjectState(identity, out PersistentObjectState state)) return null;
+            if (state.Type is not (ObjectType.Pc or ObjectType.Npc))
+            {
+                GameUiItemInspectionView item = ProjectItemInspection(identity);
+                return item == null ? null : new GameUiWorldTargetView
+                {
+                    Identity = identity,
+                    Name = item.Name,
+                    Type = state.Type,
+                    Item = item,
+                };
+            }
+            if (!_session.Characters.TryGet(identity, out PersistentCharacterState character)) return null;
             bool dead = _session.Vitality.TryGet(identity, out _) && _session.Vitality.IsDead(identity);
             bool hostile = state.Type == ObjectType.Npc && HasPlayer && !dead
                            && (_session.Social.IsRememberedHostile(identity, Player)
@@ -878,6 +911,40 @@ namespace Arcanum.Runtime.UI
                     CharacterRace.HalfOgre => 382,
                     _ => 375,
                 },
+            };
+        }
+
+        public GameUiItemInspectionView ProjectItemInspection(ArcanumObjectId identity)
+        {
+            if (!_session.TryGetObjectState(identity, out PersistentObjectState state)
+                || state.Type is ObjectType.Pc or ObjectType.Npc) return null;
+            var lines = new List<string>();
+            if (state.WeaponData != null)
+            {
+                int normal = (int)DamageType.Normal;
+                int fatigue = (int)DamageType.Fatigue;
+                lines.Add($"D:{state.WeaponData.DamageMin[normal]}-{state.WeaponData.DamageMax[normal]}");
+                lines.Add($"FT:{state.WeaponData.DamageMin[fatigue]}-{state.WeaponData.DamageMax[fatigue]}");
+                lines.Add($"Speed:{state.WeaponData.SpeedFactor}");
+            }
+            ObjectProtoInfo prototype = _session.ResolvePrototype(state.PrototypeNumber);
+            if (state.Type == ObjectType.Armor && prototype != null)
+            {
+                lines.Add($"AC:{prototype.ArmorAc.GetValueOrDefault()}");
+                int[] resistance = prototype.ArmorResist;
+                if (resistance != null && resistance.Length > 0)
+                    lines.Add($"DR:{resistance[0]}");
+            }
+            lines.Add($"Weight: {state.UnitWeight} stone");
+            if (state.MaximumHitPoints > 0)
+                lines.Add($"{Math.Max(0, state.MaximumHitPoints - state.HitPointDamage)}/{state.MaximumHitPoints}");
+            if (state.StackQuantity.GetValueOrDefault() > 1)
+                lines.Add($"Quantity: {state.StackQuantity.Value}");
+            return new GameUiItemInspectionView
+            {
+                Name = ItemName(state),
+                InventoryArtId = state.InventoryArtId,
+                Lines = lines,
             };
         }
 
@@ -1440,7 +1507,7 @@ namespace Arcanum.Runtime.UI
 
         private bool Complete(bool success, string message)
         {
-            Feedback = message ?? string.Empty;
+            ShowFeedback(message);
             if (!success) CursorMode = GameUiCursorMode.Invalid;
             else if (CursorMode == GameUiCursorMode.Invalid) CursorMode = GameUiCursorMode.Default;
             return success;

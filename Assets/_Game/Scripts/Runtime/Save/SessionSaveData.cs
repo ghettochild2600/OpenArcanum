@@ -48,6 +48,8 @@ namespace Arcanum.Runtime.Save
         public int Age { get; set; }
         public int SpentCharacterPoints { get; set; }
         public int PregeneratedSourceIndex { get; set; }
+        public int AutoLevelScheme { get; set; }
+        public bool OpeningDialogueStarted { get; set; }
     }
 
     public sealed class SocialSaveData
@@ -170,6 +172,7 @@ namespace Arcanum.Runtime.Save
         public int Type { get; set; }
         public int PrototypeNumber { get; set; }
         public int NameIndex { get; set; }
+        public int DescriptionId { get; set; }
         public int SocialClass { get; set; }
         public int AiData { get; set; }
         public int Origin { get; set; }
@@ -278,6 +281,7 @@ namespace Arcanum.Runtime.Save
         public int Alignment { get; set; }
         public int MagickPoints { get; set; }
         public int TechPoints { get; set; }
+        public int MagickPointAdjustment { get; set; }
         public int TechnologyPointAdjustment { get; set; }
         public int ReactionBase { get; set; }
         public bool IsAloof { get; set; }

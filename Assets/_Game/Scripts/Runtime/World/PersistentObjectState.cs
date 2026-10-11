@@ -19,6 +19,8 @@ namespace Arcanum.Runtime.World
         public int PrototypeNumber { get; }
         /// <summary>Effective source OBJ_F_NAME index used by dialogue/script inventory lookup.</summary>
         public int NameIndex { get; }
+        /// <summary>Effective source OBJ_F_DESCRIPTION, with an authored instance override taking precedence.</summary>
+        public int DescriptionId { get; }
         /// <summary>Effective source NPC social class used by generated class-specific dialogue.</summary>
         public int SocialClass { get; }
         /// <summary>Effective source NPC AI packet row.</summary>
@@ -99,7 +101,8 @@ namespace Arcanum.Runtime.World
             int? origin = null,
             int? faction = null,
             int? writtenSubtype = null,
-            int? writtenStartLine = null)
+            int? writtenStartLine = null,
+            int? descriptionId = null)
         {
             Identity = identity;
             AuthoredParentIdentity = source.ParentIdentity;
@@ -107,6 +110,7 @@ namespace Arcanum.Runtime.World
             Type = source.Type;
             PrototypeNumber = source.PrototypeNumber;
             NameIndex = nameIndex ?? source.NameIndex ?? 0;
+            DescriptionId = descriptionId ?? source.Description ?? 0;
             SocialClass = socialClass ?? source.SocialClass ?? 0;
             AiData = aiData ?? source.AiData ?? 0;
             Origin = origin ?? source.Origin ?? 0;
@@ -163,6 +167,7 @@ namespace Arcanum.Runtime.World
             Type = prototype.Type;
             PrototypeNumber = prototype.ProtoNumber;
             NameIndex = prototype.NameIndex ?? 0;
+            DescriptionId = prototype.Description ?? 0;
             SocialClass = prototype.SocialClass ?? 0;
             AiData = prototype.AiData ?? 0;
             Origin = prototype.Origin ?? 0;
@@ -215,6 +220,7 @@ namespace Arcanum.Runtime.World
             Type = source.Type;
             PrototypeNumber = source.PrototypeNumber;
             NameIndex = source.NameIndex;
+            DescriptionId = source.DescriptionId;
             SocialClass = source.SocialClass;
             AiData = source.AiData;
             Origin = source.Origin;
@@ -252,7 +258,8 @@ namespace Arcanum.Runtime.World
         }
 
         internal PersistentObjectState(ArcanumObjectId identity, ArcanumObjectId authoredParentIdentity,
-            string sourceSector, ObjectType type, int prototypeNumber, int nameIndex, int socialClass,
+            string sourceSector, ObjectType type, int prototypeNumber, int nameIndex, int descriptionId,
+            int socialClass,
             int aiData, int origin, int faction,
             int sourceWorth, int maximumHitPoints, int hitPointDamage, int retailPriceMultiplier,
             int inventorySourceId, ArcanumObjectId substituteInventoryIdentity, int npcFlags,
@@ -270,6 +277,7 @@ namespace Arcanum.Runtime.World
             Type = type;
             PrototypeNumber = prototypeNumber;
             NameIndex = nameIndex;
+            DescriptionId = descriptionId;
             SocialClass = socialClass;
             AiData = aiData;
             Origin = origin;

@@ -169,6 +169,7 @@ namespace Arcanum.Runtime.UI
         private Scrollbar _merchantScrollbar;
         private RectTransform _messageBody;
         private SourceUiImage _messageIcon;
+        private Image _messageItemIcon;
         private readonly SourceUiBitmapText[] _counters = new SourceUiBitmapText[5];
         private int _signature = int.MinValue;
         private bool _dirty = true;
@@ -318,6 +319,12 @@ namespace Arcanum.Runtime.UI
 
             _messageIcon = AddSourceImage("Shopkeeper Message Icon", _bottom,
                 RetailStartingEquipmentLayout.FeedbackIconSourceId, RetailStartingEquipmentLayout.MessageIcon);
+            RectTransform itemIconRoot = AddRect("Shopkeeper Item Icon", _bottom,
+                RetailStartingEquipmentLayout.MessageIcon);
+            _messageItemIcon = itemIconRoot.gameObject.AddComponent<Image>();
+            _messageItemIcon.preserveAspect = true;
+            _messageItemIcon.raycastTarget = false;
+            _messageItemIcon.gameObject.SetActive(false);
             _messageTitle = AddText("Shopkeeper Message Title", _bottom,
                 RetailStartingEquipmentLayout.MessageTitle, 27, SourceWhite);
             _messageBody = AddRect("Shopkeeper Message Body", _bottom,
@@ -558,21 +565,20 @@ namespace Arcanum.Runtime.UI
         private void ShowItem(GameUiMerchantItemView view)
         {
             SetText(_merchantQuote, MerchantLine(view.Direction, view.UnitPrice, view.Item.Identity));
-            SetText(_messageTitle, view.Item.Name?.ToUpperInvariant() ?? string.Empty, SourceWhite);
-            string details = $"Price: {view.UnitPrice}   Weight: {view.Item.Weight}";
-            if (_session.TryGetObjectState(view.Item.Identity, out PersistentObjectState state)
-                && state.WeaponData != null)
+            GameUiItemInspectionView inspection = _controller.ProjectItemInspection(view.Item.Identity);
+            SetText(_messageTitle, inspection?.Name?.ToUpperInvariant()
+                ?? view.Item.Name?.ToUpperInvariant() ?? string.Empty, SourceWhite);
+            string details = inspection?.Summary ?? $"Weight: {view.Item.Weight} stone";
+            RebuildWrappedText(_messageBody, details, 42, 4);
+            RetailItemArtAsset asset = null;
+            bool itemArt = inspection?.InventoryArtId is uint artId
+                           && _resolver.Original.TryResolveInventoryItem(artId, out asset);
+            _messageIcon.gameObject.SetActive(!itemArt);
+            if (_messageItemIcon != null)
             {
-                int normal = (int)Combat.DamageType.Normal;
-                int fatigue = (int)Combat.DamageType.Fatigue;
-                details = $"D:{state.WeaponData.DamageMin[normal]}-{state.WeaponData.DamageMax[normal]} "
-                          + $"FT:{state.WeaponData.DamageMin[fatigue]}-{state.WeaponData.DamageMax[fatigue]} "
-                          + $"Speed:{state.WeaponData.SpeedFactor} Weight:{state.UnitWeight}";
-                if (state.MaximumHitPoints > 0)
-                    details += $" {Math.Max(0, state.MaximumHitPoints - state.HitPointDamage)}/{state.MaximumHitPoints}";
+                _messageItemIcon.gameObject.SetActive(itemArt);
+                if (itemArt) _messageItemIcon.sprite = asset.Sprite;
             }
-            RebuildWrappedText(_messageBody, details, 42, 2);
-            _messageIcon.gameObject.SetActive(true);
         }
 
         private string MerchantLine(EconomyTransactionDirection direction, int price, ArcanumObjectId item)
@@ -614,6 +620,7 @@ namespace Arcanum.Runtime.UI
         private void ClearMessage()
         {
             if (_messageIcon != null) _messageIcon.gameObject.SetActive(false);
+            if (_messageItemIcon != null) _messageItemIcon.gameObject.SetActive(false);
             SetText(_messageTitle, string.Empty);
             if (_messageBody != null) RebuildWrappedText(_messageBody, string.Empty, 42, 2);
         }

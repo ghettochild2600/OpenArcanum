@@ -3,6 +3,7 @@ using System.Linq;
 using Arcanum.Formats.Objects;
 using Arcanum.Formats.Text;
 using Arcanum.Formats.World;
+using Arcanum.Runtime;
 using Arcanum.Runtime.Character;
 using Arcanum.Runtime.Creation;
 using Arcanum.Runtime.Economy;
@@ -210,6 +211,9 @@ namespace Arcanum.Formats.Tests
             Assert.That(suit.InvAid, Is.EqualTo(0x60001202u));
             Assert.That(suit.ArmorAc, Is.EqualTo(2));
             Assert.That(suit.ArmorResist[0], Is.EqualTo(1));
+            Assert.That(library.Get(8133).InvAid, Is.EqualTo(0x600A1202u), "Plain Dress art");
+            Assert.That(library.Get(8134).InvAid, Is.EqualTo(0x600A1202u), "small women's clothing art");
+            Assert.That(library.Get(8135).InvAid, Is.EqualTo(0x600A1202u), "large women's clothing art");
             ObjectProtoInfo lockpicks = library.Get(15178);
             Assert.That(lockpicks.CurrentArtId, Is.EqualTo(0x60140009u));
             Assert.That(lockpicks.InvAid, Is.EqualTo(0x60141009u));
@@ -219,6 +223,61 @@ namespace Arcanum.Formats.Tests
             Assert.That(bandages.CurrentArtId, Is.EqualTo(0x61600009u));
             Assert.That(bandages.InvAid, Is.EqualTo(0x61601009u));
             Assert.That(bandages.GenericFlags, Is.EqualTo(0x8));
+        }
+
+        [Test]
+        public void SourceBasePlainDressWinsOverTheShippedSerializedPrototypeDelta()
+        {
+            string protoDirectory = GameDataLocator.FindDirectory("data/proto");
+            Assert.That(protoDirectory, Is.Not.Null.And.Not.Empty);
+
+            ObjectProtoInfo dress = new ProtoLibrary(protoDirectory).Get(8133);
+
+            Assert.That(dress.Description, Is.EqualTo(8133));
+            Assert.That(dress.CurrentArtId, Is.EqualTo(0x600A0202u));
+            Assert.That(dress.InvAid, Is.EqualTo(0x600A1202u));
+            Assert.That(dress.Weight, Is.EqualTo(40));
+            Assert.That(dress.HpPoints, Is.EqualTo(30));
+            Assert.That(dress.ArmorAc, Is.EqualTo(2));
+            Assert.That(dress.ArmorResist[0], Is.EqualTo(1));
+        }
+
+        [Test]
+        public void EngineOwnedSchematicComponentsResolveDescriptionIdentityWithoutLooseOverrides()
+        {
+            ObjectProtoInfo capacitor = new ProtoLibrary(string.Empty).Get(15072);
+            Assert.That(capacitor, Is.Not.Null);
+            Assert.That(capacitor.Type, Is.EqualTo(ObjectType.Generic));
+            Assert.That(capacitor.Description, Is.EqualTo(15072));
+        }
+
+        [Test]
+        public void SourceAutoLevelNamesAreCatalogAuthorityAndSelectionSurvivesFinalization()
+        {
+            Assert.That(_session.CharacterCreation.Catalog.AutoLevelSchemes.Select(value => value.Id),
+                Does.Contain(76));
+            CharacterCreationSpecification source = Default();
+            source.AutoLevelScheme = 76;
+            Assert.That(_session.CharacterCreation.FinalizeNewGame(source).Succeeded, Is.True);
+            Assert.That(_session.CharacterCreation.Finalized.AutoLevelScheme, Is.EqualTo(76));
+        }
+
+        [Test]
+        public void SourceAutoLevelRuleSpendsLevelUpPointsInRuleOrderAndSurvivesSaveLoad()
+        {
+            CharacterCreationSpecification source = Default();
+            source.AutoLevelScheme = 1;
+            Assert.That(_session.CharacterCreation.FinalizeNewGame(source).Succeeded, Is.True);
+            string json = _session.SaveGames.SerializeCurrentSession();
+            Assert.That(_session.SaveGames.LoadJson(json).Succeeded, Is.True);
+
+            ArcanumObjectId pc = ProductionPlayerLifecycle.DefaultPlayerIdentity;
+            _session.Progression.AwardExperience(pc, CharacterProgressionService.GetExperienceForLevel(2));
+
+            Assert.That(_session.Progression.GetPurchasedSkillPoints(pc, CharacterSkill.Melee), Is.EqualTo(1));
+            Assert.That(_session.Characters.GetBaseAttribute(pc, CharacterAttribute.Strength), Is.EqualTo(9));
+            Assert.That(_session.Progression.GetUnspentCharacterPoints(pc), Is.EqualTo(4));
+            Assert.That(_session.CharacterCreation.Finalized.AutoLevelScheme, Is.EqualTo(1));
         }
 
         [Test]
@@ -424,7 +483,8 @@ namespace Arcanum.Formats.Tests
             MapList maps = MapList.Read(Mes((5000,
                 "Arcanum1-024-fixed, 92958, 82592, Type: START_MAP, WorldMap: 0")));
             return CharacterCreationCatalog.FromMes(rules, text, effects, portraits, maps,
-                Mes((76, "Merwin Tumblebrook")), Mes((551, "123")));
+                Mes((1, "Melee Specialist"), (76, "Merwin Tumblebrook")), Mes((551, "123")),
+                Mes((1, "melee 4, st 9")));
         }
 
         private static ObjectProtoInfo PregeneratedPrototype()

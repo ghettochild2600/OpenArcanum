@@ -497,7 +497,8 @@ namespace Arcanum.Runtime.World
                     instance.Origin ?? proto?.Origin ?? 0,
                     instance.Faction ?? proto?.Faction ?? 0,
                     instance.WrittenSubtype ?? proto?.WrittenSubtype ?? -1,
-                    instance.TextStartLine ?? proto?.TextStartLine ?? 0);
+                    instance.TextStartLine ?? proto?.TextStartLine ?? 0,
+                    instance.Description ?? proto?.Description);
                 if (state == null && Session.IsObjectRemoved(identity))
                 {
                     suppressed++;
@@ -1170,7 +1171,8 @@ namespace Arcanum.Runtime.World
                 MesReader.Read(_vfs.ReadAllBytes("rules/effect.mes")),
                 MesReader.Read(_vfs.ReadAllBytes("portrait/gameport.mes")), maps,
                 MesReader.Read(_vfs.ReadAllBytes("mes/gamelevelname.mes")),
-                MesReader.Read(_vfs.ReadAllBytes("mes/mainmenu.mes"))));
+                MesReader.Read(_vfs.ReadAllBytes("mes/mainmenu.mes")),
+                MesReader.Read(_vfs.ReadAllBytes("rules/gamelevel.mes"))));
             var transitions = new MapTransitionResolver(
                 maps,
                 _vfs.Exists,

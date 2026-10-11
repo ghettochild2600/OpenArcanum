@@ -324,6 +324,7 @@ namespace Arcanum.Runtime.Save
                 Type = (int)state.Type,
                 PrototypeNumber = state.PrototypeNumber,
                 NameIndex = state.NameIndex,
+                DescriptionId = state.DescriptionId,
                 SocialClass = state.SocialClass,
                 AiData = state.AiData,
                 Origin = state.Origin,
@@ -444,6 +445,7 @@ namespace Arcanum.Runtime.Save
                     Alignment = derived.Alignment,
                     MagickPoints = derived.Source.MagickPoints,
                     TechPoints = derived.Source.TechPoints,
+                    MagickPointAdjustment = derived.MagickPointAdjustment,
                     TechnologyPointAdjustment = derived.TechnologyPointAdjustment,
                     ReactionBase = derived.Source.ReactionBase,
                     IsAloof = derived.Source.IsAloof,
@@ -512,7 +514,8 @@ namespace Arcanum.Runtime.Save
                 || data.PortraitId < 1000 || data.Age != CharacterCreationRules.SourceStartingAge
                 || data.SpentCharacterPoints < 0
                 || data.SpentCharacterPoints > CharacterCreationRules.StartingCharacterPoints
-                || data.PregeneratedSourceIndex < 0)
+                || data.PregeneratedSourceIndex < 0
+                || data.AutoLevelScheme is < 0 or >= 200)
                 return Failure(SessionLoadFailure.InvalidCharacter,
                     "The finalized character-creation identity is invalid.");
             plan.CharacterCreation = data;
@@ -806,7 +809,7 @@ namespace Arcanum.Runtime.Save
             {
                 ObjectProtoInfo prototype = _session.ResolvePrototype(value.PrototypeNumber);
                 state = new PersistentObjectState(identity, authoredParent, sourceSector, type, value.PrototypeNumber,
-                    value.NameIndex, value.SocialClass, value.AiData, value.Origin, value.Faction,
+                    value.NameIndex, value.DescriptionId, value.SocialClass, value.AiData, value.Origin, value.Faction,
                     value.SourceWorth, value.MaximumHitPoints,
                     value.HitPointDamage, value.RetailPriceMultiplier, value.InventorySourceId,
                     substituteInventory, value.NpcFlags, value.BuyObjectScriptNum, value.ContainerFlags,
@@ -1024,9 +1027,10 @@ namespace Arcanum.Runtime.Save
                     PersistentCharacterDerivedState state = derived.GetOrCreateRestored(identity,
                         (ObjectType)value.ObjectType, value.PrototypeNumber, derivedSource);
                     state.SetAlignment(source.Alignment);
-                    if (source.TechnologyPointAdjustment < 0)
+                    if (source.MagickPointAdjustment < 0 || source.TechnologyPointAdjustment < 0)
                         return Failure(SessionLoadFailure.InvalidCharacter,
-                            $"Character {identity} technology point adjustment is invalid.");
+                            $"Character {identity} aptitude point adjustment is invalid.");
+                    state.SetMagickPointAdjustment(source.MagickPointAdjustment);
                     state.SetTechnologyPointAdjustment(source.TechnologyPointAdjustment);
                 }
                 plan.Characters = characters;

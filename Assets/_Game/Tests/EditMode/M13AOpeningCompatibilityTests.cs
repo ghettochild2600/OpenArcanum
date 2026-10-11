@@ -11,6 +11,7 @@ using Arcanum.Formats.World;
 using Arcanum.Runtime;
 using Arcanum.Runtime.Campaign;
 using Arcanum.Runtime.Character;
+using Arcanum.Runtime.Creation;
 using Arcanum.Runtime.Dialogue;
 using Arcanum.Runtime.Party;
 using Arcanum.Runtime.UI;
@@ -111,6 +112,41 @@ namespace Arcanum.Formats.Tests
                 Assert.That(session.Campaign.GetFlag(2004), Is.EqualTo(1));
                 Assert.That(session.Campaign.GetPcQuestState(1010), Is.EqualTo(2));
                 Assert.That(session.Campaign.IsRumorKnown(2013), Is.True);
+            }
+            finally { Object.DestroyImmediate(root); }
+        }
+
+        [Test]
+        public void PregeneratedStartMapEntryForcesVirgilOnceAndSaveLoadPreservesTheGuard()
+        {
+            GameObject root = new(nameof(PregeneratedStartMapEntryForcesVirgilOnceAndSaveLoadPreservesTheGuard));
+            try
+            {
+                WorldMapSessionCoordinator session = root.AddComponent<WorldMapSessionCoordinator>();
+                WorldObjectSectorLoader loader = root.AddComponent<WorldObjectSectorLoader>();
+                loader.BindSessionAuthority();
+                Assert.That(session.SelectSector(CrashSector), Is.True,
+                    "the authentic loader must bind the creation catalog and opening dialogue sources");
+
+                CharacterCreationFinalizeResult result = session.CharacterCreation.FinalizePregeneratedCharacter(1);
+
+                Assert.That(result.Succeeded, Is.True, result.Message);
+                Assert.That(session.CharacterCreation.OpeningDialogueStarted, Is.True);
+                Assert.That(session.Dialogue.IsBusy, Is.True);
+                Assert.That(session.Dialogue.NpcIdentity, Is.EqualTo(Virgil));
+                Assert.That(session.Dialogue.DialogueNumber, Is.EqualTo(VirgilDialogueNumber));
+
+                string json = session.SaveGames.SerializeCurrentSession();
+                Assert.That(session.SaveGames.LoadJson(json).Succeeded, Is.True);
+                Assert.That(session.CharacterCreation.OpeningDialogueStarted, Is.True,
+                    "the one-shot guard must survive session restore");
+                Assert.That(session.Dialogue.IsBusy, Is.False,
+                    "restore must not manufacture a duplicate dialogue presenter");
+
+                session.ClearSelectedSector();
+                Assert.That(session.SelectSector(result.Character.StartSector), Is.True);
+                Assert.That(session.Dialogue.IsBusy, Is.False,
+                    "returning to START_MAP must not retrigger the guarded opening");
             }
             finally { Object.DestroyImmediate(root); }
         }

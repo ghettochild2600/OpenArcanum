@@ -7,6 +7,7 @@ using Arcanum.Formats.Objects;
 using Arcanum.Formats.Text;
 using Arcanum.Formats.World;
 using Arcanum.Runtime.Character;
+using Arcanum.Runtime.Dialogue;
 using Arcanum.Runtime.Magic;
 using Arcanum.Runtime.Save;
 using Arcanum.Runtime.Technology;
@@ -160,6 +161,7 @@ namespace Arcanum.Runtime.Creation
         public int Age { get; set; } = CharacterCreationRules.SourceStartingAge;
         public int HitPointPoints { get; set; }
         public int FatiguePoints { get; set; }
+        public int AutoLevelScheme { get; set; }
 
         public int GetAttribute(CharacterAttribute attribute) => _attributes[(int)attribute];
         public void SetAttribute(CharacterAttribute attribute, int value) => _attributes[(int)attribute] = value;
@@ -325,6 +327,16 @@ namespace Arcanum.Runtime.Creation
         }
     }
 
+    public sealed class AutoLevelSchemeDefinition
+    {
+        public int Id { get; }
+        public string Name { get; }
+        public string Rule { get; }
+        public bool HasRule => !string.IsNullOrWhiteSpace(Rule);
+        internal AutoLevelSchemeDefinition(int id, string name, string rule)
+        { Id = id; Name = name; Rule = rule?.Trim(); }
+    }
+
     /// <summary>Parsed retail creation content. Background and portrait coverage expands with the mounted data.</summary>
     public sealed class CharacterCreationCatalog
     {
@@ -333,6 +345,7 @@ namespace Arcanum.Runtime.Creation
         public IReadOnlyDictionary<int, BackgroundDefinition> Backgrounds => _backgrounds;
         public IReadOnlyDictionary<int, PortraitDefinition> Portraits => _portraits;
         public IReadOnlyList<PregeneratedCharacterDefinition> PregeneratedCharacters { get; }
+        public IReadOnlyList<AutoLevelSchemeDefinition> AutoLevelSchemes { get; }
         public MapListEntry StartMap { get; }
         public string StartSector { get; }
         public Vector2 StartTile { get; }
@@ -343,7 +356,8 @@ namespace Arcanum.Runtime.Creation
 
         private CharacterCreationCatalog(Dictionary<int, BackgroundDefinition> backgrounds,
             Dictionary<int, PortraitDefinition> portraits, MapListEntry startMap, MapListEntry? shoppingMap,
-            IReadOnlyList<PregeneratedCharacterDefinition> pregeneratedCharacters)
+            IReadOnlyList<PregeneratedCharacterDefinition> pregeneratedCharacters,
+            IReadOnlyList<AutoLevelSchemeDefinition> autoLevelSchemes)
         {
             _backgrounds = backgrounds;
             _portraits = portraits;
@@ -364,10 +378,16 @@ namespace Arcanum.Runtime.Creation
                 ShoppingTile = shopSector.ToLocal(shopGlobal);
             }
             PregeneratedCharacters = pregeneratedCharacters;
+            AutoLevelSchemes = autoLevelSchemes;
         }
 
         public bool TryGetBackground(int id, out BackgroundDefinition background)
             => _backgrounds.TryGetValue(id, out background);
+        public bool TryGetAutoLevelScheme(int id, out AutoLevelSchemeDefinition scheme)
+        {
+            scheme = AutoLevelSchemes.FirstOrDefault(value => value.Id == id);
+            return scheme != null;
+        }
         public bool IsPortraitLegal(int id, CharacterRace race, CharacterGender gender)
             => _portraits.TryGetValue(id, out PortraitDefinition portrait)
                && portrait.Race == race && portrait.Gender == gender;
@@ -383,7 +403,7 @@ namespace Arcanum.Runtime.Creation
 
         public static CharacterCreationCatalog FromMes(MesFile backgroundRules, MesFile backgroundText,
             MesFile effects, MesFile portraits, MapList maps, MesFile gameLevelNames = null,
-            MesFile mainMenu = null)
+            MesFile mainMenu = null, MesFile gameLevelRules = null)
         {
             if (backgroundRules == null || backgroundText == null || effects == null || portraits == null
                 || maps == null) throw new ArgumentNullException("A complete creation source set is required.");
@@ -425,8 +445,16 @@ namespace Arcanum.Runtime.Creation
             MapListEntry? shopping = maps.Entries.Where(entry => entry.Type == MapType.ShoppingMap)
                 .Select(entry => (MapListEntry?)entry).SingleOrDefault();
             return new CharacterCreationCatalog(definitions, portraitDefinitions, start, shopping,
-                BuildPregeneratedCharacters(gameLevelNames, mainMenu));
+                BuildPregeneratedCharacters(gameLevelNames, mainMenu),
+                BuildAutoLevelSchemes(gameLevelNames, gameLevelRules));
         }
+
+        private static IReadOnlyList<AutoLevelSchemeDefinition> BuildAutoLevelSchemes(MesFile names, MesFile rules)
+            => names?.Entries.Where(value => value.Key is >= 0 and < 200
+                                             && !string.IsNullOrWhiteSpace(value.Value))
+                .OrderBy(value => value.Key)
+                .Select(value => new AutoLevelSchemeDefinition(value.Key, value.Value.Trim(), rules?.Get(value.Key)))
+                .ToArray() ?? Array.Empty<AutoLevelSchemeDefinition>();
 
         private static IReadOnlyList<PregeneratedCharacterDefinition> BuildPregeneratedCharacters(
             MesFile gameLevelNames, MesFile mainMenu)
@@ -587,6 +615,7 @@ namespace Arcanum.Runtime.Creation
         public int SpentCharacterPoints { get; }
         public int RemainingCharacterPoints { get; }
         public int PregeneratedSourceIndex { get; }
+        public int AutoLevelScheme { get; }
         public string StartSector { get; }
         public Vector2 StartTile { get; }
         public uint ArtId { get; }
@@ -602,6 +631,7 @@ namespace Arcanum.Runtime.Creation
             SpentCharacterPoints = spent;
             RemainingCharacterPoints = CharacterCreationRules.StartingCharacterPoints - spent;
             PregeneratedSourceIndex = 0;
+            AutoLevelScheme = source.AutoLevelScheme;
             StartSector = catalog.StartSector; StartTile = catalog.StartTile;
             ArtId = CharacterCreationRules.BuildPlayerArt(Race, Gender);
         }
@@ -636,6 +666,7 @@ namespace Arcanum.Runtime.Creation
                 CharacterCreationRules.StartingCharacterPoints - progression.UnspentCharacterPoints);
             RemainingCharacterPoints = progression.UnspentCharacterPoints;
             PregeneratedSourceIndex = source.SourceIndex;
+            AutoLevelScheme = source.AutoLevelScheme;
             StartSector = catalog.StartSector;
             StartTile = catalog.StartTile;
             ArtId = prototype.CurrentArtId != 0 ? prototype.CurrentArtId
@@ -647,11 +678,13 @@ namespace Arcanum.Runtime.Creation
     public sealed class CharacterCreationStateService
     {
         private readonly WorldMapSessionCoordinator _world;
+        private CharacterProgressionService _autoLevelProgression;
         public CharacterCreationCatalog Catalog { get; private set; }
         public bool IsFinalized => Finalized != null;
         public FinalizedCharacterSpecification Finalized { get; private set; }
         public bool StartingEquipmentActive { get; private set; }
         public ArcanumObjectId StartingEquipmentMerchant { get; private set; }
+        public bool OpeningDialogueStarted { get; private set; }
 
         internal CharacterCreationStateService(WorldMapSessionCoordinator world,
             CharacterCreationCatalog catalog = null)
@@ -661,9 +694,13 @@ namespace Arcanum.Runtime.Creation
             => Catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
         internal void ClearFinalized()
         {
+            if (_autoLevelProgression != null)
+                _autoLevelProgression.LevelChanged -= OnLevelChanged;
+            _autoLevelProgression = null;
             Finalized = null;
             StartingEquipmentActive = false;
             StartingEquipmentMerchant = default;
+            OpeningDialogueStarted = false;
         }
 
         public CharacterCreationValidationResult Validate(CharacterCreationSpecification source)
@@ -771,12 +808,14 @@ namespace Arcanum.Runtime.Creation
                 Commit(finalized, shopping ? Catalog.ShoppingSector : finalized.StartSector,
                     shopping ? Catalog.ShoppingTile : finalized.StartTile);
                 Finalized = finalized;
+                BindAutoLevelProgression();
                 string initialSector = shopping ? Catalog.ShoppingSector : finalized.StartSector;
                 if (!_world.SelectSector(initialSector))
                     throw new InvalidOperationException(shopping
                         ? "The authentic SHOPPING_MAP sector could not be presented."
                         : "The authentic START_MAP sector could not be presented.");
                 if (shopping) BeginStartingEquipment();
+                else TryStartOpeningDialogue();
                 return new CharacterCreationFinalizeResult(CharacterCreationFailure.None, character: finalized);
             }
             catch (Exception ex)
@@ -827,6 +866,7 @@ namespace Arcanum.Runtime.Creation
 
             StartingEquipmentActive = false;
             StartingEquipmentMerchant = default;
+            TryStartOpeningDialogue();
             return true;
         }
 
@@ -904,8 +944,10 @@ namespace Arcanum.Runtime.Creation
                         _world.Campaign.SetFlag(value.SelectionGlobalFlag,
                             value.SourceIndex == selected.SourceIndex ? 1 : 0);
                 Finalized = finalized;
+                BindAutoLevelProgression();
                 if (!_world.SelectSector(finalized.StartSector))
                     throw new InvalidOperationException("The authentic START_MAP sector could not be presented.");
+                TryStartOpeningDialogue();
                 return new CharacterCreationFinalizeResult(CharacterCreationFailure.None, null, finalized);
             }
             catch (Exception exception)
@@ -999,6 +1041,8 @@ namespace Arcanum.Runtime.Creation
                 Age = Finalized.Age,
                 SpentCharacterPoints = Finalized.SpentCharacterPoints,
                 PregeneratedSourceIndex = Finalized.PregeneratedSourceIndex,
+                AutoLevelScheme = Finalized.AutoLevelScheme,
+                OpeningDialogueStarted = OpeningDialogueStarted,
             };
 
         internal void RestoreSaveData(CharacterCreationSaveData data)
@@ -1038,7 +1082,7 @@ namespace Arcanum.Runtime.Creation
                 var source = new CharacterCreationSpecification
                 {
                     Name = data.Name, BackgroundId = data.BackgroundId, PortraitId = data.PortraitId, Age = data.Age,
-                    Race = character.Race, Gender = character.Gender,
+                    Race = character.Race, Gender = character.Gender, AutoLevelScheme = data.AutoLevelScheme,
                 };
                 restored = new FinalizedCharacterSpecification(source, background, Catalog,
                     data.SpentCharacterPoints);
@@ -1046,7 +1090,225 @@ namespace Arcanum.Runtime.Creation
             if (!identityMatches)
                 throw new InvalidOperationException("The saved creation content does not match its source catalog.");
             Finalized = restored;
+            OpeningDialogueStarted = data.OpeningDialogueStarted;
+            BindAutoLevelProgression();
             ApplyPersistentModifiers(pc, background);
+        }
+
+        private void BindAutoLevelProgression()
+        {
+            CharacterProgressionService current = _world.Progression;
+            if (ReferenceEquals(_autoLevelProgression, current)) return;
+            if (_autoLevelProgression != null)
+                _autoLevelProgression.LevelChanged -= OnLevelChanged;
+            _autoLevelProgression = current;
+            _autoLevelProgression.LevelChanged += OnLevelChanged;
+        }
+
+        private void OnLevelChanged(ArcanumObjectId identity)
+        {
+            if (Finalized == null || identity != ProductionPlayerLifecycle.DefaultPlayerIdentity
+                || Finalized.AutoLevelScheme == 0
+                || !Catalog.TryGetAutoLevelScheme(Finalized.AutoLevelScheme,
+                    out AutoLevelSchemeDefinition scheme)
+                || !scheme.HasRule) return;
+            ApplyAutoLevelRule(identity, scheme.Rule);
+        }
+
+        internal bool ApplyAutoLevelRule(ArcanumObjectId identity, string rule)
+        {
+            if (string.IsNullOrWhiteSpace(rule)) return false;
+            foreach (string source in rule.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                string[] parts = source.Trim().Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length != 2 || !int.TryParse(parts[1], NumberStyles.Integer,
+                        CultureInfo.InvariantCulture, out int target) || target < 0
+                    || !ApplyAutoLevelTarget(identity, parts[0], target)) return false;
+            }
+            return true;
+        }
+
+        private bool ApplyAutoLevelTarget(ArcanumObjectId identity, string sourceToken, int target)
+        {
+            string token = sourceToken.ToLowerInvariant();
+            CharacterAttribute? attribute = token switch
+            {
+                "st" => CharacterAttribute.Strength,
+                "dx" => CharacterAttribute.Dexterity,
+                "cn" => CharacterAttribute.Constitution,
+                "be" => CharacterAttribute.Beauty,
+                "in" => CharacterAttribute.Intelligence,
+                "pe" => CharacterAttribute.Perception,
+                "wp" => CharacterAttribute.Willpower,
+                "ch" => CharacterAttribute.Charisma,
+                _ => null,
+            };
+            if (attribute.HasValue) return RaiseAttribute(identity, attribute.Value, target);
+
+            CharacterSkill? skill = token switch
+            {
+                "bow" => CharacterSkill.Bow,
+                "dodge" => CharacterSkill.Dodge,
+                "melee" => CharacterSkill.Melee,
+                "throwing" => CharacterSkill.Throwing,
+                "backstab" => CharacterSkill.Backstab,
+                "pickpocket" => CharacterSkill.PickPocket,
+                "prowling" => CharacterSkill.Prowling,
+                "spottrap" => CharacterSkill.SpotTrap,
+                "gambling" => CharacterSkill.Gambling,
+                "haggle" => CharacterSkill.Haggle,
+                "heal" => CharacterSkill.Heal,
+                "persuasion" => CharacterSkill.Persuasion,
+                "repair" => CharacterSkill.Repair,
+                "firearms" => CharacterSkill.Firearms,
+                "picklock" => CharacterSkill.PickLocks,
+                "armtrap" => CharacterSkill.DisarmTraps,
+                _ => null,
+            };
+            if (skill.HasValue) return RaiseSkill(identity, skill.Value, target);
+
+            SpellCollege? college = token switch
+            {
+                "conveyance" => SpellCollege.Conveyance,
+                "divination" => SpellCollege.Divination,
+                "air" => SpellCollege.Air,
+                "earth" => SpellCollege.Earth,
+                "fire" => SpellCollege.Fire,
+                "water" => SpellCollege.Water,
+                "force" => SpellCollege.Force,
+                "mental" => SpellCollege.Mental,
+                "meta" => SpellCollege.Meta,
+                "morph" => SpellCollege.Morph,
+                "nature" => SpellCollege.Nature,
+                "necro_evil" => SpellCollege.NecromanticBlack,
+                "necro_good" => SpellCollege.NecromanticWhite,
+                "phantasm" => SpellCollege.Phantasm,
+                "summoning" => SpellCollege.Summoning,
+                "temporal" => SpellCollege.Temporal,
+                _ => null,
+            };
+            if (college.HasValue) return RaiseSpellCollege(identity, college.Value, target);
+
+            TechnologyDiscipline? technology = token switch
+            {
+                "anatomical" => TechnologyDiscipline.Herbology,
+                "chemistry" => TechnologyDiscipline.Chemistry,
+                "electric" => TechnologyDiscipline.Electrical,
+                "explosives" => TechnologyDiscipline.Explosives,
+                "gun_smithy" => TechnologyDiscipline.GunSmithy,
+                "mechanical" => TechnologyDiscipline.Mechanical,
+                "smithy" => TechnologyDiscipline.Smithy,
+                "therapeutics" => TechnologyDiscipline.Therapeutics,
+                _ => null,
+            };
+            if (technology.HasValue) return RaiseTechnology(identity, technology.Value, target);
+            if (token == "maxhps") return RaiseVitality(identity, true, target);
+            if (token == "maxfatigue") return RaiseVitality(identity, false, target);
+            return false;
+        }
+
+        private bool RaiseAttribute(ArcanumObjectId identity, CharacterAttribute attribute, int target)
+        {
+            while (_world.Characters.GetBaseAttribute(identity, attribute) < target)
+            {
+                int current = _world.Characters.GetBaseAttribute(identity, attribute);
+                if (_world.Progression.AdjustAttribute(identity, attribute, 1, current)
+                    != RuntimeCharacterAdjustmentResult.Success) return false;
+            }
+            return true;
+        }
+
+        private bool RaiseSkill(ArcanumObjectId identity, CharacterSkill skill, int target)
+        {
+            while (_world.Progression.GetEffectiveSkillRank(identity, skill) < target)
+            {
+                SkillIncreaseResult result = _world.Progression.IncreaseSkill(identity, skill);
+                if (result == SkillIncreaseResult.Success) continue;
+                if (result != SkillIncreaseResult.GoverningAttributeTooLow
+                    || !RaiseAttribute(identity, CharacterSkillRules.GoverningAttribute(skill),
+                        _world.Characters.GetBaseAttribute(identity,
+                            CharacterSkillRules.GoverningAttribute(skill)) + 1)) return false;
+            }
+            return true;
+        }
+
+        private bool RaiseSpellCollege(ArcanumObjectId identity, SpellCollege college, int target)
+        {
+            target = Math.Min(5, target);
+            while (_world.Magic.GetKnownCollegeRank(identity, college) < target)
+            {
+                int next = _world.Magic.GetKnownCollegeRank(identity, college) + 1;
+                if (_world.Progression.GetUnspentCharacterPoints(identity) < 1
+                    || _world.Progression.GetLevel(identity) < CharacterCreationRules.SpellLevelRequirement(next))
+                    return false;
+                if (_world.Characters.GetEffectiveAttribute(identity, CharacterAttribute.Intelligence) < 5)
+                {
+                    if (!RaiseAttribute(identity, CharacterAttribute.Intelligence,
+                            _world.Characters.GetBaseAttribute(identity, CharacterAttribute.Intelligence) + 1))
+                        return false;
+                    continue;
+                }
+                if (_world.Characters.GetEffectiveAttribute(identity, CharacterAttribute.Willpower)
+                    < CharacterCreationRules.SpellWillpowerRequirement(next))
+                {
+                    if (!RaiseAttribute(identity, CharacterAttribute.Willpower,
+                            _world.Characters.GetBaseAttribute(identity, CharacterAttribute.Willpower) + 1))
+                        return false;
+                    continue;
+                }
+                _world.Magic.SetKnownCollegeRank(identity, college, next);
+                _world.Progression.SpendCharacterPoint(identity);
+                _world.DerivedStats.AddMagickPoint(identity);
+            }
+            return true;
+        }
+
+        private bool RaiseTechnology(ArcanumObjectId identity, TechnologyDiscipline discipline, int target)
+        {
+            target = Math.Min(7, target);
+            while ((int)_world.Technology.GetLearnedDegree(identity, discipline) < target)
+            {
+                TechnologyLearningResult result = _world.Technology.LearnNextDegree(identity, discipline);
+                if (result.Succeeded) continue;
+                if (result.Failure != TechnologyLearningFailure.InsufficientIntelligence
+                    || !RaiseAttribute(identity, CharacterAttribute.Intelligence,
+                        _world.Characters.GetBaseAttribute(identity, CharacterAttribute.Intelligence) + 1))
+                    return false;
+            }
+            return true;
+        }
+
+        private bool RaiseVitality(ArcanumObjectId identity, bool hitPoints, int target)
+        {
+            Func<ArcanumObjectId, int> current = hitPoints
+                ? _world.Vitality.GetMaximumHitPoints
+                : _world.Vitality.GetMaximumFatigue;
+            while (current(identity) < target)
+            {
+                if (_world.Progression.GetUnspentCharacterPoints(identity) < 1) return false;
+                _world.Vitality.AdjustPurchasedPoint(identity, hitPoints, 1);
+                _world.Progression.SpendCharacterPoint(identity);
+            }
+            return true;
+        }
+
+        private bool TryStartOpeningDialogue()
+        {
+            if (OpeningDialogueStarted || Finalized == null || _world.PlayerState == null
+                || !string.Equals(_world.SelectedSector, Finalized.StartSector,
+                    StringComparison.OrdinalIgnoreCase)) return false;
+            PersistentObjectState virgil = _world.States.Values
+                .Where(value => value.Type == ObjectType.Npc && value.DialogNum == 1324 && !value.Off
+                                && value.Placement.Kind == ObjectPlacementKind.World
+                                && string.Equals(value.Placement.Sector, Finalized.StartSector,
+                                    StringComparison.OrdinalIgnoreCase))
+                .OrderBy(value => value.Identity.Key, StringComparer.Ordinal)
+                .FirstOrDefault();
+            if (virgil == null) return false;
+            DialogueStartStatus status = _world.Dialogue.Start(_world.PlayerState.Identity, virgil.Identity);
+            if (status != DialogueStartStatus.Started) return false;
+            OpeningDialogueStarted = true;
+            return true;
         }
 
         /// <summary>
@@ -1150,6 +1412,15 @@ namespace Arcanum.Runtime.Creation
                 out BackgroundDefinition background) ? background.SkillModifiers.GetValueOrDefault(skill) : 0;
             return Math.Max(0, checked(source.GetSkillPoints(skill) * CharacterSkillRules.SkillUnitsPerPoint
                                        + modifier));
+        }
+
+        /// <summary>Creation-candidate projection of source <c>tech_degree_level_get</c>.</summary>
+        public int GetEffectiveTechnologyLevel(CharacterCreationSpecification source,
+            TechnologyDiscipline discipline)
+        {
+            if (source == null) throw new ArgumentNullException(nameof(source));
+            return PhaseOneTechnologyCatalog.EffectiveLevel(
+                (TechnologyDegree)source.GetTechnologyRank(discipline));
         }
 
         private static CharacterCreationValidationResult Fail(CharacterCreationFailure failure, string message,

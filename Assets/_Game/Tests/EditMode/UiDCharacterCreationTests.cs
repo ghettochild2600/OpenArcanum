@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using Arcanum.Formats.Objects;
 using Arcanum.Formats.Text;
 using Arcanum.Formats.World;
 using Arcanum.Runtime.Character;
@@ -49,6 +50,13 @@ namespace Arcanum.Formats.Tests
             _root = new GameObject(nameof(UiDCharacterCreationTests));
             _session = _root.AddComponent<WorldMapSessionCoordinator>();
             _session.BindCharacterCreationSource(CreateCatalog());
+            _session.BindPrototypeSource(number => number is >= 6001 and <= 6207
+                ? new ObjectProtoInfo(number, ObjectType.Generic, 0x70000000u,
+                    description: number, invAid: (uint)number)
+                : null);
+            _session.BindDescriptionSource(number => number is >= 6001 and <= 6207
+                ? $"Source Component {number}"
+                : null);
             _session.BindSpellPresentationSource(SpellPresentationCatalog.FromMes(CreateSpellText()));
             _session.BindCraftingSource(CreateSchematicCatalog());
             _controller = new GameUiController(_session, new EmptySlots());
@@ -301,24 +309,28 @@ namespace Arcanum.Formats.Tests
         }
 
         [Test]
-        public void EditorUsesBottomBarNavigationAndId568FailsClosedAsAutoLevelSchemes()
+        public void EditorUsesSourceAutoLevelHoverWindowAndSelection()
         {
             _view.ContinueToEditor();
             AssertTopLeft("Editor Back", new Vector2(69, 55));
             AssertTopLeft("Editor Continue", new Vector2(675, 55));
             AssertTopLeft("Auto-Level Schemes", new Vector2(754, 21));
 
-            int strength = _controller.CreationDraft.GetAttribute(CharacterAttribute.Strength);
-            int remaining = _controller.CreationValidation.RemainingCharacterPoints;
+            Hover("Auto-Level Schemes", true);
+            Assert.That(Text("Editor Message Title").Text, Is.Not.Empty);
+            Assert.That(Wrapped("Editor Message Body"), Is.Not.Empty);
+            Hover("Auto-Level Schemes", false);
             Invoke("Auto-Level Schemes");
 
             Assert.That(_view.Stage, Is.EqualTo(RetailCharacterCreationStage.Editor));
             Assert.That(_session.PlayerState, Is.Null);
-            Assert.That(_controller.CreationDraft.GetAttribute(CharacterAttribute.Strength),
-                Is.EqualTo(strength));
-            Assert.That(_controller.CreationValidation.RemainingCharacterPoints,
-                Is.EqualTo(remaining));
-            Assert.That(_controller.Feedback, Does.Contain("Auto-level schemes"));
+            Assert.That(_view.GetComponentsInChildren<SourceUiImage>(true)
+                .Single(value => value.name == "Auto-Level Schemes Window").Key.SourceId, Is.EqualTo(567));
+            Assert.That(Text("Auto-Level Scheme 1").Text, Is.EqualTo("Melee Specialist"));
+            Invoke("Select Auto-Level Scheme 1");
+            Assert.That(_controller.CreationDraft.AutoLevelScheme, Is.EqualTo(1));
+            Assert.That(_view.GetComponentsInChildren<SourceUiBitmapText>(true)
+                .Any(value => value.name == "Auto-Level Scheme 1"), Is.False);
         }
 
         [Test]
@@ -587,11 +599,22 @@ namespace Arcanum.Formats.Tests
             _view.ContinueToEditor();
             Invoke("Technology");
             Assert.That(_view.EditorPage, Is.EqualTo(RetailCreationEditorPage.Technology));
+            Assert.That(Text("Technology Discipline Icon").FontSourceId, Is.EqualTo(300));
+            Assert.That(Text("Technology Name").FontSourceId, Is.EqualTo(301));
             Invoke("Increase Technology");
             Assert.That(_controller.CreationDraft.GetTechnologyRank(TechnologyDiscipline.Herbology), Is.EqualTo(1));
             Assert.That(Text("Technology Name").Text, Is.EqualTo("Herbology Novice"));
             Assert.That(Text("Technology Expertise").Text, Is.EqualTo("10"));
             Assert.That(Text("Schematic 1").Text, Is.EqualTo("Herbology Schematic 1"));
+            Assert.That(Text("Schematic Components 1").Text,
+                Is.EqualTo("[Source Component 6001]+[Source Component 6101]"));
+            Assert.That(Text("Schematic Components 1").Text, Does.Not.Match(@"\[\d+\]"));
+            Hover("Schematic 1", true);
+            Assert.That(Text("Editor Message Title").Text, Is.Not.Empty);
+            Assert.That(Text("Editor Message Requirement").Text, Is.EqualTo("Minimum IN: 5"));
+            Assert.That(Wrapped("Editor Message Body"), Is.Not.Empty);
+            Hover("Schematic 1", false);
+            Assert.That(Text("Editor Message Title").Text, Is.Empty);
         }
 
         [Test]
@@ -727,7 +750,8 @@ namespace Arcanum.Formats.Tests
                 (1009, "HAM1"), (1010, "HOM1"), (1011, "HOF1"), (1012, "HGM1"));
             MapList maps = MapList.Read(Mes((5000,
                 "Arcanum1-024-fixed, 92958, 82592, Type: START_MAP, WorldMap: 0")));
-            return CharacterCreationCatalog.FromMes(rules, text, effects, portraits, maps);
+            return CharacterCreationCatalog.FromMes(rules, text, effects, portraits, maps,
+                Mes((0, "No Scheme"), (1, "Melee Specialist")));
         }
 
         private static MesFile CreateSpellText()

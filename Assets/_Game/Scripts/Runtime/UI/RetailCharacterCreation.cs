@@ -209,6 +209,8 @@ namespace Arcanum.Runtime.UI
         private int _skillGroup;
         private SpellCollege _selectedCollege;
         private TechnologyDiscipline _selectedTechnology;
+        private bool _autoLevelSchemesOpen;
+        private int _autoLevelSchemeOffset;
         private IdentityContext _identityContext = IdentityContext.Background;
         private string _identityValidation = string.Empty;
 
@@ -312,6 +314,13 @@ namespace Arcanum.Runtime.UI
             if (!IsVisible) return;
             if (Stage == RetailCharacterCreationStage.Editor)
             {
+                if (_autoLevelSchemesOpen)
+                {
+                    _autoLevelSchemesOpen = false;
+                    _editorSignature = int.MinValue;
+                    Synchronize();
+                    return;
+                }
                 Stage = RetailCharacterCreationStage.Identity;
                 _editorSignature = int.MinValue;
                 Synchronize();
@@ -535,8 +544,9 @@ namespace Arcanum.Runtime.UI
             BindHint(_pageButtons[RetailCreationEditorPage.Skills].gameObject, 132, () => 0);
             BindHint(_pageButtons[RetailCreationEditorPage.Technology].gameObject, 133, () => 0);
             BindHint(_pageButtons[RetailCreationEditorPage.Magic].gameObject, 134, () => 0);
-            AddSourceButtonTopLeft("Auto-Level Schemes", _editor, 568, new Vector2(754f, 21f),
-                RejectAutoLevelSchemes);
+            SourceUiButton autoLevel = AddSourceButtonTopLeft("Auto-Level Schemes", _editor, 568,
+                new Vector2(754f, 21f), OpenAutoLevelSchemes);
+            BindHint(autoLevel.gameObject, 140, () => 0);
             SourceUiButton continueButton = AddSourceButtonTopLeft("Editor Continue", _editorNavigation, 321,
                 BottomBarLocal(RetailCharacterCreationLayout.ContinueButton), FinalizeCharacter);
             SourceUiButton backButton = AddSourceButtonTopLeft("Editor Back", _editorNavigation, 323,
@@ -641,7 +651,8 @@ namespace Arcanum.Runtime.UI
             CharacterCreationSpecification draft = _controller.CreationDraft;
             if (draft == null) return;
             int signature = DraftSignature(draft) * 31 + (int)EditorPage * 7 + _skillGroup * 11
-                            + (int)_selectedCollege * 13 + (int)_selectedTechnology * 17;
+                            + (int)_selectedCollege * 13 + (int)_selectedTechnology * 17
+                            + (_autoLevelSchemesOpen ? 1009 : 0) + _autoLevelSchemeOffset * 1013;
             if (signature == _editorSignature) return;
             _editorSignature = signature;
             SetPortrait(_editorPortrait, draft);
@@ -680,9 +691,10 @@ namespace Arcanum.Runtime.UI
             RebuildEditorPanel(draft);
         }
 
-        private void RejectAutoLevelSchemes()
+        private void OpenAutoLevelSchemes()
         {
-            _controller.ShowFeedback("Auto-level schemes are not available in the current runtime.");
+            _autoLevelSchemesOpen = true;
+            _autoLevelSchemeOffset = 0;
             _editorSignature = int.MinValue;
             Synchronize();
         }
@@ -691,12 +703,59 @@ namespace Arcanum.Runtime.UI
         {
             ClearChildren(_editorPanel);
             _skillGauges.Clear();
+            if (_autoLevelSchemesOpen)
+            {
+                BuildAutoLevelSchemesPanel(draft);
+                return;
+            }
             switch (EditorPage)
             {
                 case RetailCreationEditorPage.Skills: BuildSkillsPanel(draft); break;
                 case RetailCreationEditorPage.Technology: BuildTechnologyPanel(draft); break;
                 case RetailCreationEditorPage.Magic: BuildMagicPanel(draft); break;
             }
+        }
+
+        private void BuildAutoLevelSchemesPanel(CharacterCreationSpecification draft)
+        {
+            AddSourceImage("Auto-Level Schemes Window", _editorPanel, 567, new Rect(0f, 0f, 235f, 325f));
+            IReadOnlyList<AutoLevelSchemeDefinition> schemes = _session.CharacterCreation.Catalog.AutoLevelSchemes;
+            AutoLevelSchemeDefinition selected = schemes.FirstOrDefault(value => value.Id == draft.AutoLevelScheme);
+            SourceUiBitmapText heading = AddText("Selected Auto-Level Scheme", _editorPanel,
+                new Rect(23f, 18f, 177f, 18f), selected?.Name ?? string.Empty, 229, SourceBlue);
+            SetCenteredText(heading, heading.Text);
+            int maximumOffset = Math.Max(0, schemes.Count - 15);
+            _autoLevelSchemeOffset = Mathf.Clamp(_autoLevelSchemeOffset, 0, maximumOffset);
+            for (int row = 0; row < 15 && row + _autoLevelSchemeOffset < schemes.Count; row++)
+            {
+                AutoLevelSchemeDefinition scheme = schemes[row + _autoLevelSchemeOffset];
+                int captured = scheme.Id;
+                Rect rect = new(23f, 66f + row * 16f, 177f, 15f);
+                SourceUiBitmapText label = AddText($"Auto-Level Scheme {scheme.Id}", _editorPanel, rect,
+                    scheme.Name, 229, scheme.Id == draft.AutoLevelScheme ? SourceBlue : SourceWhite);
+                Button button = AddTransparentButton($"Select Auto-Level Scheme {scheme.Id}", _editorPanel,
+                    rect, () =>
+                    {
+                        draft.AutoLevelScheme = captured;
+                        _autoLevelSchemesOpen = false;
+                        _editorSignature = int.MinValue;
+                        Synchronize();
+                    });
+                button.transform.SetAsLastSibling();
+            }
+            RectTransform scrollArea = AddRect("Auto-Level Scheme Scroll", _editorPanel,
+                new Rect(209f, 60f, 17f, 255f));
+            Image scrollHit = scrollArea.gameObject.AddComponent<Image>();
+            scrollHit.color = Color.clear;
+            scrollHit.raycastTarget = true;
+            scrollArea.gameObject.AddComponent<RetailStartingEquipmentScrollTarget>().Bind(delta =>
+            {
+                int next = Mathf.Clamp(_autoLevelSchemeOffset - (int)Mathf.Sign(delta), 0, maximumOffset);
+                if (next == _autoLevelSchemeOffset) return;
+                _autoLevelSchemeOffset = next;
+                _editorSignature = int.MinValue;
+                Synchronize();
+            });
         }
 
         private void BuildSkillsPanel(CharacterCreationSpecification draft)
@@ -746,10 +805,15 @@ namespace Arcanum.Runtime.UI
             }
             int rank = draft.GetTechnologyRank(_selectedTechnology);
             TechnologyDegree learnedDegree = (TechnologyDegree)rank;
-            AddText("Technology Name", _editorPanel, new Rect(17f, 69f, 205f, 19f),
+            AddText("Technology Discipline Icon", _editorPanel, new Rect(17f, 69f, 18f, 19f),
+                ((char)('1' + (int)_selectedTechnology)).ToString(), 300, SourceWhite);
+            SourceUiBitmapText technologyName = AddText("Technology Name", _editorPanel,
+                new Rect(35f, 69f, 159f, 19f),
                 $"{Friendly(_selectedTechnology)} {Friendly(learnedDegree)}", 301, SourceWhite);
+            SetCenteredText(technologyName, technologyName.Text);
             AddText("Technology Expertise", _editorPanel, new Rect(194f, 72f, 31f, 15f),
-                PhaseOneTechnologyCatalog.EffectiveLevel(learnedDegree).ToString(), 229, SourceBlue);
+                _session.CharacterCreation.GetEffectiveTechnologyLevel(draft, _selectedTechnology).ToString(),
+                229, SourceBlue);
             IReadOnlyList<SchematicDefinition> schematics = _session.Crafting.ProjectBuiltIn(_selectedTechnology);
             for (int index = 0; index < schematics.Count; index++)
             {
@@ -759,12 +823,15 @@ namespace Arcanum.Runtime.UI
                 if (degree <= rank)
                     AddSourceImageTopLeft($"Degree {degree} Icon", _editorPanel,
                         TechnologyDegreeIcons[(int)_selectedTechnology], new Vector2(8f, 96f + 33f * index));
-                AddText($"Schematic {degree}", _editorPanel, new Rect(46f, 94f + 33f * index, 175f, 16f),
+                SourceUiBitmapText name = AddText($"Schematic {degree}", _editorPanel,
+                    new Rect(46f, 94f + 33f * index, 175f, 16f),
                     schematic.Name, 301, tint);
                 string first = _session.ResolvePrototypeDisplayName(schematic.ComponentOneAliases[0]);
                 string second = _session.ResolvePrototypeDisplayName(schematic.ComponentTwoAliases[0]);
-                AddText($"Schematic Components {degree}", _editorPanel,
-                    new Rect(46f, 109f + 33f * index, 175f, 14f), $"{first} + {second}", 483, tint);
+                SourceUiBitmapText components = AddText($"Schematic Components {degree}", _editorPanel,
+                    new Rect(46f, 109f + 33f * index, 175f, 14f), $"[{first}]+[{second}]", 483, tint);
+                BindTechnologyHint(name.gameObject, _selectedTechnology, (TechnologyDegree)degree);
+                BindTechnologyHint(components.gameObject, _selectedTechnology, (TechnologyDegree)degree);
             }
             if (rank < 7)
                 AddSourceButtonTopLeft("Increase Technology", _editorPanel, 647,
@@ -873,6 +940,7 @@ namespace Arcanum.Runtime.UI
 
         private void SelectPage(RetailCreationEditorPage page)
         {
+            _autoLevelSchemesOpen = false;
             EditorPage = page;
             _editorSignature = int.MinValue;
             Synchronize();
@@ -983,6 +1051,32 @@ namespace Arcanum.Runtime.UI
             SourceHoverHintTarget hint = target.GetComponent<SourceHoverHintTarget>()
                                          ?? target.AddComponent<SourceHoverHintTarget>();
             hint.Bind(() => ShowSkillHint(skill), ClearHint);
+        }
+
+        private void BindTechnologyHint(GameObject target, TechnologyDiscipline discipline,
+            TechnologyDegree degree)
+        {
+            if (target.GetComponent<Graphic>() == null)
+            {
+                Image hitArea = target.AddComponent<Image>();
+                hitArea.color = Color.clear;
+                hitArea.raycastTarget = true;
+            }
+            SourceHoverHintTarget hint = target.GetComponent<SourceHoverHintTarget>()
+                                         ?? target.AddComponent<SourceHoverHintTarget>();
+            hint.Bind(() => ShowTechnologyHint(discipline, degree), ClearHint);
+        }
+
+        private void ShowTechnologyHint(TechnologyDiscipline discipline, TechnologyDegree degree)
+        {
+            int rank = (int)degree;
+            string title = _resolver.Original.TryReadMessage("mes/tech.mes", 8 + rank,
+                out string sourceTitle) ? sourceTitle.Trim() : Friendly(degree);
+            int descriptionId = 24 + (int)discipline * 8 + rank;
+            string body = _resolver.Original.TryReadMessage("mes/tech.mes", descriptionId,
+                out string sourceBody) ? sourceBody.Trim() : string.Empty;
+            string requirement = $"Minimum IN: {CharacterCreationRules.TechnologyIntelligenceRequirement(rank)}";
+            RebuildEditorMessage(title, body, requirement, true);
         }
 
         private void BindNavigationHint(GameObject target, bool next, bool identity)
@@ -1331,6 +1425,7 @@ namespace Arcanum.Runtime.UI
                 hash = hash * 31 + value.BackgroundId;
                 hash = hash * 31 + value.HitPointPoints;
                 hash = hash * 31 + value.FatiguePoints;
+                hash = hash * 31 + value.AutoLevelScheme;
                 foreach (CharacterAttribute item in Attributes) hash = hash * 31 + value.GetAttribute(item);
                 foreach (CharacterSkill item in CharacterSkillRules.AllSkills)
                     hash = hash * 31 + value.GetSkillPoints(item);

@@ -155,6 +155,7 @@ namespace Arcanum.Runtime.UI
         private SourceUiBitmapText _messageLineOne;
         private SourceUiBitmapText _messageLineTwo;
         private SourceUiImage _worldTargetIcon;
+        private Image _worldTargetItemIcon;
         private SourceUiBitmapText _worldTargetName;
         private SourceUiBitmapText _worldTargetStatus;
         private GameUiWorldTargetView _worldTarget;
@@ -252,28 +253,33 @@ namespace Arcanum.Runtime.UI
             RefreshMaintainedSpellSlots(LastProjection.MaintainedSpellSlotCapacity, LastProjection.ActiveEffects);
 
             bool targetVisible = _worldTarget != null && _controller.Screen == GameUiScreen.None;
-            _worldTargetIcon.gameObject.SetActive(targetVisible);
+            bool itemTarget = targetVisible && _worldTarget.Item != null;
+            _worldTargetIcon.gameObject.SetActive(targetVisible && !itemTarget);
+            _worldTargetItemIcon.gameObject.SetActive(itemTarget);
             _worldTargetName.gameObject.SetActive(targetVisible);
             _worldTargetStatus.gameObject.SetActive(targetVisible);
             _messageLineOne.gameObject.SetActive(!targetVisible);
             _messageLineTwo.gameObject.SetActive(!targetVisible);
             if (targetVisible)
             {
-                _worldTargetIcon.SetKey(new UiAssetKey(_worldTarget.IconSourceId));
+                if (itemTarget && _worldTarget.Item.InventoryArtId is uint inventoryArt
+                    && _resolver.Original.TryResolveInventoryItem(inventoryArt, out RetailItemArtAsset asset))
+                    _worldTargetItemIcon.sprite = asset.Sprite;
+                else if (!itemTarget)
+                    _worldTargetIcon.SetKey(new UiAssetKey(_worldTarget.IconSourceId));
                 SetText(_worldTargetName, Clip(_worldTarget.Name, 38),
                     _worldTarget.Hostile ? new Color32(244, 43, 25, 255) : SourceText);
-                SetText(_worldTargetStatus, _worldTarget.Dead
-                    ? SourceMessage("mes/intgame.mes", 16, string.Empty) : string.Empty,
+                string status = itemTarget ? _worldTarget.Item.Summary
+                    : _worldTarget.Dead ? SourceMessage("mes/intgame.mes", 16, string.Empty) : string.Empty;
+                SetText(_worldTargetStatus, Clip(status, 46),
                     new Color32(244, 43, 25, 255));
             }
             else
             {
-                string feedback = string.IsNullOrWhiteSpace(_controller.Feedback)
-                    ? LastProjection.Weapon : _controller.Feedback;
-                SetText(_messageLineOne, Clip(feedback, 46), SourceText);
+                SetText(_messageLineOne, Clip(_controller.Feedback, 46), SourceText);
                 string combat = LastProjection.CombatActive
                     ? $"{LastProjection.CombatMode}  AP {LastProjection.ActionPoints}/{LastProjection.MaximumActionPoints}  {LastProjection.Readiness}"
-                    : $"{LastProjection.Readiness}  {LastProjection.Weapon}";
+                    : string.Empty;
                 SetText(_messageLineTwo, Clip(combat, 46), SourceText);
             }
             SetCounter(_fateText, Mathf.Max(0, LastProjection.FatePoints), 2);
@@ -394,6 +400,12 @@ namespace Arcanum.Runtime.UI
                 RetailGameplayHudLayout.TextFontSourceId);
             _worldTargetIcon = AddImage("World Target Icon", _bottomWindow, new UiAssetKey(375),
                 RetailGameplayHudLayout.BottomWindowLocal(RetailGameplayHudLayout.WorldTargetIcon), false);
+            RectTransform targetItemIcon = AddRect("World Item Icon", _bottomWindow,
+                RetailGameplayHudLayout.BottomWindowLocal(RetailGameplayHudLayout.WorldTargetIcon));
+            _worldTargetItemIcon = targetItemIcon.gameObject.AddComponent<Image>();
+            _worldTargetItemIcon.preserveAspect = true;
+            _worldTargetItemIcon.raycastTarget = false;
+            _worldTargetItemIcon.gameObject.SetActive(false);
             _worldTargetName = AddText("World Target Name", _bottomWindow,
                 RetailGameplayHudLayout.BottomWindowLocal(RetailGameplayHudLayout.WorldTargetName), string.Empty, 27);
             _worldTargetStatus = AddText("World Target Status", _bottomWindow,

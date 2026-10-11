@@ -168,6 +168,12 @@ namespace Arcanum.Runtime.Character
         public int GetEffectiveMagickPoints(ArcanumObjectId identity) => GetEffectiveMagickPoints(Get(identity));
         public int GetEffectiveTechPoints(ArcanumObjectId identity) => GetEffectiveTechPoints(Get(identity));
 
+        internal void AddMagickPoint(ArcanumObjectId identity)
+        {
+            PersistentCharacterDerivedState state = Get(identity);
+            state.SetMagickPointAdjustment(checked(state.MagickPointAdjustment + 1));
+        }
+
         internal void AddTechnologyPoint(ArcanumObjectId identity)
         {
             PersistentCharacterDerivedState state = Get(identity);
@@ -222,20 +228,26 @@ namespace Arcanum.Runtime.Character
 
         internal sealed class Snapshot
         {
-            private readonly Dictionary<ArcanumObjectId, int> _alignments = new();
+            private readonly Dictionary<ArcanumObjectId, (int alignment, int magick, int technology)> _values = new();
             private readonly Dictionary<ReactionKey, int> _reactionAdjustments;
 
             internal Snapshot(CharacterDerivedStatService service)
             {
-                foreach (var pair in service._states) _alignments.Add(pair.Key, pair.Value.Alignment);
+                foreach (var pair in service._states)
+                    _values.Add(pair.Key, (pair.Value.Alignment, pair.Value.MagickPointAdjustment,
+                        pair.Value.TechnologyPointAdjustment));
                 _reactionAdjustments = new Dictionary<ReactionKey, int>(service._reactionAdjustments);
             }
 
             internal void Restore(CharacterDerivedStatService service)
             {
-                foreach (var pair in _alignments)
+                foreach (var pair in _values)
                     if (service._states.TryGetValue(pair.Key, out PersistentCharacterDerivedState state))
-                        state.SetAlignment(pair.Value);
+                    {
+                        state.SetAlignment(pair.Value.alignment);
+                        state.SetMagickPointAdjustment(pair.Value.magick);
+                        state.SetTechnologyPointAdjustment(pair.Value.technology);
+                    }
                 service._reactionAdjustments.Clear();
                 foreach (var pair in _reactionAdjustments) service._reactionAdjustments.Add(pair.Key, pair.Value);
             }
@@ -283,7 +295,8 @@ namespace Arcanum.Runtime.Character
             => _characters.GetEffectiveAttribute(identity, attribute);
 
         private int GetEffectiveMagickPoints(PersistentCharacterDerivedState state)
-            => Clamp(state.Source.MagickPoints + CharacterDerivedStatRules.AptitudePointAdjustment(
+            => Clamp(state.Source.MagickPoints + state.MagickPointAdjustment
+                + CharacterDerivedStatRules.AptitudePointAdjustment(
                 _characters.Get(state.Identity).Race, true), 0, CharacterDerivedStatRules.MaximumAptitudePoints);
 
         private int GetEffectiveTechPoints(PersistentCharacterDerivedState state)

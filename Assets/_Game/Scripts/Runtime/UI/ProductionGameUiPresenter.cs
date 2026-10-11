@@ -1049,8 +1049,8 @@ namespace Arcanum.Runtime.UI
             screen.z = Mathf.Abs(camera.transform.position.z - _loader.transform.position.z);
             Vector3 world = camera.ScreenToWorldPoint(screen);
             if (!WorldObjectTargetSelector.TrySelectInteractionTarget(_loader.SpriteOwners, world,
-                    out ArcanumObjectId target, out ObjectType type)
-                || type is not (ObjectType.Pc or ObjectType.Npc))
+                    out ArcanumObjectId target, out _)
+                || Controller.ProjectWorldTarget(target) == null)
             {
                 ClearWorldHover();
                 _retailGameplayHud?.SetWorldTarget(null);

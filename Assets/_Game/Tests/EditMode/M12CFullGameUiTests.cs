@@ -72,6 +72,27 @@ namespace Arcanum.Formats.Tests
         }
 
         [Test]
+        public void CombatReadyFeedbackExpiresWithoutChangingAuthoritativeReadyState()
+        {
+            long now = DateTime.UtcNow.Ticks;
+            var controller = new GameUiController(_session, new EmptySlots(), utcNowTicks: () => now);
+
+            Assert.That(controller.ToggleCombatMode(), Is.True, controller.Feedback);
+            Assert.That(controller.Feedback, Is.EqualTo("Combat ready."));
+            now += TimeSpan.FromSeconds(4).Ticks;
+            controller.Refresh();
+
+            Assert.That(controller.Feedback, Is.Empty);
+            Assert.That(controller.ProjectHud().CombatActive, Is.True);
+            Assert.That(controller.ToggleCombatMode(), Is.True, controller.Feedback);
+            Assert.That(controller.Feedback, Is.EqualTo("Combat mode ended."));
+            now += TimeSpan.FromSeconds(4).Ticks;
+            controller.Refresh();
+            Assert.That(controller.Feedback, Is.Empty);
+            Assert.That(controller.ProjectHud().CombatActive, Is.False);
+        }
+
+        [Test]
         public void ModalOpenAndCloseOwnOnlyPresentationState()
         {
             PersistentPlayerState player = _session.PlayerState;
