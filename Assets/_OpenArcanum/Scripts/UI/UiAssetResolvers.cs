@@ -340,14 +340,16 @@ namespace OpenArcanum.UI
         }
 
         private static bool UsesSourceFontAlpha(int sourceId)
-            => sourceId == SourceUiBitmapText.DefaultFontSourceId;
+            => sourceId == SourceUiBitmapText.Morph15FontSourceId
+               || sourceId == SourceUiBitmapText.Flare12FontSourceId
+               || sourceId == SourceUiBitmapText.DefaultFontSourceId;
 
         private static void ApplySourceFontAlpha(Texture2D texture)
         {
             // TIG's font blitter ignores the glyph palette RGB, paints the requested constant tint, and uses the
             // palette red channel as per-pixel coverage (TIG_ART_BLT_BLEND_COLOR_CONST | BLEND_ALPHA_SRC).
             // The ordinary ART texture path makes every non-zero palette index opaque, which turns the soft outer
-            // coverage of morph30font into a visibly oversized, heavy silhouette.
+            // coverage of the source bitmap fonts into visibly oversized, heavy silhouettes.
             Color32[] pixels = texture.GetPixels32();
             for (int index = 0; index < pixels.Length; index++)
             {

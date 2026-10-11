@@ -330,7 +330,7 @@ namespace Arcanum.Runtime.UI
         {
             CharacterCreationCatalog catalog = _session.CharacterCreation.Catalog;
             if (catalog == null) return Reject("Character-creation source data is unavailable.");
-            CreationDraft = new CharacterCreationSpecification { Name = "Player" };
+            CreationDraft = new CharacterCreationSpecification();
             PortraitDefinition portrait = catalog.Portraits.Values.FirstOrDefault(value =>
                 value.Race == CreationDraft.Race && value.Gender == CreationDraft.Gender);
             BackgroundDefinition background = catalog.Backgrounds.Values.OrderBy(value => value.Id)

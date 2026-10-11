@@ -63,7 +63,7 @@ namespace Arcanum.Runtime.UI
         public static readonly Vector2 ContinueButton = new(675f, 496f);
         public static readonly Rect Portrait = new(95f, 28f, 64f, 64f);
         public static readonly Rect PortraitDraw = new(95f, 28f, 128f, 128f);
-        public static readonly Rect Name = new(46f, 183f, 228f, 18f);
+        public static readonly Rect Name = new(46f, 183f, 228f, 19f);
         public static readonly Rect Gender = new(66f, 243f, 186f, 19f);
         public static readonly Rect Race = new(66f, 293f, 186f, 19f);
         public static readonly Rect Background = new(66f, 343f, 186f, 19f);
@@ -118,6 +118,7 @@ namespace Arcanum.Runtime.UI
         private enum IdentityContext { Background, Gender, Race }
 
         private static readonly Color SourceWhite = new Color32(250, 250, 250, 255);
+        private static readonly Color SourceRed = new Color32(255, 50, 50, 255);
         private static readonly Color SourceYellow = new Color32(255, 210, 0, 255);
         private static readonly Color SourceBlue = new Color32(108, 155, 215, 255);
         private static readonly Color SourceGray = new Color32(135, 135, 135, 255);
@@ -166,6 +167,7 @@ namespace Arcanum.Runtime.UI
         private SourceUiImage _identityBottomBackground;
         private SourceUiImage _editorBottomBackground;
         private InputField _nameInput;
+        private SourceUiBitmapText _nameText;
         private Image _identityPortrait;
         private Image _editorPortrait;
         private SourceUiBitmapText _genderText;
@@ -431,12 +433,12 @@ namespace Arcanum.Runtime.UI
                 MainWindowLocal(new Vector2(255f, 282f)), () => CycleGender(1));
 
             _nameInput = AddNameInput(_identity, RetailCharacterCreationLayout.Name);
-            _genderText = AddText("Gender", _identity, RetailCharacterCreationLayout.Gender, string.Empty, 27,
-                SourceWhite);
-            _raceText = AddText("Race", _identity, RetailCharacterCreationLayout.Race, string.Empty, 27,
-                SourceWhite);
+            _genderText = AddText("Gender", _identity, RetailCharacterCreationLayout.Gender, string.Empty,
+                SourceUiBitmapText.Flare12FontSourceId, SourceRed);
+            _raceText = AddText("Race", _identity, RetailCharacterCreationLayout.Race, string.Empty,
+                SourceUiBitmapText.Flare12FontSourceId, SourceRed);
             _backgroundText = AddText("Background", _identity, RetailCharacterCreationLayout.Background,
-                string.Empty, 27, SourceWhite);
+                string.Empty, SourceUiBitmapText.Flare12FontSourceId, SourceRed);
             Button genderContext = AddTransparentButton("Gender Context", _identity,
                 new Rect(22f, 231f, 276f, 39f), () => { });
             Button raceContext = AddTransparentButton("Race Context", _identity,
@@ -454,8 +456,10 @@ namespace Arcanum.Runtime.UI
                 BindIdentityHint(button.gameObject, IdentityContext.Race);
             foreach (SourceUiButton button in new[] { previousBackground, nextBackground })
                 BindIdentityHint(button.gameObject, IdentityContext.Background);
-            AddText("Initial Stats", _identity, RetailCharacterCreationLayout.InitialStatsTitle,
-                "Initial Stats", 27, SourceYellow);
+            SourceUiBitmapText initialStatsTitle = AddText("Initial Stats", _identity,
+                RetailCharacterCreationLayout.InitialStatsTitle, string.Empty,
+                SourceUiBitmapText.Morph15FontSourceId, SourceWhite);
+            SetCenteredText(initialStatsTitle, "Initial Stats", SourceWhite);
 
             Rect[] stats =
             {
@@ -466,19 +470,21 @@ namespace Arcanum.Runtime.UI
             };
             for (int index = 0; index < stats.Length; index++)
                 _identityStats.Add(AddText($"Initial {InitialAttributeOrder[index]}", _identity, stats[index],
-                    string.Empty, 229, SourceWhite));
+                    string.Empty, SourceUiBitmapText.Flare12FontSourceId, SourceWhite));
             Rect[] derivedStats =
             {
-                new(472f, 46f, 140f, 15f), new(472f, 66f, 140f, 15f),
-                new(472f, 86f, 140f, 15f), new(472f, 106f, 140f, 15f),
+                new(472f, 46f, 139f, 15f), new(472f, 66f, 139f, 15f),
+                new(472f, 86f, 139f, 15f), new(472f, 106f, 139f, 15f),
                 new(618f, 46f, 142f, 15f), new(618f, 65f, 147f, 15f),
-                new(618f, 86f, 142f, 15f),
+                new(618f, 86f, 147f, 15f),
             };
             for (int index = 0; index < derivedStats.Length; index++)
                 _identityDerivedStats.Add(AddText($"Initial Derived {index}", _identity, derivedStats[index],
-                    string.Empty, 229, SourceWhite));
+                    string.Empty, SourceUiBitmapText.Flare12FontSourceId, SourceWhite));
             _descriptionTitle = AddText("Description Title", _identity,
-                RetailCharacterCreationLayout.DescriptionTitle, "Background", 27, SourceYellow);
+                RetailCharacterCreationLayout.DescriptionTitle, string.Empty,
+                SourceUiBitmapText.Morph15FontSourceId, SourceWhite);
+            SetCenteredText(_descriptionTitle, "Background", SourceWhite);
             _identityDescription = AddRect("Description Body", _identity,
                 RetailCharacterCreationLayout.DescriptionBody);
             _identityMessageIcon = AddSourceImage("Identity Message Icon", _identityNavigation,
@@ -627,16 +633,17 @@ namespace Arcanum.Runtime.UI
 
             if (_nameInput != null && !_nameInput.isFocused && _nameInput.text != draft.Name)
                 _nameInput.SetTextWithoutNotify(draft.Name ?? string.Empty);
-            SetCenteredText(_genderText, Friendly(draft.Gender));
-            SetCenteredText(_raceText, Friendly(draft.Race));
+            SetNamePresentation(draft.Name);
+            SetCenteredText(_genderText, Friendly(draft.Gender), SourceRed);
+            SetCenteredText(_raceText, Friendly(draft.Race), SourceRed);
             BackgroundDefinition background = CurrentBackground(draft);
-            SetCenteredText(_backgroundText, background?.Name ?? "Unavailable");
+            SetCenteredText(_backgroundText, background?.Name ?? "Unavailable", SourceRed);
             SetPortrait(_identityPortrait, draft);
             CharacterCreationInitialStats initial = _session.CharacterCreation.ProjectInitialStats(draft);
             for (int index = 0; index < InitialAttributeOrder.Length; index++)
             {
                 CharacterAttribute attribute = InitialAttributeOrder[index];
-                SetText(_identityStats[index], $"{Short(attribute)}:{initial.GetAttribute(attribute)}");
+                SetText(_identityStats[index], $"{Short(attribute)}: {initial.GetAttribute(attribute)}");
             }
             SetInitialDerivedStats(_identityDerivedStats, initial);
             RefreshIdentityContext(draft, background);
@@ -1158,22 +1165,22 @@ namespace Arcanum.Runtime.UI
             switch (_identityContext)
             {
                 case IdentityContext.Gender:
-                    SetText(_descriptionTitle, string.Empty);
-                    RebuildWrappedText(_identityDescription,
-                        ReadMainMenuMessage(742 + (int)draft.Gender, string.Empty), 52, 11);
+                    SetCenteredText(_descriptionTitle, string.Empty, SourceWhite);
+                    RebuildSourceWrappedText(_identityDescription,
+                        ReadMainMenuMessage(742 + (int)draft.Gender, string.Empty), 12);
                     break;
                 case IdentityContext.Race:
-                    SetText(_descriptionTitle, ReadMainMenuMessage(745, "Race"));
-                    RebuildWrappedText(_identityDescription,
+                    SetCenteredText(_descriptionTitle, ReadMainMenuMessage(745, "Race"), SourceWhite);
+                    RebuildSourceWrappedText(_identityDescription,
                         ReadMainMenuMessage(770 + 2 * (int)draft.Race + (int)draft.Gender, string.Empty),
-                        52, 11);
+                        12);
                     break;
                 default:
                     RetailMessageWindowProjection projection = RetailMessageWindowProjection.FromSource(
                         background?.Description ?? string.Empty);
-                    SetText(_descriptionTitle, background?.Name ?? projection.Title);
-                    RebuildWrappedText(_identityDescription,
-                        string.IsNullOrEmpty(projection.Body) ? projection.Title : projection.Body, 52, 11);
+                    SetCenteredText(_descriptionTitle, background?.Name ?? projection.Title, SourceWhite);
+                    RebuildSourceWrappedText(_identityDescription,
+                        string.IsNullOrEmpty(projection.Body) ? projection.Title : projection.Body, 12);
                     break;
             }
         }
@@ -1207,24 +1214,20 @@ namespace Arcanum.Runtime.UI
             Text text = textRect.gameObject.AddComponent<Text>();
             text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             text.fontSize = 14;
-            text.color = SourceWhite;
+            text.color = Color.clear;
             text.alignment = TextAnchor.MiddleCenter;
             text.supportRichText = false;
             input.textComponent = text;
+            input.customCaretColor = true;
+            input.caretColor = SourceRed;
+            input.caretWidth = 1;
 
-            RectTransform placeholderRect = AddRect("Placeholder", root,
-                new Rect(3f, 0f, rect.width - 6f, rect.height));
-            Text placeholder = placeholderRect.gameObject.AddComponent<Text>();
-            placeholder.font = text.font;
-            placeholder.fontSize = 14;
-            placeholder.fontStyle = FontStyle.Italic;
-            placeholder.color = new Color32(135, 135, 135, 255);
-            placeholder.alignment = TextAnchor.MiddleCenter;
-            placeholder.text = "Choose Name";
-            input.placeholder = placeholder;
+            _nameText = AddText("Name Bitmap Value", root, new Rect(0f, 0f, rect.width, rect.height),
+                string.Empty, SourceUiBitmapText.Morph15FontSourceId, SourceRed);
             input.onValueChanged.AddListener(value =>
             {
                 _controller?.SetCreationName(value);
+                SetNamePresentation(value);
                 _identitySignature = int.MinValue;
             });
             return input;
@@ -1333,6 +1336,9 @@ namespace Arcanum.Runtime.UI
                 -bounds.y);
         }
 
+        private void SetNamePresentation(string value)
+            => SetCenteredText(_nameText, string.IsNullOrEmpty(value) ? "Choose Name" : value, SourceRed);
+
         private void SetRightAlignedText(SourceUiBitmapText text, string value, Rect bounds, Color tint)
         {
             if (text == null) return;
@@ -1354,6 +1360,81 @@ namespace Arcanum.Runtime.UI
             for (int index = 0; index < lines.Count; index++)
                 AddText($"Line {index + 1}", parent, new Rect(0f, index * 15f, parent.rect.width, 15f),
                     lines[index], 229, SourceWhite);
+        }
+
+        private void RebuildSourceWrappedText(RectTransform parent, string value, int maxLines)
+        {
+            ClearChildren(parent);
+            List<string> lines = WrapSourceText(value, Mathf.RoundToInt(parent.rect.width), maxLines);
+            for (int index = 0; index < lines.Count; index++)
+                AddText($"Line {index + 1}", parent, new Rect(0f, index * 15f, parent.rect.width, 15f),
+                    lines[index], SourceUiBitmapText.Flare12FontSourceId, SourceWhite);
+        }
+
+        private List<string> WrapSourceText(string value, int maxWidth, int maxLines)
+        {
+            var lines = new List<string>();
+            string text = (value ?? string.Empty).Replace("\r\n", "\n").Replace('\r', '\n');
+            int offset = 0;
+            while (offset < text.Length && lines.Count < maxLines)
+            {
+                int relativeBreak = FindSourceLineBreak(text, offset, maxWidth);
+                int remaining = text.Length - offset;
+                bool reachedEnd = relativeBreak >= remaining;
+                int consumed = reachedEnd ? remaining : Math.Max(1, relativeBreak + 1);
+                string line = text.Substring(offset, consumed).TrimEnd(' ', '\t', '\n');
+                lines.Add(line);
+                offset += consumed;
+            }
+            return lines;
+        }
+
+        private int FindSourceLineBreak(string text, int offset, int maxWidth)
+        {
+            int totalWidth = 0;
+            int previousBreak = -1;
+            int position = 0;
+            int remaining = text.Length - offset;
+            while (position < remaining)
+            {
+                char character = text[offset + position];
+                if (character == '\n')
+                {
+                    previousBreak = position;
+                    break;
+                }
+
+                if (!TryGetGlyphMetrics(character, out int glyphWidth, out int advance))
+                    return Math.Max(1, position);
+                if (character == ' ') previousBreak = position;
+                int width = position + 1 < remaining ? advance : glyphWidth;
+                if (totalWidth + width > maxWidth) break;
+                totalWidth += advance;
+                if (character == '-') previousBreak = position;
+                position++;
+            }
+
+            if (position < remaining && previousBreak != position && previousBreak >= 0)
+                position = previousBreak;
+            return position;
+        }
+
+        private bool TryGetGlyphMetrics(char character, out int glyphWidth, out int advance)
+        {
+            int frame = (byte)character - 31;
+            if (frame >= 0 && _resolver.TryResolve(
+                    new UiAssetKey(SourceUiBitmapText.Flare12FontSourceId, frame: frame),
+                    out UiResolvedAsset asset))
+            {
+                glyphWidth = asset.LogicalSize.x;
+                advance = asset.Hotspot.x > 0 ? asset.Hotspot.x : glyphWidth;
+                if (character == '\t') advance += 20;
+                return true;
+            }
+
+            glyphWidth = 0;
+            advance = 0;
+            return false;
         }
 
         private void RebuildEditorMessage(string value)
@@ -1499,6 +1580,7 @@ namespace Arcanum.Runtime.UI
             _identityBottomBackground = null;
             _editorBottomBackground = null;
             _nameInput = null;
+            _nameText = null;
             _identityPortrait = null;
             _editorPortrait = null;
             _identityStats.Clear();
@@ -1525,10 +1607,10 @@ namespace Arcanum.Runtime.UI
         {
             string[] values =
             {
-                $"Carry Weight:{stats.CarryWeight}", $"Damage Bonus:{stats.DamageBonus}",
-                $"AC Adjustment:{stats.ArmorClassAdjustment}", $"Speed:{stats.Speed}",
-                $"Heal Rate:{stats.HealRate}", $"Poison Recovery:{stats.PoisonRecovery}",
-                $"Reaction Modifier:{stats.ReactionModifier}",
+                $"Carry Weight: {stats.CarryWeight}", $"Damage Bonus: {stats.DamageBonus}",
+                $"AC Adjustment: {stats.ArmorClassAdjustment}", $"Speed: {stats.Speed}",
+                $"Heal Rate: {stats.HealRate}", $"Poison Recovery: {stats.PoisonRecovery}",
+                $"Reaction Modifier: {stats.ReactionModifier}",
             };
             for (int index = 0; index < targets.Count; index++)
                 SetText(targets[index], values[index]);

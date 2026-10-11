@@ -64,6 +64,8 @@ namespace Arcanum.Formats.Tests
             _view = _root.AddComponent<RetailCharacterCreationView>();
             _view.Bind(_controller, _session, _skin);
             _view.Synchronize();
+            _view.NameInput.text = "Ada";
+            _view.Synchronize();
         }
 
         [TearDown]
@@ -116,7 +118,7 @@ namespace Arcanum.Formats.Tests
             Assert.That(RetailCharacterCreationLayout.EditorPortrait, Is.EqualTo(new Rect(141, 21, 66, 66)));
             Assert.That(((RectTransform)_view.IdentityPortraitImage.transform).sizeDelta,
                 Is.EqualTo(new Vector2(128, 128)));
-            Assert.That(RetailCharacterCreationLayout.Name, Is.EqualTo(new Rect(46, 183, 228, 18)));
+            Assert.That(RetailCharacterCreationLayout.Name, Is.EqualTo(new Rect(46, 183, 228, 19)));
             Assert.That(RetailCharacterCreationLayout.Gender, Is.EqualTo(new Rect(66, 243, 186, 19)));
             Assert.That(RetailCharacterCreationLayout.Race, Is.EqualTo(new Rect(66, 293, 186, 19)));
             Assert.That(RetailCharacterCreationLayout.Background, Is.EqualTo(new Rect(66, 343, 186, 19)));
@@ -140,6 +142,57 @@ namespace Arcanum.Formats.Tests
             AssertTopLeft("Next Background", new Vector2(255, 382 - 41));
             AssertTopLeft("Identity Back", new Vector2(69, 55));
             AssertTopLeft("Identity Continue", new Vector2(675, 55));
+        }
+
+        [Test]
+        public void IdentityTypographyMatchesRuntimeSourceFontsColorsSpacingAndWrapping()
+        {
+            _view.NameInput.text = string.Empty;
+            _view.Synchronize();
+            Assert.That(_controller.CreationDraft.Name, Is.Empty);
+            SourceUiBitmapText name = Text("Name Bitmap Value");
+            Assert.That(name.Text, Is.EqualTo("Choose Name"));
+            Assert.That(name.FontSourceId, Is.EqualTo(SourceUiBitmapText.Morph15FontSourceId));
+            AssertGlyphTint(name, new Color32(255, 50, 50, 255));
+            AssertCenteredWithin((RectTransform)name.transform, new Rect(0f, 0f, 228f, 19f));
+
+            foreach (string selector in new[] { "Gender", "Race", "Background" })
+            {
+                SourceUiBitmapText text = Text(selector);
+                Assert.That(text.FontSourceId, Is.EqualTo(SourceUiBitmapText.Flare12FontSourceId), selector);
+                AssertGlyphTint(text, new Color32(255, 50, 50, 255));
+            }
+
+            SourceUiBitmapText statsTitle = Text("Initial Stats");
+            Assert.That(statsTitle.FontSourceId, Is.EqualTo(SourceUiBitmapText.Morph15FontSourceId));
+            AssertGlyphTint(statsTitle, new Color32(250, 250, 250, 255));
+            AssertCenteredWithin((RectTransform)statsTitle.transform,
+                RetailCharacterCreationLayout.InitialStatsTitle);
+
+            Hover("Race Context", true);
+            SourceUiBitmapText descriptionTitle = Text("Description Title");
+            Assert.That(descriptionTitle.Text, Is.EqualTo("Race"));
+            Assert.That(descriptionTitle.FontSourceId, Is.EqualTo(SourceUiBitmapText.Morph15FontSourceId));
+            AssertGlyphTint(descriptionTitle, new Color32(250, 250, 250, 255));
+            AssertCenteredWithin((RectTransform)descriptionTitle.transform,
+                RetailCharacterCreationLayout.DescriptionTitle);
+            SourceUiBitmapText[] lines = _view.GetComponentsInChildren<RectTransform>(true)
+                .Single(value => value.name == "Description Body")
+                .GetComponentsInChildren<SourceUiBitmapText>(true);
+            Assert.That(lines, Has.Length.LessThanOrEqualTo(12));
+            Assert.That(lines[0].Text,
+                Is.EqualTo("Humans have no special modifiers to their stats and abilities. Humans are the"));
+            Assert.That(lines.All(value => value.FontSourceId == SourceUiBitmapText.Flare12FontSourceId), Is.True);
+        }
+
+        [TestCase(SourceUiBitmapText.Morph15FontSourceId)]
+        [TestCase(SourceUiBitmapText.Flare12FontSourceId)]
+        public void SourceCharacterCreationFontsPreservePaletteCoverageAsAlpha(int sourceId)
+        {
+            Assert.That(_retail.TryResolve(new UiAssetKey(sourceId, frame: 'A' - 31),
+                out UiResolvedAsset glyph), Is.True);
+            Assert.That(glyph.Texture.GetPixels32().Any(pixel => pixel.a > 0 && pixel.a < 255), Is.True,
+                $"source font {sourceId} should retain anti-aliased palette coverage");
         }
 
         [Test]
@@ -266,33 +319,33 @@ namespace Arcanum.Formats.Tests
             Assert.That(_session.CharacterCreation.GetEffectiveAttribute(_controller.CreationDraft,
                 CharacterAttribute.Beauty), Is.EqualTo(8));
             SourceUiBitmapText[] labels = _view.GetComponentsInChildren<SourceUiBitmapText>(true);
-            Assert.That(labels.Single(value => value.name == "Initial Strength").Text, Is.EqualTo("ST:8"));
-            Assert.That(labels.Single(value => value.name == "Initial Constitution").Text, Is.EqualTo("CN:8"));
-            Assert.That(labels.Single(value => value.name == "Initial Dexterity").Text, Is.EqualTo("DX:8"));
-            Assert.That(labels.Single(value => value.name == "Initial Willpower").Text, Is.EqualTo("WP:8"));
+            Assert.That(labels.Single(value => value.name == "Initial Strength").Text, Is.EqualTo("ST: 8"));
+            Assert.That(labels.Single(value => value.name == "Initial Constitution").Text, Is.EqualTo("CN: 8"));
+            Assert.That(labels.Single(value => value.name == "Initial Dexterity").Text, Is.EqualTo("DX: 8"));
+            Assert.That(labels.Single(value => value.name == "Initial Willpower").Text, Is.EqualTo("WP: 8"));
             Assert.That(labels.Single(value => value.name == "Initial Derived 0").Text,
-                Is.EqualTo("Carry Weight:4000"));
+                Is.EqualTo("Carry Weight: 4000"));
             Assert.That(labels.Single(value => value.name == "Initial Derived 1").Text,
-                Is.EqualTo("Damage Bonus:-1"));
+                Is.EqualTo("Damage Bonus: -1"));
             Assert.That(labels.Single(value => value.name == "Initial Derived 2").Text,
-                Is.EqualTo("AC Adjustment:-2"));
-            Assert.That(labels.Single(value => value.name == "Initial Derived 3").Text, Is.EqualTo("Speed:8"));
-            Assert.That(labels.Single(value => value.name == "Initial Derived 4").Text, Is.EqualTo("Heal Rate:3"));
+                Is.EqualTo("AC Adjustment: -2"));
+            Assert.That(labels.Single(value => value.name == "Initial Derived 3").Text, Is.EqualTo("Speed: 8"));
+            Assert.That(labels.Single(value => value.name == "Initial Derived 4").Text, Is.EqualTo("Heal Rate: 3"));
             Assert.That(labels.Single(value => value.name == "Initial Derived 5").Text,
-                Is.EqualTo("Poison Recovery:8"));
+                Is.EqualTo("Poison Recovery: 8"));
             Assert.That(labels.Single(value => value.name == "Initial Derived 6").Text,
-                Is.EqualTo("Reaction Modifier:-7"));
+                Is.EqualTo("Reaction Modifier: -7"));
             Invoke("Next Background");
             Assert.That(_session.CharacterCreation.GetEffectiveAttribute(_controller.CreationDraft,
                 CharacterAttribute.Beauty), Is.EqualTo(7));
             _view.Synchronize();
             SourceUiBitmapText beauty = _view.GetComponentsInChildren<SourceUiBitmapText>(true)
                 .Single(value => value.name == "Initial Beauty");
-            Assert.That(beauty.Text, Is.EqualTo("BE:7"));
+            Assert.That(beauty.Text, Is.EqualTo("BE: 7"));
             SourceUiBitmapText reaction = _view.GetComponentsInChildren<SourceUiBitmapText>(true)
                 .Single(value => value.name == "Initial Derived 6");
             Assert.That(reaction.Text,
-                Is.EqualTo("Reaction Modifier:-12"));
+                Is.EqualTo("Reaction Modifier: -12"));
             Invoke("Previous Background");
             Assert.That(_session.CharacterCreation.GetEffectiveAttribute(_controller.CreationDraft,
                 CharacterAttribute.Beauty), Is.EqualTo(8));
@@ -730,6 +783,12 @@ namespace Arcanum.Formats.Tests
             Assert.That(x, Is.GreaterThanOrEqualTo(bounds.x));
             Assert.That(x + text.sizeDelta.x, Is.LessThanOrEqualTo(bounds.xMax + .001f));
             Assert.That(x + text.sizeDelta.x * .5f, Is.EqualTo(bounds.center.x).Within(.501f));
+        }
+
+        private static void AssertGlyphTint(SourceUiBitmapText text, Color32 expected)
+        {
+            Image glyph = text.GetComponentsInChildren<Image>(true).First();
+            Assert.That((Color32)glyph.color, Is.EqualTo(expected), text.name);
         }
 
         private static CharacterCreationCatalog CreateCatalog()

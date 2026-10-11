@@ -15,6 +15,8 @@ namespace OpenArcanum.UI
     [RequireComponent(typeof(RectTransform))]
     public sealed class SourceUiBitmapText : MonoBehaviour
     {
+        public const int Morph15FontSourceId = 27;
+        public const int Flare12FontSourceId = 229;
         public const int DefaultFontSourceId = 327;
 
         private readonly List<Image> _glyphs = new List<Image>();
