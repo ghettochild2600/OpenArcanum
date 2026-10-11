@@ -352,7 +352,7 @@ namespace Arcanum.Runtime.UI
             rect.pivot = new Vector2(0f, 1f);
             rect.anchoredPosition = offset;
             SourceUiBitmapText bitmap = child.GetComponent<SourceUiBitmapText>();
-            bitmap.Bind(resolver, text.ToUpperInvariant(), tint);
+            bitmap.Bind(resolver, text, tint);
             return bitmap;
         }
 

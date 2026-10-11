@@ -279,6 +279,23 @@ namespace Arcanum.Formats.Tests
         }
 
         [Test]
+        public void MainMenuGlyphPassesPreserveSourceMessageCasingAndFont()
+        {
+            RetailMainMenuView view = _root.AddComponent<RetailMainMenuView>();
+            view.Bind(_controller, () => { }, _skin);
+
+            foreach (RetailMainMenuButtonView button in view.Buttons)
+            {
+                SourceUiBitmapText[] passes = button.GetComponentsInChildren<SourceUiBitmapText>(true);
+                Assert.That(passes, Has.Length.EqualTo(3));
+                Assert.That(passes.Select(value => value.Text),
+                    Has.All.EqualTo(button.Entry.Label));
+                Assert.That(passes.Select(value => value.FontSourceId),
+                    Has.All.EqualTo(SourceUiBitmapText.DefaultFontSourceId));
+            }
+        }
+
+        [Test]
         public void HoverPressedAndSelectedStatesKeepExactHitGeometry()
         {
             RetailMainMenuView view = _root.AddComponent<RetailMainMenuView>();
