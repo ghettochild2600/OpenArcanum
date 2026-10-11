@@ -196,6 +196,69 @@ namespace Arcanum.Formats.Tests
         }
 
         [Test]
+        public void Flare12GlyphsUseTigGammaSpaceCoverageBlendAtNativePixelAlignment()
+        {
+            SourceUiBitmapText label = Text("Initial Strength");
+            Image[] glyphs = label.GetComponentsInChildren<Image>(true);
+            Assert.That(glyphs, Is.Not.Empty);
+            Assert.That(glyphs.Select(value => value.material.shader.name),
+                Has.All.EqualTo(SourceUiBitmapText.TigBitmapFontShaderName));
+
+            foreach (Image glyph in glyphs)
+            {
+                Assert.That(glyph.mainTexture.filterMode, Is.EqualTo(FilterMode.Point));
+                Assert.That(glyph.sprite.pixelsPerUnit, Is.EqualTo(1f));
+                Vector2 origin = ((RectTransform)glyph.transform).anchoredPosition;
+                Assert.That(origin.x, Is.EqualTo(Mathf.Round(origin.x)));
+                Assert.That(origin.y, Is.EqualTo(Mathf.Round(origin.y)));
+            }
+
+            Assert.That((Color32)glyphs[0].color, Is.EqualTo(new Color32(250, 250, 250, 255)));
+            Assert.That(TigBlendOverBlack(250, 32), Is.EqualTo(31));
+            Assert.That(TigBlendOverBlack(250, 128), Is.EqualTo(125));
+            Assert.That(TigBlendOverBlack(250, 255), Is.EqualTo(249));
+
+            int legacyLinearMidpoint = Mathf.RoundToInt(
+                Mathf.LinearToGammaSpace((250f / 255f) * (128f / 255f)) * 255f);
+            Assert.That(legacyLinearMidpoint, Is.GreaterThanOrEqualTo(185));
+            Assert.That(legacyLinearMidpoint - TigBlendOverBlack(250, 128), Is.GreaterThan(50),
+                "The regression must distinguish TIG byte-space coverage from Unity's default linear UI blend.");
+
+            var expectedCoverage = new[]
+            {
+                new { Character = 'S', Pixels = 43, Unique = 13, Full = 14, Intermediate = 29, Sum = 7018,
+                    Histogram = "16:3,32:1,48:3,68:4,85:1,101:2,117:3,137:2,186:5,206:2,222:1,238:2,255:14" },
+                new { Character = '8', Pixels = 52, Unique = 14, Full = 13, Intermediate = 39, Sum = 8669,
+                    Histogram = "16:5,32:1,48:1,68:1,85:4,101:2,137:5,153:5,170:1,186:4,206:4,222:2,238:4,255:13" },
+                new { Character = 'R', Pixels = 54, Unique = 12, Full = 16, Intermediate = 38, Sum = 9131,
+                    Histogram = "16:5,32:1,48:1,68:1,117:12,137:1,153:4,170:2,206:8,222:2,238:1,255:16" },
+                new { Character = 'g', Pixels = 43, Unique = 13, Full = 7, Intermediate = 36, Sum = 6880,
+                    Histogram = "16:1,48:2,85:3,101:3,117:9,137:2,153:2,170:1,186:6,206:4,222:2,238:1,255:7" },
+                new { Character = 'W', Pixels = 69, Unique = 15, Full = 23, Intermediate = 46, Sum = 11779,
+                    Histogram = "16:4,32:3,48:1,68:4,85:4,101:2,117:3,137:7,153:2,170:2,186:3,206:6,222:3,238:2,255:23" }
+            };
+            foreach (var expected in expectedCoverage)
+            {
+                Assert.That(_retail.TryResolve(
+                    new UiAssetKey(SourceUiBitmapText.Flare12FontSourceId, frame: expected.Character - 31),
+                    out UiResolvedAsset representative), Is.True);
+                byte[] coverage = representative.Texture.GetPixels32()
+                    .Select(pixel => pixel.a)
+                    .Where(alpha => alpha > 0)
+                    .ToArray();
+                string histogram = string.Join(",", coverage.GroupBy(alpha => alpha)
+                    .OrderBy(group => group.Key)
+                    .Select(group => $"{group.Key}:{group.Count()}"));
+                Assert.That(coverage.Length, Is.EqualTo(expected.Pixels), expected.Character.ToString());
+                Assert.That(coverage.Distinct().Count(), Is.EqualTo(expected.Unique), expected.Character.ToString());
+                Assert.That(coverage.Count(alpha => alpha == 255), Is.EqualTo(expected.Full), expected.Character.ToString());
+                Assert.That(coverage.Count(alpha => alpha < 255), Is.EqualTo(expected.Intermediate), expected.Character.ToString());
+                Assert.That(coverage.Sum(alpha => alpha), Is.EqualTo(expected.Sum), expected.Character.ToString());
+                Assert.That(histogram, Is.EqualTo(expected.Histogram), expected.Character.ToString());
+            }
+        }
+
+        [Test]
         [Category("UID2CharacterCreation")]
         public void PartialWindowOwnsIndependentTopCenterAndBottomRegions()
         {
@@ -824,6 +887,9 @@ namespace Arcanum.Formats.Tests
             Image glyph = text.GetComponentsInChildren<Image>(true).First();
             Assert.That((Color32)glyph.color, Is.EqualTo(expected), text.name);
         }
+
+        private static int TigBlendOverBlack(int tint, int coverage)
+            => tint * coverage >> 8;
 
         private static CharacterCreationCatalog CreateCatalog()
         {

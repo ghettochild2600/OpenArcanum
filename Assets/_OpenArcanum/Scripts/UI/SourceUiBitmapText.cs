@@ -15,10 +15,12 @@ namespace OpenArcanum.UI
     [RequireComponent(typeof(RectTransform))]
     public sealed class SourceUiBitmapText : MonoBehaviour
     {
+        public const string TigBitmapFontShaderName = "OpenArcanum/UI/TIG Bitmap Font";
         public const int Morph15FontSourceId = 27;
         public const int Flare12FontSourceId = 229;
         public const int DefaultFontSourceId = 327;
 
+        private static Material _tigBitmapFontMaterial;
         private readonly List<Image> _glyphs = new List<Image>();
         private UiSkinResolver _resolver;
         private string _text = string.Empty;
@@ -85,6 +87,7 @@ namespace OpenArcanum.UI
                 source.Bind(_resolver, asset.Key);
                 Image image = glyph.GetComponent<Image>();
                 image.raycastTarget = false;
+                image.material = TigBitmapFontMaterial;
                 image.color = _tint;
                 _glyphs.Add(image);
 
@@ -101,6 +104,23 @@ namespace OpenArcanum.UI
         {
             foreach (Image glyph in _glyphs)
                 if (glyph != null) glyph.color = _tint;
+        }
+
+        private static Material TigBitmapFontMaterial
+        {
+            get
+            {
+                if (_tigBitmapFontMaterial != null) return _tigBitmapFontMaterial;
+                Shader shader = Resources.Load<Shader>("TigBitmapFont");
+                if (shader == null || shader.name != TigBitmapFontShaderName)
+                    throw new InvalidOperationException($"Missing source bitmap-font shader '{TigBitmapFontShaderName}'.");
+                _tigBitmapFontMaterial = new Material(shader)
+                {
+                    name = "TIG Bitmap Font (Runtime)",
+                    hideFlags = HideFlags.HideAndDontSave,
+                };
+                return _tigBitmapFontMaterial;
+            }
         }
 
         private void Subscribe()
