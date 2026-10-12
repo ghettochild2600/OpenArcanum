@@ -1322,6 +1322,14 @@ namespace Arcanum.Runtime.UI
             return _session.Journal.ProjectAll(lowIntelligence);
         }
 
+        public IReadOnlyList<RumorJournalEntry> ProjectRumors()
+        {
+            if (!HasPlayer) return Array.Empty<RumorJournalEntry>();
+            bool lowIntelligence = _session.Characters.GetEffectiveAttribute(Player,
+                CharacterAttribute.Intelligence) <= 4;
+            return _session.Journal.ProjectRumors(lowIntelligence);
+        }
+
         public GameUiBackgroundLogbookView ProjectBackgroundLogbook()
         {
             BackgroundDefinition background = HasPlayer ? _session.CharacterCreation.Finalized?.Background : null;

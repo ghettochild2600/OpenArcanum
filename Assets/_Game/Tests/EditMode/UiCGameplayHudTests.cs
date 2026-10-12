@@ -577,6 +577,29 @@ namespace Arcanum.Formats.Tests
         }
 
         [Test]
+        public void OpeningClockAndLogbookUseAuthoritative1885Calendar()
+        {
+            Assert.That(SourceCalendar.FormatHud(SourceTimeService.InitialMilliseconds + 37_000L),
+                Is.EqualTo("Current Time: 15:00:37   Current Date: 1/1/1885"));
+            Assert.That(SourceCalendar.FormatLogbook(
+                    SourceCalendar.Timestamp(SourceTimeService.InitialMilliseconds)),
+                Is.EqualTo("Jan 1, 1885  3:00pm"));
+
+            _view.Synchronize(true);
+            SourceHoverHintTarget clock = _root.GetComponentsInChildren<SourceHoverHintTarget>(true)
+                .Single(value => value.gameObject.name == "Clock Clip");
+            clock.OnPointerEnter(null);
+            _view.Synchronize(true);
+            SourceUiBitmapText message = _root.GetComponentsInChildren<SourceUiBitmapText>(true)
+                .Single(value => value.name == "Message");
+            Assert.That(message.Text, Is.EqualTo(
+                "Current Time: 15:00:00   Current Date: 1/1/1885"));
+            clock.OnPointerExit(null);
+            _view.Synchronize(true);
+            Assert.That(message.Text, Is.Not.StartsWith("Current Time:"));
+        }
+
+        [Test]
         public void HudAuthorityRoundTripsInOptionalSaveV1Domain()
         {
             _session.GameplayHud.GrantFatePoint();

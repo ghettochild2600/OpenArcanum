@@ -9,6 +9,7 @@ using Arcanum.Runtime.Character;
 using Arcanum.Runtime.Campaign;
 using Arcanum.Runtime.Dialogue;
 using Arcanum.Formats.Quest;
+using Arcanum.Formats.Text;
 using Arcanum.Script;
 using Arcanum.World;
 using Arcanum.Runtime.Save;
@@ -48,6 +49,8 @@ namespace Arcanum.Runtime.World
         private ProductionDialogueSession _dialogue;
         private JournalProjectionService _journal;
         private QuestLog _questSource;
+        private MesFile _rumorSource;
+        private MesFile _dumbRumorSource;
         private PortalTransitionScheduler _portals;
         private CampaignStateService _campaign;
         private SessionSaveService _saveGames;
@@ -283,6 +286,13 @@ namespace Arcanum.Runtime.World
             Journal.BindSource(source);
         }
 
+        public void BindRumorSource(MesFile normal, MesFile dumb)
+        {
+            _rumorSource = normal ?? throw new ArgumentNullException(nameof(normal));
+            _dumbRumorSource = dumb;
+            Journal.BindRumorSource(normal, dumb);
+        }
+
         private ProductionDialogueSession CreateDialogue()
         {
             var dialogue = new ProductionDialogueSession(this, Campaign);
@@ -297,6 +307,7 @@ namespace Arcanum.Runtime.World
         {
             var journal = new JournalProjectionService(Campaign);
             if (_questSource != null) journal.BindSource(_questSource);
+            if (_rumorSource != null) journal.BindRumorSource(_rumorSource, _dumbRumorSource);
             return journal;
         }
 
@@ -412,6 +423,7 @@ namespace Arcanum.Runtime.World
         private CampaignStateService CreateCampaign()
         {
             var campaign = new CampaignStateService();
+            campaign.BindTimeSource(() => SourceTime.CampaignMilliseconds);
             if (_areaSource != null) campaign.BindAreaSource(_areaSource);
             return campaign;
         }
@@ -2246,6 +2258,7 @@ namespace Arcanum.Runtime.World
             _social = null;
             _sourceTime = new SourceTimeService();
             _sourceTime.Restore(plan.Magic?.ElapsedMilliseconds ?? 0);
+            _campaign.BindTimeSource(() => SourceTime.CampaignMilliseconds);
             foreach (PartyMember member in plan.PartyMembers)
                 if (!_party.TryAddRestored(member, out string partyError))
                     throw new InvalidOperationException(partyError);

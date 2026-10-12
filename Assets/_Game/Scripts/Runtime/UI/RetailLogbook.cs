@@ -192,6 +192,7 @@ namespace Arcanum.Runtime.UI
         private SourceUiButton _left;
         private SourceUiButton _right;
         private SourceUiBitmapText _notice;
+        private RetailPcLensView _pcLens;
         private RetailLogbookTab _tab = RetailLogbookTab.Quests;
         private int _spreadIndex;
         private int _signature = int.MinValue;
@@ -232,18 +233,19 @@ namespace Arcanum.Runtime.UI
             if (_canvasRoot.activeSelf != visible) _canvasRoot.SetActive(visible);
             if (!visible) return;
             IReadOnlyList<QuestJournalEntry> entries = _controller.ProjectJournal();
+            IReadOnlyList<RumorJournalEntry> rumors = _controller.ProjectRumors();
             GameUiBackgroundLogbookView background = _controller.ProjectBackgroundLogbook();
             int backgroundSignature = BackgroundSignature(background);
             if (_tab == RetailLogbookTab.Background && _backgroundSignature != int.MinValue
                 && backgroundSignature != _backgroundSignature)
                 ResetPagination();
             _backgroundSignature = backgroundSignature;
-            int signature = ProjectionSignature(entries, background);
+            int signature = ProjectionSignature(entries, rumors, background);
             if (_dirty || signature != _signature)
             {
                 _dirty = false;
                 _signature = signature;
-                RebuildPages(entries, background);
+                RebuildPages(entries, rumors, background);
             }
         }
 
@@ -307,7 +309,10 @@ namespace Arcanum.Runtime.UI
             blockerImage.color = Color.clear;
             blockerImage.raycastTarget = true;
 
-            SourceUiImage lens = AddSourceImage("PC Lens", _window, 198, new Rect(25, 24, 89, 89));
+            RectTransform liveLens = AddRect("PC Lens Live Character", _window, new Rect(25, 24, 89, 89));
+            _pcLens = liveLens.gameObject.AddComponent<RetailPcLensView>();
+            _pcLens.Bind(_session);
+            SourceUiImage lens = AddSourceImage("PC Lens Frame", _window, 198, new Rect(25, 24, 89, 89));
             Button close = lens.gameObject.AddComponent<Button>();
             close.transition = Selectable.Transition.None;
             close.onClick.AddListener(() => _controller.Close());
@@ -329,6 +334,7 @@ namespace Arcanum.Runtime.UI
         }
 
         private void RebuildPages(IReadOnlyList<QuestJournalEntry> entries,
+            IReadOnlyList<RumorJournalEntry> rumors,
             GameUiBackgroundLogbookView background)
         {
             ClearPageText();
@@ -352,6 +358,13 @@ namespace Arcanum.Runtime.UI
                 return;
             }
 
+
+            if (_tab == RetailLogbookTab.RumorsAndNotes)
+            {
+                RebuildRumorPages(rumors);
+                return;
+            }
+
             if (_tab != RetailLogbookTab.Quests)
             {
                 _lastVisibleEntry = -1;
@@ -367,7 +380,7 @@ namespace Arcanum.Runtime.UI
             {
                 var lines = new List<string>();
                 lines.AddRange(RetailLogbookPaginator.Wrap(
-                    $"Day {entry.Timestamp.Days + 1}  {entry.StateLabel}",
+                    $"{SourceCalendar.FormatLogbook(entry.Timestamp)}    {entry.StateLabel}",
                     RetailLogbookLayout.LeftContent.width, GlyphAdvance));
                 lines.AddRange(RetailLogbookPaginator.Wrap(entry.Description,
                     RetailLogbookLayout.LeftContent.width, GlyphAdvance));
@@ -408,6 +421,44 @@ namespace Arcanum.Runtime.UI
             }
             _left.SetInteractable(_spreadIndex > 0);
             _right.SetInteractable(_lastVisibleEntry >= 0 && _lastVisibleEntry < entries.Count - 1);
+        }
+
+        private void RebuildRumorPages(IReadOnlyList<RumorJournalEntry> rumors)
+        {
+            var blocks = new List<IReadOnlyList<string>>();
+            foreach (RumorJournalEntry rumor in rumors)
+            {
+                var lines = new List<string>();
+                lines.AddRange(RetailLogbookPaginator.Wrap(SourceCalendar.FormatLogbook(rumor.Timestamp),
+                    RetailLogbookLayout.LeftContent.width, GlyphAdvance));
+                lines.AddRange(RetailLogbookPaginator.Wrap(rumor.Description,
+                    RetailLogbookLayout.LeftContent.width, GlyphAdvance));
+                blocks.Add(lines);
+            }
+            _projectedEntryCount = blocks.Count;
+            int start = blocks.Count == 0 ? 0 : Mathf.Clamp(_spreadStarts[Mathf.Min(_spreadIndex,
+                _spreadStarts.Count - 1)], 0, blocks.Count - 1);
+            int page = 0;
+            int line = 0;
+            _lastVisibleEntry = -1;
+            for (int index = start; index < blocks.Count; index++)
+            {
+                int required = blocks[index].Count + (index < blocks.Count - 1 ? 1 : 0);
+                if (required > RetailLogbookLayout.PageLineCapacity - line)
+                {
+                    if (page == 1) break;
+                    page = 1;
+                    line = 0;
+                }
+                int count = Mathf.Min(blocks[index].Count, RetailLogbookLayout.PageLineCapacity - line);
+                for (int offset = 0; offset < count; offset++)
+                    AddPageLine(page, line++, blocks[index][offset], Ink, false);
+                if (line < RetailLogbookLayout.PageLineCapacity) line++;
+                _lastVisibleEntry = index;
+            }
+            if (blocks.Count == 0) AddPageLine(0, 0, "No known rumors or notes.", Ink, false);
+            _left.SetInteractable(_spreadIndex > 0);
+            _right.SetInteractable(_lastVisibleEntry >= 0 && _lastVisibleEntry < blocks.Count - 1);
         }
 
         private void RebuildBackgroundPages(GameUiBackgroundLogbookView background)
@@ -482,6 +533,7 @@ namespace Arcanum.Runtime.UI
         };
 
         private static int ProjectionSignature(IReadOnlyList<QuestJournalEntry> entries,
+            IReadOnlyList<RumorJournalEntry> rumors,
             GameUiBackgroundLogbookView background)
         {
             unchecked
@@ -489,6 +541,8 @@ namespace Arcanum.Runtime.UI
                 int hash = entries.Count;
                 foreach (QuestJournalEntry entry in entries)
                     hash = hash * 31 + HashCode.Combine(entry.QuestId, entry.State, entry.Timestamp, entry.Description);
+                foreach (RumorJournalEntry rumor in rumors)
+                    hash = hash * 31 + HashCode.Combine(rumor.RumorId, rumor.Timestamp, rumor.Description);
                 hash = hash * 31 + BackgroundSignature(background);
                 return hash;
             }

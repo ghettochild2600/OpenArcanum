@@ -1209,6 +1209,10 @@ namespace Arcanum.Runtime.World
                 MesReader.Read(_vfs.ReadAllBytes("rules/xp_quest.mes")),
                 MesReader.Read(_vfs.ReadAllBytes("rules/gamequest.mes")),
                 MesReader.Read(_vfs.ReadAllBytes("mes/gamequestlogdumb.mes"))));
+            Session.BindRumorSource(
+                MesReader.Read(_vfs.ReadAllBytes("mes/game_rd_npc_m2m.mes")),
+                _vfs.Exists("mes/game_rd_npc_m2m_dumb.mes")
+                    ? MesReader.Read(_vfs.ReadAllBytes("mes/game_rd_npc_m2m_dumb.mes")) : null);
             return true;
         }
 

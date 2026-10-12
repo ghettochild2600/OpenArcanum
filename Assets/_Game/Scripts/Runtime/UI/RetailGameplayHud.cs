@@ -180,6 +180,7 @@ namespace Arcanum.Runtime.UI
         private RectTransform _clockClip;
         private readonly SourceUiImage[] _clockBands = new SourceUiImage[3];
         private SourceUiImage _clockPointer;
+        private bool _clockHovered;
         private SourceUiButton _characterButton;
         private SourceUiButton _logbookButton;
         private SourceUiButton _mapButton;
@@ -263,7 +264,7 @@ namespace Arcanum.Runtime.UI
             SetCounter(_fatigueText, Mathf.Max(0, LastProjection.Fatigue));
             RefreshMaintainedSpellSlots(LastProjection.MaintainedSpellSlotCapacity, LastProjection.ActiveEffects);
 
-            bool targetVisible = _worldTarget != null && _controller.Screen == GameUiScreen.None;
+            bool targetVisible = !_clockHovered && _worldTarget != null && _controller.Screen == GameUiScreen.None;
             bool itemTarget = targetVisible && _worldTarget.Item != null;
             _worldTargetIcon.gameObject.SetActive(targetVisible && !itemTarget);
             _worldTargetItemIcon.gameObject.SetActive(itemTarget);
@@ -287,11 +288,21 @@ namespace Arcanum.Runtime.UI
             }
             else
             {
-                SetText(_messageLineOne, Clip(_controller.Feedback, 46), SourceText);
-                string combat = LastProjection.CombatActive
-                    ? $"{LastProjection.CombatMode}  AP {LastProjection.ActionPoints}/{LastProjection.MaximumActionPoints}  {LastProjection.Readiness}"
-                    : string.Empty;
-                SetText(_messageLineTwo, Clip(combat, 46), SourceText);
+                if (_clockHovered)
+                {
+                    SetText(_messageLineOne,
+                        SourceCalendar.FormatHud(SourceTimeService.InitialMilliseconds
+                                                 + LastProjection.SourceTimeMilliseconds), SourceText);
+                    SetText(_messageLineTwo, string.Empty, SourceText);
+                }
+                else
+                {
+                    SetText(_messageLineOne, Clip(_controller.Feedback, 46), SourceText);
+                    string combat = LastProjection.CombatActive
+                        ? $"{LastProjection.CombatMode}  AP {LastProjection.ActionPoints}/{LastProjection.MaximumActionPoints}  {LastProjection.Readiness}"
+                        : string.Empty;
+                    SetText(_messageLineTwo, Clip(combat, 46), SourceText);
+                }
             }
             SetCounter(_fateText, Mathf.Max(0, LastProjection.FatePoints), 2);
             SetCounter(_contextText, Mathf.Max(0, LastProjection.ContextQuantity), 6);
@@ -366,6 +377,11 @@ namespace Arcanum.Runtime.UI
             _clockClip = AddRect("Clock Clip", _topWindow,
                 RetailGameplayHudLayout.TopWindowLocal(RetailGameplayHudLayout.ClockFrame));
             _clockClip.gameObject.AddComponent<RectMask2D>();
+            Image clockHit = _clockClip.gameObject.AddComponent<Image>();
+            clockHit.color = Color.clear;
+            clockHit.raycastTarget = true;
+            _clockClip.gameObject.AddComponent<SourceHoverHintTarget>().Bind(
+                () => _clockHovered = true, () => _clockHovered = false);
             for (int index = 0; index < _clockBands.Length; index++)
                 _clockBands[index] = AddImage($"Clock Band {index + 1}", _clockClip,
                     new UiAssetKey(index % 2 == 0 ? 207 : 208), new Rect(0f, 0f, 1f, 30f), false);
@@ -737,7 +753,8 @@ namespace Arcanum.Runtime.UI
 
         private void RefreshClock()
         {
-            long sourceSeconds = 12L * 3600L + LastProjection.SourceTimeMilliseconds / 1000L;
+            long sourceSeconds = SourceTimeService.InitialHour * 3600L
+                                 + LastProjection.SourceTimeMilliseconds / 1000L;
             int hour = (int)((sourceSeconds / 3600L) % 24L);
             ClockPeriod = hour switch
             {

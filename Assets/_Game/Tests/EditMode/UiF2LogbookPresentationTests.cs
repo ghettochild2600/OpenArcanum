@@ -7,6 +7,7 @@ using Arcanum.Formats.Objects;
 using Arcanum.Formats.Text;
 using Arcanum.Formats.World;
 using Arcanum.Runtime;
+using Arcanum.Runtime.Campaign;
 using Arcanum.Runtime.Creation;
 using Arcanum.Runtime.UI;
 using Arcanum.Runtime.World;
@@ -226,6 +227,33 @@ namespace Arcanum.Formats.Tests
             _view.Synchronize();
             hud.Synchronize(show: true);
             AssertCursorAboveLogbook(hud, logbookCanvas);
+        }
+
+        [Test]
+        public void LogbookPcLensUsesLiveCritterRendererInsideSourceFrame()
+        {
+            RetailPcLensView lens = _view.GetComponentInChildren<RetailPcLensView>(true);
+            Assert.That(lens, Is.Not.Null);
+            Assert.That(lens.gameObject.name, Is.EqualTo("PC Lens Live Character"));
+            Assert.That(_view.GetComponentsInChildren<SourceUiImage>(true)
+                .Any(value => value.gameObject.name == "PC Lens Frame"), Is.True);
+        }
+
+        [Test]
+        public void KnownRumorProjectsAuthoredSourceTextAndCalendarTimestamp()
+        {
+            MesFile source = Mes((20 * 2013, "The crash site contains the remains of a zeppelin."));
+            _session.BindRumorSource(source, null);
+            _session.Campaign.SetRumorKnown(2013);
+
+            RumorJournalEntry entry = _controller.ProjectRumors().Single();
+            Assert.That(entry.RumorId, Is.EqualTo(2013));
+            Assert.That(entry.Description, Is.EqualTo("The crash site contains the remains of a zeppelin."));
+            Assert.That(SourceCalendar.FormatLogbook(entry.Timestamp), Is.EqualTo("Jan 1, 1885  3:00pm"));
+
+            _view.SelectTab(RetailLogbookTab.RumorsAndNotes);
+            Assert.That(RenderedLines(), Does.Contain("Jan 1, 1885  3:00pm"));
+            Assert.That(RenderedLines(), Has.Some.Contains("crash site"));
         }
 
         private static void AssertCursorAboveLogbook(RetailGameplayHudView hud, Canvas logbookCanvas)
