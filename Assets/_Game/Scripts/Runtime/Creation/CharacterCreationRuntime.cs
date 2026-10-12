@@ -1137,7 +1137,9 @@ namespace Arcanum.Runtime.Creation
             foreach (string source in rule.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries))
             {
                 string[] parts = source.Trim().Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
-                if (parts.Length != 2 || !int.TryParse(parts[1], NumberStyles.Integer,
+                // CE reads the score through strtok(NULL, ",") and atoi, consuming any trailing words in this
+                // comma segment. Retail Scheme 76 relies on that behavior for "dx 20 pickpocket 20".
+                if (parts.Length < 2 || !int.TryParse(parts[1], NumberStyles.Integer,
                         CultureInfo.InvariantCulture, out int target) || target < 0
                     || !ApplyAutoLevelTarget(identity, parts[0], target)) return false;
             }

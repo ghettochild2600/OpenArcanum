@@ -1,5 +1,7 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
+using Arcanum.Formats.Database;
 using Arcanum.Formats.Objects;
 using Arcanum.Formats.Text;
 using Arcanum.Formats.World;
@@ -278,6 +280,40 @@ namespace Arcanum.Formats.Tests
             Assert.That(_session.Characters.GetBaseAttribute(pc, CharacterAttribute.Strength), Is.EqualTo(9));
             Assert.That(_session.Progression.GetUnspentCharacterPoints(pc), Is.EqualTo(4));
             Assert.That(_session.CharacterCreation.Finalized.AutoLevelScheme, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Scheme76MalformedSegmentUsesSourceTokenizerAndScheme77SegmentRemainsValid()
+        {
+            using var vfs = new DatVirtualFileSystem();
+            foreach (string file in new[]
+                     {
+                         "modules/Arcanum.dat", "arcanum1.dat", "arcanum2.dat", "arcanum3.dat", "arcanum4.dat",
+                     })
+            {
+                string archive = GameDataLocator.Find(file);
+                if (!string.IsNullOrEmpty(archive)) vfs.MountFile(archive);
+            }
+            Assert.That(vfs.Exists("rules/gamelevel.mes"), Is.True,
+                "the clean retail auto-level source is required for this compatibility regression");
+            MesFile retailRules = MesReader.Read(vfs.ReadAllBytes("rules/gamelevel.mes"));
+            string malformed = retailRules.Get(76).Split(',')
+                .Single(value => value.Trim() == "dx 20 pickpocket 20").Trim();
+            string neighboring = retailRules.Get(77).Split(',')
+                .Select(value => value.Trim())
+                .First(value => value.Split((char[])null, StringSplitOptions.RemoveEmptyEntries).Length == 2);
+
+            Assert.That(_session.CharacterCreation.FinalizeNewGame(Default()).Succeeded, Is.True);
+            ArcanumObjectId pc = ProductionPlayerLifecycle.DefaultPlayerIdentity;
+            _session.Progression.AwardExperience(pc, CharacterProgressionService.GetExperienceForLevel(20));
+            int pickPocketBefore = _session.Progression.GetPurchasedSkillPoints(pc, CharacterSkill.PickPocket);
+
+            Assert.That(_session.CharacterCreation.ApplyAutoLevelRule(pc, malformed), Is.True);
+            Assert.That(_session.Characters.GetBaseAttribute(pc, CharacterAttribute.Dexterity), Is.EqualTo(20));
+            Assert.That(_session.Progression.GetPurchasedSkillPoints(pc, CharacterSkill.PickPocket),
+                Is.EqualTo(pickPocketBefore), "CE consumes Scheme 76's trailing malformed text without applying it");
+            Assert.That(_session.CharacterCreation.ApplyAutoLevelRule(pc, neighboring), Is.True,
+                "a valid comma-delimited segment from neighboring Scheme 77 must retain its prior behavior");
         }
 
         [Test]
