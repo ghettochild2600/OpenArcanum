@@ -207,7 +207,7 @@ namespace Arcanum.Runtime.UI
             }
             else if (state == RetailMainMenuState.QuitConfirmation)
             {
-                NoticeTitle = _source.Get(5100, "Are you sure you want to quit?").ToUpperInvariant();
+                NoticeTitle = _source.Get(5100, "Are you sure you want to quit?");
                 _entries.Add(new RetailMainMenuEntry(RetailMainMenuCommand.ConfirmQuit, "Yes"));
                 _entries.Add(new RetailMainMenuEntry(RetailMainMenuCommand.CancelQuit, "No"));
             }
@@ -393,6 +393,7 @@ namespace Arcanum.Runtime.UI
         public bool IsAvailable => _resolver != null && _canvasRoot != null;
         public bool IsVisible => IsAvailable && _canvasRoot.activeSelf;
         public UiResolvedAsset BackgroundAsset => _background != null ? _background.CurrentAsset : null;
+        public RectTransform QuitModalTransform { get; private set; }
 
         public void Bind(GameUiController controller, Action quit, UiSkinResolver resolver = null)
         {
@@ -441,6 +442,14 @@ namespace Arcanum.Runtime.UI
             Synchronize();
             if (!IsVisible) return;
             if (Input.GetKeyUp(KeyCode.Escape)) { Model.Escape(); return; }
+            if (Model.State == RetailMainMenuState.QuitConfirmation)
+            {
+                if (Input.GetKeyDown(KeyCode.Y) || Input.GetKeyDown(KeyCode.Return)
+                                                || Input.GetKeyDown(KeyCode.KeypadEnter))
+                    Model.Submit(RetailMainMenuCommand.ConfirmQuit);
+                else if (Input.GetKeyDown(KeyCode.N)) Model.Submit(RetailMainMenuCommand.CancelQuit);
+                return;
+            }
             if (_buttons.Count == 0) return;
             if (Input.GetKeyDown(KeyCode.DownArrow)) SelectRelative(1);
             else if (Input.GetKeyDown(KeyCode.UpArrow)) SelectRelative(-1);
@@ -498,6 +507,12 @@ namespace Arcanum.Runtime.UI
             ClearMenuLayer();
             _background.Bind(_resolver, new UiAssetKey(Model.BackgroundSourceId));
 
+            if (Model.State == RetailMainMenuState.QuitConfirmation)
+            {
+                BuildQuitModal();
+                return;
+            }
+
             if (!string.IsNullOrEmpty(Model.NoticeTitle))
                 AddCenteredText("Notice Title", Model.NoticeTitle, 200f, 327, new Color32(240, 15, 15, 255));
             if (!string.IsNullOrEmpty(Model.NoticeMessage))
@@ -518,6 +533,60 @@ namespace Arcanum.Runtime.UI
                 _buttons.Add(view);
             }
             ConfigureNavigation();
+        }
+
+        private void BuildQuitModal()
+        {
+            RectTransform blocker = AddRect("Quit Modal Ownership", _menuLayer);
+            Stretch(blocker);
+            Image blockerImage = blocker.gameObject.AddComponent<Image>();
+            blockerImage.color = new Color32(0, 0, 0, 1);
+            blockerImage.raycastTarget = true;
+
+            QuitModalTransform = AddRect("Retail Quit Confirmation", blocker);
+            QuitModalTransform.anchorMin = QuitModalTransform.anchorMax = new Vector2(0f, 1f);
+            QuitModalTransform.pivot = new Vector2(0f, 1f);
+            QuitModalTransform.anchoredPosition = new Vector2(237f, -232f);
+            QuitModalTransform.sizeDelta = new Vector2(325f, 136f);
+            QuitModalTransform.gameObject.AddComponent<Image>();
+            SourceUiImage panel = QuitModalTransform.gameObject.AddComponent<SourceUiImage>();
+            panel.Bind(_resolver, new UiAssetKey(822));
+
+            AddModalText("Quit Prompt", Model.NoticeTitle, new Rect(30f, 14f, 265f, 65f));
+            AddModalChoice("Yes", RetailMainMenuCommand.ConfirmQuit, 823, new Vector2(73f, 102f));
+            AddModalChoice("No", RetailMainMenuCommand.CancelQuit, 824, new Vector2(225f, 102f));
+        }
+
+        private SourceUiBitmapText AddModalText(string name, string value, Rect rect)
+        {
+            var go = new GameObject(name, typeof(RectTransform), typeof(SourceUiBitmapText));
+            RectTransform target = go.GetComponent<RectTransform>();
+            target.SetParent(QuitModalTransform, false);
+            target.anchorMin = target.anchorMax = new Vector2(0f, 1f);
+            target.pivot = new Vector2(0f, 1f);
+            target.anchoredPosition = new Vector2(rect.x, -rect.y);
+            target.sizeDelta = rect.size;
+            SourceUiBitmapText text = go.GetComponent<SourceUiBitmapText>();
+            text.Bind(_resolver, value, Color.white, 229);
+            return text;
+        }
+
+        private void AddModalChoice(string name, RetailMainMenuCommand command, int sourceId, Vector2 topLeft)
+        {
+            Vector2 size = _resolver.TryResolve(new UiAssetKey(sourceId), out UiResolvedAsset asset)
+                ? asset.LogicalSize : new Vector2(27f, 18f);
+            RectTransform hit = AddRect(name, QuitModalTransform);
+            hit.anchorMin = hit.anchorMax = new Vector2(0f, 1f);
+            hit.pivot = new Vector2(0f, 1f);
+            hit.anchoredPosition = new Vector2(topLeft.x, -topLeft.y);
+            hit.sizeDelta = size;
+            hit.gameObject.AddComponent<Image>();
+            hit.gameObject.AddComponent<Button>();
+            hit.gameObject.AddComponent<SourceUiImage>();
+            SourceUiButton button = hit.gameObject.AddComponent<SourceUiButton>();
+            button.Bind(_resolver, new UiAssetKey(sourceId, frame: 0), new UiAssetKey(sourceId, frame: 1),
+                new UiAssetKey(sourceId, frame: 2), new UiAssetKey(sourceId, frame: 0));
+            button.Button.onClick.AddListener(() => Model.Submit(command));
         }
 
         private void AddCenteredText(string name, string text, float sourceY, int fontSourceId, Color tint)
@@ -553,6 +622,7 @@ namespace Arcanum.Runtime.UI
         private void ClearMenuLayer()
         {
             _buttons.Clear();
+            QuitModalTransform = null;
             for (int index = _menuLayer.childCount - 1; index >= 0; index--)
             {
                 GameObject child = _menuLayer.GetChild(index).gameObject;
@@ -587,6 +657,14 @@ namespace Arcanum.Runtime.UI
             rect.anchorMax = Vector2.one;
             rect.offsetMin = Vector2.zero;
             rect.offsetMax = Vector2.zero;
+        }
+
+        private static RectTransform AddRect(string name, RectTransform parent)
+        {
+            var go = new GameObject(name, typeof(RectTransform));
+            RectTransform rect = go.GetComponent<RectTransform>();
+            rect.SetParent(parent, false);
+            return rect;
         }
 
         private static void ReportProductionDiagnostic(string message)

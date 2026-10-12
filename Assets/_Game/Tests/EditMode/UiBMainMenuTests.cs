@@ -252,6 +252,23 @@ namespace Arcanum.Formats.Tests
         }
 
         [Test]
+        public void QuitConfirmationUsesSmallOwnedSourceModalWithExactPrompt()
+        {
+            RetailMainMenuView view = _root.AddComponent<RetailMainMenuView>();
+            view.Bind(_controller, () => { }, _skin);
+            view.Model.Submit(RetailMainMenuCommand.ExitGame);
+
+            Assert.That(view.Model.NoticeTitle, Is.EqualTo("Are you sure you want to quit?"));
+            Assert.That(view.QuitModalTransform, Is.Not.Null);
+            Assert.That(view.QuitModalTransform.anchoredPosition, Is.EqualTo(new Vector2(237f, -232f)));
+            Assert.That(view.QuitModalTransform.sizeDelta, Is.EqualTo(new Vector2(325f, 136f)));
+            Assert.That(view.QuitModalTransform.GetComponent<SourceUiImage>().Key.SourceId, Is.EqualTo(822));
+            Assert.That(view.QuitModalTransform.GetComponentsInChildren<SourceUiButton>()
+                .Select(value => value.CurrentPresentationKey.SourceId), Is.EquivalentTo(new[] { 823, 824 }));
+            Assert.That(view.Buttons, Is.Empty, "the full-size main-menu command renderer must not own the modal");
+        }
+
+        [Test]
         public void EscapeReturnsSubmenusAndNoticesWithoutTouchingControllerAuthority()
         {
             RetailMainMenuModel model = Model();
