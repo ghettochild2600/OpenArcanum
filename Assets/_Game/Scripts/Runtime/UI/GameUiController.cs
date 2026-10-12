@@ -195,6 +195,7 @@ namespace Arcanum.Runtime.UI
         public GameUiItemView Item { get; internal set; }
         public EconomyTransactionDirection Direction { get; internal set; }
         public int UnitPrice { get; internal set; }
+        public int? ReportedMarkupPercent { get; internal set; }
         public EconomyFailure Failure { get; internal set; }
     }
 
@@ -1491,7 +1492,9 @@ namespace Arcanum.Runtime.UI
             return new GameUiMerchantItemView
             {
                 Item = ProjectItem(value), Direction = direction,
-                UnitPrice = preview.Price.UnitPrice, Failure = preview.Failure,
+                UnitPrice = preview.Price.UnitPrice,
+                ReportedMarkupPercent = preview.Price.ReportedMarkupPercent,
+                Failure = preview.Failure,
             };
         }
 

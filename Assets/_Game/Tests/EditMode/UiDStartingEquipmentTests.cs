@@ -159,6 +159,8 @@ namespace Arcanum.Formats.Tests
             Hover(view, expensiveName, true);
             Assert.That(view.MerchantQuoteText, Is.Not.Empty);
             Assert.That(view.MerchantQuoteText, Does.Contain(expensive.UnitPrice.ToString()));
+            Assert.That(view.MerchantQuoteText, Does.Not.EndWith("%)"),
+                "untrained Haggle must not disclose the merchant's markup");
             Assert.That(Text(view, "Shopkeeper Message Title").Text, Is.EqualTo("EXPENSIVE RATIONS"));
             Invoke(view, expensiveName);
             Assert.That(view.MerchantQuoteText, Is.EqualTo(EconomyFailure.InsufficientFunds.ToString()));
@@ -173,6 +175,35 @@ namespace Arcanum.Formats.Tests
             Assert.That(view.MerchantQuoteText, Is.Not.Empty);
             Assert.That(view.MerchantQuoteText, Does.Contain(resale.UnitPrice.ToString()));
             Assert.That(Text(view, "Counter 0").Text, Is.EqualTo((400 - armor.UnitPrice).ToString()));
+        }
+
+        [Test]
+        public void HaggleApprenticeAppendsSourceMarkupWithoutChangingBuyOrSellPrices()
+        {
+            FinalizeCustomCharacter();
+            SetHaggleTraining(SkillTrainingLevel.None);
+            GameUiMerchantItemView ordinaryBuy = _controller.ProjectMerchantWares()
+                .Single(value => value.Item.PrototypeNumber == CheapArmorPrototype);
+            GameUiMerchantItemView ordinarySell = _controller.ProjectPlayerSaleItems()
+                .First(value => value.Item.Type != ObjectType.Gold);
+            EconomyPriceBreakdown price = _session.Economy.GetPrice(ordinaryBuy.Direction, Merchant,
+                ProductionPlayerLifecycle.DefaultPlayerIdentity, ordinaryBuy.Item.Identity);
+            int markup = 100 * (ordinaryBuy.UnitPrice - price.EffectiveWorth) / price.EffectiveWorth;
+            if (markup == 0) markup = 1;
+            string itemName = $"{ordinaryBuy.Direction} {ordinaryBuy.Item.Identity.Key}";
+
+            SetHaggleTraining(SkillTrainingLevel.Apprentice);
+            GameUiMerchantItemView apprenticeBuy = _controller.ProjectMerchantWares()
+                .Single(value => value.Item.Identity == ordinaryBuy.Item.Identity);
+            GameUiMerchantItemView apprenticeSell = _controller.ProjectPlayerSaleItems()
+                .Single(value => value.Item.Identity == ordinarySell.Item.Identity);
+            Assert.That((apprenticeBuy.UnitPrice, apprenticeSell.UnitPrice),
+                Is.EqualTo((ordinaryBuy.UnitPrice, ordinarySell.UnitPrice)),
+                "training disclosure must not change either established price path");
+            RetailStartingEquipmentView view = BuildView();
+
+            Hover(view, itemName, true);
+            Assert.That(view.MerchantQuoteText, Does.EndWith($"({markup}%)"));
         }
 
         [Test]
@@ -312,6 +343,15 @@ namespace Arcanum.Formats.Tests
         {
             BeginCustomCharacter(name);
             Assert.That(_controller.FinalizeNewGame(), Is.True, _controller.Feedback);
+        }
+
+        private void SetHaggleTraining(SkillTrainingLevel training)
+        {
+            int[] points = new int[CharacterSkillRules.SkillCount];
+            var levels = new SkillTrainingLevel[CharacterSkillRules.SkillCount];
+            points[(int)CharacterSkill.Haggle] = 5;
+            levels[(int)CharacterSkill.Haggle] = training;
+            _session.Progression.Get(ProductionPlayerLifecycle.DefaultPlayerIdentity).RestoreSkills(points, levels);
         }
 
         private RetailStartingEquipmentView BuildView()

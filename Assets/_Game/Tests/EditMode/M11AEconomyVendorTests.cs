@@ -254,6 +254,38 @@ namespace Arcanum.Formats.Tests
         }
 
         [Test]
+        public void HaggleApprenticeReportsSourceMarkupWithoutChangingPrices()
+        {
+            PersistentObjectState buyItem = Item(45, _merchant, ObjectType.Food,
+                MerchandisePrototype, 100);
+            PersistentObjectState sellItem = Item(46, _pc.Identity, ObjectType.Food,
+                MerchandisePrototype, 100);
+            SetHaggleTraining(SkillTrainingLevel.None);
+            EconomyPriceBreakdown ordinaryBuy = _session.Economy.GetPrice(
+                EconomyTransactionDirection.BuyFromMerchant, _merchant, _pc.Identity, buyItem.Identity);
+            EconomyPriceBreakdown ordinarySell = _session.Economy.GetPrice(
+                EconomyTransactionDirection.SellToMerchant, _merchant, _pc.Identity, sellItem.Identity);
+            Assert.That(ordinaryBuy.ReportedMarkupPercent, Is.Null);
+            Assert.That(ordinarySell.ReportedMarkupPercent, Is.Null);
+
+            _session.Characters.RemoveEffectModifier(_pc.Identity, "M11A-WP");
+            SetHaggleTraining(SkillTrainingLevel.Apprentice);
+            EconomyPriceBreakdown apprenticeBuy = _session.Economy.GetPrice(
+                EconomyTransactionDirection.BuyFromMerchant, _merchant, _pc.Identity, buyItem.Identity);
+            EconomyPriceBreakdown apprenticeSell = _session.Economy.GetPrice(
+                EconomyTransactionDirection.SellToMerchant, _merchant, _pc.Identity, sellItem.Identity);
+            int expectedMarkup = 100 * (apprenticeBuy.UnitPrice - apprenticeBuy.EffectiveWorth)
+                                 / apprenticeBuy.EffectiveWorth;
+            if (expectedMarkup == 0) expectedMarkup = 1;
+
+            Assert.That(apprenticeBuy.ReportedMarkupPercent, Is.EqualTo(expectedMarkup));
+            Assert.That(apprenticeSell.ReportedMarkupPercent, Is.Null);
+            Assert.That((apprenticeBuy.UnitPrice, apprenticeSell.UnitPrice),
+                Is.EqualTo((ordinaryBuy.UnitPrice, ordinarySell.UnitPrice)),
+                "the Apprentice disclosure must not alter either price path");
+        }
+
+        [Test]
         public void NearbySubstituteInventoryIsAuthoritativeAndDistantOneFailsClosed()
         {
             ArcanumObjectId container = AddContainer(20, new Vector2(4, 1), 1);

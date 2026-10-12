@@ -559,12 +559,14 @@ namespace Arcanum.Runtime.UI
                     : _controller.ProjectMerchantWares())
                 .FirstOrDefault(value => value.Item.Identity == view.Item.Identity);
             int reversePrice = reverseView?.UnitPrice ?? 0;
-            SetText(_merchantQuote, MerchantLine(reverse, reversePrice, view.Item.Identity));
+            SetText(_merchantQuote, MerchantLine(reverse, reversePrice, view.Item.Identity,
+                reverseView?.ReportedMarkupPercent));
         }
 
         private void ShowItem(GameUiMerchantItemView view)
         {
-            SetText(_merchantQuote, MerchantLine(view.Direction, view.UnitPrice, view.Item.Identity));
+            SetText(_merchantQuote, MerchantLine(view.Direction, view.UnitPrice, view.Item.Identity,
+                view.ReportedMarkupPercent));
             GameUiItemInspectionView inspection = _controller.ProjectItemInspection(view.Item.Identity);
             SetText(_messageTitle, inspection?.Name?.ToUpperInvariant()
                 ?? view.Item.Name?.ToUpperInvariant() ?? string.Empty, SourceWhite);
@@ -581,7 +583,8 @@ namespace Arcanum.Runtime.UI
             }
         }
 
-        private string MerchantLine(EconomyTransactionDirection direction, int price, ArcanumObjectId item)
+        private string MerchantLine(EconomyTransactionDirection direction, int price, ArcanumObjectId item,
+            int? reportedMarkupPercent)
         {
             bool merchantFemale = _session.Characters.TryGet(_controller.MerchantTarget, out var merchant)
                                   && merchant.Gender == CharacterGender.Female;
@@ -595,7 +598,10 @@ namespace Arcanum.Runtime.UI
                 int id = first + (seed + offset) % 100;
                 if (!_resolver.Original.TryReadMessage(path, id, out string value)
                     || string.IsNullOrWhiteSpace(value)) continue;
-                return value.Trim().Replace("%d", price.ToString());
+                string line = value.Trim().Replace("%d", price.ToString());
+                return reportedMarkupPercent.HasValue
+                    ? $"{line}({reportedMarkupPercent.Value}%)"
+                    : line;
             }
             return string.Empty;
         }
@@ -746,6 +752,8 @@ namespace Arcanum.Runtime.UI
                     hash = hash * 31 + value.Item.Quantity;
                     hash = hash * 31 + value.Item.InventoryLocation;
                     hash = hash * 31 + value.UnitPrice;
+                    hash = hash * 31 + value.ReportedMarkupPercent.GetValueOrDefault();
+                    hash = hash * 31 + (value.ReportedMarkupPercent.HasValue ? 1 : 0);
                 }
                 return hash;
             }

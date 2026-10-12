@@ -48,15 +48,17 @@ namespace Arcanum.Runtime.Economy
         public int CurrentHitPoints { get; }
         public int MaximumHitPoints { get; }
         public int UnitPrice { get; }
+        public int? ReportedMarkupPercent { get; }
         internal EconomyPriceBreakdown(EconomyTransactionDirection direction, int rawWorth, bool identified,
             int effectiveWorth, int retailMultiplier, int haggleRank, int haggleEffectiveness,
             SkillTrainingLevel haggleTraining, int reaction, int reactionPercent,
-            int currentHitPoints, int maximumHitPoints, int unitPrice)
+            int currentHitPoints, int maximumHitPoints, int unitPrice, int? reportedMarkupPercent)
         {
             Direction = direction; RawWorth = rawWorth; Identified = identified; EffectiveWorth = effectiveWorth;
             RetailMultiplier = retailMultiplier; HaggleRank = haggleRank; HaggleEffectiveness = haggleEffectiveness;
             HaggleTraining = haggleTraining; Reaction = reaction; ReactionPercent = reactionPercent;
             CurrentHitPoints = currentHitPoints; MaximumHitPoints = maximumHitPoints; UnitPrice = unitPrice;
+            ReportedMarkupPercent = reportedMarkupPercent;
         }
     }
 
@@ -464,8 +466,15 @@ namespace Arcanum.Runtime.Economy
                 if (price is 1 or 2) price = 3;
             }
             int unitPrice = checked((int)price);
+            int? reportedMarkupPercent = null;
+            if (direction == EconomyTransactionDirection.BuyFromMerchant
+                && training >= SkillTrainingLevel.Apprentice)
+            {
+                int markup = checked((int)(100L * (unitPrice - worth) / worth));
+                reportedMarkupPercent = markup == 0 ? 1 : markup;
+            }
             return new EconomyPriceBreakdown(direction, rawWorth, identified, worth, multiplier, rank, haggle,
-                training, reaction, reactionPercent, currentHp, maximumHp, unitPrice);
+                training, reaction, reactionPercent, currentHp, maximumHp, unitPrice, reportedMarkupPercent);
         }
 
         private EconomyFailure ValidateBuy(PersistentObjectState item, ArcanumObjectId owner,
