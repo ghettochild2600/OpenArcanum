@@ -133,5 +133,16 @@ namespace Arcanum.Formats.Tests
             Assert.That(SourceLocomotionTiming.AdjustedFramesPerSecond(10, 8, run), Is.EqualTo(20));
             Assert.That(SourceLocomotionTiming.AdjustedFramesPerSecond(10, 30, run), Is.EqualTo(30));
         }
+
+        [TestCase(-1, 0, 1)] [TestCase(0, 1, 3)]
+        [TestCase(1, 0, 5)] [TestCase(0, -1, 7)]
+        public void DiagonalFacingsPreserveWalkAndRunArtFamilies(int dx, int dy, int facing)
+        {
+            uint stand = (uint)ArtId.TypeCritter << 28;
+            Assert.That(CritterArtResolver.RotationOf(
+                CritterArtResolver.WithAnimRotation(stand, 1, IsoProjection.DirFromDelta(dx, dy))), Is.EqualTo(facing));
+            Assert.That((CritterArtResolver.WithAnimRotation(stand, 6,
+                IsoProjection.DirFromDelta(dx, dy)) >> 6) & 0x1F, Is.EqualTo(6));
+        }
     }
 }

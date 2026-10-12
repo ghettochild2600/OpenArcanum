@@ -272,6 +272,7 @@ MonoBehaviour:
   Background: {r: 0.06, g: 0.07, b: 0.08, a: 1}
   LoadConfiguredSectorOnStart: 0
   ShowSectorBrowser: 0
+  EnableScrollZoom: 0
 --- !u!4 &512962631
 Transform:
   m_ObjectHideFlags: 0

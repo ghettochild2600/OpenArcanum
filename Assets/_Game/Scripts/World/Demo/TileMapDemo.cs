@@ -54,6 +54,10 @@ namespace Arcanum.World.Demo
         [SerializeField]
         private bool ShowSectorBrowser = true;
 
+        [Tooltip("Enable the terrain-demo mouse-wheel zoom. Keep disabled in the production game scene.")]
+        [SerializeField]
+        private bool EnableScrollZoom = true;
+
         private DatVirtualFileSystem _vfs;
         private TileMapRenderer _tileMap;
         private Camera _cam;
@@ -314,7 +318,7 @@ namespace Arcanum.World.Demo
             if (!_cam) return;
 
             float scroll = Input.mouseScrollDelta.y;
-            if (Mathf.Abs(scroll) > 0.01f)
+            if (ShouldApplyScrollZoom(EnableScrollZoom, scroll))
             {
                 _zoom = Mathf.Clamp(_zoom * (1f - scroll * 0.1f), 1f, 200f);
                 _cam.orthographicSize = _zoom;
@@ -327,6 +331,9 @@ namespace Arcanum.World.Demo
                 _cam.transform.position += _dragOrigin - now;
             }
         }
+
+        public static bool ShouldApplyScrollZoom(bool enabled, float scroll)
+            => enabled && Mathf.Abs(scroll) > 0.01f;
 
         // ── UI: upload gate (WebGL) + runtime sector browser ──────────────────────────────────────
 

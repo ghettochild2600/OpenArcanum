@@ -54,11 +54,21 @@ namespace Arcanum.Formats.Tests
                 Assert.That(terrainPresenter.FindProperty("SectorPath").stringValue, Is.EqualTo(StartSector));
                 Assert.That(terrainPresenter.FindProperty("LoadConfiguredSectorOnStart").boolValue, Is.False);
                 Assert.That(terrainPresenter.FindProperty("ShowSectorBrowser").boolValue, Is.False);
+                Assert.That(terrainPresenter.FindProperty("EnableScrollZoom").boolValue, Is.False,
+                    "the source world has no mouse-wheel camera action");
             }
             finally
             {
                 EditorSceneManager.CloseScene(scene, true);
             }
+        }
+
+        [Test]
+        public void TerrainDemoScrollZoomIsExplicitAndCanBeDisabledForProduction()
+        {
+            Assert.That(TileMapDemo.ShouldApplyScrollZoom(true, 1f), Is.True);
+            Assert.That(TileMapDemo.ShouldApplyScrollZoom(false, 1f), Is.False);
+            Assert.That(TileMapDemo.ShouldApplyScrollZoom(true, 0f), Is.False);
         }
 
         [Test]
