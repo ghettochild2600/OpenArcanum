@@ -144,6 +144,22 @@ namespace Arcanum.Runtime.UI
             return last;
         }
 
+        public static IReadOnlyList<IReadOnlyList<string>> Paginate(string value, float width,
+            int linesPerPage, Func<char, float> measure)
+        {
+            if (linesPerPage <= 0) throw new ArgumentOutOfRangeException(nameof(linesPerPage));
+            IReadOnlyList<string> lines = Wrap(value, width, measure);
+            var pages = new List<IReadOnlyList<string>>();
+            for (int start = 0; start < lines.Count; start += linesPerPage)
+            {
+                int count = Math.Min(linesPerPage, lines.Count - start);
+                var page = new List<string>(count);
+                for (int index = 0; index < count; index++) page.Add(lines[start + index]);
+                pages.Add(page);
+            }
+            return pages;
+        }
+
         private static float Measure(string value, Func<char, float> measure)
         {
             float width = 0f;
@@ -179,7 +195,9 @@ namespace Arcanum.Runtime.UI
         private RetailLogbookTab _tab = RetailLogbookTab.Quests;
         private int _spreadIndex;
         private int _signature = int.MinValue;
+        private int _backgroundSignature = int.MinValue;
         private int _lastVisibleEntry = -1;
+        private int _projectedEntryCount;
         private bool _dirty = true;
 
         public bool IsAvailable => _resolver != null && _canvasRoot != null;
@@ -188,6 +206,7 @@ namespace Arcanum.Runtime.UI
         public int CurrentLeftPage => _spreadIndex * 2 + 1;
         public int SpreadIndex => _spreadIndex;
         public int LastVisibleEntry => _lastVisibleEntry;
+        public int ProjectedEntryCount => _projectedEntryCount;
         public int RenderedLineCount => _pageText.Count;
         public RectTransform WindowTransform => _window;
 
@@ -213,12 +232,18 @@ namespace Arcanum.Runtime.UI
             if (_canvasRoot.activeSelf != visible) _canvasRoot.SetActive(visible);
             if (!visible) return;
             IReadOnlyList<QuestJournalEntry> entries = _controller.ProjectJournal();
-            int signature = ProjectionSignature(entries);
+            GameUiBackgroundLogbookView background = _controller.ProjectBackgroundLogbook();
+            int backgroundSignature = BackgroundSignature(background);
+            if (_tab == RetailLogbookTab.Background && _backgroundSignature != int.MinValue
+                && backgroundSignature != _backgroundSignature)
+                ResetPagination();
+            _backgroundSignature = backgroundSignature;
+            int signature = ProjectionSignature(entries, background);
             if (_dirty || signature != _signature)
             {
                 _dirty = false;
                 _signature = signature;
-                RebuildPages(entries);
+                RebuildPages(entries, background);
             }
         }
 
@@ -232,9 +257,7 @@ namespace Arcanum.Runtime.UI
         public void SelectTab(RetailLogbookTab tab)
         {
             _tab = tab;
-            _spreadIndex = 0;
-            _spreadStarts.Clear();
-            _spreadStarts.Add(0);
+            ResetPagination();
             _dirty = true;
             Synchronize();
         }
@@ -249,8 +272,7 @@ namespace Arcanum.Runtime.UI
 
         public void TurnRight()
         {
-            IReadOnlyList<QuestJournalEntry> entries = _controller.ProjectJournal();
-            if (_lastVisibleEntry < 0 || _lastVisibleEntry >= entries.Count - 1) return;
+            if (_lastVisibleEntry < 0 || _lastVisibleEntry >= _projectedEntryCount - 1) return;
             int next = _lastVisibleEntry + 1;
             _spreadIndex++;
             if (_spreadStarts.Count <= _spreadIndex) _spreadStarts.Add(next);
@@ -306,7 +328,8 @@ namespace Arcanum.Runtime.UI
             _pageLayer = AddRect("Logbook Page Text", _window, new Rect(0, 0, 800, 400));
         }
 
-        private void RebuildPages(IReadOnlyList<QuestJournalEntry> entries)
+        private void RebuildPages(IReadOnlyList<QuestJournalEntry> entries,
+            GameUiBackgroundLogbookView background)
         {
             ClearPageText();
             _notice.Bind(_resolver, string.Empty, Failed, RetailLogbookLayout.BodyFontSourceId);
@@ -323,9 +346,16 @@ namespace Arcanum.Runtime.UI
             AddCenteredText("Right Page", RetailLogbookLayout.RightFooter, $"-{CurrentLeftPage + 1}-",
                 RetailLogbookLayout.BodyFontSourceId, Ink);
 
+            if (_tab == RetailLogbookTab.Background)
+            {
+                RebuildBackgroundPages(background);
+                return;
+            }
+
             if (_tab != RetailLogbookTab.Quests)
             {
                 _lastVisibleEntry = -1;
+                _projectedEntryCount = 0;
                 AddPageLine(0, 0, $"No {tabLabel.ToLowerInvariant()} entries are available.", Ink, false);
                 _left.SetInteractable(false);
                 _right.SetInteractable(false);
@@ -343,6 +373,7 @@ namespace Arcanum.Runtime.UI
                     RetailLogbookLayout.LeftContent.width, GlyphAdvance));
                 blocks.Add(new RetailLogbookQuestBlock(entry, lines));
             }
+            _projectedEntryCount = blocks.Count;
 
             int start = blocks.Count == 0 ? 0 : Mathf.Clamp(_spreadStarts[Mathf.Min(_spreadIndex,
                 _spreadStarts.Count - 1)], 0, blocks.Count - 1);
@@ -377,6 +408,34 @@ namespace Arcanum.Runtime.UI
             }
             _left.SetInteractable(_spreadIndex > 0);
             _right.SetInteractable(_lastVisibleEntry >= 0 && _lastVisibleEntry < entries.Count - 1);
+        }
+
+        private void RebuildBackgroundPages(GameUiBackgroundLogbookView background)
+        {
+            if (background == null)
+            {
+                _lastVisibleEntry = -1;
+                _projectedEntryCount = 0;
+                AddPageLine(0, 0, "No background entries are available.", Ink, false);
+                _left.SetInteractable(false);
+                _right.SetInteractable(false);
+                return;
+            }
+
+            IReadOnlyList<IReadOnlyList<string>> pages = RetailLogbookPaginator.Paginate(background.Body,
+                RetailLogbookLayout.LeftContent.width, RetailLogbookLayout.PageLineCapacity, GlyphAdvance);
+            _projectedEntryCount = pages.Count;
+            int start = pages.Count == 0 ? 0 : Mathf.Clamp(_spreadStarts[Mathf.Min(_spreadIndex,
+                _spreadStarts.Count - 1)], 0, pages.Count - 1);
+            _lastVisibleEntry = pages.Count == 0 ? -1 : Math.Min(start + 1, pages.Count - 1);
+            for (int index = start; index <= _lastVisibleEntry; index++)
+            {
+                IReadOnlyList<string> page = pages[index];
+                for (int line = 0; line < page.Count; line++)
+                    AddPageLine(index - start, line, page[line], Ink, false);
+            }
+            _left.SetInteractable(_spreadIndex > 0);
+            _right.SetInteractable(_lastVisibleEntry >= 0 && _lastVisibleEntry < pages.Count - 1);
         }
 
         private void AddPageLine(int page, int line, string value, Color color, bool strike)
@@ -422,15 +481,27 @@ namespace Arcanum.Runtime.UI
             _ => Ink,
         };
 
-        private static int ProjectionSignature(IReadOnlyList<QuestJournalEntry> entries)
+        private static int ProjectionSignature(IReadOnlyList<QuestJournalEntry> entries,
+            GameUiBackgroundLogbookView background)
         {
             unchecked
             {
                 int hash = entries.Count;
                 foreach (QuestJournalEntry entry in entries)
                     hash = hash * 31 + HashCode.Combine(entry.QuestId, entry.State, entry.Timestamp, entry.Description);
+                hash = hash * 31 + BackgroundSignature(background);
                 return hash;
             }
+        }
+
+        private static int BackgroundSignature(GameUiBackgroundLogbookView background)
+            => background == null ? 0 : HashCode.Combine(background.BackgroundId, background.TextId, background.Body);
+
+        private void ResetPagination()
+        {
+            _spreadIndex = 0;
+            _spreadStarts.Clear();
+            _spreadStarts.Add(0);
         }
 
         private SourceUiImage AddSourceImage(string name, RectTransform parent, int sourceId, Rect rect)
@@ -519,6 +590,8 @@ namespace Arcanum.Runtime.UI
             _resolver = null;
             _dirty = true;
             _signature = int.MinValue;
+            _backgroundSignature = int.MinValue;
+            _projectedEntryCount = 0;
         }
     }
 }

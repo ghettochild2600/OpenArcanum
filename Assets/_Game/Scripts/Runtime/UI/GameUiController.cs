@@ -212,6 +212,14 @@ namespace Arcanum.Runtime.UI
         public bool Forced { get; internal set; }
     }
 
+    /// <summary>The finalized PC Background entry projected into the source Logbook.</summary>
+    public sealed class GameUiBackgroundLogbookView
+    {
+        public int BackgroundId { get; internal set; }
+        public int TextId { get; internal set; }
+        public string Body { get; internal set; }
+    }
+
     /// <summary>
     /// M12C presentation/controller boundary. It owns modal, selection, cursor and feedback state only; every
     /// gameplay projection and command delegates to its established authoritative service.
@@ -1312,6 +1320,20 @@ namespace Arcanum.Runtime.UI
             bool lowIntelligence = _session.Characters.GetEffectiveAttribute(Player,
                 CharacterAttribute.Intelligence) <= 4;
             return _session.Journal.ProjectAll(lowIntelligence);
+        }
+
+        public GameUiBackgroundLogbookView ProjectBackgroundLogbook()
+        {
+            BackgroundDefinition background = HasPlayer ? _session.CharacterCreation.Finalized?.Background : null;
+            if (background == null) return null;
+            string authored = (background.Description ?? string.Empty).Replace("\r", string.Empty);
+            int separator = authored.IndexOf('\n');
+            return new GameUiBackgroundLogbookView
+            {
+                BackgroundId = background.Id,
+                TextId = background.TextId,
+                Body = separator >= 0 ? authored.Substring(separator + 1) : authored,
+            };
         }
 
         public IReadOnlyList<WorldMapDestination> ProjectDestinations(out WorldMapDestinationFailure failure)

@@ -42,6 +42,18 @@ namespace OpenArcanum.Editor
             }) { runSynchronously = true });
         }
 
+        [MenuItem("OpenArcanum/UI-F.2/Run Background Logbook EditMode Tests", false, 0)]
+        public static void RunBackgroundLogbookFocused()
+        {
+            var api = ScriptableObject.CreateInstance<TestRunnerApi>();
+            api.RegisterCallbacks(new Results(api));
+            api.Execute(new ExecutionSettings(new Filter
+            {
+                testMode = TestMode.EditMode,
+                categoryNames = new[] { "UiF2LogbookPresentation" },
+            }) { runSynchronously = true });
+        }
+
         [MenuItem("OpenArcanum/UI-F.2/Run Physical PlayMode Validation", false, 2)]
         public static void RunPhysical()
         {
@@ -172,11 +184,34 @@ namespace OpenArcanum.Editor
             OpenArcanumGraphicsSettings.SetRuntimeMode(initialMode);
             loader.RebuildVisuals();
             controller.RebuildPresentation();
+            yield return null;
+            presenter = Require(Object.FindFirstObjectByType<ProductionGameUiPresenter>(),
+                "production presenter after final graphics rebuild");
+            controller = presenter.Controller;
+            view = Require(Object.FindFirstObjectByType<RetailLogbookView>(),
+                "Logbook view after final graphics rebuild");
+            GameUiBackgroundLogbookView background = Require(controller.ProjectBackgroundLogbook(),
+                "finalized Background Logbook projection");
+            view.SelectTab(RetailLogbookTab.Background);
+            SourceUiBitmapText[] backgroundLines = view.GetComponentsInChildren<SourceUiBitmapText>(true)
+                .Where(value => value.name == "Quest Text").ToArray();
+            Check(view.SelectedTab == RetailLogbookTab.Background
+                  && view.ProjectedEntryCount > 0
+                  && backgroundLines.Any(value => !string.IsNullOrWhiteSpace(value.Text)
+                      && background.Body.Contains(value.Text, StringComparison.Ordinal)),
+                "Background tab renders the finalized character's authored retail body");
+            controller.Close();
+            view.Synchronize();
+            Check(controller.Open(GameUiScreen.Journal), "Background Logbook reopens through Journal authority");
+            view.Synchronize();
+            Check(view.SelectedTab == RetailLogbookTab.Background && view.CurrentLeftPage == 1,
+                "Background reopen preserves its source page state");
             Debug.Log("UI-F.2 PHYSICAL VALIDATION: PASS; source IDs=198/260/261/264-273; tabs=7; "
                       + "Quests=authoritative/two-page; unsupported-tabs=selected+contained-empty-state; pages=1-2->3-4->1-2; "
+                      + $"Background={background.BackgroundId}/{background.TextId}/authored-body; "
                       + "HUD=visible; geometry=800x600/768p/1080p/1440p/4K; "
                       + "graphics=Original->Enhanced->Original; presenters=1; EventSystems=1. "
-                      + "Play Mode remains open on the first Quest spread.");
+                      + "Play Mode remains open on the first Background spread.");
         }
 
         private sealed class Results : ICallbacks
