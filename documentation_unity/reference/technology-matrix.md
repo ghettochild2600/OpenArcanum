@@ -2,6 +2,8 @@
 
 Source basis: official manual technology appendix, Prima schematic tables pp. 54–62, retail schematic/MES/prototype data, `arcanum-ce` technology code, and current OpenArcanum catalog/crafting tests.
 
+Current-branch reconciliation: 2026-10-12 against `5926bb42ff0f1fe261ba8deb71716d149733c9d3`. Character Creation now projects source Technology rows and expertise affects schematic availability; the remaining entries concern Technical Manual contribution and product runtime behavior, not the corrected creation presentation or generic crafting transaction.
+
 ## Discipline rules
 
 Source order is Herbology, Chemistry, Electrical, Explosives, Gun Smithy, Mechanical, Smithy, Therapeutics. Each discipline progresses Layman → Novice → Assistant → Associate → Technician → Engineer → Professor → Doctorate. The seven learned degrees require INT/level `5/10, 8/20, 11/35, 13/50, 15/65, 17/80, 19/100`. Degrees are sequential, cost one character point, and add one technology point. Effective degree falls when Intelligence no longer meets its threshold; learned ownership remains.

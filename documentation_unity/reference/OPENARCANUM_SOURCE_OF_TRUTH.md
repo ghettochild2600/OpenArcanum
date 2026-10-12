@@ -1,7 +1,7 @@
 # OpenArcanum Source-of-Truth Audit
 
 Audit date: 2026-10-11
-Audited commit: `d0740332afeef46637d298063693371861f6cb07` (`feature/session-save-load`)
+Current-branch reconciliation: 2026-10-12 against `5926bb42ff0f1fe261ba8deb71716d149733c9d3`; the latest production commit remains `d0740332afeef46637d298063693371861f6cb07` (`feature/session-save-load`).
 
 This is a source-first implementation audit, not a feature roadmap. It records what Arcanum requires, what OpenArcanum currently owns, and where evidence is incomplete. A completed infrastructure milestone is not evidence that all retail content which depends on that infrastructure is implemented.
 
@@ -32,14 +32,14 @@ For player-facing terminology, explanations, progression tables, items, quests, 
 
 | Area | Classification | Source truth and current boundary |
 |---|---|---|
-| Character creation | `PARTIAL` | Race, sex, attributes, portraits, name validation, and source-ordered Background selection exist. Background effects outside the narrow parser block otherwise legal characters; pregenerated and auto-level behavior are incomplete. |
+| Character creation | `PARTIAL` | Race, sex, attributes, portraits, name validation, source-ordered Background selection, twelve pregenerated characters, auto-level execution, and the Human Shopkeeper route exist. The selector exposes every source-legal Background; separate effect execution remains incomplete and unsupported effect families fail closed at finalization. |
 | Backgrounds | `PARTIAL` | All 79 source records and numeric order are catalogued. Eligibility now follows source identity masks, but reaction, critical, speed, follower, experience, alignment, expertise, time, and environment effects are incomplete. |
 | Statistics and derived values | `PARTIAL` | Primary attributes, maxima, vitality, carry, damage, AC, heal rate, poison recovery, reaction, follower cap, and aptitude kernels exist. Equipment, spell, status, sector, and environment contributions are not complete end-to-end. |
 | Skills and training | `PARTIAL` | Ownership, point spending, caps, ranks, training, and UI exist. Several player actions and many Apprentice/Expert/Master effects are absent. |
 | Technology and schematics | `PARTIAL` | Eight disciplines, seven degrees, 118-recipe catalog, ingredients, and generic crafting exist. Most crafted-item runtime effects and Technical Manual expertise are missing. |
 | Magic | `PARTIAL` | College/rank ownership and a reusable spell kernel exist. Only 4 of the source 80 spells are production-catalogued. |
 | Combat | `PARTIAL` | Turn-based/real-time scheduling, core attacks, bows, called shots, criticals, death/corpses, and bounded training effects exist. Weapon families, injuries, conditions, equipment effects, fleeing, and spell/technology integration remain incomplete. |
-| Items, inventory, equipment | `PARTIAL` | Containers, transfer, equip, stack, use, barter, corpse, persistence, and source data loading exist. Condition/durability, broad item effects, identification/inspection, and source-faithful special interfaces are incomplete. |
+| Items, inventory, equipment | `PARTIAL` | Containers, transfer, equip, stack, use, barter, corpse, persistence, source data loading, world hover, and ordinary Inventory inspection exist. Condition/durability, broad item effects, identified/unidentified property projection, and remaining runtime special interfaces are incomplete. |
 | Dialogue and scripting | `PARTIAL` | Dialogue presentation, selection, state, and a bounded opcode set exist. Full retail opcode/campaign coverage is not established and unsupported operations fail closed. |
 | Quests, reputations, blessings/curses | `PARTIAL` | Quest journal/state is usable. Rumors/notes, reputations, blessings/curses, kills/injuries, Background text, and keys are incomplete or missing. |
 | Followers and party | `PARTIAL` | Membership, following, combat participation, dialogue bridge, dismissal, and persistence exist. Source HUD portraits/status and selected-follower commands are incomplete. |
@@ -68,9 +68,9 @@ Female adds ST -1 and CN +1; male adds no generic modifier. Characters begin wit
 
 The creation screen must rebuild the valid Background list when race or sex changes, retain a legal selection where possible, otherwise select the first legal numeric source record, and apply exactly one Background effect. The source enumerates Background IDs numerically; it does not alphabetize them. See [character-background-matrix.md](character-background-matrix.md).
 
-Current OpenArcanum correctly source-orders and filters the selector. It deliberately blocks completion when the selected record contains effect tokens that the runtime cannot honor. That is safe, but it means legal source characters using those Backgrounds cannot be created.
+Current OpenArcanum's Background selector is `COMPLETE` at this boundary: it exposes every source-legal race/sex record in numeric order, including records whose effects are not yet executable. Effect support is a separate `PARTIAL` boundary. Finalization fails closed with `UnsupportedBackgroundEffect` rather than silently hiding the record or applying only part of its effect.
 
-Pregenerated characters are separate NPC-conditioned Background records backed by source prototypes. Selecting a pregen is not equivalent to assembling a custom character with its displayed race and Background. Auto-level schemes, full biography/help, and all pregen inventories/stat exceptions are not yet certified.
+Pregenerated characters are separate NPC-conditioned Background records backed by the twelve source prototypes. Selecting a pregen is not equivalent to assembling a custom character with its displayed race and Background. Prototype identity, authored inventory, direct-start behavior, initial/derived projection, and Save V1 continuity are implemented and physically covered. Auto-level execution supports attributes, skills, spell colleges, technology disciplines, and vitality targets; one exact parser mismatch remains for malformed source segments such as scheme 76's `dx 20 pickpocket 20`, which CE treats as `dx 20` while OpenArcanum rejects the four-token segment.
 
 ## Statistics and progression
 
@@ -155,7 +155,7 @@ OpenArcanum owns a coherent bounded combat loop: combat state, target selection,
 
 The source distinguishes prototypes, instances, inventory/container ownership, wearable slots, stackable quantities, charges/ammunition, condition, worth, flags, scripts, magic/technology properties, identified state, and use/equip/drop/transfer behavior.
 
-OpenArcanum implements the main ownership and transfer transactions, equipment slots, stack handling, item use boundaries, merchant/corpse containers, barter, and persistence. It does not yet establish full source behavior for condition/durability, every item property/effect, inspection/identification, ammunition families, key/keyring behavior, shop/service special cases, gambling commerce, or all source-faithful interfaces.
+OpenArcanum implements the main ownership and transfer transactions, equipment slots, stack handling, item use boundaries, merchant/corpse containers, barter, persistence, world-target hover, and ordinary Inventory inspection. It does not yet establish full source behavior for condition/durability, every item property/effect, identified/unidentified property disclosure, ammunition families, key/keyring behavior, in-game service special cases, gambling commerce, or all remaining source interfaces.
 
 | Item rule | Source expectation | OpenArcanum |
 |---|---|---|

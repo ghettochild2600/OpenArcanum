@@ -2,6 +2,8 @@
 
 Source basis: official manual skill/training chapters, Prima mentor tables, retail skill data, `arcanum-ce` skill/stat code, and current OpenArcanum runtime/UI tests.
 
+Current-branch reconciliation: 2026-10-12 against `5926bb42ff0f1fe261ba8deb71716d149733c9d3`. The four source HUD skill actions still reject explicitly in `GameUiController.ActivateSourceSkillAction`; no listed action/training classification was closed by a later production commit.
+
 One purchased skill point equals four internal units. Effective rank is capped by the governing attribute. For attribute values 1–20 the cap is `3,3,3,3,3,7,7,7,11,11,11,15,15,15,19,19,19,20,20,20`. Training requires effective rank 1 for Apprentice, 9 for Expert, and 18 for Master, and advances sequentially.
 
 `Stored` means ranks/training/point spending and persistence exist. It does not mean the action or training benefit is implemented.

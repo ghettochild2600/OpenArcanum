@@ -2,6 +2,8 @@
 
 Source basis: retail `background.mes`, `backgroundlf.mes`, `gameback.mes`, `effect.mes`, prototype/item data, `arcanum-ce/src/game/background.c`, the official manual, and the Prima guide. Source order is numeric Background ID order.
 
+Current-branch reconciliation: 2026-10-12 against `5926bb42ff0f1fe261ba8deb71716d149733c9d3`; the latest production change is `d0740332afeef46637d298063693371861f6cb07`.
+
 ## Eligibility rule
 
 `arcanum-ce` walks numeric IDs forward or backward and accepts a record when its condition is empty/`ANY`, or its condition contains the character's exact three-letter race/sex identity. `NPC` records are excluded from custom player creation. Playable identities are:
@@ -10,7 +12,7 @@ Source basis: retail `background.mes`, `backgroundlf.mes`, `gameback.mes`, `effe
 
 No female Dwarf, Gnome, Halfling, or Half-Ogre is offered by source creation even where a Background mask contains the corresponding code. Cycling wraps across the valid filtered list. Race or sex changes require rebuilding that list and removing the previous effect before applying the new selection.
 
-OpenArcanum now follows the numeric enumeration/filter rule. The remaining systemic defect is effect coverage: a legal source Background is rejected at final validation when its data contains any unsupported effect token. `Partial` below means the record is selectable but not fully source-functional. `Blocked` means safe validation prevents completing the character. `Special missing` means generic effect text is empty or incomplete because source behavior lives in time/environment/stat code.
+OpenArcanum now follows the numeric enumeration/filter rule for all 79 records. Eligibility and visibility are complete and independent of effect support. The remaining systemic defect is effect execution: a visible, source-legal record with an unsupported token fails closed at final validation. `EFFECT UNSUPPORTED` below describes that separate runtime gap; it does not mean the record is hidden or incorrectly filtered. `EFFECT MISSING` means source behavior lives in time/environment/stat code and has no implementation.
 
 ## Creation invariants
 
@@ -53,7 +55,7 @@ Retail `gamelevelname.mes`/`gamelevel.mes` contains source-ordered target lists.
 | 61–65 | Force Mage; Conveyance Mage; Temporal Thaumaturgist; Morph Mage; Gunfighter-Doctor |
 | 66–69 | Warrior; Warrior Mage Good; Warrior Mage Evil; Pure Melee-Dodge |
 
-IDs 70–75 are generic NPC schemes; IDs 76–87 are the twelve pregenerated-player schemes; later IDs are authored NPC/follower schemes. Raw rule order is authoritative because repeated targets describe a spending sequence, not a final unordered build. Current parsing is functional, but the complete corpus remains `PARTIAL` until every token, skip case, and level-up result is source-certified.
+IDs 70–75 are generic NPC schemes; IDs 76–87 are the twelve pregenerated-player schemes; later IDs are authored NPC/follower schemes. Raw rule order is authoritative because repeated targets describe a spending sequence, not a final unordered build. OpenArcanum implements every source target family, but its comma-segment parser requires exactly `token value`. CE tokenizes scheme 76's malformed `dx 20 pickpocket 20` segment as `dx 20` and consumes the rest; OpenArcanum rejects the four-token segment and stops the rule. That exact tokenization mismatch is the remaining confirmed auto-level defect.
 
 | Source index | Pregenerated character | Identity | Portrait | Inventory source | Background / scheme |
 |---:|---|---|---:|---:|---|
@@ -70,7 +72,7 @@ IDs 70–75 are generic NPC schemes; IDs 76–87 are the twelve pregenerated-pla
 | 11 | Clarisse Vorak | Half-Orc Female | 1031 | 26 | 49 / 86 |
 | 12 | Ke'ree Melange | Half-Elf Female | 1029 | 26 | 50 / 87 |
 
-Custom characters proceed to the source Human Shopkeeper shopping map with Background starting gold/items plus default clothing. Purchases transfer real objects and money; Continue equips source-compatible best items and enters the start map. Pregenerated characters bypass this shop because their authored inventory source already supplies possessions. OpenArcanum implements that bounded flow; broad stock/content and every auto-equip edge remain corpus-level `PARTIAL`.
+Custom characters proceed to the source Human Shopkeeper shopping map with Background starting gold/items plus default clothing. Purchases transfer real objects and money; Continue equips source-compatible best items and enters the start map. Pregenerated characters bypass this shop because their authored inventory source already supplies possessions. This bounded creation/shop route is implemented and physically validated; general in-game merchant presentation remains a separate audit boundary.
 
 ## Complete source Background catalog
 
@@ -83,18 +85,18 @@ Eligibility `Any` means every playable identity. Effect strings are normalized f
 | 2 | Apprenticed to a Blacksmith | Any | ST +1; Repair +2; DX -2 | 400 | `COMPLETE` |
 | 3 | Raised by Elves | HUF HUM | Repair, Firearms, Pick Locks, Disarm Traps -1; magic points +1 | 400; 8157 | `COMPLETE` |
 | 4 | Raised by Monks | Any | PE +1 | 100 | `COMPLETE` |
-| 5 | Child of a Hero | Any | negative reaction adjustment ×2 | 400; 6042 | `BLOCKED`: reaction multiplier |
+| 5 | Child of a Hero | Any | negative reaction adjustment ×2 | 400; 6042 | `EFFECT UNSUPPORTED`: reaction multiplier |
 | 6 | Inheritance | Any | WP -1 | 800 | `COMPLETE` |
 | 7 | Foppish Elf | ELF ELM | DX -1; Persuasion +2 | 400 | `COMPLETE` |
 | 8 | Clanless Dwarf | DWF DWM | Repair, Firearms, Pick Locks, Disarm Traps -2 | 400; 6076 | `COMPLETE` for playable DWM |
 | 9 | Disenfranchised Gnome | GNF GNM | Haggle -2; ST +1 | 400 | `COMPLETE` for playable GNM |
 | 10 | Halfling Orphan | HAF HAM | Pick Pocket +2; IN -1 | 400 | `COMPLETE` for playable HAM |
-| 11 | Special Person | Any | IN -2; positive reaction adjustment ×2 | 400 | `BLOCKED`: reaction multiplier |
+| 11 | Special Person | Any | IN -2; positive reaction adjustment ×2 | 400 | `EFFECT UNSUPPORTED`: reaction multiplier |
 | 12 | Professional Knife Tosser | Any | PE -1; Throwing +3 | 400 | `COMPLETE` |
 | 13 | Apprenticed to a Shopkeeper | Any | Haggle +3; DX -1 | 400 | `COMPLETE` |
 | 14 | Sent to Charm School | HUF GNF | BE +1; CH +2; IN -1; ST -2 | 400 | `COMPLETE` for playable HUF |
-| 15 | Born Under a Sign | Any | critical hit chance -10; critical hit effect +10; critical failure chance -10; critical failure effect +10 | 400 | `BLOCKED`: critical modifiers |
-| 16 | Extreme Personality | Any | negative reaction -30; positive reaction +30 | 400 | `BLOCKED`: reaction modifiers |
+| 15 | Born Under a Sign | Any | critical hit chance -10; critical hit effect +10; critical failure chance -10; critical failure effect +10 | 400 | `EFFECT UNSUPPORTED`: critical modifiers |
+| 16 | Extreme Personality | Any | negative reaction -30; positive reaction +30 | 400 | `EFFECT UNSUPPORTED`: reaction modifiers |
 | 17 | Factory Escapee | HOM HOF | ST +1 | 50 | `COMPLETE` |
 | 18 | Freed Bodyguard | HGM HGF | IN -1 | 500 | `COMPLETE` for playable HGM |
 | 19 | Bookworm | HUF HUM DWF DWM ELF ELM HEF HEM GNF GNM HAF HAM | IN +1; PE -1 | 400 | `COMPLETE` |
@@ -103,7 +105,7 @@ Eligibility `Any` means every playable identity. Effect strings are normalized f
 | 22 | Rare Half-Ogre Birth | HGM HGF | IN +2; ST -1; CN -1 | 400 | `COMPLETE` for playable HGM |
 | 23 | Suppressed Orcish Looks | HOM HOF | BE +2; CH -2 | 400 | `COMPLETE` |
 | 24 | Elven Blood | HUF HUM GNF GNM HAF HAM HGM HGF | Repair, Firearms, Pick Locks, Disarm Traps -1; magic points +1 | 400 | `COMPLETE` |
-| 25 | Hyperactive | Any | Speed +1; CH -1 | 400 | `BLOCKED`: Speed modifier |
+| 25 | Hyperactive | Any | Speed +1; CH -1 | 400 | `EFFECT UNSUPPORTED`: Speed modifier |
 | 26 | Army Training | all players except Half-Ogre | ST +1; Bow +1; Melee +1; DX -1 | 400 | `COMPLETE` |
 | 27 | Tough Hide | HOM HOF HGM HGF | damage resistance +10; BE -1 | 400 | `COMPLETE` |
 | 28 | Sheltered Childhood | HUF HUM HEF HEM HOF HOM GNF GNM HAF HAM ELF ELM | ST -6; IN +2; WP +2; PE +1 | 400 | `COMPLETE` |
@@ -129,26 +131,26 @@ Eligibility `Any` means every playable identity. Effect strings are normalized f
 | 48 | Bel'an T'Seraa | NPC | pre-generated prototype | 400 | excluded from custom creation |
 | 49 | Clarisse Vorak | NPC | pre-generated prototype | 400 | excluded from custom creation |
 | 50 | Ke'ree Melange | NPC | pre-generated prototype | 400 | excluded from custom creation |
-| 51 | Educator | Any | maximum followers -1 | 400 | `BLOCKED`: follower-cap modifier |
+| 51 | Educator | Any | maximum followers -1 | 400 | `EFFECT UNSUPPORTED`: follower-cap modifier |
 | 52 | Super Model | all female identity codes | BE +6; ST -2; IN -4 | 400 | `COMPLETE` for playable females |
-| 53 | Escaped Lunatic | HUM | damage/fire/electrical/poison resistance +25; reaction -25 | 0; 8117 | `BLOCKED`: reaction modifier |
-| 54 | Escaped Lunatic | HUF | same as 53 | 0; 8142 | `BLOCKED`: reaction modifier |
+| 53 | Escaped Lunatic | HUM | damage/fire/electrical/poison resistance +25; reaction -25 | 0; 8117 | `EFFECT UNSUPPORTED`: reaction modifier |
+| 54 | Escaped Lunatic | HUF | same as 53 | 0; 8142 | `EFFECT UNSUPPORTED`: reaction modifier |
 | 55 | Idiot Savant | HUF HUM HEF HEM HOF HOM HGF HGM | IN +6; ST -1; CN -1; DX -2; WP -2; Gambling +3 | 0 | `COMPLETE` |
 | 56 | Tomboy | all female identity codes | ST +1; CN -1 | 400 | `COMPLETE` for playable females |
 | 57 | Barbarian | HUF HUM HEF HEM HOF HOM | ST +2; CN +1; IN -1; CH -2; Melee +1; Haggle -2 | 100; 8096 | `COMPLETE` |
 | 58 | Barbarian | DWF DWM GNF GNM HAF HAM | same as 57 | 100; 8104 | `COMPLETE` for playable male identities |
-| 59 | Nietzsche Poster Child | Any | experience gain +10%; critical failure chance +20 | 400 | `BLOCKED`: experience/critical modifiers |
+| 59 | Nietzsche Poster Child | Any | experience gain +10%; critical failure chance +20 | 400 | `EFFECT UNSUPPORTED`: experience/critical modifiers |
 | 60 | Dark Elf Follower | ELF ELM | WP +2; CH -2 | 400 | `COMPLETE` |
-| 61 | Sold Your Soul | Any | magic points +4; reaction -20; alignment -200; maximum alignment -200 | 400 | `BLOCKED`: reaction/alignment modifiers |
-| 62 | Day Mage | all players | time-of-day magic aptitude rule | 400 | `SPECIAL MISSING` |
-| 63 | Night Mage | all players | time-of-day magic aptitude rule | 400 | `SPECIAL MISSING` |
-| 64 | Sky Mage | all players | environment magic aptitude rule | 400 | `SPECIAL MISSING` |
-| 65 | Nature Mage | all players | environment magic aptitude rule | 400 | `SPECIAL MISSING` |
-| 66 | Agoraphobic | HUF HUM DWF DWM GNF GNM HAF HAM | exterior/interior rule | 400 | `SPECIAL MISSING` |
+| 61 | Sold Your Soul | Any | magic points +4; reaction -20; alignment -200; maximum alignment -200 | 400 | `EFFECT UNSUPPORTED`: reaction/alignment modifiers |
+| 62 | Day Mage | all players | time-of-day magic aptitude rule | 400 | `EFFECT MISSING` |
+| 63 | Night Mage | all players | time-of-day magic aptitude rule | 400 | `EFFECT MISSING` |
+| 64 | Sky Mage | all players | environment magic aptitude rule | 400 | `EFFECT MISSING` |
+| 65 | Nature Mage | all players | environment magic aptitude rule | 400 | `EFFECT MISSING` |
+| 66 | Agoraphobic | HUF HUM DWF DWM GNF GNM HAF HAM | exterior/interior rule | 400 | `EFFECT MISSING` |
 | 67 | Hydrophobic | HUF HUM DWF DWM GNF GNM HAF HAM HOF HOM | Persuasion +2 plus water/rain behavior | 400 | `PARTIAL`: skill only |
 | 68 | Afraid of the Dark | HUF HUM HAF HAM | PE +2 plus darkness behavior | 400 | `PARTIAL`: attribute only |
 | 69 | Magick Allergy | HUF HUM DWF DWM GNF GNM HAF HAM HOF HOM HGF HGM | technology points +2 | 400 | `COMPLETE` |
-| 70 | Arsonist | HUF HUM GNF GNM HAF HAM HOF HOM | Explosives expertise +20; ST -1; CN -1 | 400 | `BLOCKED`: expertise modifier |
+| 70 | Arsonist | HUF HUM GNF GNM HAF HAM HOF HOM | Explosives expertise +20; ST -1; CN -1 | 400 | `EFFECT UNSUPPORTED`: expertise modifier |
 | 71 | Bandit | HUF HUM HOF HOM HEF HEM | Firearms +2; CH -1 | 0; 6083, five × 7039 | `COMPLETE` |
 | 72 | Technophobia | HUF HUM HEF HEM HAF HAM HOF HOM | ST +1; CN +1; source technology restriction | 400 | `PARTIAL`: restriction not certified |
 | 73 | Only Child | Any | WP +6; CH -4; Haggle -2; Persuasion -2 | 400 | `COMPLETE` |
@@ -156,7 +158,7 @@ Eligibility `Any` means every playable identity. Effect strings are normalized f
 | 75 | Bride of Frankenstein | HUF HOF | BE +4; CN +4; DX -4; electrical resistance +20; poison +10; fire -10 | 0 | `COMPLETE` |
 | 76 | Mad Doctor | Any | IN +2; PE +2; electrical/poison resistance +20; Heal +4; BE -1; CH -1; DX -2; CN -3 | 400 | `COMPLETE` |
 | 77 | Miracle Operation | Any | IN +3; CH +3; PE +5; ST -3; DX -3; CN -5 | 400 | `COMPLETE` |
-| 78 | Dark Sight | Any | darkness/vision rule | 400 | `SPECIAL MISSING` |
+| 78 | Dark Sight | Any | darkness/vision rule | 400 | `EFFECT MISSING` |
 
 ## Representative ordered lists
 

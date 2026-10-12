@@ -2,6 +2,8 @@
 
 Source basis: official manual magic appendix, Prima spell tables/details pp. 62–74, retail spell/MES data, `arcanum-ce` spell rules, and the current OpenArcanum production spell catalog.
 
+Current-branch reconciliation: 2026-10-12 against `5926bb42ff0f1fe261ba8deb71716d149733c9d3`. Character Creation now projects all source spell rows, but presentation catalog coverage is not runtime implementation: `PhaseOneSpellCatalog` still contains exactly the four spells identified below.
+
 All colleges have five sequential ranks. Rank prerequisites are WP/level `6/1, 9/1, 12/5, 15/10, 18/15`, with minimum INT 5. A spell costs one character point and contributes one magic point. Maintained-spell capacity is `INT / 4`. “Upkeep” below is fatigue per source upkeep interval. OpenArcanum production support is `Yes` only for IDs 15, 55, 60, and 66; all other rows are `MISSING` even if a parser, enum, icon, or older audit knows the name.
 
 | ID | College / rank | Spell | Cast / upkeep | Source behavior summary | Production |

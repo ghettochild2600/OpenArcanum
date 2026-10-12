@@ -1,11 +1,19 @@
 # OpenArcanum Gap Matrix
 
 Audit date: 2026-10-11
-Audited commit: `d0740332afeef46637d298063693371861f6cb07`
+Current-branch reconciliation: 2026-10-12 against `5926bb42ff0f1fe261ba8deb71716d149733c9d3`; the latest production commit remains `d0740332afeef46637d298063693371861f6cb07`.
 
 This matrix contains **60 confirmed gaps**. The first 50 are ranked by player impact, dependency leverage, and breadth of source content blocked. Rank is not implementation permission; each item still requires a single-issue source trace and regression proof.
 
 Evidence abbreviations: `Retail` = pristine retail data; `CE` = `arcanum-ce`; `Manual` = official manual; `Prima` = Prima guide; `OA` = current OpenArcanum source/tests/audits.
+
+## 2026-10-12 reconciliation findings
+
+- `d074033` completed source Background visibility, eligibility, numeric ordering, wrapping, and race/sex rebuilding. The remaining gap is effect execution and fail-closed finalization for unsupported effect families.
+- All twelve pregenerated characters, their source-prototype inventories/direct-start path, and ordinary auto-level target families are implemented. The prior broad pregen/auto-level gap is replaced by the exact scheme-76 tokenization mismatch.
+- Character Creation Magic/Technology rows, technology expertise projection, the starting Human Shopkeeper, and world corpse inspection are implemented. Remaining UI gaps are explicitly limited to post-creation Magic/Technology/Schematics and other runtime barter/container modes.
+- World and Inventory inspection exist. The remaining item-inspection gap is identified/unidentified property projection, not absence of inspection.
+- Targeted source/test checks found no later implementation for the other listed gaps. The production tree has not changed since `d074033`; `5926bb4` added only the original reference documents.
 
 ## Compatibility catalog
 
@@ -18,9 +26,9 @@ This is the canonical catalog view using the requested schema. The detailed rank
 | Travel | Random encounters | Manual world travel | CE worldmap; retail encounter data | `MISSING` | Critical | Travel loop incomplete | Implement source encounter selection (Large) |
 | Maps | Local map | Manual map controls | CE UI/data; retail art | `MISSING` | High | Player lacks local navigation map | Build source local-map authority and UI (Large) |
 | Attributes | Poison runtime | Manual poison/recovery/cures | CE poison ticks; retail effects | `PARTIAL` | High | Poison items/spells/backgrounds wrong | Add authoritative poison state/ticks (Large) |
-| Creation | Unsupported Background effects | Manual/Prima Background descriptions | CE effects; retail effect MES | `PARTIAL` | High | Legal characters are blocked | Implement one typed Background effect family (Large) |
 | Attributes | Complete contributor graph | Manual derived-stat rules | CE `stat_level_get`; retail effects | `PARTIAL` | Critical | Many values omit legal modifiers | Add typed source contributor registry (Large) |
 | Time/Sleep | Bed authority | Manual wait/sleep | CE `SAP_USE`; retail scripts | `MISSING` | High | Beds and recovery differ | Implement bed classification/use rules (Medium) |
+| Creation | Unsupported Background effects | Manual/Prima Background descriptions | CE effects; retail effect MES | `PARTIAL` | High | Eligibility/order are correct; selecting an unsupported effect remains visible and finalization fails closed | Implement one typed Background effect family (Medium) |
 | Followers | Selected-follower commands | Manual party HUD/keys | CE party UI/commands | `PARTIAL` | High | Core party control missing | Add one source follower command path (Large) |
 | Logbook | Six non-quest domains | Manual permanent screens | CE/retail journal data | `PARTIAL` | High | Major journal information absent | Implement one journal domain end-to-end (Large) |
 | Skills | Prowling | Manual training rules | CE skill/detection code | `MISSING` | High | Stealth build unusable | Implement Prowling action/detection (Large) |
@@ -62,12 +70,12 @@ This is the canonical catalog view using the requested schema. The detailed rank
 | Time/Environment | Gameplay coupling | Manual day/night rules | CE stat/spell/background code | `PARTIAL` | High | Time-dependent rules wrong | Connect one environment consumer (Large) |
 | Audio/UI | Startup movies/audio | Manual/startup flow | Retail media; CE startup | `MISSING` | Medium | Source opening absent | Integrate ordered startup media (Medium) |
 | Multiplayer | Multiplayer/chat | Manual multiplayer | CE/retail networking surfaces | `MISSING` | High | Whole advertised mode unavailable | Define/implement first networking boundary (Large) |
-| Creation | Pregens/auto-level schemes | Prima pregens; Manual auto-level | CE schemes; retail prototypes | `PARTIAL` | Medium | Pregens/auto-spending differ | Certify one pregen and scheme (Large) |
+| Creation | Auto-level rule tokenization | Manual auto-level; Prima pregens | CE `auto_level_process_rule`; retail scheme 76 | `INCORRECT` | Medium | Scheme 76 stops when OpenArcanum rejects `dx 20 pickpocket 20`; CE applies DX 20 and consumes the tail | Match source tokenization for malformed source segments (Small) |
 | Technology | Found-schematic acquisition | Prima schematics | Retail items/scripts; CE learning | `PARTIAL` | Medium | Recipes not campaign-reachable | Implement one acquisition/learn path (Large) |
-| UI | Magic/technology sheets | Manual character interface | CE UI; retail art | `PARTIAL` | Medium | Advancement interface differs | Reconstruct one source panel (Medium) |
+| UI | Runtime Magic/Technology/Schematics screens | Manual permanent-screen interface | CE UI; retail art | `PARTIAL` | Medium | Character Creation rows are corrected; post-creation advancement/crafting screens remain generic or bounded | Reconstruct one runtime source panel (Medium) |
 | Controls | Key remapping/command set | Manual quick keys | CE input; retail settings | `PARTIAL` | Medium | Some commands unavailable | Audit and add one command family (Medium) |
-| Save/UI | Save/load metadata/presentation | Manual permanent screens | CE/retail UI | `PARTIAL` | Low | Functional but non-source UI | Add one source metadata behavior (Medium) |
-| Inventory/UI | Specialized interfaces | Manual inventory/barter | CE UI; retail art | `PARTIAL` | Medium | Contexts look/behave generically | Rebuild one container mode (Medium) |
+| Save/UI | Save-slot preview and source metadata | Manual permanent screens | CE/retail save UI | `PARTIAL` | Low | Functional generic list has no source slot thumbnail and displays UTC metadata rather than the source composition | Add source slot thumbnail/metadata projection (Medium) |
+| Inventory/UI | Runtime barter/corpse/special-container interfaces | Manual inventory/barter | CE UI; retail art | `PARTIAL` | Medium | Starting Shopkeeper and world corpse inspection are corrected; other runtime modes remain generic | Rebuild one remaining container mode (Medium) |
 | Combat | Critical effect corpus | Manual critical rules | CE tables; retail data | `PARTIAL` | High | Outcomes incomplete | Port one critical table family (Large) |
 | Combat | Called-shot injuries | Manual called shots | CE hit-location effects | `PARTIAL` | High | Limb/head outcomes incomplete | Add one location consequence (Medium) |
 | Items/Combat | Equipment special properties | Manual item/combat rules | CE/retail prototypes | `PARTIAL` | High | Stats/damage omit properties | Implement one property family (Large) |
@@ -83,9 +91,9 @@ This is the canonical catalog view using the requested schema. The detailed rank
 | 3 | `MISSING` | World travel has no source random-encounter resolution. | Retail encounter data; CE worldmap; Manual | Route execution cannot produce the retail encounter loop. | `Runtime/World/WorldMapTravel.cs`, campaign/combat loaders | L |
 | 4 | `MISSING` | Local map presentation, reveal, and interactions are absent. | Retail UI/data; Manual; OA UI audit | Only map-transition infrastructure exists; player cannot use the source local map. | `Runtime/UI/*`, world discovery/presentation | L |
 | 5 | `PARTIAL` | Poison progression, recovery ticks, display, and cures are not an authoritative runtime domain. | CE stat/poison code; Manual; Background/item/spell data | Poison resistance can be stored, but source poison gameplay is not complete. | character vitality/status, UI HUD, items, magic, save | L |
-| 6 | `PARTIAL` | Legal Backgrounds with unsupported effect tokens cannot complete character creation. | Retail Background/effect MES; CE; `CharacterCreationRuntime.Validate` | Safe validation blocks reaction, critical, Speed, follower, XP, alignment, and expertise Backgrounds. | `Runtime/Creation/CharacterCreationRuntime.cs`, stats/social/combat | L |
-| 7 | `PARTIAL` | The source effect/contributor graph is incomplete across stats. | Retail effects; CE `stat_level_get`; OA derived services | Core formulas work, but equipment, status, sector, time, and environment contributors are absent or fragmented. | `Runtime/Character/*`, equipment, magic, world time | XL |
-| 8 | `MISSING` | Bed sleeping lacks occupied/rented/free authority and source `SAP_USE` semantics. | CE use/sleep path; Manual; OA sleep audit | Waiting works; beds do not reproduce source sleep access and time rules. | `Runtime/World/SleepLocationSource.cs`, use scripts, HUD | M |
+| 6 | `PARTIAL` | The source effect/contributor graph is incomplete across stats. | Retail effects; CE `stat_level_get`; OA derived services | Core formulas work, but equipment, status, sector, time, and environment contributors are absent or fragmented. | `Runtime/Character/*`, equipment, magic, world time | XL |
+| 7 | `MISSING` | Bed sleeping lacks occupied/rented/free authority and source `SAP_USE` semantics. | CE use/sleep path; Manual; OA sleep audit | Waiting works; beds do not reproduce source sleep access and time rules. | `Runtime/World/SleepLocationSource.cs`, use scripts, HUD | M |
+| 8 | `PARTIAL` | Background eligibility/order is complete, but reaction, critical, Speed, follower, XP, alignment, expertise, time, and environment effect families are not executable. | Retail Background/effect MES; CE; `CharacterCreationRuntime.Validate` | All source-legal records remain visible in source order; unsupported effect records fail closed at finalization rather than being hidden or partially applied. | `Runtime/Creation/CharacterCreationRuntime.cs`, stats/social/combat/world | M |
 | 9 | `PARTIAL` | Selected-follower source HUD commands are incomplete. | Retail UI; Manual; OA party/UI audit | Party membership works, but Wait, Inventory, passive sheet, and source command interaction do not. | `Runtime/Party/*`, `RetailGameplayHud.cs` | L |
 | 10 | `PARTIAL` | Six non-quest logbook domains are incomplete. | Retail UI/data; Manual; OA logbook audit | Quests work; Rumors/Notes, Reputations, Blessings/Curses, Kills/Injuries, Background, and Keys do not. | `Runtime/Campaign/JournalProjectionService.cs`, `RetailLogbook.cs`, save | XL |
 | 11 | `MISSING` | Prowling player action and detection state are absent. | CE skill logic; Manual training table; OA HUD audit | Rank/training can be stored, but the action cannot be used faithfully. | skill runtime, player input, AI perception, HUD | L |
@@ -107,7 +115,7 @@ This is the canonical catalog view using the requested schema. The detailed rank
 | 27 | `PARTIAL` | Timed conditions and transformations are incomplete. | Spell/tech/critical data; CE | Blindness is a narrow example; stun, paralysis, petrify, invisibility, polymorph, forms, and timed drug states are absent. | character status/effect runtime, combat/UI/save | XL |
 | 28 | `MISSING` | Equipment-driven critter appearance is not source-faithful. | Retail ART/prototypes; OA graphics audits | Equipping armor/weapons does not always select the correct source critter art. | world critter renderer, equipment presentation | L |
 | 29 | `MISSING` | Item condition, durability damage, breakage, and repair are incomplete. | Retail prototypes; CE; Manual | Item ownership exists without the complete condition lifecycle. | inventory item state, combat, repair, save/UI | L |
-| 30 | `PARTIAL` | Item inspection/identification does not expose all source properties. | Retail item data/UI; Divination; Manual | Inventory works, but complete identified/unidentified descriptions and properties are not certified. | inventory UI, prototype resolver, magic | M |
+| 30 | `PARTIAL` | Identified/unidentified item-property projection is incomplete. | Retail item data/UI; Divination; Manual | World-target hover and ordinary Inventory inspection are implemented; they do not yet expose the full source identified/unidentified property set. | inventory UI, prototype resolver, magic | M |
 | 31 | `MISSING` | Spot Trap passive detection and training behavior are incomplete. | CE; Manual | Trap visibility is not governed by a complete recurring source skill check. | world trap state, perception, HUD | M |
 | 32 | `MISSING` | Gambling skill does not alter merchant inventory by training rank. | Manual; CE commerce | Merchant kernel ignores the source Apprentice/Expert/Master reveal rules. | `EconomyRuntime.cs`, skills, merchant UI | M |
 | 33 | `PARTIAL` | Heal skill lacks the complete bandage, critical, and crippling-injury loop. | Manual; CE | Vitality can change, but source action costs/outcomes/training are incomplete. | vitality, inventory, skill action, injury state | M |
@@ -127,22 +135,39 @@ This is the canonical catalog view using the requested schema. The detailed rank
 | 47 | `PARTIAL` | Day/night and environment do not feed every gameplay rule. | CE stat/spell/background code; retail data | Time service exists, but Background, visibility, spell, schedule, and lighting consumers are incomplete. | time service, stats, AI, rendering, magic | XL |
 | 48 | `MISSING` | Startup movies are not integrated into the player flow. | Retail media/menu flow; OA certification audit | Game begins without the source intro sequence. | main menu/bootstrap, media/audio presentation | M |
 | 49 | `MISSING` | Multiplayer and chat are not implemented. | Retail menu/manual | Entry is deferred/unavailable. | networking, session, UI, save/campaign | XL |
-| 50 | `PARTIAL` | Pregenerated characters and auto-level schemes are not fully source-certified. | Retail prototypes/schemes; CE; Prima | UI offers bounded pregens/creation, but full stats, inventories, biographies, and automatic spending behavior are not established. | creation UI/runtime, progression, source loaders | L |
+| 50 | `INCORRECT` | Auto-level parsing does not match CE tokenization for malformed source segments. | Retail `gamelevel.mes`; CE `auto_level_process_rule` | The twelve pregenerated prototypes and normal target families are implemented, but scheme 76's `dx 20 pickpocket 20` segment is rejected wholesale; CE applies DX 20 and consumes the trailing text. | `Runtime/Creation/CharacterCreationRuntime.cs` | S |
 
 ## Additional confirmed gaps
 
 | ID | Classification | Exact defect | Evidence | Current behavior | Likely implementation surface | Scope |
 |---:|---|---|---|---|---|---|
 | 51 | `PARTIAL` | Found-schematic acquisition and campaign reachability are not complete. | Retail items/scripts; Prima | Catalog can describe recipes; every schematic pickup/learn path is not campaign-certified. | crafting, item use scripts, campaign/save | L |
-| 52 | `PARTIAL` | Magic/technology character-sheet interfaces are not source-complete. | Retail UI; Manual; OA UI audit | Generic/bounded views exist without full source navigation/help/feedback. | `RetailCharacterSheet.cs`, magic/technology presenters | M |
+| 52 | `PARTIAL` | Post-creation Magic, Technology, and Schematics screens are not source-complete. | Retail UI; Manual; OA UI audit | Character Creation's source rows and expertise projection are corrected; runtime advancement/crafting screens remain generic or bounded. | `RetailCharacterSheet.cs`, magic/technology/crafting presenters | M |
 | 53 | `PARTIAL` | Options and key remapping do not cover the complete retail command set. | Retail key list; Manual quick keys; OA UI audit | Keyboard control exists, but all commands/remapping/persistence are not certified. | `ProductionKeyboardController.cs`, options/save | M |
-| 54 | `PARTIAL` | Save/load screen presentation and metadata are not source-faithful. | Retail UI; OA save audits | Slot persistence works with a bounded presentation. | save presenters/panel, screenshots/metadata | M |
-| 55 | `PARTIAL` | Merchant, barter, corpse, and special-container source skins/interactions are incomplete. | Retail UI; Manual; OA UI audit | Generic inventory panels provide function without every source mode. | inventory/economy UI presenters | M |
+| 54 | `PARTIAL` | Save/load slots lack the source preview composition and source-facing metadata. | Retail UI; OA save audits | Persistence works, but `ProductionSaveLoadPresenter` draws a generic list without slot thumbnails and formats host UTC timestamps. | save presenters/panel, screenshots/metadata | M |
+| 55 | `PARTIAL` | Remaining runtime barter, corpse-inventory, steal, and special-container modes are not all source-faithful. | Retail UI; Manual; OA UI audit | The starting Human Shopkeeper and world corpse inspection are corrected; other runtime inventory modes still use generic/bounded presentation. | inventory/economy UI presenters | M |
 | 56 | `PARTIAL` | Critical success/failure effect corpus is incomplete. | Retail critical tables; CE; Manual | Core critical resolution exists, but every weapon/location/result consequence is not certified. | combat resolution, injury/item state | L |
 | 57 | `PARTIAL` | Called-shot arm/leg/head consequences are incomplete. | CE combat; Manual | Targeting/penalties exist at a boundary; full injury/status effects do not. | combat called locations, statuses, UI | M |
 | 58 | `PARTIAL` | Armor, ammunition, and equipment special properties are not fully integrated into combat. | Retail prototypes; CE | Core equipment/resistance paths exist, but the complete property corpus is not active. | item property loader, equipment, combat | XL |
 | 59 | `PARTIAL` | Hostility, surrender, retreat, fleeing, and combat-exit rules are incomplete. | CE AI/combat; retail scripts | Basic hostile combat runs; full disposition and exit transitions do not. | combat state, AI, social runtime | L |
 | 60 | `PARTIAL` | Source weather/light/roof/shadow presentation and gameplay coupling are incomplete. | Retail runtime/assets; OA rendering audits | World renders, but source roof fading, placed lighting, shadows, and visibility coupling are incomplete. | world rendering, time/weather, perception | XL |
+
+## Best Single-Issue Candidates
+
+These are the smallest high-value production gaps after reconciliation. They are candidates only; this documentation task does not authorize implementation.
+
+| Priority | Exact defect | Likely subsystem | Size | Dependency / blocker |
+|---:|---|---|---|---|
+| 1 | Scheme 76's `dx 20 pickpocket 20` segment is rejected instead of matching CE's tokenization. | `CharacterCreationRuntime.ApplyAutoLevelRule` plus focused M12B tests | SMALL | None; controlling parser behavior is known. |
+| 2 | Hyperactive's source `Speed +1` Background effect is unsupported. | Background effect parser; `CharacterDerivedStatService` contributor ownership | MEDIUM | Needs one typed Background-owned Speed modifier that removes cleanly on replacement. |
+| 3 | Technical Manuals in inventory do not add the holder's Intelligence to one discipline's expertise. | `TechnologyRuntime`, inventory/prototype classification | MEDIUM | Needs authoritative manual-to-discipline mapping; no crafting rewrite. |
+| 4 | Haggle Apprentice does not report the merchant's markup. | `EconomyRuntime`, merchant feedback/presenter | SMALL | Needs a source message/feedback route; pricing authority already exists. |
+| 5 | The Background logbook tab does not paginate the finalized character's authored long text. | `JournalProjectionService`, `RetailLogbook` | SMALL | Finalized Background ID/text already exist; no effect implementation required. |
+| 6 | Party HUD slots do not project follower portrait, health, and fatigue from existing party/vitality authority. | `RetailGameplayHud`, `PartyStateService`, vitality projection | MEDIUM | Keep poison/status out of this slice until the poison runtime exists. |
+| 7 | World-map travel completes without source-derived elapsed time. | `WorldMapTravel`, `SourceTimeService` | MEDIUM | Requires source terrain/distance cost; keep random encounters separate. |
+| 8 | Gambling training does not reveal the source merchant inventory tiers. | `EconomyRuntime`, skill training, merchant projection | MEDIUM | Requires reliable wielded/Not-for-Sale inventory classification. |
+| 9 | Keys lack keyring ownership/projection and the Keys logbook page. | inventory item classification, locks, `RetailLogbook` | MEDIUM | Requires authoritative retail key identity mapping. |
+| 10 | Save/load slots have no source preview thumbnail and show host UTC metadata in a generic list. | save slot metadata and `ProductionSaveLoadPresenter` | MEDIUM | Source-trace thumbnail capture/display and game-calendar text; do not broaden authoritative Save V1 gameplay data. |
 
 ## Source ambiguities excluded from the confirmed-gap count
 
