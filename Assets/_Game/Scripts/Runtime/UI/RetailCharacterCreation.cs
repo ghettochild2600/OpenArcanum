@@ -946,9 +946,8 @@ namespace Arcanum.Runtime.UI
         private void CycleBackground(int direction)
         {
             CharacterCreationSpecification draft = _controller.CreationDraft;
-            List<BackgroundDefinition> values = _session.CharacterCreation.Catalog.Backgrounds.Values
-                .Where(value => value.IsLegal(draft.Race, draft.Gender) && !value.HasUnsupportedEffects)
-                .OrderBy(value => value.Id).ToList();
+            IReadOnlyList<BackgroundDefinition> values = _session.CharacterCreation.Catalog
+                .FindSelectableBackgrounds(draft.Race, draft.Gender);
             Cycle(values, value => value.Id, draft.BackgroundId, direction, _controller.SetCreationBackground);
             _identitySignature = int.MinValue;
             Synchronize();

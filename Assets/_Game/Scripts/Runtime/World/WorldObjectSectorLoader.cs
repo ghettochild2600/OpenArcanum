@@ -90,7 +90,8 @@ namespace Arcanum.Runtime.World
         private string moduleArchive = "modules/Arcanum.dat";
 
         [SerializeField]
-        private string[] artArchives = { "arcanum1.dat", "arcanum2.dat", "arcanum3.dat", "arcanum4.dat" };
+        // DatVirtualFileSystem is first-match wins; later retail patch archives must be mounted first.
+        private string[] artArchives = { "arcanum4.dat", "arcanum3.dat", "arcanum2.dat", "arcanum1.dat" };
 
         [SerializeField]
         private string sectorPath = "maps/arcanum1-024-fixed/101602821844.sec";

@@ -270,13 +270,10 @@ namespace Arcanum.Runtime.Creation
 
         public bool IsLegal(CharacterRace race, CharacterGender gender)
         {
-            if (string.IsNullOrWhiteSpace(Conditions)
-                || string.Equals(Conditions.Trim(), "ANY", StringComparison.OrdinalIgnoreCase)) return true;
-            foreach (string token in Conditions.Split((char[])null, StringSplitOptions.RemoveEmptyEntries))
-                if (CharacterCreationCatalog.TryParseIdentityToken(token, out CharacterRace candidate,
-                        out CharacterGender candidateGender)
-                    && candidate == race && candidateGender == gender) return true;
-            return false;
+            if (string.IsNullOrWhiteSpace(Conditions)) return true;
+            string condition = Conditions.ToUpperInvariant();
+            string identity = CharacterCreationCatalog.IdentityCode(race, gender);
+            return condition.Contains("ANY") || identity.Length == 3 && condition.Contains(identity);
         }
     }
 
@@ -383,6 +380,11 @@ namespace Arcanum.Runtime.Creation
 
         public bool TryGetBackground(int id, out BackgroundDefinition background)
             => _backgrounds.TryGetValue(id, out background);
+
+        public IReadOnlyList<BackgroundDefinition> FindSelectableBackgrounds(CharacterRace race,
+            CharacterGender gender)
+            => _backgrounds.Values.Where(value => value.IsLegal(race, gender) && !value.HasUnsupportedEffects)
+                .OrderBy(value => value.Id).ToList().AsReadOnly();
         public bool TryGetAutoLevelScheme(int id, out AutoLevelSchemeDefinition scheme)
         {
             scheme = AutoLevelSchemes.FirstOrDefault(value => value.Id == id);
@@ -514,6 +516,18 @@ namespace Arcanum.Runtime.Creation
                 : value[2] == 'M' ? CharacterGender.Male : (CharacterGender)(-1);
             return CharacterCreationRules.IsPlayableRace(race)
                    && gender is CharacterGender.Female or CharacterGender.Male;
+        }
+
+        internal static string IdentityCode(CharacterRace race, CharacterGender gender)
+        {
+            string prefix = race switch
+            {
+                CharacterRace.Human => "HU", CharacterRace.Dwarf => "DW", CharacterRace.Elf => "EL",
+                CharacterRace.Halfling => "HA", CharacterRace.Gnome => "GN", CharacterRace.HalfElf => "HE",
+                CharacterRace.HalfOrc => "HO", CharacterRace.HalfOgre => "HG",
+                _ => string.Empty,
+            };
+            return prefix + (gender == CharacterGender.Female ? "F" : "M");
         }
 
         private static int[] ParseItems(string source)

@@ -606,9 +606,11 @@ namespace Arcanum.Runtime.UI
             GUILayout.EndHorizontal();
 
             GUILayout.Label("Background");
+            IReadOnlyList<BackgroundDefinition> selectableBackgrounds = catalog.FindSelectableBackgrounds(
+                draft.Race, draft.Gender);
             foreach (BackgroundDefinition background in catalog.Backgrounds.Values.OrderBy(value => value.Id))
             {
-                bool legal = background.IsLegal(draft.Race, draft.Gender) && !background.HasUnsupportedEffects;
+                bool legal = selectableBackgrounds.Contains(background);
                 GUI.enabled = legal;
                 if (GUILayout.Button($"{(draft.BackgroundId == background.Id ? "● " : string.Empty)}"
                                      + $"{background.Name} — {background.Description}"))

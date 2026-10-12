@@ -333,9 +333,8 @@ namespace Arcanum.Runtime.UI
             CreationDraft = new CharacterCreationSpecification();
             PortraitDefinition portrait = catalog.Portraits.Values.FirstOrDefault(value =>
                 value.Race == CreationDraft.Race && value.Gender == CreationDraft.Gender);
-            BackgroundDefinition background = catalog.Backgrounds.Values.OrderBy(value => value.Id)
-                .FirstOrDefault(value => value.IsLegal(CreationDraft.Race, CreationDraft.Gender)
-                                         && !value.HasUnsupportedEffects);
+            BackgroundDefinition background = catalog.FindSelectableBackgrounds(
+                CreationDraft.Race, CreationDraft.Gender).FirstOrDefault();
             if (portrait == null || background == null) return Reject("No legal retail creation choices are available.");
             CreationDraft.PortraitId = portrait.Id;
             CreationDraft.BackgroundId = background.Id;
@@ -393,8 +392,7 @@ namespace Arcanum.Runtime.UI
             // happened to be valid for both identities.
             if (catalog != null)
             {
-                BackgroundDefinition legal = catalog.Backgrounds.Values.OrderBy(value => value.Id)
-                    .FirstOrDefault(value => value.IsLegal(race, gender) && !value.HasUnsupportedEffects);
+                BackgroundDefinition legal = catalog.FindSelectableBackgrounds(race, gender).FirstOrDefault();
                 if (legal != null) CreationDraft.BackgroundId = legal.Id;
             }
             RefreshCreationValidation();

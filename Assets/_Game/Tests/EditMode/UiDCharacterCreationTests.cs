@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using Arcanum.Formats.Objects;
 using Arcanum.Formats.Text;
 using Arcanum.Formats.World;
@@ -383,13 +384,60 @@ namespace Arcanum.Formats.Tests
         }
 
         [Test]
-        public void BackgroundCycleSkipsUnsupportedEffectWithoutInventingRepair()
+        public void BackgroundCycleUsesSourceEligibilityOrderWrapAndReplacement()
         {
+            CharacterCreationCatalog catalog = _session.CharacterCreation.Catalog;
+            Assert.That(catalog.FindSelectableBackgrounds(CharacterRace.Human, CharacterGender.Male)
+                    .Select(value => value.Id), Is.EqualTo(new[] { 0, 1, 2, 3, 4 }));
+            Assert.That(catalog.FindSelectableBackgrounds(CharacterRace.Elf, CharacterGender.Male)
+                    .Select(value => value.Id), Is.EqualTo(new[] { 0, 1, 2, 4 }));
+            Assert.That(catalog.TryGetBackground(2, out BackgroundDefinition blacksmith), Is.True);
+            Assert.That(blacksmith.Name, Is.EqualTo("Apprenticed to a Blacksmith"));
+            Assert.That(catalog.TryGetBackground(3, out BackgroundDefinition raisedByElves), Is.True);
+            Assert.That(raisedByElves.Name, Is.EqualTo("Raised by Elves"));
+            Assert.That(raisedByElves.IsLegal(CharacterRace.Human, CharacterGender.Male), Is.True);
+            Assert.That(raisedByElves.IsLegal(CharacterRace.Human, CharacterGender.Female), Is.True);
+            Assert.That(raisedByElves.IsLegal(CharacterRace.Elf, CharacterGender.Male), Is.False);
+
+            FieldInfo archives = typeof(WorldObjectSectorLoader).GetField("artArchives",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(archives, Is.Not.Null);
+            Assert.That((string[])archives.GetValue(_root.AddComponent<WorldObjectSectorLoader>()),
+                Is.EqualTo(new[] { "arcanum4.dat", "arcanum3.dat", "arcanum2.dat", "arcanum1.dat" }));
+
             Assert.That(_controller.CreationDraft.BackgroundId, Is.Zero);
-            Invoke("Next Background");
-            Assert.That(_controller.CreationDraft.BackgroundId, Is.EqualTo(1));
-            Invoke("Next Background");
+            foreach (int expected in new[] { 1, 2, 3, 4, 0 })
+            {
+                Invoke("Next Background");
+                Assert.That(_controller.CreationDraft.BackgroundId, Is.EqualTo(expected));
+            }
+            Invoke("Previous Background");
+            Assert.That(_controller.CreationDraft.BackgroundId, Is.EqualTo(4));
+            Invoke("Previous Background");
+            Assert.That(_controller.CreationDraft.BackgroundId, Is.EqualTo(3));
+
+            _controller.SetCreationIdentity(CharacterRace.Elf, CharacterGender.Male);
             Assert.That(_controller.CreationDraft.BackgroundId, Is.Zero);
+            foreach (int expected in new[] { 1, 2, 4, 0 })
+            {
+                Invoke("Next Background");
+                Assert.That(_controller.CreationDraft.BackgroundId, Is.EqualTo(expected));
+            }
+
+            _controller.SetCreationIdentity(CharacterRace.Human, CharacterGender.Male);
+            _controller.SetCreationBackground(1);
+            Assert.That(_session.CharacterCreation.GetEffectiveAttribute(_controller.CreationDraft,
+                CharacterAttribute.Beauty), Is.EqualTo(7));
+            _controller.SetCreationBackground(2);
+            Assert.That(_session.CharacterCreation.GetEffectiveAttribute(_controller.CreationDraft,
+                CharacterAttribute.Beauty), Is.EqualTo(8));
+            Assert.That(_session.CharacterCreation.GetEffectiveAttribute(_controller.CreationDraft,
+                CharacterAttribute.Strength), Is.EqualTo(9));
+            _controller.SetCreationBackground(1);
+            Assert.That(_session.CharacterCreation.GetEffectiveAttribute(_controller.CreationDraft,
+                CharacterAttribute.Strength), Is.EqualTo(8));
+            Assert.That(_session.CharacterCreation.GetEffectiveAttribute(_controller.CreationDraft,
+                CharacterAttribute.Beauty), Is.EqualTo(7));
         }
 
         [Test]
@@ -554,7 +602,7 @@ namespace Arcanum.Formats.Tests
             Assert.That(Wrapped("Description Body"), Is.EqualTo(race));
 
             Hover("Race Context", false);
-            Assert.That(Text("Description Title").Text, Is.EqualTo("Snake Handler"));
+            Assert.That(Text("Description Title").Text, Is.EqualTo("Raised by Snake Handlers"));
             Assert.That(Wrapped("Description Body"), Is.EqualTo("Poison and beauty tradeoffs."));
 
             _controller.Close();
@@ -912,12 +960,21 @@ namespace Arcanum.Formats.Tests
             MesFile rules = Mes(
                 (0, "1000"), (1, "86"), (2, ""), (3, "400"), (4, ""),
                 (10, "1010"), (11, "87"), (12, ""), (13, "400"), (14, ""),
-                (20, "1020"), (21, "88"), (22, ""), (23, "400"), (24, ""));
+                (20, "1020"), (21, "88"), (22, ""), (23, "400"), (24, ""),
+                (30, "1030"), (31, "89"), (32, "HUF HUM"), (33, "400"), (34, "8157"),
+                (40, "1040"), (41, "90"), (42, ""), (43, "100"), (44, ""),
+                (50, "1050"), (51, "91"), (52, ""), (53, "400"), (54, ""));
             MesFile text = Mes(
                 (1000, "No Significant Background\n\nNothing happened."),
-                (1010, "Snake Handler\n\nPoison and beauty tradeoffs."),
-                (1020, "Unsupported\n\nUnknown source effect."));
-            MesFile effects = Mes((86, ""), (87, "resistpoison 20, be -1"), (88, "unknown 1"));
+                (1010, "Raised by Snake Handlers\n\nPoison and beauty tradeoffs."),
+                (1020, "Apprenticed to a Blacksmith\n\nStrength and repair training."),
+                (1030, "Raised by Elves\n\nElven training."),
+                (1040, "Raised by Monks\n\nPerception training."),
+                (1050, "Unsupported\n\nUnknown source effect."));
+            MesFile effects = Mes((86, ""), (87, "resistpoison 20, be -1"),
+                (88, "st +1, repair +2, dx -2"),
+                (89, "repair -1, firearms -1, picklock -1, armtrap -1"),
+                (90, "pe +1"), (91, "unknown 1"));
             MesFile portraits = Mes(
                 (1000, "HUM1"), (1001, "HUM2"), (1002, "HUF1"),
                 (1003, "DWM1"), (1004, "ELM1"), (1005, "ELF1"),
