@@ -73,6 +73,15 @@ namespace Arcanum.Formats.Tests
             Assert.That(_controller.BlocksWorldInput, Is.True);
         }
 
+        [Test]
+        public void ResponseTintReconcilesStationaryPointerAndClearsStaleHover()
+        {
+            Assert.That(RetailDialogueView.ResponseTint(true, false), Is.EqualTo(Color.white));
+            Assert.That(RetailDialogueView.ResponseTint(true, true),
+                Is.EqualTo(new Color32(244, 214, 67, 255)));
+            Assert.That(RetailDialogueView.ResponseTint(false, true), Is.EqualTo(Color.white));
+        }
+
         private WorldObject Runtime(string name, ObjectType type)
         {
             var go = new GameObject(name);

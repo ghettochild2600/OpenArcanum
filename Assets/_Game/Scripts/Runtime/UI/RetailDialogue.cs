@@ -75,6 +75,9 @@ namespace Arcanum.Runtime.UI
         public Rect ResponseRect => RetailDialogueLayout.ResponseScreenRect(Screen.width, Screen.height);
         public bool NpcBubbleVisible => _bubble != null && _bubble.gameObject.activeSelf;
 
+        public static Color ResponseTint(bool active, bool pointerInside)
+            => active && pointerInside ? ResponseHover : ResponseNormal;
+
         public void Bind(GameUiController controller, WorldMapSessionCoordinator session, UiSkinResolver resolver)
         {
             if (controller == null) throw new ArgumentNullException(nameof(controller));
@@ -105,6 +108,7 @@ namespace Arcanum.Runtime.UI
             {
                 bool active = !OverflowDetected && index < CurrentResponseCount;
                 _responseButtons[index].gameObject.SetActive(active);
+                _responseButtons[index].interactable = active;
                 if (!active) continue;
                 string value = $"{index + 1}. {dialogue.AvailableResponses[index].Text}";
                 if (!string.Equals(_responseValues[index], value, StringComparison.Ordinal))
@@ -115,6 +119,7 @@ namespace Arcanum.Runtime.UI
                     _responseTexts[index].Bind(_resolver, value, ResponseNormal,
                         RetailDialogueLayout.ResponseFontSourceId);
                 }
+                RefreshResponseTint(index);
             }
             if (OverflowDetected)
             {
@@ -130,12 +135,6 @@ namespace Arcanum.Runtime.UI
                         RetailDialogueLayout.ResponseFontSourceId);
                 }
             }
-            else
-            {
-                for (int index = 0; index < CurrentResponseCount; index++)
-                    _responseButtons[index].interactable = true;
-            }
-
             string npcText = dialogue.NpcText ?? string.Empty;
             if (!string.Equals(_bubbleValue, npcText, StringComparison.Ordinal))
             {
@@ -302,9 +301,16 @@ namespace Arcanum.Runtime.UI
 
             EventTrigger trigger = rowRect.gameObject.AddComponent<EventTrigger>();
             AddTrigger(trigger, EventTriggerType.PointerEnter,
-                () => _responseTexts[captured].SetTint(ResponseHover));
+                () => _responseTexts[captured].SetTint(ResponseTint(true, true)));
             AddTrigger(trigger, EventTriggerType.PointerExit,
-                () => _responseTexts[captured].SetTint(ResponseNormal));
+                () => _responseTexts[captured].SetTint(ResponseTint(true, false)));
+        }
+
+        private void RefreshResponseTint(int index)
+        {
+            RectTransform row = (RectTransform)_responseButtons[index].transform;
+            bool inside = RectTransformUtility.RectangleContainsScreenPoint(row, Input.mousePosition);
+            _responseTexts[index].SetTint(ResponseTint(_responseButtons[index].interactable, inside));
         }
 
         private void PositionNpcBubble(Arcanum.Formats.Objects.ArcanumObjectId npc)
