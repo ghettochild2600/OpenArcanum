@@ -13,6 +13,7 @@ namespace Arcanum.Runtime.Character
         public int Alignment { get; private set; }
         public int MagickPointAdjustment { get; private set; }
         public int TechnologyPointAdjustment { get; private set; }
+        public int BackgroundSpeedAdjustment { get; private set; }
 
         internal PersistentCharacterDerivedState(ArcanumObjectId identity, ObjectType objectType,
             int? prototypeNumber, CharacterDerivedSource source)
@@ -34,5 +35,6 @@ namespace Arcanum.Runtime.Character
         internal void SetAlignment(int alignment) => Alignment = alignment;
         internal void SetMagickPointAdjustment(int value) => MagickPointAdjustment = value;
         internal void SetTechnologyPointAdjustment(int value) => TechnologyPointAdjustment = value;
+        internal void SetBackgroundSpeedAdjustment(int value) => BackgroundSpeedAdjustment = value;
     }
 }

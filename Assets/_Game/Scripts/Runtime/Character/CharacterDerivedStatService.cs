@@ -106,8 +106,8 @@ namespace Arcanum.Runtime.Character
                 CharacterDerivedStat.ArmorClassAdjustment =>
                     CharacterDerivedStatRules.ArmorClassAdjustmentFromDexterity(
                         Effective(identity, CharacterAttribute.Dexterity)),
-                CharacterDerivedStat.Speed => CharacterDerivedStatRules.SpeedFromDexterity(
-                    Effective(identity, CharacterAttribute.Dexterity)),
+                CharacterDerivedStat.Speed => Clamp(CharacterDerivedStatRules.SpeedFromDexterity(
+                    Effective(identity, CharacterAttribute.Dexterity)) + state.BackgroundSpeedAdjustment, 1, 100),
                 CharacterDerivedStat.HealRate => CharacterDerivedStatRules.HealRateFromConstitution(
                     Effective(identity, CharacterAttribute.Constitution)),
                 CharacterDerivedStat.PoisonRecovery => CharacterDerivedStatRules.PoisonRecoveryFromConstitution(
@@ -179,6 +179,9 @@ namespace Arcanum.Runtime.Character
             PersistentCharacterDerivedState state = Get(identity);
             state.SetTechnologyPointAdjustment(checked(state.TechnologyPointAdjustment + 1));
         }
+
+        public void SetBackgroundSpeedAdjustment(ArcanumObjectId identity, int amount)
+            => Get(identity).SetBackgroundSpeedAdjustment(amount);
 
         public CharacterReactionInputs GetReactionInputs(ArcanumObjectId npcIdentity, ArcanumObjectId pcIdentity)
         {

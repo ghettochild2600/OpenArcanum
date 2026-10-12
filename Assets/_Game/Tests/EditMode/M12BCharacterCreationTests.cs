@@ -123,6 +123,33 @@ namespace Arcanum.Formats.Tests
         }
 
         [Test]
+        public void HyperactiveSpeedIsTypedReversibleAndMatchesFinalizedAuthority()
+        {
+            CharacterCreationSpecification source = Default();
+            Assert.That(_session.CharacterCreation.ProjectInitialStats(source).Speed, Is.EqualTo(8));
+            Assert.That(_session.CharacterCreation.GetEffectiveAttribute(source, CharacterAttribute.Charisma),
+                Is.EqualTo(8));
+
+            source.BackgroundId = 25;
+            CharacterCreationInitialStats hyperactive = _session.CharacterCreation.ProjectInitialStats(source);
+            Assert.That(hyperactive.Speed, Is.EqualTo(9));
+            Assert.That(_session.CharacterCreation.GetEffectiveAttribute(source, CharacterAttribute.Charisma),
+                Is.EqualTo(7));
+            Assert.That(_session.CharacterCreation.Validate(source).Succeeded, Is.True);
+
+            source.BackgroundId = 0;
+            Assert.That(_session.CharacterCreation.ProjectInitialStats(source).Speed, Is.EqualTo(8));
+            source.BackgroundId = 25;
+            Assert.That(_session.CharacterCreation.ProjectInitialStats(source).Speed, Is.EqualTo(9),
+                "cycling away and back must not stack the Background-owned contribution");
+
+            Assert.That(_session.CharacterCreation.FinalizeNewGame(source).Succeeded, Is.True);
+            ArcanumObjectId pc = ProductionPlayerLifecycle.DefaultPlayerIdentity;
+            Assert.That(_session.DerivedStats.GetDerivedStat(pc, CharacterDerivedStat.Speed), Is.EqualTo(9));
+            Assert.That(_session.Characters.GetEffectiveAttribute(pc, CharacterAttribute.Charisma), Is.EqualTo(7));
+        }
+
+        [Test]
         public void SkillPurchaseUsesGoverningAttributeCapAndFinalRuntimeState()
         {
             CharacterCreationSpecification source = Default(); source.SetSkillPoints(CharacterSkill.Melee, 1);
@@ -504,14 +531,17 @@ namespace Arcanum.Formats.Tests
                 (10, "1001"), (11, "87"), (12, ""), (13, "400"), (14, ""),
                 (30, "1003"), (31, "89"), (32, "HUF HUM"), (33, "400"), (34, "8157"),
                 (390, "1039"), (391, "86"), (392, "HEM"), (393, "0"), (394, ""),
-                (50, "1005"), (51, "200"), (52, ""), (53, "400"), (54, ""));
+                (50, "1005"), (51, "200"), (52, ""), (53, "400"), (54, ""),
+                (250, "1025"), (251, "201"), (252, ""), (253, "400"), (254, ""));
             MesFile text = Mes((1000, "No significant background\n\nNothing happened."),
                 (1001, "Raised by Snake Handlers\n\nPoison and Beauty."),
                 (1003, "Raised by Elves\n\nElven mail."),
                 (1039, "Merwin's Background\n\nRetail pregenerated source."),
-                (1005, "Unsupported\n\nUnsupported test."));
+                (1005, "Unsupported\n\nUnsupported test."),
+                (1025, "Hyperactive\n\nSpeed and Charisma."));
             MesFile effects = Mes((86, ""), (87, "resistpoison +20, be -1"),
-                (89, "repair -1, firearms -1, picklock -1, armtrap -1"), (200, "speed +1"));
+                (89, "repair -1, firearms -1, picklock -1, armtrap -1"), (200, "reaction +1"),
+                (201, "speed +1, ch -1"));
             MesFile portraits = Mes((1001, "DWM1"), (1005, "HUM1"), (1006, "ELF1"),
                 (1009, "HGM1"), (1010, "HEM1"), (1003, "HAM1"), (1004, "HOM1"),
                 (1002, "GNM1"), (1007, "HOF1"), (1008, "HUF1"), (1011, "HEF1"),

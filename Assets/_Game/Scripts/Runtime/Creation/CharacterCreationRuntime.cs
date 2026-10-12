@@ -90,13 +90,13 @@ namespace Arcanum.Runtime.Creation
         public int MagickTechAptitude { get; }
 
         internal CharacterCreationInitialStats(int[] attributes)
-            : this(attributes, CharacterRace.Human, null, 0, 0)
+            : this(attributes, CharacterRace.Human, null, 0, 0, 0)
         {
         }
 
         internal CharacterCreationInitialStats(int[] attributes, CharacterRace race,
             IReadOnlyDictionary<CharacterResistance, int> resistanceModifiers,
-            int magickPoints, int technologyPoints)
+            int magickPoints, int technologyPoints, int speedModifier)
         {
             if (attributes == null || attributes.Length < CharacterAttributeSet.Count)
                 throw new ArgumentException("A complete source attribute projection is required.", nameof(attributes));
@@ -108,7 +108,8 @@ namespace Arcanum.Runtime.Creation
             CarryWeight = CharacterDerivedStatRules.CarryWeightFromStrength(strength);
             DamageBonus = CharacterDerivedStatRules.MeleeDamageBonusFromStrength(strength);
             ArmorClassAdjustment = CharacterDerivedStatRules.ArmorClassAdjustmentFromDexterity(dexterity);
-            Speed = CharacterDerivedStatRules.SpeedFromDexterity(dexterity);
+            Speed = Math.Max(1, Math.Min(100,
+                CharacterDerivedStatRules.SpeedFromDexterity(dexterity) + speedModifier));
             HealRate = CharacterDerivedStatRules.HealRateFromConstitution(constitution);
             PoisonRecovery = CharacterDerivedStatRules.PoisonRecoveryFromConstitution(constitution);
             ReactionModifier = CharacterDerivedStatRules.BeautyReactionModifierFromBeauty(beauty);
@@ -239,6 +240,7 @@ namespace Arcanum.Runtime.Creation
         public int StartingGold { get; }
         public int MagicPointModifier { get; }
         public int TechnologyPointModifier { get; }
+        public int SpeedModifier { get; }
         public bool HasUnsupportedEffects { get; }
         public IReadOnlyDictionary<CharacterAttribute, int> AttributeModifiers => _attributes;
         public IReadOnlyDictionary<CharacterSkill, int> SkillModifiers => _skills;
@@ -248,7 +250,7 @@ namespace Arcanum.Runtime.Creation
         internal BackgroundDefinition(int id, int textId, string name, string description, int effectId,
             string rawEffect, string conditions, int startingGold,
             Dictionary<CharacterAttribute, int> attributes, Dictionary<CharacterSkill, int> skills,
-            Dictionary<CharacterResistance, int> resistances, int magicPoints, int techPoints,
+            Dictionary<CharacterResistance, int> resistances, int magicPoints, int techPoints, int speedModifier,
             int[] items, bool unsupported)
         {
             Id = id;
@@ -264,6 +266,7 @@ namespace Arcanum.Runtime.Creation
             _resistances = resistances;
             MagicPointModifier = magicPoints;
             TechnologyPointModifier = techPoints;
+            SpeedModifier = speedModifier;
             _items = items;
             HasUnsupportedEffects = unsupported;
         }
@@ -434,10 +437,10 @@ namespace Arcanum.Runtime.Creation
                 ParseEffect(rawEffect, out Dictionary<CharacterAttribute, int> attributes,
                     out Dictionary<CharacterSkill, int> skills,
                     out Dictionary<CharacterResistance, int> resistances,
-                    out int magicPoints, out int techPoints, out bool unsupported);
+                    out int magicPoints, out int techPoints, out int speedModifier, out bool unsupported);
                 definitions[id] = new BackgroundDefinition(id, textId, name, text, effectId, rawEffect,
                     conditions, Math.Max(0, gold), attributes, skills, resistances, magicPoints, techPoints,
-                    ParseItems(backgroundRules.Get(key + 4)), unsupported);
+                    speedModifier, ParseItems(backgroundRules.Get(key + 4)), unsupported);
             }
 
             var portraitDefinitions = new Dictionary<int, PortraitDefinition>();
@@ -542,13 +545,14 @@ namespace Arcanum.Runtime.Creation
             out Dictionary<CharacterAttribute, int> attributes,
             out Dictionary<CharacterSkill, int> skills,
             out Dictionary<CharacterResistance, int> resistances,
-            out int magicPoints, out int techPoints, out bool unsupported)
+            out int magicPoints, out int techPoints, out int speedModifier, out bool unsupported)
         {
             attributes = new Dictionary<CharacterAttribute, int>();
             skills = new Dictionary<CharacterSkill, int>();
             resistances = new Dictionary<CharacterResistance, int>();
             magicPoints = 0;
             techPoints = 0;
+            speedModifier = 0;
             unsupported = false;
             foreach (string raw in (source ?? string.Empty).Split(','))
             {
@@ -564,6 +568,7 @@ namespace Arcanum.Runtime.Creation
                 else if (TryResistance(key, out CharacterResistance resistance)) Add(resistances, resistance, amount);
                 else if (key == "magicpts") magicPoints = checked(magicPoints + amount);
                 else if (key == "techpts") techPoints = checked(techPoints + amount);
+                else if (key == "speed") speedModifier = checked(speedModifier + amount);
                 else unsupported = true;
             }
         }
@@ -1353,6 +1358,7 @@ namespace Arcanum.Runtime.Creation
             foreach (var pair in background.SkillModifiers)
                 _world.Progression.SetEffectModifier(identity,
                     $"creation-background:{background.Id}:skill:{(int)pair.Key}", pair.Key, pair.Value);
+            _world.DerivedStats.SetBackgroundSpeedAdjustment(identity, background.SpeedModifier);
         }
 
         private static int EffectiveAttribute(CharacterCreationSpecification source,
@@ -1386,7 +1392,8 @@ namespace Arcanum.Runtime.Creation
             int technologyPoints = source.CopyTechnology().Sum()
                                    + (background?.TechnologyPointModifier ?? 0);
             return new CharacterCreationInitialStats(attributes, source.Race,
-                background?.ResistanceModifiers, magickPoints, technologyPoints);
+                background?.ResistanceModifiers, magickPoints, technologyPoints,
+                background?.SpeedModifier ?? 0);
         }
 
         public CharacterCreationInitialStats ProjectPregeneratedInitialStats(
@@ -1420,7 +1427,7 @@ namespace Arcanum.Runtime.Creation
             int technologyPoints = prototype.StatBase.Length > CharacterDerivedStatRules.TechPointsSourceSlot
                 ? prototype.StatBase[CharacterDerivedStatRules.TechPointsSourceSlot] : 0;
             return new CharacterCreationInitialStats(attributes, source.Race, resistances,
-                magickPoints, technologyPoints);
+                magickPoints, technologyPoints, background?.SpeedModifier ?? 0);
         }
 
         public int GetEffectiveSkillRank(CharacterCreationSpecification source, CharacterSkill skill)
