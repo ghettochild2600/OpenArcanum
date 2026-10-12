@@ -3,9 +3,11 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using Arcanum.Formats.Database;
 using Arcanum.Formats.Objects;
 using Arcanum.Formats.Text;
 using Arcanum.Formats.World;
+using Arcanum.Runtime;
 using Arcanum.Runtime.Character;
 using Arcanum.Runtime.Creation;
 using Arcanum.Runtime.Crafting;
@@ -388,9 +390,9 @@ namespace Arcanum.Formats.Tests
         {
             CharacterCreationCatalog catalog = _session.CharacterCreation.Catalog;
             Assert.That(catalog.FindSelectableBackgrounds(CharacterRace.Human, CharacterGender.Male)
-                    .Select(value => value.Id), Is.EqualTo(new[] { 0, 1, 2, 3, 4 }));
+                    .Select(value => value.Id), Is.EqualTo(new[] { 0, 1, 2, 3, 4, 5 }));
             Assert.That(catalog.FindSelectableBackgrounds(CharacterRace.Elf, CharacterGender.Male)
-                    .Select(value => value.Id), Is.EqualTo(new[] { 0, 1, 2, 4 }));
+                    .Select(value => value.Id), Is.EqualTo(new[] { 0, 1, 2, 4, 5 }));
             Assert.That(catalog.TryGetBackground(2, out BackgroundDefinition blacksmith), Is.True);
             Assert.That(blacksmith.Name, Is.EqualTo("Apprenticed to a Blacksmith"));
             Assert.That(catalog.TryGetBackground(3, out BackgroundDefinition raisedByElves), Is.True);
@@ -406,19 +408,19 @@ namespace Arcanum.Formats.Tests
                 Is.EqualTo(new[] { "arcanum4.dat", "arcanum3.dat", "arcanum2.dat", "arcanum1.dat" }));
 
             Assert.That(_controller.CreationDraft.BackgroundId, Is.Zero);
-            foreach (int expected in new[] { 1, 2, 3, 4, 0 })
+            foreach (int expected in new[] { 1, 2, 3, 4, 5, 0 })
             {
                 Invoke("Next Background");
                 Assert.That(_controller.CreationDraft.BackgroundId, Is.EqualTo(expected));
             }
             Invoke("Previous Background");
-            Assert.That(_controller.CreationDraft.BackgroundId, Is.EqualTo(4));
+            Assert.That(_controller.CreationDraft.BackgroundId, Is.EqualTo(5));
             Invoke("Previous Background");
-            Assert.That(_controller.CreationDraft.BackgroundId, Is.EqualTo(3));
+            Assert.That(_controller.CreationDraft.BackgroundId, Is.EqualTo(4));
 
             _controller.SetCreationIdentity(CharacterRace.Elf, CharacterGender.Male);
             Assert.That(_controller.CreationDraft.BackgroundId, Is.Zero);
-            foreach (int expected in new[] { 1, 2, 4, 0 })
+            foreach (int expected in new[] { 1, 2, 4, 5, 0 })
             {
                 Invoke("Next Background");
                 Assert.That(_controller.CreationDraft.BackgroundId, Is.EqualTo(expected));
@@ -438,6 +440,76 @@ namespace Arcanum.Formats.Tests
                 CharacterAttribute.Strength), Is.EqualTo(8));
             Assert.That(_session.CharacterCreation.GetEffectiveAttribute(_controller.CreationDraft,
                 CharacterAttribute.Beauty), Is.EqualTo(7));
+        }
+
+        [Test]
+        public void RetailBackgroundMatrixMatchesSourceEligibilityAndOrderForEveryPlayableIdentity()
+        {
+            using var vfs = new DatVirtualFileSystem();
+            foreach (string archive in new[] { "arcanum4.dat", "arcanum3.dat", "arcanum2.dat", "arcanum1.dat" })
+            {
+                string path = GameDataLocator.Find(archive);
+                Assert.That(path, Is.Not.Null.And.Not.Empty, $"Missing retail source archive {archive}.");
+                vfs.MountFile(path);
+            }
+
+            MesFile rules = MesReader.Read(vfs.ReadAllBytes("rules/backgrnd.mes"));
+            MesFile text = MesReader.Read(vfs.ReadAllBytes("mes/gameback.mes"));
+            MesFile effects = MesReader.Read(vfs.ReadAllBytes("rules/effect.mes"));
+            MesFile portraits = Mes(
+                (1000, "HUM1"), (1001, "HUF1"), (1002, "DWM1"), (1003, "ELM1"),
+                (1004, "ELF1"), (1005, "HEM1"), (1006, "HEF1"), (1007, "GNM1"),
+                (1008, "HAM1"), (1009, "HOM1"), (1010, "HOF1"), (1011, "HGM1"));
+            MapList maps = MapList.Read(Mes((5000,
+                "Arcanum1-024-fixed, 92958, 82592, Type: START_MAP, WorldMap: 0")));
+            CharacterCreationCatalog catalog = CharacterCreationCatalog.FromMes(
+                rules, text, effects, portraits, maps);
+
+            Assert.That(catalog.Backgrounds.Keys.OrderBy(value => value), Is.EqualTo(Enumerable.Range(0, 79)),
+                "The retail matrix is the contiguous source-ID sequence 0..78.");
+            foreach (BackgroundDefinition background in catalog.Backgrounds.Values)
+            {
+                int key = background.Id * 10;
+                int.TryParse(rules.Get(key + 1), out int expectedEffect);
+                int.TryParse(rules.Get(key + 3), out int expectedGold);
+                Assert.That(background.TextId, Is.EqualTo(int.Parse(rules.Get(key))));
+                Assert.That(background.EffectId, Is.EqualTo(expectedEffect));
+                Assert.That(background.Conditions, Is.EqualTo(rules.Get(key + 2) ?? string.Empty));
+                Assert.That(background.StartingGold, Is.EqualTo(Math.Max(0, expectedGold)));
+                Assert.That(background.RawEffect, Is.EqualTo(effects.Get(background.EffectId) ?? string.Empty));
+                Assert.That(background.Name, Is.Not.Null.And.Not.Empty);
+            }
+
+            var identities = new[]
+            {
+                (CharacterRace.Human, CharacterGender.Male, "HUM", 49),
+                (CharacterRace.Human, CharacterGender.Female, "HUF", 52),
+                (CharacterRace.Dwarf, CharacterGender.Male, "DWM", 34),
+                (CharacterRace.Elf, CharacterGender.Male, "ELM", 36),
+                (CharacterRace.Elf, CharacterGender.Female, "ELF", 38),
+                (CharacterRace.HalfElf, CharacterGender.Male, "HEM", 39),
+                (CharacterRace.HalfElf, CharacterGender.Female, "HEF", 41),
+                (CharacterRace.Gnome, CharacterGender.Male, "GNM", 43),
+                (CharacterRace.Halfling, CharacterGender.Male, "HAM", 44),
+                (CharacterRace.HalfOrc, CharacterGender.Male, "HOM", 44),
+                (CharacterRace.HalfOrc, CharacterGender.Female, "HOF", 46),
+                (CharacterRace.HalfOgre, CharacterGender.Male, "HGM", 38),
+            };
+            foreach (var identity in identities)
+            {
+                int[] expected = catalog.Backgrounds.Values
+                    .Where(value => SourceAllowsPlayer(value.Conditions, identity.Item3))
+                    .OrderBy(value => value.Id).Select(value => value.Id).ToArray();
+                BackgroundDefinition[] actual = catalog.FindSelectableBackgrounds(identity.Item1, identity.Item2)
+                    .ToArray();
+                Assert.That(actual.Select(value => value.Id), Is.EqualTo(expected), identity.Item3);
+                Assert.That(actual.Length, Is.EqualTo(identity.Item4), identity.Item3);
+                Assert.That(actual.Select(value => value.Id), Is.Ordered.Ascending, identity.Item3);
+                Assert.That(actual.Any(value => value.HasUnsupportedEffects), Is.True,
+                    $"Effect coverage must not alter source eligibility for {identity.Item3}.");
+                Assert.That(actual.All(value => value.Id is < 39 or > 50), Is.True,
+                    $"NPC-only pregenerated backgrounds must remain excluded for {identity.Item3}.");
+            }
         }
 
         [Test]
@@ -954,6 +1026,13 @@ namespace Arcanum.Formats.Tests
 
         private static int TigBlendOverBlack(int tint, int coverage)
             => tint * coverage >> 8;
+
+        private static bool SourceAllowsPlayer(string conditions, string identity)
+        {
+            if (string.IsNullOrEmpty(conditions)) return true;
+            string source = conditions.ToUpperInvariant();
+            return source.Contains(identity) || source.Contains("ANY");
+        }
 
         private static CharacterCreationCatalog CreateCatalog()
         {

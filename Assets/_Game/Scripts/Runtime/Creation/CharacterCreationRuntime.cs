@@ -383,7 +383,9 @@ namespace Arcanum.Runtime.Creation
 
         public IReadOnlyList<BackgroundDefinition> FindSelectableBackgrounds(CharacterRace race,
             CharacterGender gender)
-            => _backgrounds.Values.Where(value => value.IsLegal(race, gender) && !value.HasUnsupportedEffects)
+            // background_find_first/next/prev filter only the source race/sex condition. Effect-runtime support is
+            // a separate finalization concern and must not remove a legal source entry from the creation cycle.
+            => _backgrounds.Values.Where(value => value.IsLegal(race, gender))
                 .OrderBy(value => value.Id).ToList().AsReadOnly();
         public bool TryGetAutoLevelScheme(int id, out AutoLevelSchemeDefinition scheme)
         {
