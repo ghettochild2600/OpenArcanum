@@ -108,6 +108,23 @@ namespace Arcanum.Runtime.UI
         };
     }
 
+    internal sealed class RetailNameInputField : InputField
+    {
+        public Action<bool> FocusChanged { get; set; }
+
+        public override void OnSelect(BaseEventData eventData)
+        {
+            base.OnSelect(eventData);
+            FocusChanged?.Invoke(true);
+        }
+
+        public override void OnDeselect(BaseEventData eventData)
+        {
+            base.OnDeselect(eventData);
+            FocusChanged?.Invoke(false);
+        }
+    }
+
     /// <summary>
     /// Source-backed two-stage Character Creation view. It owns only stage, subpanel, hover/selection and input
     /// focus; every choice and final transaction is submitted to the existing GameUiController/M12B authority.
@@ -213,6 +230,7 @@ namespace Arcanum.Runtime.UI
         private TechnologyDiscipline _selectedTechnology;
         private bool _autoLevelSchemesOpen;
         private int _autoLevelSchemeOffset;
+        private bool _nameEditing;
         private IdentityContext _identityContext = IdentityContext.Resting;
         private string _identityValidation = string.Empty;
 
@@ -1211,7 +1229,7 @@ namespace Arcanum.Runtime.UI
             RectTransform root = AddRect("Name Entry", parent, rect);
             Image image = root.gameObject.AddComponent<Image>();
             image.color = Color.black;
-            InputField input = root.gameObject.AddComponent<InputField>();
+            RetailNameInputField input = root.gameObject.AddComponent<RetailNameInputField>();
             input.characterLimit = CharacterCreationRules.MaximumNameLength;
             input.lineType = InputField.LineType.SingleLine;
 
@@ -1229,6 +1247,11 @@ namespace Arcanum.Runtime.UI
 
             _nameText = AddText("Name Bitmap Value", root, new Rect(0f, 0f, rect.width, rect.height),
                 string.Empty, SourceUiBitmapText.Morph15FontSourceId, SourceRed);
+            input.FocusChanged = editing =>
+            {
+                _nameEditing = editing;
+                SetNamePresentation(input.text);
+            };
             input.onValueChanged.AddListener(value =>
             {
                 _controller?.SetCreationName(value);
@@ -1342,7 +1365,9 @@ namespace Arcanum.Runtime.UI
         }
 
         private void SetNamePresentation(string value)
-            => SetCenteredText(_nameText, string.IsNullOrEmpty(value) ? "Choose Name" : value, SourceRed);
+            => SetCenteredText(_nameText,
+                string.IsNullOrEmpty(value) && !_nameEditing ? "Choose Name" : value,
+                SourceRed);
 
         private void SetRightAlignedText(SourceUiBitmapText text, string value, Rect bounds, Color tint)
         {
@@ -1584,6 +1609,7 @@ namespace Arcanum.Runtime.UI
             _topBackground = null;
             _identityBottomBackground = null;
             _editorBottomBackground = null;
+            _nameEditing = false;
             _nameInput = null;
             _nameText = null;
             _identityPortrait = null;

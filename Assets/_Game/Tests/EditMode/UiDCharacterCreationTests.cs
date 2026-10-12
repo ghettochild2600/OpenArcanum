@@ -17,6 +17,7 @@ using NUnit.Framework;
 using OpenArcanum.Rendering;
 using OpenArcanum.UI;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.UI;
 using Object = UnityEngine.Object;
 
@@ -287,6 +288,21 @@ namespace Arcanum.Formats.Tests
             _view.NameInput.text = "Ada";
             Assert.That(_controller.CreationDraft.Name, Is.EqualTo("Ada"));
             Assert.That(_session.PlayerState, Is.Null);
+        }
+
+        [Test]
+        public void EmptyNamePromptClearsImmediatelyWhenEditingStarts()
+        {
+            _view.NameInput.text = string.Empty;
+            _view.Synchronize();
+            SourceUiBitmapText name = Text("Name Bitmap Value");
+            Assert.That(name.Text, Is.EqualTo("Choose Name"));
+
+            _view.NameInput.OnSelect(new BaseEventData(EventSystem.current));
+
+            Assert.That(_view.NameInput.text, Is.Empty);
+            Assert.That(_controller.CreationDraft.Name, Is.Empty);
+            Assert.That(name.Text, Is.Empty);
         }
 
         [Test]
