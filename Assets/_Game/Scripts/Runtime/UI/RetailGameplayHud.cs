@@ -81,6 +81,15 @@ namespace Arcanum.Runtime.UI
             return new Rect(0f, 0f, 1f, 1f);
         }
 
+        public static float GameplayCameraOrthographicSize(int height, float pixelsPerUnit)
+        {
+            if (height <= 0) throw new ArgumentOutOfRangeException(nameof(height));
+            if (pixelsPerUnit <= 0f) throw new ArgumentOutOfRangeException(nameof(pixelsPerUnit));
+            // The source draws world art one-for-one into the ISO window. Match that pixel density while allowing
+            // the CE high-resolution content rect to expose additional pixels without rescaling the world.
+            return height / (2f * pixelsPerUnit);
+        }
+
         public static Rect TopScreenRect(int width, int height)
         {
             ValidateResolution(width, height);
@@ -187,6 +196,7 @@ namespace Arcanum.Runtime.UI
         private SourceUiButton _combatButton;
         private Camera _managedCamera;
         private Rect _originalCameraRect;
+        private float _originalCameraOrthographicSize;
         private bool _managingViewport;
 
         public bool IsAvailable => _resolver != null && _canvasRoot != null;
@@ -896,16 +906,28 @@ namespace Arcanum.Runtime.UI
                     RestoreWorldViewport();
                     _managedCamera = camera;
                     _originalCameraRect = camera.rect;
+                    _originalCameraOrthographicSize = camera.orthographicSize;
                     _managingViewport = true;
                 }
                 camera.rect = RetailGameplayHudLayout.GameplayCameraViewport(Screen.width, Screen.height);
+                if (camera.orthographic)
+                {
+                    WorldObjectSectorLoader loader = _session.GetComponent<WorldObjectSectorLoader>();
+                    float pixelsPerUnit = loader != null ? loader.PixelsPerUnit : 100f;
+                    camera.orthographicSize = RetailGameplayHudLayout.GameplayCameraOrthographicSize(
+                        Screen.height, pixelsPerUnit);
+                }
             }
             else RestoreWorldViewport();
         }
 
         private void RestoreWorldViewport()
         {
-            if (_managingViewport && _managedCamera != null) _managedCamera.rect = _originalCameraRect;
+            if (_managingViewport && _managedCamera != null)
+            {
+                _managedCamera.rect = _originalCameraRect;
+                if (_managedCamera.orthographic) _managedCamera.orthographicSize = _originalCameraOrthographicSize;
+            }
             _managedCamera = null;
             _managingViewport = false;
         }

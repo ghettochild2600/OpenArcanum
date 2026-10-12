@@ -721,6 +721,16 @@ namespace Arcanum.Formats.Tests
             Assert.That(viewport.height, Is.EqualTo(1f));
         }
 
+        [TestCase(600, 100f, 3f)]
+        [TestCase(1080, 100f, 5.4f)]
+        public void CameraWorldScalePreservesOneSourcePixelPerScreenPixel(
+            int height, float pixelsPerUnit, float expectedSize)
+        {
+            float size = RetailGameplayHudLayout.GameplayCameraOrthographicSize(height, pixelsPerUnit);
+            Assert.That(size, Is.EqualTo(expectedSize).Within(.0001f));
+            Assert.That(height / (2f * size), Is.EqualTo(pixelsPerUnit).Within(.0001f));
+        }
+
         [Test]
         public void HudHitBandsBlockOnlyCenteredSourceComposition()
         {
