@@ -15,6 +15,7 @@ using NUnit.Framework;
 using OpenArcanum.Rendering;
 using OpenArcanum.UI;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using Object = UnityEngine.Object;
 
 namespace Arcanum.Formats.Tests
@@ -205,6 +206,33 @@ namespace Arcanum.Formats.Tests
             Assert.That(_view.ProjectedEntryCount, Is.EqualTo(1));
             Assert.That(RenderedLines(), Is.EqualTo(new[] { "A different authored background." }));
             Assert.That(RenderedLines(), Has.None.StartsWith("L"));
+        }
+
+        [Test]
+        public void GameplayCursorRemainsAboveLogbookAcrossOpenCloseOpen()
+        {
+            var events = new GameObject("UI-F.2 EventSystem", typeof(EventSystem), typeof(StandaloneInputModule));
+            events.transform.SetParent(_root.transform, false);
+            RetailGameplayHudView hud = _root.AddComponent<RetailGameplayHudView>();
+            hud.Bind(_controller, _session, _ => { }, _skin);
+            Canvas logbookCanvas = _view.GetComponentInChildren<Canvas>(true);
+
+            AssertCursorAboveLogbook(hud, logbookCanvas);
+            _controller.Close();
+            _view.Synchronize();
+            hud.Synchronize(show: true);
+            AssertCursorAboveLogbook(hud, logbookCanvas);
+            Assert.That(_controller.Open(GameUiScreen.Journal), Is.True);
+            _view.Synchronize();
+            hud.Synchronize(show: true);
+            AssertCursorAboveLogbook(hud, logbookCanvas);
+        }
+
+        private static void AssertCursorAboveLogbook(RetailGameplayHudView hud, Canvas logbookCanvas)
+        {
+            Assert.That(hud.CursorCanvas, Is.Not.Null);
+            Assert.That(hud.CursorCanvas.overrideSorting, Is.True);
+            Assert.That(hud.CursorCanvas.sortingOrder, Is.GreaterThan(logbookCanvas.sortingOrder));
         }
 
         private string[] RenderedLines()

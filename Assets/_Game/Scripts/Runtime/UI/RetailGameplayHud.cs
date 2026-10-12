@@ -200,6 +200,7 @@ namespace Arcanum.Runtime.UI
         public GameUiHudView LastProjection { get; private set; }
         public RetailClockPeriod ClockPeriod { get; private set; }
         public GameUiWorldTargetView WorldTarget => _worldTarget;
+        public Canvas CursorCanvas => _cursorLayer != null ? _cursorLayer.GetComponent<Canvas>() : null;
 
         public void SetWorldTarget(GameUiWorldTargetView target) => _worldTarget = target;
 
@@ -325,6 +326,9 @@ namespace Arcanum.Runtime.UI
             _topWindow = AddWindow("Retail Top HUD Window", canvasRect, top: true);
             _bottomWindow = AddWindow("Retail Bottom HUD Window", canvasRect, top: false);
             _cursorLayer = AddFullScreenLayer("Retail Gameplay Cursor Layer", canvasRect);
+            Canvas cursorCanvas = _cursorLayer.gameObject.AddComponent<Canvas>();
+            cursorCanvas.overrideSorting = true;
+            cursorCanvas.sortingOrder = canvas.sortingOrder + 1;
 
             _topBackground = AddImage("Retail Top HUD Frame", _topWindow,
                 new UiAssetKey(RetailGameplayHudLayout.TopSourceId), new Rect(0f, 0f, 800f, 41f), false);
