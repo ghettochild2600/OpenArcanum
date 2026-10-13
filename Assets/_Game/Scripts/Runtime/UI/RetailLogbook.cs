@@ -175,7 +175,10 @@ namespace Arcanum.Runtime.UI
     [DisallowMultipleComponent]
     public sealed class RetailLogbookView : MonoBehaviour
     {
-        private static readonly Color Ink = new Color32(20, 16, 12, 255);
+        // logbook_ui.c initializes the default and title fonts with tig_color_make(0, 0, 0).
+        // Keeping the tint exact matters because the TIG bitmap-font shader blends its palette coverage
+        // against this constant color.
+        private static readonly Color Ink = new Color32(0, 0, 0, 255);
         private static readonly Color Active = new Color32(35, 72, 165, 255);
         private static readonly Color Completed = new Color32(30, 112, 45, 255);
         private static readonly Color Failed = new Color32(165, 35, 30, 255);
@@ -370,8 +373,7 @@ namespace Arcanum.Runtime.UI
                 _lastVisibleEntry = -1;
                 _projectedEntryCount = 0;
                 AddPageLine(0, 0, $"No {tabLabel.ToLowerInvariant()} entries are available.", Ink, false);
-                _left.SetInteractable(false);
-                _right.SetInteractable(false);
+                SetPageControlAvailability(false, false);
                 return;
             }
 
@@ -419,8 +421,8 @@ namespace Arcanum.Runtime.UI
                     if (line < RetailLogbookLayout.PageLineCapacity) line++;
                 }
             }
-            _left.SetInteractable(_spreadIndex > 0);
-            _right.SetInteractable(_lastVisibleEntry >= 0 && _lastVisibleEntry < entries.Count - 1);
+            SetPageControlAvailability(_spreadIndex > 0,
+                _lastVisibleEntry >= 0 && _lastVisibleEntry < entries.Count - 1);
         }
 
         private void RebuildRumorPages(IReadOnlyList<RumorJournalEntry> rumors)
@@ -429,8 +431,9 @@ namespace Arcanum.Runtime.UI
             foreach (RumorJournalEntry rumor in rumors)
             {
                 var lines = new List<string>();
-                lines.AddRange(RetailLogbookPaginator.Wrap(SourceCalendar.FormatLogbook(rumor.Timestamp),
-                    RetailLogbookLayout.LeftContent.width, GlyphAdvance));
+                // The source prepends this authored/acquisition timestamp to the entry buffer verbatim.
+                // It always fits the 215-pixel page and its two-space date/time separator is significant.
+                lines.Add(SourceCalendar.FormatLogbook(rumor.Timestamp));
                 lines.AddRange(RetailLogbookPaginator.Wrap(rumor.Description,
                     RetailLogbookLayout.LeftContent.width, GlyphAdvance));
                 blocks.Add(lines);
@@ -457,8 +460,8 @@ namespace Arcanum.Runtime.UI
                 _lastVisibleEntry = index;
             }
             if (blocks.Count == 0) AddPageLine(0, 0, "No known rumors or notes.", Ink, false);
-            _left.SetInteractable(_spreadIndex > 0);
-            _right.SetInteractable(_lastVisibleEntry >= 0 && _lastVisibleEntry < blocks.Count - 1);
+            SetPageControlAvailability(_spreadIndex > 0,
+                _lastVisibleEntry >= 0 && _lastVisibleEntry < blocks.Count - 1);
         }
 
         private void RebuildBackgroundPages(GameUiBackgroundLogbookView background)
@@ -468,8 +471,7 @@ namespace Arcanum.Runtime.UI
                 _lastVisibleEntry = -1;
                 _projectedEntryCount = 0;
                 AddPageLine(0, 0, "No background entries are available.", Ink, false);
-                _left.SetInteractable(false);
-                _right.SetInteractable(false);
+                SetPageControlAvailability(false, false);
                 return;
             }
 
@@ -485,8 +487,18 @@ namespace Arcanum.Runtime.UI
                 for (int line = 0; line < page.Count; line++)
                     AddPageLine(index - start, line, page[line], Ink, false);
             }
-            _left.SetInteractable(_spreadIndex > 0);
-            _right.SetInteractable(_lastVisibleEntry >= 0 && _lastVisibleEntry < pages.Count - 1);
+            SetPageControlAvailability(_spreadIndex > 0,
+                _lastVisibleEntry >= 0 && _lastVisibleEntry < pages.Count - 1);
+        }
+
+        private void SetPageControlAvailability(bool previous, bool next)
+        {
+            // Source logbook_ui_draw hides both page buttons, then shows only directions backed by
+            // another spread. A disabled frame is still visible and is therefore not source-faithful.
+            _left.SetInteractable(previous);
+            _left.gameObject.SetActive(previous);
+            _right.SetInteractable(next);
+            _right.gameObject.SetActive(next);
         }
 
         private void AddPageLine(int page, int line, string value, Color color, bool strike)

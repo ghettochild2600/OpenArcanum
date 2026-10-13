@@ -17,6 +17,7 @@ using OpenArcanum.Rendering;
 using OpenArcanum.UI;
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.UI;
 using Object = UnityEngine.Object;
 
 namespace Arcanum.Formats.Tests
@@ -30,6 +31,11 @@ namespace Arcanum.Formats.Tests
             Assert.That(RetailLogbookLayout.ScreenRect(800, 600), Is.EqualTo(new Rect(0, 41, 800, 400)));
             Assert.That(RetailLogbookLayout.LeftContent, Is.EqualTo(new Rect(222, 72, 215, 270)));
             Assert.That(RetailLogbookLayout.RightContent, Is.EqualTo(new Rect(468, 72, 215, 270)));
+            Assert.That(RetailLogbookLayout.LeftHeader, Is.EqualTo(new Rect(236, 43, 187, 19)));
+            Assert.That(RetailLogbookLayout.RightHeader, Is.EqualTo(new Rect(482, 43, 187, 19)));
+            Assert.That(RetailLogbookLayout.LeftFooter, Is.EqualTo(new Rect(222, 346, 215, 15)));
+            Assert.That(RetailLogbookLayout.RightFooter, Is.EqualTo(new Rect(468, 346, 215, 15)));
+            Assert.That(RetailLogbookLayout.LineHeight, Is.EqualTo(15f));
             Assert.That(RetailLogbookLayout.PageLineCapacity, Is.EqualTo(18));
         }
 
@@ -58,6 +64,8 @@ namespace Arcanum.Formats.Tests
                 Is.EqualTo(new[] { 265, 267, 271, 266, 270, 268, 269 }));
             Assert.That(RetailLogbookLayout.Tabs.Select(value => value.Position.y),
                 Is.EqualTo(new[] { 83f, 129f, 175f, 221f, 267f, 313f, 359f }));
+            Assert.That(RetailLogbookLayout.Tabs.Select(value => value.Position.x),
+                Is.EqualTo(new[] { 696f, 696f, 696f, 695f, 696f, 696f, 696f }));
         }
 
         [Test]
@@ -256,6 +264,88 @@ namespace Arcanum.Formats.Tests
             Assert.That(RenderedLines(), Has.Some.Contains("crash site"));
         }
 
+        [Test]
+        public void OpeningRumorTimestampsBelongToAcquisitionAndDoNotFollowTheLaterClock()
+        {
+            MesFile source = Mes(
+                (20 * 2013, "The first authored opening note."),
+                (20 * 2014, "The second authored opening note."));
+            _session.BindRumorSource(source, null);
+            _session.Campaign.SetRumorKnown(2013);
+            _session.Campaign.SetRumorKnown(2014);
+
+            Assert.That(_controller.ProjectRumors().Select(value => SourceCalendar.FormatLogbook(value.Timestamp)),
+                Is.EqualTo(new[] { "Jan 1, 1885  3:00pm", "Jan 1, 1885  3:00pm" }));
+
+            _session.SourceTime.Advance(3 * 60 * 1000);
+            Assert.That(_controller.ProjectRumors().Select(value => SourceCalendar.FormatLogbook(value.Timestamp)),
+                Is.EqualTo(new[] { "Jan 1, 1885  3:00pm", "Jan 1, 1885  3:00pm" }));
+        }
+
+        [Test]
+        public void RumorSpreadUsesSourceFontsTextOriginAndHidesUnavailablePageControls()
+        {
+            MesFile source = Mes(
+                (20 * 2013, "It seems as if only I have survived the crash of the I.F.S. Zephyr. The zeppelin " +
+                    "was unexpectedly set upon by strange flying machines. Among the wreckage I found a dying " +
+                    "gnome who gave me a signet ring and bid me to find the boy who owned it, with a vague warning " +
+                    "of something that is almost here. He also said that he had escaped, but I have no clues as to " +
+                    "where he escaped from."),
+                (20 * 2014, "After I dragged myself from the wreckage of the zeppelin crash, I was approached by " +
+                    "a monk of the Panarii religion. He seems to believe that I am the Living One, the reincarnation " +
+                    "of some deity of theirs."));
+            _session.BindRumorSource(source, null);
+            _session.Campaign.SetRumorKnown(2013);
+            _session.Campaign.SetRumorKnown(2014);
+            _view.SelectTab(RetailLogbookTab.RumorsAndNotes);
+
+            SourceUiBitmapText[] text = _view.GetComponentsInChildren<SourceUiBitmapText>(true);
+            SourceUiBitmapText[] lines = text.Where(value => value.gameObject.name == "Quest Text").ToArray();
+            Assert.That(lines, Is.Not.Empty);
+            Assert.That(lines.Select(value => value.FontSourceId),
+                Has.All.EqualTo(RetailLogbookLayout.BodyFontSourceId));
+            Assert.That(text.Single(value => value.gameObject.name == "Left Header").FontSourceId,
+                Is.EqualTo(RetailLogbookLayout.HeaderFontSourceId));
+            Assert.That(text.Single(value => value.gameObject.name == "Right Header").FontSourceId,
+                Is.EqualTo(RetailLogbookLayout.HeaderFontSourceId));
+            Assert.That(text.Single(value => value.gameObject.name == "Left Page").FontSourceId,
+                Is.EqualTo(RetailLogbookLayout.BodyFontSourceId));
+            Assert.That(((RectTransform)lines[0].transform).anchoredPosition,
+                Is.EqualTo(new Vector2(RetailLogbookLayout.LeftContent.x, -RetailLogbookLayout.LeftContent.y)));
+            SourceUiBitmapText leftHeader = text.Single(value => value.gameObject.name == "Left Header");
+            Assert.That(((RectTransform)leftHeader.transform).anchoredPosition,
+                Is.EqualTo(new Vector2(RetailLogbookLayout.LeftHeader.x
+                    + (RetailLogbookLayout.LeftHeader.width - leftHeader.LogicalSize.x) * .5f,
+                    -RetailLogbookLayout.LeftHeader.y)));
+            Image glyph = lines[0].GetComponentInChildren<Image>(true);
+            Assert.That(glyph, Is.Not.Null);
+            Assert.That(glyph.color, Is.EqualTo(Color.black));
+            Assert.That(glyph.material.shader.name, Is.EqualTo(SourceUiBitmapText.TigBitmapFontShaderName));
+
+            Assert.That(PageControl("Previous Page").gameObject.activeSelf, Is.False);
+            Assert.That(PageControl("Next Page").gameObject.activeSelf, Is.False);
+        }
+
+        [Test]
+        public void PageControlsAppearOnlyWhenAnotherRumorSpreadExists()
+        {
+            var entries = new List<(int key, string value)>();
+            for (int id = 2100; id < 2112; id++)
+            {
+                entries.Add((20 * id,
+                    $"Authored rumor {id} has enough words to occupy several lines in the source Logbook page."));
+            }
+            _session.BindRumorSource(Mes(entries.ToArray()), null);
+            for (int id = 2100; id < 2112; id++) _session.Campaign.SetRumorKnown(id);
+            _view.SelectTab(RetailLogbookTab.RumorsAndNotes);
+
+            Assert.That(PageControl("Previous Page").gameObject.activeSelf, Is.False);
+            Assert.That(PageControl("Next Page").gameObject.activeSelf, Is.True);
+
+            _view.TurnRight();
+            Assert.That(PageControl("Previous Page").gameObject.activeSelf, Is.True);
+        }
+
         private static void AssertCursorAboveLogbook(RetailGameplayHudView hud, Canvas logbookCanvas)
         {
             Assert.That(hud.CursorCanvas, Is.Not.Null);
@@ -268,6 +358,10 @@ namespace Arcanum.Formats.Tests
                 .Where(value => value.gameObject.name == "Quest Text")
                 .Select(value => value.Text)
                 .ToArray();
+
+        private SourceUiButton PageControl(string name)
+            => _view.GetComponentsInChildren<SourceUiButton>(true)
+                .Single(value => value.gameObject.name == name);
 
         private void Finalize(int backgroundId, string name)
         {
