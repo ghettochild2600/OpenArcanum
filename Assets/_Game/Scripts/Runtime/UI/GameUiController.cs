@@ -250,6 +250,7 @@ namespace Arcanum.Runtime.UI
         public ArcanumObjectId CharacterTarget => _character.IsNull ? Player : _character;
         public bool CharacterReadOnly => CharacterTarget != Player;
         public string Feedback { get; private set; } = string.Empty;
+        public string ContextualHelp { get; private set; } = string.Empty;
         public CombatUiController Combat { get; }
         public SaveLoadPanelController SaveLoad { get; }
         public CharacterCreationSpecification CreationDraft { get; private set; }
@@ -328,6 +329,7 @@ namespace Arcanum.Runtime.UI
             if (screen == GameUiScreen.Character) CaptureAcceptedCharacterEditorState();
             else ClearAcceptedCharacterEditorState();
             Feedback = string.Empty;
+            ContextualHelp = string.Empty;
             if (screen == GameUiScreen.SaveLoad) SaveLoad.Open(SaveLoadPanelMode.Save);
             ClearPrimaryNotification(screen);
             _audio?.PresentInterface(screen is GameUiScreen.Journal or GameUiScreen.Map
@@ -519,6 +521,7 @@ namespace Arcanum.Runtime.UI
 
         public void Close()
         {
+            ContextualHelp = string.Empty;
             if (HudPanel != GameUiHudPanel.None)
             {
                 HudPanel = GameUiHudPanel.None;
@@ -547,6 +550,15 @@ namespace Arcanum.Runtime.UI
             Feedback = message ?? string.Empty;
             _feedbackExpiresAt = string.IsNullOrWhiteSpace(Feedback)
                 ? 0 : _utcNowTicks() + TimeSpan.FromSeconds(3).Ticks;
+        }
+
+        public void ShowContextualHelp(string message)
+            => ContextualHelp = message ?? string.Empty;
+
+        public void ClearContextualHelp(string message = null)
+        {
+            if (message == null || string.Equals(ContextualHelp, message, StringComparison.Ordinal))
+                ContextualHelp = string.Empty;
         }
 
         public bool ToggleSkillsPanel()

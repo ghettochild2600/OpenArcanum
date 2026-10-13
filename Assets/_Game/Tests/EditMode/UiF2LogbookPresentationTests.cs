@@ -208,6 +208,88 @@ namespace Arcanum.Formats.Tests
         }
 
         [Test]
+        public void TabHoverKeepsSelectionAndGeometryWhileProjectingSourceHelpUntilExit()
+        {
+            string[] expectedHelp =
+            {
+                "Rumors & Notes", "Quests", "Reputations", "Blessings and Curses",
+                "Kills & Injuries", "Background", "Keyring Contents",
+            };
+            RetailGameplayHudView hud = _root.AddComponent<RetailGameplayHudView>();
+            hud.Bind(_controller, _session, _ => { }, _skin);
+
+            for (int index = 0; index < RetailLogbookLayout.Tabs.Length; index++)
+            {
+                RetailLogbookTabLayout layout = RetailLogbookLayout.Tabs[index];
+                SourceUiButton button = _view.GetComponentsInChildren<SourceUiButton>(true)
+                    .Single(value => value.gameObject.name == layout.Label);
+                SourceHoverHintTarget hint = button.GetComponent<SourceHoverHintTarget>();
+                RectTransform rect = (RectTransform)button.transform;
+                Vector2 position = rect.anchoredPosition;
+                Vector2 size = rect.sizeDelta;
+                UiAssetKey presentation = button.CurrentPresentationKey;
+                RetailLogbookTab active = _view.SelectedTab;
+
+                Assert.That(_retail.TryReadMessage("mes/logbk_ui.mes", index, out string sourceHelp), Is.True);
+                Assert.That(sourceHelp, Is.EqualTo(expectedHelp[index]));
+                Assert.That(hint, Is.Not.Null);
+
+                button.OnPointerEnter(null);
+                hint.OnPointerEnter(null);
+                hud.Synchronize(true);
+
+                Assert.That(_view.SelectedTab, Is.EqualTo(active));
+                Assert.That(rect.anchoredPosition, Is.EqualTo(position));
+                Assert.That(rect.sizeDelta, Is.EqualTo(size));
+                Assert.That(button.CurrentPresentationKey, Is.EqualTo(presentation));
+                Assert.That(_controller.ContextualHelp, Is.EqualTo(expectedHelp[index]));
+                Assert.That(hud.IsContextualHelpVisible, Is.True);
+                Assert.That(hud.ContextualHelpText, Is.EqualTo(expectedHelp[index]));
+
+                SourceUiBitmapText helpText = _root.GetComponentsInChildren<SourceUiBitmapText>(true)
+                    .Single(value => value.gameObject.name == "Contextual Help");
+                Assert.That(helpText.FontSourceId,
+                    Is.EqualTo(RetailGameplayHudLayout.ContextualHelpFontSourceId));
+                SourceUiImage helpIcon = _root.GetComponentsInChildren<SourceUiImage>(true)
+                    .Single(value => value.gameObject.name == "World Target Icon");
+                Assert.That(helpIcon.Key.SourceId,
+                    Is.EqualTo(RetailGameplayHudLayout.ContextualHelpIconSourceId));
+
+                hint.OnPointerExit(null);
+                button.OnPointerExit(null);
+                hud.Synchronize(true);
+
+                Assert.That(_controller.ContextualHelp, Is.Empty);
+                Assert.That(hud.IsContextualHelpVisible, Is.False);
+                Assert.That(_view.SelectedTab, Is.EqualTo(active));
+                Assert.That(button.CurrentPresentationKey, Is.EqualTo(presentation));
+                Assert.That(rect.anchoredPosition, Is.EqualTo(position));
+                Assert.That(rect.sizeDelta, Is.EqualTo(size));
+            }
+
+            SourceUiButton blessings = _view.GetComponentsInChildren<SourceUiButton>(true)
+                .Single(value => value.gameObject.name == "Blessings & Curses");
+            SourceHoverHintTarget blessingsHint = blessings.GetComponent<SourceHoverHintTarget>();
+            blessings.Button.onClick.Invoke();
+            Assert.That(_view.SelectedTab, Is.EqualTo(RetailLogbookTab.BlessingsAndCurses));
+            Assert.That(blessings.CurrentPresentationKey,
+                Is.EqualTo(RetailLogbookLayout.ButtonFrame(266, 1)));
+
+            blessings.OnPointerEnter(null);
+            blessingsHint.OnPointerEnter(null);
+            Assert.That(blessings.CurrentPresentationKey,
+                Is.EqualTo(RetailLogbookLayout.ButtonFrame(266, 1)));
+            Assert.That(_controller.ContextualHelp, Is.EqualTo("Blessings and Curses"));
+            blessingsHint.OnPointerExit(null);
+            blessings.OnPointerExit(null);
+
+            Assert.That(_view.SelectedTab, Is.EqualTo(RetailLogbookTab.BlessingsAndCurses));
+            Assert.That(_controller.ContextualHelp, Is.Empty);
+            Assert.That(blessings.CurrentPresentationKey,
+                Is.EqualTo(RetailLogbookLayout.ButtonFrame(266, 1)));
+        }
+
+        [Test]
         public void FinalizedBackgroundProjectsBodyAndPaginatesAcrossSourceSpreads()
         {
             GameUiBackgroundLogbookView projected = _controller.ProjectBackgroundLogbook();

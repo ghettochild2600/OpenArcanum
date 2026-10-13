@@ -327,7 +327,12 @@ namespace Arcanum.Runtime.UI
             foreach (RetailLogbookTabLayout layout in RetailLogbookLayout.Tabs)
             {
                 SourceUiButton button = AddButton(layout.Label, _window, layout.SourceId, layout.PanelRect.position,
-                    () => SelectTab(layout.Tab));
+                    () => SelectTab(layout.Tab), hoverChangesPresentation: false);
+                string contextualHelp = _resolver.Original.TryReadMessage("mes/logbk_ui.mes", (int)layout.Tab,
+                    out string sourceHelp) ? sourceHelp : layout.Label;
+                button.gameObject.AddComponent<SourceHoverHintTarget>().Bind(
+                    () => _controller.ShowContextualHelp(contextualHelp),
+                    () => _controller.ClearContextualHelp(contextualHelp));
                 button.SetSelected(layout.Tab == RetailLogbookTab.Quests);
                 _tabs.Add(layout.Tab, button);
             }
@@ -584,7 +589,7 @@ namespace Arcanum.Runtime.UI
         }
 
         private SourceUiButton AddButton(string name, RectTransform parent, int sourceId, Vector2 topLeft,
-            Action clicked)
+            Action clicked, bool hoverChangesPresentation = true)
         {
             Vector2 size = _resolver.TryResolve(new UiAssetKey(sourceId), out UiResolvedAsset asset)
                 ? asset.LogicalSize : new Vector2(32, 32);
@@ -594,7 +599,7 @@ namespace Arcanum.Runtime.UI
             target.gameObject.AddComponent<SourceUiImage>();
             SourceUiButton source = target.gameObject.AddComponent<SourceUiButton>();
             source.Bind(_resolver, RetailLogbookLayout.ButtonFrame(sourceId, 0),
-                RetailLogbookLayout.ButtonFrame(sourceId, 1),
+                RetailLogbookLayout.ButtonFrame(sourceId, hoverChangesPresentation ? 1 : 0),
                 RetailLogbookLayout.ButtonFrame(sourceId, Mathf.Min(2, sourceId is 272 or 273 ? 2 : 1)),
                 RetailLogbookLayout.ButtonFrame(sourceId, 0), RetailLogbookLayout.ButtonFrame(sourceId, 1));
             source.Button.onClick.AddListener(() => clicked());

@@ -27,6 +27,8 @@ namespace Arcanum.Runtime.UI
         public const int EmptyVialSourceId = 20;
         public const int TextFontSourceId = 27;
         public const int CounterFontSourceId = 171;
+        public const int ContextualHelpIconSourceId = 444;
+        public const int ContextualHelpFontSourceId = 229;
 
         public static readonly Rect TopInterface = new Rect(0f, 0f, 800f, 41f);
         public static readonly Rect WorldViewport = new Rect(0f, 41f, 800f, 400f);
@@ -43,6 +45,7 @@ namespace Arcanum.Runtime.UI
         public static readonly Rect WorldTargetIcon = new Rect(217f, 510f, 64f, 64f);
         public static readonly Rect WorldTargetName = new Rect(290f, 504f, 291f, 19f);
         public static readonly Rect WorldTargetStatus = new Rect(290f, 528f, 291f, 18f);
+        public static readonly Rect ContextualHelpText = new Rect(290f, 504f, 291f, 78f);
         public static readonly Rect AmmoButton = new Rect(61f, 509f, 37f, 24f);
         public static readonly Rect[] RecentActions =
             { new Rect(69f, 548f, 32f, 32f), new Rect(114f, 548f, 32f, 32f) };
@@ -167,6 +170,7 @@ namespace Arcanum.Runtime.UI
         private Image _worldTargetItemIcon;
         private SourceUiBitmapText _worldTargetName;
         private SourceUiBitmapText _worldTargetStatus;
+        private SourceUiBitmapText _contextualHelpText;
         private GameUiWorldTargetView _worldTarget;
         private SourceUiImage _ammoImage;
         private readonly SourceUiBitmapText[] _slotLabels = new SourceUiBitmapText[10];
@@ -212,6 +216,8 @@ namespace Arcanum.Runtime.UI
         public RetailClockPeriod ClockPeriod { get; private set; }
         public GameUiWorldTargetView WorldTarget => _worldTarget;
         public Canvas CursorCanvas => _cursorLayer != null ? _cursorLayer.GetComponent<Canvas>() : null;
+        public bool IsContextualHelpVisible => _contextualHelpText != null && _contextualHelpText.gameObject.activeSelf;
+        public string ContextualHelpText => _contextualHelpText?.Text ?? string.Empty;
 
         public void SetWorldTarget(GameUiWorldTargetView target) => _worldTarget = target;
 
@@ -264,15 +270,23 @@ namespace Arcanum.Runtime.UI
             SetCounter(_fatigueText, Mathf.Max(0, LastProjection.Fatigue));
             RefreshMaintainedSpellSlots(LastProjection.MaintainedSpellSlotCapacity, LastProjection.ActiveEffects);
 
-            bool targetVisible = !_clockHovered && _worldTarget != null && _controller.Screen == GameUiScreen.None;
+            bool contextualHelpVisible = !string.IsNullOrWhiteSpace(_controller.ContextualHelp);
+            bool targetVisible = !contextualHelpVisible && !_clockHovered && _worldTarget != null
+                                 && _controller.Screen == GameUiScreen.None;
             bool itemTarget = targetVisible && _worldTarget.Item != null;
-            _worldTargetIcon.gameObject.SetActive(targetVisible && !itemTarget);
+            _worldTargetIcon.gameObject.SetActive(contextualHelpVisible || targetVisible && !itemTarget);
             _worldTargetItemIcon.gameObject.SetActive(itemTarget);
             _worldTargetName.gameObject.SetActive(targetVisible);
             _worldTargetStatus.gameObject.SetActive(targetVisible);
-            _messageLineOne.gameObject.SetActive(!targetVisible);
-            _messageLineTwo.gameObject.SetActive(!targetVisible);
-            if (targetVisible)
+            _contextualHelpText.gameObject.SetActive(contextualHelpVisible);
+            _messageLineOne.gameObject.SetActive(!contextualHelpVisible && !targetVisible);
+            _messageLineTwo.gameObject.SetActive(!contextualHelpVisible && !targetVisible);
+            if (contextualHelpVisible)
+            {
+                _worldTargetIcon.SetKey(new UiAssetKey(RetailGameplayHudLayout.ContextualHelpIconSourceId));
+                SetText(_contextualHelpText, _controller.ContextualHelp, SourceText);
+            }
+            else if (targetVisible)
             {
                 if (itemTarget && _worldTarget.Item.InventoryArtId is uint inventoryArt
                     && _resolver.Original.TryResolveInventoryItem(inventoryArt, out RetailItemArtAsset asset))
@@ -440,6 +454,9 @@ namespace Arcanum.Runtime.UI
                 RetailGameplayHudLayout.BottomWindowLocal(RetailGameplayHudLayout.WorldTargetName), string.Empty, 27);
             _worldTargetStatus = AddText("World Target Status", _bottomWindow,
                 RetailGameplayHudLayout.BottomWindowLocal(RetailGameplayHudLayout.WorldTargetStatus), string.Empty, 229);
+            _contextualHelpText = AddText("Contextual Help", _bottomWindow,
+                RetailGameplayHudLayout.BottomWindowLocal(RetailGameplayHudLayout.ContextualHelpText), string.Empty,
+                RetailGameplayHudLayout.ContextualHelpFontSourceId);
 
             _ammoImage = AddImage("Ammo", _bottomWindow, new UiAssetKey(251),
                 RetailGameplayHudLayout.BottomWindowLocal(RetailGameplayHudLayout.AmmoButton), false);
@@ -1009,6 +1026,7 @@ namespace Arcanum.Runtime.UI
             _contextText = null;
             _messageLineOne = null;
             _messageLineTwo = null;
+            _contextualHelpText = null;
             _ammoImage = null;
             _clockClip = null;
             _clockPointer = null;
