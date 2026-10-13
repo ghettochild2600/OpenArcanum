@@ -26,14 +26,16 @@ namespace Arcanum.Runtime.UI
         public RetailLogbookTab Tab { get; }
         public string Label { get; }
         public int SourceId { get; }
-        public Vector2 Position { get; }
+        public Vector2 SourceScreenPosition { get; }
+        public Vector2 Position => SourceScreenPosition - RetailLogbookLayout.Window.position;
+        public Rect PanelRect => new(Position, RetailLogbookLayout.TabSize);
 
         public RetailLogbookTabLayout(RetailLogbookTab tab, string label, int sourceId, float x, float y)
         {
             Tab = tab;
             Label = label;
             SourceId = sourceId;
-            Position = new Vector2(x, y);
+            SourceScreenPosition = new Vector2(x, y);
         }
     }
 
@@ -50,6 +52,7 @@ namespace Arcanum.Runtime.UI
         public static readonly Rect RightHeader = new(482f, 43f, 187f, 19f);
         public static readonly Rect LeftFooter = new(222f, 346f, 215f, 15f);
         public static readonly Rect RightFooter = new(468f, 346f, 215f, 15f);
+        public static readonly Vector2 TabSize = new(46f, 41f);
         public static readonly RetailLogbookTabLayout[] Tabs =
         {
             new(RetailLogbookTab.RumorsAndNotes, "Rumors & Notes", 265, 696f, 83f),
@@ -323,7 +326,7 @@ namespace Arcanum.Runtime.UI
 
             foreach (RetailLogbookTabLayout layout in RetailLogbookLayout.Tabs)
             {
-                SourceUiButton button = AddButton(layout.Label, _window, layout.SourceId, layout.Position,
+                SourceUiButton button = AddButton(layout.Label, _window, layout.SourceId, layout.PanelRect.position,
                     () => SelectTab(layout.Tab));
                 button.SetSelected(layout.Tab == RetailLogbookTab.Quests);
                 _tabs.Add(layout.Tab, button);

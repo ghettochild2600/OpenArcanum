@@ -62,9 +62,9 @@ namespace Arcanum.Formats.Tests
             }));
             Assert.That(RetailLogbookLayout.Tabs.Select(value => value.SourceId),
                 Is.EqualTo(new[] { 265, 267, 271, 266, 270, 268, 269 }));
-            Assert.That(RetailLogbookLayout.Tabs.Select(value => value.Position.y),
+            Assert.That(RetailLogbookLayout.Tabs.Select(value => value.SourceScreenPosition.y),
                 Is.EqualTo(new[] { 83f, 129f, 175f, 221f, 267f, 313f, 359f }));
-            Assert.That(RetailLogbookLayout.Tabs.Select(value => value.Position.x),
+            Assert.That(RetailLogbookLayout.Tabs.Select(value => value.SourceScreenPosition.x),
                 Is.EqualTo(new[] { 696f, 696f, 696f, 695f, 696f, 696f, 696f }));
         }
 
@@ -173,6 +173,38 @@ namespace Arcanum.Formats.Tests
             _enhanced?.Dispose();
             OpenArcanumGraphicsSettings.ClearRuntimeMode();
             if (Directory.Exists(_fixtureRoot)) Directory.Delete(_fixtureRoot, true);
+        }
+
+        [Test]
+        public void SevenTabsUseExactSourceRectanglesRelativeToTheLogbookPanel()
+        {
+            Rect[] expected =
+            {
+                new(696f, 42f, 46f, 41f),
+                new(696f, 88f, 46f, 41f),
+                new(696f, 134f, 46f, 41f),
+                new(695f, 180f, 46f, 41f),
+                new(696f, 226f, 46f, 41f),
+                new(696f, 272f, 46f, 41f),
+                new(696f, 318f, 46f, 41f),
+            };
+
+            Assert.That(RetailLogbookLayout.Tabs.Select(value => value.PanelRect), Is.EqualTo(expected));
+            for (int index = 0; index < RetailLogbookLayout.Tabs.Length; index++)
+            {
+                RetailLogbookTabLayout layout = RetailLogbookLayout.Tabs[index];
+                SourceUiButton button = _view.GetComponentsInChildren<SourceUiButton>(true)
+                    .Single(value => value.gameObject.name == layout.Label);
+                RectTransform rect = (RectTransform)button.transform;
+                Assert.That(rect.parent.gameObject.name, Is.EqualTo("Retail Logbook"));
+                Assert.That(rect.anchoredPosition, Is.EqualTo(new Vector2(expected[index].x, -expected[index].y)));
+                Assert.That(rect.sizeDelta, Is.EqualTo(expected[index].size));
+                Assert.That(button.Button.interactable, Is.True);
+                Assert.That(button.CurrentPresentationKey.SourceId, Is.EqualTo(layout.SourceId));
+                if (index > 0)
+                    Assert.That(expected[index].y - expected[index - 1].y - expected[index - 1].height,
+                        Is.EqualTo(5f));
+            }
         }
 
         [Test]
