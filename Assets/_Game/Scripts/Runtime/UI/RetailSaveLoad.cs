@@ -335,12 +335,22 @@ namespace Arcanum.Runtime.UI
         private string CaptureThumbnail()
         {
             if (!Application.isPlaying) return null;
-            Texture2D source = null;
+            Camera camera = Camera.main;
+            if (camera == null) return null;
+            RenderTexture source = null;
             RenderTexture target = null;
+            RenderTexture previousTarget = camera.targetTexture;
+            Rect previousRect = camera.rect;
             RenderTexture previous = RenderTexture.active;
             try
             {
-                source = ScreenCapture.CaptureScreenshotAsTexture();
+                // Source captures the centered 800x600 isometric window, not the surrounding
+                // interface windows. Rendering the world camera directly preserves that rule and
+                // prevents HUD/menu presentation from leaking into a saved-game preview.
+                source = RenderTexture.GetTemporary(800, 600, 24, RenderTextureFormat.ARGB32);
+                camera.targetTexture = source;
+                camera.rect = new Rect(0f, 0f, 1f, 1f);
+                camera.Render();
                 target = RenderTexture.GetTemporary(468, 300, 0, RenderTextureFormat.ARGB32);
                 Graphics.Blit(source, target);
                 RenderTexture.active = target;
@@ -354,9 +364,11 @@ namespace Arcanum.Runtime.UI
             catch { return null; }
             finally
             {
+                camera.targetTexture = previousTarget;
+                camera.rect = previousRect;
                 RenderTexture.active = previous;
                 if (target != null) RenderTexture.ReleaseTemporary(target);
-                if (source != null) Object.Destroy(source);
+                if (source != null) RenderTexture.ReleaseTemporary(source);
             }
         }
 

@@ -43,6 +43,9 @@ internal static class RetailSaveLoadPhysicalValidation
 
         ProductionGameUiPresenter presenter = Object.FindFirstObjectByType<ProductionGameUiPresenter>();
         Check(presenter != null && session.PlayerState != null, "production presenter and player exist");
+        presenter.Controller.Close();
+        yield return null;
+        yield return new WaitForEndOfFrame();
         presenter.Controller.OpenSaveLoad(SaveLoadPanelMode.Save);
         yield return null;
         yield return new WaitForEndOfFrame();
@@ -59,7 +62,8 @@ internal static class RetailSaveLoadPhysicalValidation
         yield return null;
 
         RetailSaveLoadView view = Object.FindFirstObjectByType<RetailSaveLoadView>();
-        Check(view != null && view.IsVisible, "source Save/Load view is visible");
+        Check(presenter.Controller.Screen == GameUiScreen.SaveLoad && view != null && view.IsVisible,
+            "source Save/Load view is the visible modal");
         Check(view.WindowTransform != null && view.WindowTransform.sizeDelta == new Vector2(800, 400),
             "source window is 800x400 inside the native 800x600 client");
         Check(view.GetComponentsInChildren<SourceUiImage>(true).Any(value =>
