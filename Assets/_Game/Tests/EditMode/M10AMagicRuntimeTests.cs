@@ -197,11 +197,19 @@ namespace Arcanum.Formats.Tests
             Assert.That(_session.Characters.GetBaseAttribute(_pc.Identity, CharacterAttribute.Strength), Is.EqualTo(8));
             Assert.That(_session.Characters.GetEffectiveAttribute(_pc.Identity, CharacterAttribute.Strength),
                 Is.EqualTo(strength + 4));
+            CharacterContributor contributor = _session.Characters.Contributors
+                .GetOrderedContributors(_pc.Identity)
+                .Single(value => value.Domain == CharacterContributorDomain.Spell);
+            Assert.That((contributor.SourceId, contributor.Target, contributor.Amount),
+                Is.EqualTo((PhaseOneSpellCatalog.StrengthOfEarth,
+                    CharacterContributorTarget.Attribute(CharacterAttribute.Strength), 4)));
             Assert.That(_session.Magic.Cast(new SpellCastRequest(_pc.Identity, 15, _pc.Identity)).Failure,
                 Is.EqualTo(SpellCastFailure.DuplicateEffect));
             Assert.That(_session.Magic.EndEffect(result.ActiveEffectId.Value), Is.True);
             Assert.That(_session.Characters.GetEffectiveAttribute(_pc.Identity, CharacterAttribute.Strength),
                 Is.EqualTo(strength));
+            Assert.That(_session.Characters.Contributors.GetOrderedContributors(_pc.Identity)
+                .Any(value => value.Domain == CharacterContributorDomain.Spell), Is.False);
         }
 
         [Test]
@@ -308,6 +316,8 @@ namespace Arcanum.Formats.Tests
             Assert.That(_session.Magic.ActiveEffects[0].Id, Is.EqualTo(maintained.ActiveEffectId));
             Assert.That(_session.Characters.GetEffectiveAttribute(_pc.Identity, CharacterAttribute.Strength),
                 Is.EqualTo(12));
+            Assert.That(_session.Characters.Contributors.GetOrderedContributors(_pc.Identity)
+                .Count(value => value.Domain == CharacterContributorDomain.Spell), Is.EqualTo(1));
             Assert.That(Fatigue(_pc.Identity), Is.EqualTo(fatigueBeforePending));
             Assert.That(Hp(_target), Is.EqualTo(targetHitPoints));
         }

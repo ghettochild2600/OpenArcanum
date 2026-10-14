@@ -991,11 +991,10 @@ namespace Arcanum.Runtime.Creation
                 basic, technical, hasInstanceStatOverride: true,
                 hasInstanceBasicSkillOverride: true, hasInstanceTechnicalSkillOverride: true);
             var resistances = new int[CharacterDerivedStatRules.ResistanceCount];
-            foreach (var pair in value.Background.ResistanceModifiers) resistances[(int)pair.Key] = pair.Value;
             int magicPoints = Math.Max(0, Math.Min(CharacterDerivedStatRules.MaximumAptitudePoints,
-                value.Spells.Sum() + value.Background.MagicPointModifier));
+                value.Spells.Sum()));
             int techPoints = Math.Max(0, Math.Min(CharacterDerivedStatRules.MaximumAptitudePoints,
-                value.Technology.Sum() + value.Background.TechnologyPointModifier));
+                value.Technology.Sum()));
             var derived = new CharacterDerivedSource(0, resistances, 0, magicPoints, techPoints,
                 hasInstanceStatOverride: true, hasInstanceResistanceOverride: true);
             var vitality = new CharacterVitalitySource(1, value.HitPointPoints, 0, 0,
@@ -1352,14 +1351,38 @@ namespace Arcanum.Runtime.Creation
 
         private void ApplyPersistentModifiers(ArcanumObjectId identity, BackgroundDefinition background)
         {
+            const string owner = "creation-background";
+            var contributors = new List<CharacterContributor>();
             foreach (var pair in background.AttributeModifiers)
-                _world.Characters.SetEffectModifier(identity,
-                    $"creation-background:{background.Id}:attribute:{(int)pair.Key}", pair.Key, pair.Value);
+                contributors.Add(BackgroundContributor(background,
+                    $"attribute:{(int)pair.Key}", CharacterContributorTarget.Attribute(pair.Key), pair.Value,
+                    (int)pair.Key));
             foreach (var pair in background.SkillModifiers)
-                _world.Progression.SetEffectModifier(identity,
-                    $"creation-background:{background.Id}:skill:{(int)pair.Key}", pair.Key, pair.Value);
-            _world.DerivedStats.SetBackgroundSpeedAdjustment(identity, background.SpeedModifier);
+                contributors.Add(BackgroundContributor(background,
+                    $"skill:{(int)pair.Key}", CharacterContributorTarget.Skill(pair.Key), pair.Value,
+                    100 + (int)pair.Key));
+            foreach (var pair in background.ResistanceModifiers)
+                contributors.Add(BackgroundContributor(background,
+                    $"resistance:{(int)pair.Key}", CharacterContributorTarget.Resistance(pair.Key), pair.Value,
+                    200 + (int)pair.Key));
+            if (background.SpeedModifier != 0)
+                contributors.Add(BackgroundContributor(background, "speed",
+                    CharacterContributorTarget.DerivedStat(CharacterDerivedStat.Speed), background.SpeedModifier,
+                    300));
+            if (background.MagicPointModifier != 0)
+                contributors.Add(BackgroundContributor(background, "magick-points",
+                    CharacterContributorTarget.MagickPoints, background.MagicPointModifier, 301));
+            if (background.TechnologyPointModifier != 0)
+                contributors.Add(BackgroundContributor(background, "technology-points",
+                    CharacterContributorTarget.TechnologyPoints, background.TechnologyPointModifier, 302));
+            _world.Characters.Contributors.ReplaceDomainContributors(identity,
+                CharacterContributorDomain.Background, owner, contributors);
         }
+
+        private static CharacterContributor BackgroundContributor(BackgroundDefinition background,
+            string suffix, CharacterContributorTarget target, int amount, int order)
+            => new("creation-background", CharacterContributorDomain.Background, background.EffectId,
+                $"background:{background.Id}:{suffix}", target, CharacterContributorOperation.Add, amount, order);
 
         private static int EffectiveAttribute(CharacterCreationSpecification source,
             BackgroundDefinition background, CharacterAttribute attribute)

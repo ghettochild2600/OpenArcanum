@@ -99,28 +99,31 @@ namespace Arcanum.Runtime.Character
             PersistentCharacterDerivedState state = Get(identity);
             return stat switch
             {
-                CharacterDerivedStat.CarryWeight => _carryWeight?.GetCarryWeight(identity)
-                    ?? throw new InvalidOperationException("Carry weight requires the existing inventory-capacity authority."),
-                CharacterDerivedStat.MeleeDamageBonus => CharacterDerivedStatRules.MeleeDamageBonusFromStrength(
-                    Effective(identity, CharacterAttribute.Strength)),
+                CharacterDerivedStat.CarryWeight => Apply(identity, stat,
+                    _carryWeight?.GetCarryWeight(identity)
+                    ?? throw new InvalidOperationException("Carry weight requires the existing inventory-capacity authority.")),
+                CharacterDerivedStat.MeleeDamageBonus => Apply(identity, stat,
+                    CharacterDerivedStatRules.MeleeDamageBonusFromStrength(
+                        Effective(identity, CharacterAttribute.Strength))),
                 CharacterDerivedStat.ArmorClassAdjustment =>
-                    CharacterDerivedStatRules.ArmorClassAdjustmentFromDexterity(
-                        Effective(identity, CharacterAttribute.Dexterity)),
-                CharacterDerivedStat.Speed => Clamp(CharacterDerivedStatRules.SpeedFromDexterity(
-                    Effective(identity, CharacterAttribute.Dexterity)) + state.BackgroundSpeedAdjustment, 1, 100),
-                CharacterDerivedStat.HealRate => CharacterDerivedStatRules.HealRateFromConstitution(
-                    Effective(identity, CharacterAttribute.Constitution)),
-                CharacterDerivedStat.PoisonRecovery => CharacterDerivedStatRules.PoisonRecoveryFromConstitution(
-                    Effective(identity, CharacterAttribute.Constitution)),
+                    Apply(identity, stat, CharacterDerivedStatRules.ArmorClassAdjustmentFromDexterity(
+                        Effective(identity, CharacterAttribute.Dexterity))),
+                CharacterDerivedStat.Speed => Clamp(Apply(identity, stat,
+                    CharacterDerivedStatRules.SpeedFromDexterity(
+                        Effective(identity, CharacterAttribute.Dexterity))), 1, 100),
+                CharacterDerivedStat.HealRate => Apply(identity, stat,
+                    CharacterDerivedStatRules.HealRateFromConstitution(
+                        Effective(identity, CharacterAttribute.Constitution))),
+                CharacterDerivedStat.PoisonRecovery => Apply(identity, stat,
+                    CharacterDerivedStatRules.PoisonRecoveryFromConstitution(
+                        Effective(identity, CharacterAttribute.Constitution))),
                 CharacterDerivedStat.BeautyReactionModifier =>
-                    CharacterDerivedStatRules.BeautyReactionModifierFromBeauty(
-                        Effective(identity, CharacterAttribute.Beauty)),
-                CharacterDerivedStat.MaximumFollowers => Clamp(
-                    Effective(identity, CharacterAttribute.Charisma) / 4
-                    + (_progression.GetTrainingLevel(identity, CharacterSkill.Persuasion) >= SkillTrainingLevel.Expert
-                        ? 1 : 0), 1, 7),
-                CharacterDerivedStat.MagickTechAptitude => Clamp(
-                    (50 * GetEffectiveMagickPoints(state) - 55 * GetEffectiveTechPoints(state)) / 10,
+                    Apply(identity, stat, CharacterDerivedStatRules.BeautyReactionModifierFromBeauty(
+                        Effective(identity, CharacterAttribute.Beauty))),
+                CharacterDerivedStat.MaximumFollowers => Clamp(Apply(identity, stat,
+                    Effective(identity, CharacterAttribute.Charisma) / 4), 1, 7),
+                CharacterDerivedStat.MagickTechAptitude => Clamp(Apply(identity, stat,
+                    (50 * GetEffectiveMagickPoints(state) - 55 * GetEffectiveTechPoints(state)) / 10),
                     -100, 100),
                 _ => throw new ArgumentOutOfRangeException(nameof(stat)),
             };
@@ -134,11 +137,11 @@ namespace Arcanum.Runtime.Character
         {
             CharacterDerivedStatRules.ValidateResistance(resistance);
             PersistentCharacterDerivedState state = Get(identity);
-            CharacterRace race = _characters.Get(identity).Race;
-            int value = state.Source.GetResistance(resistance)
-                        + CharacterDerivedStatRules.ResistanceAdjustment(race, resistance);
+            int value = state.Source.GetResistance(resistance);
             if (resistance == CharacterResistance.Poison)
                 value += Math.Max(0, 5 * (Effective(identity, CharacterAttribute.Constitution) - 4));
+            value = _characters.Contributors.Evaluate(identity,
+                CharacterContributorTarget.Resistance(resistance), value);
             return state.ObjectType == ObjectType.Npc && state.Source.IsMonstrous ? value : Clamp(value, 0, 95);
         }
 
@@ -179,9 +182,6 @@ namespace Arcanum.Runtime.Character
             PersistentCharacterDerivedState state = Get(identity);
             state.SetTechnologyPointAdjustment(checked(state.TechnologyPointAdjustment + 1));
         }
-
-        public void SetBackgroundSpeedAdjustment(ArcanumObjectId identity, int amount)
-            => Get(identity).SetBackgroundSpeedAdjustment(amount);
 
         public CharacterReactionInputs GetReactionInputs(ArcanumObjectId npcIdentity, ArcanumObjectId pcIdentity)
         {
@@ -297,15 +297,18 @@ namespace Arcanum.Runtime.Character
         private int Effective(ArcanumObjectId identity, CharacterAttribute attribute)
             => _characters.GetEffectiveAttribute(identity, attribute);
 
+        private int Apply(ArcanumObjectId identity, CharacterDerivedStat stat, int value)
+            => _characters.Contributors.Evaluate(identity, CharacterContributorTarget.DerivedStat(stat), value);
+
         private int GetEffectiveMagickPoints(PersistentCharacterDerivedState state)
-            => Clamp(state.Source.MagickPoints + state.MagickPointAdjustment
-                + CharacterDerivedStatRules.AptitudePointAdjustment(
-                _characters.Get(state.Identity).Race, true), 0, CharacterDerivedStatRules.MaximumAptitudePoints);
+            => Clamp(_characters.Contributors.Evaluate(state.Identity, CharacterContributorTarget.MagickPoints,
+                state.Source.MagickPoints + state.MagickPointAdjustment), 0,
+                CharacterDerivedStatRules.MaximumAptitudePoints);
 
         private int GetEffectiveTechPoints(PersistentCharacterDerivedState state)
-            => Clamp(state.Source.TechPoints + state.TechnologyPointAdjustment
-                + CharacterDerivedStatRules.AptitudePointAdjustment(
-                _characters.Get(state.Identity).Race, false), 0, CharacterDerivedStatRules.MaximumAptitudePoints);
+            => Clamp(_characters.Contributors.Evaluate(state.Identity, CharacterContributorTarget.TechnologyPoints,
+                state.Source.TechPoints + state.TechnologyPointAdjustment), 0,
+                CharacterDerivedStatRules.MaximumAptitudePoints);
 
         private static int Clamp(int value, int minimum, int maximum) => Math.Max(minimum, Math.Min(maximum, value));
     }

@@ -107,11 +107,22 @@ namespace Arcanum.Formats.Tests
             Assert.That(_session.Characters.GetEffectiveAttribute(pc, CharacterAttribute.Beauty), Is.EqualTo(7));
             Assert.That(_session.DerivedStats.GetResistance(pc, CharacterResistance.Poison), Is.EqualTo(40),
                 "the authentic +20 background contribution composes with M4D's Constitution-derived 20");
+            Assert.That(_session.Characters.Contributors.GetOrderedContributors(pc)
+                    .Where(value => value.Domain == CharacterContributorDomain.Background)
+                    .Select(value => (value.SourceId, value.Target, value.Amount)),
+                Is.EquivalentTo(new[]
+                {
+                    (87, CharacterContributorTarget.Attribute(CharacterAttribute.Beauty), -1),
+                    (87, CharacterContributorTarget.Resistance(CharacterResistance.Poison), 20),
+                }));
             string json = _session.SaveGames.SerializeCurrentSession();
             var load = _session.SaveGames.LoadJson(json);
             Assert.That(load.Succeeded, Is.True, load.Message);
             Assert.That(_session.Characters.GetEffectiveAttribute(pc, CharacterAttribute.Beauty), Is.EqualTo(7));
             Assert.That(_session.DerivedStats.GetResistance(pc, CharacterResistance.Poison), Is.EqualTo(40));
+            Assert.That(_session.Characters.Contributors.GetOrderedContributors(pc)
+                    .Count(value => value.Domain == CharacterContributorDomain.Background), Is.EqualTo(2),
+                "save/load reconstructs the selected background owner once instead of serializing derived values");
         }
 
         [Test]
@@ -147,6 +158,9 @@ namespace Arcanum.Formats.Tests
             ArcanumObjectId pc = ProductionPlayerLifecycle.DefaultPlayerIdentity;
             Assert.That(_session.DerivedStats.GetDerivedStat(pc, CharacterDerivedStat.Speed), Is.EqualTo(9));
             Assert.That(_session.Characters.GetEffectiveAttribute(pc, CharacterAttribute.Charisma), Is.EqualTo(7));
+            Assert.That(_session.Characters.Contributors.GetOrderedContributors(pc)
+                    .Single(value => value.Target == CharacterContributorTarget.DerivedStat(
+                        CharacterDerivedStat.Speed)).Amount, Is.EqualTo(1));
         }
 
         [Test]

@@ -38,7 +38,7 @@ namespace Arcanum.Runtime.Dialogue
         {
             PersistentCharacterState npcState = _world.Characters.Get(npc);
             PersistentCharacterState pcState = _world.Characters.Get(pc);
-            bool dumb = npcState.GetEffective(CharacterAttribute.Intelligence) <= 4;
+            bool dumb = _world.Characters.GetEffectiveAttribute(npc, CharacterAttribute.Intelligence) <= 4;
             string name = "gd_cls_" + (dumb ? "dumb_" : string.Empty)
                           + (npcState.Gender == CharacterGender.Male ? "m2" : "f2")
                           + (pcState.Gender == CharacterGender.Male ? "m" : "f");
@@ -52,7 +52,7 @@ namespace Arcanum.Runtime.Dialogue
         {
             PersistentCharacterState npcState = _world.Characters.Get(npc);
             PersistentCharacterState pcState = _world.Characters.Get(pc);
-            bool dumb = pcState.GetEffective(CharacterAttribute.Intelligence) <= 4;
+            bool dumb = _world.Characters.GetEffectiveAttribute(pc, CharacterAttribute.Intelligence) <= 4;
             string name = "gd_cls_" + (dumb ? "dumb_" : string.Empty)
                           + "pc2" + (npcState.Gender == CharacterGender.Male ? "m" : "f");
             int socialClass = !dumb && _world.TryGetObjectState(npc, out PersistentObjectState source)
@@ -65,7 +65,7 @@ namespace Arcanum.Runtime.Dialogue
         {
             PersistentCharacterState npcState = _world.Characters.Get(npc);
             PersistentCharacterState pcState = _world.Characters.Get(pc);
-            bool dumb = pcState.GetEffective(CharacterAttribute.Intelligence) <= 4;
+            bool dumb = _world.Characters.GetEffectiveAttribute(pc, CharacterAttribute.Intelligence) <= 4;
             string name = "gd_" + (dumb ? "dumb_" : string.Empty)
                           + "pc2" + (npcState.Gender == CharacterGender.Male ? "m" : "f");
             return InRange(_tables[name], firstKey, lastKey);

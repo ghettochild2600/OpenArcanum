@@ -572,7 +572,8 @@ namespace Arcanum.Runtime.Magic
         {
             if (spell.EffectFamily == SpellEffectFamily.AttributeModifier)
                 _world.Characters.SetEffectModifier(effect.Target, effect.ModifierIdentity,
-                    spell.ModifiedAttribute.Value, effect.Magnitude);
+                    spell.ModifiedAttribute.Value, effect.Magnitude,
+                    CharacterContributorDomain.Spell, spell.Id);
         }
 
         private void RemoveEffect(ActiveSpellEffect effect, SpellDefinition spell)
