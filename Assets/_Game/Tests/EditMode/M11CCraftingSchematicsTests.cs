@@ -9,6 +9,7 @@ using Arcanum.Runtime.Character;
 using Arcanum.Runtime.Crafting;
 using Arcanum.Runtime.Save;
 using Arcanum.Runtime.Technology;
+using Arcanum.Runtime.UI;
 using Arcanum.Runtime.World;
 using Arcanum.World;
 using NUnit.Framework;
@@ -239,6 +240,52 @@ namespace Arcanum.Formats.Tests
             Assert.That(_session.TryGetObjectState(second.Identity, out _), Is.True);
             Assert.That(_session.NextDynamicIdentity, Is.EqualTo(allocator));
             Assert.That(_session.States.Values.Any(value => value.PrototypeNumber == 15169), Is.False);
+        }
+
+        [Test, Category("UIE2CharacterSkills")]
+        public void SourceSchematicProjectionTracksDisciplineComponentsAndReadinessWithoutOwningCraftState()
+        {
+            _prototypes[15169].ItemDiscipline = (int)TechnologyDiscipline.Chemistry;
+            _prototypes[10084].ItemDiscipline = (int)TechnologyDiscipline.Herbology;
+            _prototypes[10084].ItemComplexity = 0;
+            _prototypes[15116].ItemDiscipline = (int)TechnologyDiscipline.Chemistry;
+            _prototypes[15116].ItemComplexity = 0;
+            Learn4020();
+            var ui = new GameUiController(_session);
+
+            GameUiSchematicView missing = ui.ProjectSchematics().Single();
+            Assert.That(missing.Discipline, Is.EqualTo(TechnologyDiscipline.Chemistry));
+            Assert.That((missing.ComponentOne.PrototypeNumber, missing.ComponentTwo.PrototypeNumber),
+                Is.EqualTo((10084, 15116)));
+            Assert.That((missing.ComponentOne.IsOwned, missing.ComponentTwo.IsOwned), Is.EqualTo((false, false)));
+            Assert.That(RetailSchematicLayout.ReadinessSourceId(missing), Is.EqualTo(359));
+
+            Item(61, 10084); Item(62, 15116);
+            GameUiSchematicView ready = ui.ProjectSchematics().Single();
+            Assert.That((ready.ComponentOne.IsOwned, ready.ComponentTwo.IsOwned), Is.EqualTo((true, true)));
+            Assert.That(RetailSchematicLayout.ReadinessSourceId(ready), Is.EqualTo(360));
+            Assert.That(ui.Craft(ready.Definition.Id), Is.True);
+            Assert.That(_session.States.Values.Count(value => value.PrototypeNumber == 15169), Is.EqualTo(1));
+        }
+
+        [Test, Category("UIE2CharacterSkills")]
+        public void SourceSchematicLayoutFiltersFoundPagesAndUsesExactNativeGeometry()
+        {
+            _prototypes[15169].ItemDiscipline = (int)TechnologyDiscipline.Mechanical;
+            Learn4020();
+            var ui = new GameUiController(_session);
+            IReadOnlyList<GameUiSchematicView> projected = ui.ProjectSchematics();
+
+            Assert.That(RetailSchematicLayout.Filter(projected, RetailSchematicMode.Learned,
+                TechnologyDiscipline.Mechanical), Is.Empty);
+            Assert.That(RetailSchematicLayout.Filter(projected, RetailSchematicMode.Found,
+                TechnologyDiscipline.Mechanical).Select(value => value.Definition.Id.Value), Is.EqualTo(new[] { 4020 }));
+            Assert.That(RetailSchematicLayout.Window, Is.EqualTo(new Rect(0, 41, 800, 400)));
+            Assert.That(RetailSchematicLayout.PcLens, Is.EqualTo(new Rect(50, 26, 89, 89)));
+            Assert.That(RetailSchematicLayout.Components,
+                Is.EqualTo(new[] { new Rect(579, 181, 99, 67), new Rect(579, 277, 99, 67) }));
+            Assert.That(RetailSchematicLayout.TabSourceIds,
+                Is.EqualTo(new[] { 355, 356, 361, 362, 363, 364, 368, 369 }));
         }
 
         [Test]

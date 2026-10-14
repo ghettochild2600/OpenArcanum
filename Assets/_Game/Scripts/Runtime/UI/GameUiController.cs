@@ -188,6 +188,20 @@ namespace Arcanum.Runtime.UI
         public CraftingFailure PreviewFailure { get; internal set; }
         public int ProductPrototype { get; internal set; }
         public int ProductQuantity { get; internal set; }
+        public TechnologyDiscipline Discipline { get; internal set; }
+        public GameUiSchematicComponentView ComponentOne { get; internal set; }
+        public GameUiSchematicComponentView ComponentTwo { get; internal set; }
+    }
+
+    public sealed class GameUiSchematicComponentView
+    {
+        public int PrototypeNumber { get; internal set; }
+        public string Name { get; internal set; }
+        public uint? InventoryArtId { get; internal set; }
+        public TechnologyDiscipline Discipline { get; internal set; }
+        public int Complexity { get; internal set; }
+        public bool IsOwned { get; internal set; }
+        public bool HasExpertise { get; internal set; }
     }
 
     public sealed class GameUiMerchantItemView
@@ -1414,12 +1428,42 @@ namespace Arcanum.Runtime.UI
             => _session.Crafting.ProjectKnown(Player).Select(value =>
             {
                 CraftingResult preview = _session.Crafting.Preview(new CraftingRequest(Player, value.Id));
+                int product = preview.ProductPrototype != 0
+                    ? preview.ProductPrototype : value.ProductAliases[0];
+                ObjectProtoInfo productPrototype = _session.ResolvePrototype(product);
+                TechnologyDiscipline discipline = value.BuiltInDiscipline
+                    ?? (TechnologyDiscipline)Math.Clamp(productPrototype?.ItemDiscipline ?? 0, 0, 7);
                 return new GameUiSchematicView
                 {
                     Definition = value, PreviewFailure = preview.Failure,
-                    ProductPrototype = preview.ProductPrototype, ProductQuantity = preview.ProductQuantity,
+                    ProductPrototype = product, ProductQuantity = value.ProductQuantity,
+                    Discipline = discipline,
+                    ComponentOne = ProjectSchematicComponent(value.ComponentOneAliases,
+                        preview.ComponentOne, preview.ComponentOne.Item.IsPersistent),
+                    ComponentTwo = ProjectSchematicComponent(value.ComponentTwoAliases,
+                        preview.ComponentTwo, preview.ComponentTwo.Item.IsPersistent),
                 };
             }).ToArray();
+
+        private GameUiSchematicComponentView ProjectSchematicComponent(IReadOnlyList<int> aliases,
+            CraftingComponentSelection selected, bool owned)
+        {
+            int prototypeNumber = owned ? selected.PrototypeNumber : aliases[0];
+            ObjectProtoInfo prototype = _session.ResolvePrototype(prototypeNumber);
+            TechnologyDiscipline discipline = (TechnologyDiscipline)Math.Clamp(
+                prototype?.ItemDiscipline ?? 0, 0, 7);
+            int complexity = Math.Max(0, -(prototype?.ItemComplexity ?? 0));
+            return new GameUiSchematicComponentView
+            {
+                PrototypeNumber = prototypeNumber,
+                Name = _session.ResolvePrototypeDisplayName(prototypeNumber),
+                InventoryArtId = prototype?.InvAid,
+                Discipline = discipline,
+                Complexity = complexity,
+                IsOwned = owned,
+                HasExpertise = _session.Technology.GetEffectiveLevel(Player, discipline) >= complexity,
+            };
+        }
 
         public bool Craft(SchematicId id)
         {
