@@ -94,7 +94,8 @@ namespace Arcanum.Runtime.World
                 || !session.TryGetLoadedObject(target, out WorldObject runtime))
                 return Complete(command, WorldInteractionResultCode.TargetNotFound);
             if (targetState.Type != runtime.Type
-                || targetState.Type != ObjectType.Portal && !session.IsAreaEntranceTarget(target))
+                || targetState.Type != ObjectType.Portal && !session.IsAreaEntranceTarget(target)
+                && !BedSleepAuthority.IsBed(targetState))
                 return Complete(command, WorldInteractionResultCode.InvalidTarget);
             return TryApproachOrExecute(command, targetState, InteractionRangeRules.PortalUseRange);
         }

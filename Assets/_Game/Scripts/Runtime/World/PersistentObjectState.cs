@@ -43,6 +43,9 @@ namespace Arcanum.Runtime.World
         public bool Off { get; internal set; }
         public bool Locked { get; internal set; }
         public int UseScriptNum { get; internal set; }
+        public uint UseScriptLocalFlags { get; internal set; }
+        public uint UseScriptLocalCounters { get; internal set; }
+        public ArcanumObjectId SceneryOccupantIdentity { get; internal set; }
         public int DialogNum { get; internal set; }
         public int ItemFlags { get; }
         public uint? InventoryArtId { get; }
@@ -129,6 +132,9 @@ namespace Arcanum.Runtime.World
             Off = off;
             Locked = locked;
             UseScriptNum = source.UseScriptNum;
+            UseScriptLocalFlags = source.UseScriptLocalFlags;
+            UseScriptLocalCounters = source.UseScriptLocalCounters;
+            SceneryOccupantIdentity = source.SceneryOccupantIdentity;
             DialogNum = source.DialogNum;
             ItemFlags = itemFlags;
             InventoryArtId = inventoryArtId;
@@ -238,6 +244,9 @@ namespace Arcanum.Runtime.World
             Off = source.Off;
             Locked = source.Locked;
             UseScriptNum = source.UseScriptNum;
+            UseScriptLocalFlags = source.UseScriptLocalFlags;
+            UseScriptLocalCounters = source.UseScriptLocalCounters;
+            SceneryOccupantIdentity = source.SceneryOccupantIdentity;
             DialogNum = source.DialogNum;
             ItemFlags = source.ItemFlags;
             InventoryArtId = source.InventoryArtId;
@@ -269,7 +278,9 @@ namespace Arcanum.Runtime.World
             int writtenSubtype, int writtenStartLine,
             InventoryFootprint inventoryFootprint, int inventoryLocation, int? stackQuantity, bool portalOpen,
             Vector2 tilePosition, ObjectPlacement placement, bool isRuntimeCreated,
-            Weapon weaponData = null, int? ammoItemType = null, bool deathConsequencesProcessed = false)
+            Weapon weaponData = null, int? ammoItemType = null, bool deathConsequencesProcessed = false,
+            uint useScriptLocalFlags = 0, uint useScriptLocalCounters = 0,
+            ArcanumObjectId sceneryOccupantIdentity = default)
         {
             Identity = identity;
             AuthoredParentIdentity = authoredParentIdentity;
@@ -296,6 +307,9 @@ namespace Arcanum.Runtime.World
             Off = off;
             Locked = locked;
             UseScriptNum = useScriptNum;
+            UseScriptLocalFlags = useScriptLocalFlags;
+            UseScriptLocalCounters = useScriptLocalCounters;
+            SceneryOccupantIdentity = sceneryOccupantIdentity;
             DialogNum = dialogNum;
             ItemFlags = itemFlags;
             InventoryArtId = inventoryArtId;

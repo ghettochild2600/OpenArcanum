@@ -1,11 +1,13 @@
 using System;
 using System.Reflection;
 using Arcanum.Formats.Objects;
+using Arcanum.Formats.Art;
 using Arcanum.Formats.Script;
 using Arcanum.Formats.Text;
 using Arcanum.Formats.Tiles;
 using Arcanum.Formats.World;
 using Arcanum.Runtime.World;
+using Arcanum.Runtime.UI;
 using Arcanum.Script;
 using NUnit.Framework;
 using UnityEngine;
@@ -185,6 +187,82 @@ namespace Arcanum.Formats.Tests
                 Is.EqualTo(ScriptExecutionStatus.UnsupportedOpcode));
         }
 
+        [Test]
+        public void BedRequiresSkipDefaultThenClaimsAndReleasesSourceOccupancy()
+        {
+            WorldObject bed = Bed(2, 1729);
+            uint originalArt = _session.States[bed.Identity].ArtId;
+            _session.BindUseScriptSource(n => n == 1729
+                ? File(Cond(Sct.True, Act(Sat.ReturnAndRunDefault), Act(Sat.DoNothing))) : null);
+
+            WorldInteractionResult refused = Use(bed);
+            Assert.That(refused.Code, Is.EqualTo(WorldInteractionResultCode.Blocked));
+            Assert.That(refused.BedFailure, Is.EqualTo(BedUseFailure.PermissionDenied));
+            Assert.That(refused.ScriptRunDefault, Is.EqualTo(true));
+            Assert.That(_session.States[bed.Identity].SceneryOccupantIdentity.IsNull, Is.True);
+
+            _session.BindUseScriptSource(n => n == 1729 ? PermittedBedScript() : null);
+            WorldInteractionResult allowed = Use(bed);
+            PersistentObjectState state = _session.States[bed.Identity];
+            Assert.That(allowed.Code, Is.EqualTo(WorldInteractionResultCode.Success));
+            Assert.That(allowed.BedFailure, Is.EqualTo(BedUseFailure.None));
+            Assert.That(allowed.SleepMode, Is.EqualTo(SleepLocationMode.BedSleep));
+            Assert.That(state.SceneryOccupantIdentity, Is.EqualTo(_player.Identity));
+            Assert.That(_session.Beds.IsActiveFor(_player.Identity), Is.True);
+            Assert.That((state.UseScriptLocalFlags & (1u << 3)) != 0, Is.True,
+                "per-bed SAP_USE locals belong to the scenery instance");
+            Assert.That(state.ArtId, Is.EqualTo(originalArt + (1u << 14)));
+
+            _session.Beds.Leave(_player.Identity);
+            Assert.That(state.SceneryOccupantIdentity.IsNull, Is.True);
+            Assert.That(state.ArtId, Is.EqualTo(originalArt));
+        }
+
+        [Test]
+        public void OccupiedBedFailsAfterItsPermissionScriptRuns()
+        {
+            WorldObject bed = Bed(3, 1729);
+            PersistentObjectState state = _session.States[bed.Identity];
+            state.SceneryOccupantIdentity = ArcanumObjectId.CreateSessionDynamic(99);
+            _session.BindUseScriptSource(n => n == 1729 ? PermittedBedScript() : null);
+
+            WorldInteractionResult result = Use(bed);
+
+            Assert.That(result.Code, Is.EqualTo(WorldInteractionResultCode.Blocked));
+            Assert.That(result.BedFailure, Is.EqualTo(BedUseFailure.Occupied));
+            Assert.That((state.UseScriptLocalFlags & (1u << 3)) != 0, Is.True,
+                "sleep_ui dispatches SAP_USE before critter_enter_bed checks occupancy");
+            Assert.That(state.SceneryOccupantIdentity, Is.EqualTo(ArcanumObjectId.CreateSessionDynamic(99)));
+        }
+
+        [Test]
+        public void BedSleepUsesSharedSourceTimeDoubledRecoveryAndPoisonLifecycle()
+        {
+            WorldObject bed = Bed(4, 1729);
+            _session.BindUseScriptSource(n => n == 1729 ? PermittedBedScript() : null);
+            Assert.That(Use(bed).IsSuccess, Is.True);
+            _session.Vitality.ApplyHitPointDamage(_player.Identity, 10);
+            _session.Vitality.ApplyFatigueDamage(_player.Identity, 10);
+            Assert.That(_session.Poison.Apply(_player.Identity, 1).ResultingLevel, Is.EqualTo(1));
+            int healRate = _session.DerivedStats.GetDerivedStat(_player.Identity,
+                Arcanum.Runtime.Character.CharacterDerivedStat.HealRate);
+
+            SleepResult result = _session.GameplayHud.Sleep(SleepOption.OneHour);
+
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(result.Mode, Is.EqualTo(SleepLocationMode.BedSleep));
+            Assert.That(result.HoursAdvanced, Is.EqualTo(1));
+            Assert.That(_session.SourceTime.ElapsedMilliseconds, Is.EqualTo(3_600_000));
+            Assert.That(_session.Poison.GetLevel(_player.Identity), Is.Zero,
+                "sleep advances poison through SourceTime rather than a sleep special case");
+            Assert.That(_session.Vitality.Get(_player.Identity).HitPointDamage,
+                Is.EqualTo(Math.Max(0, 18 - 2 * healRate)));
+            Assert.That(_session.Vitality.Get(_player.Identity).FatigueDamage,
+                Is.EqualTo(Math.Max(0, 10 - 6 * healRate)));
+            Assert.That(_session.Beds.IsActiveFor(_player.Identity), Is.False);
+            Assert.That(_session.States[bed.Identity].SceneryOccupantIdentity.IsNull, Is.True);
+        }
+
         private WorldInteractionResult Use(WorldObject portal) => _session.ExecuteInteraction(
             new WorldInteractionCommand(_player.Identity, portal.Identity, WorldInteractionCommandType.Use));
 
@@ -203,6 +281,20 @@ namespace Arcanum.Formats.Tests
             return runtime;
         }
 
+        private WorldObject Bed(int number, int scriptNum, int x = 3, int y = 1)
+        {
+            uint art = ((uint)ArtId.TypeScenery << 28)
+                       | ((uint)BedSleepAuthority.SourceBedScenerySubtype << 6) | (1u << 19);
+            var source = new ObjectInstance(ObjectType.Scenery, 20000 + number, Location(x, y), art, 0, 0,
+                oid: IdBytes(number));
+            PersistentObjectState state = _session.GetOrCreate(source, Sector, art, false, false);
+            state.UseScriptNum = scriptNum;
+            WorldObject runtime = Runtime("Bed", ObjectType.Scenery);
+            _session.Bind(Sector, state, runtime);
+            runtime.UseScriptNum = scriptNum;
+            return runtime;
+        }
+
         private WorldObject Runtime(string name, ObjectType type)
         {
             var go = new GameObject(name);
@@ -216,6 +308,10 @@ namespace Arcanum.Formats.Tests
         private static ScriptFile PanariiGate() => File(Cond(Sct.Eq,
             Act(Sat.ReturnAndRunDefault), Act(Sat.ReturnAndSkipDefault),
             (Svt.GlFlag, PanariiOfficeDoorFlag), (Svt.Number, 1)));
+
+        private static ScriptFile PermittedBedScript() => File(
+            Cond(Sct.True, Act(Sat.SetLocalFlag, (Svt.Number, 3)), Act(Sat.DoNothing)),
+            Cond(Sct.True, Act(Sat.ReturnAndSkipDefault), Act(Sat.DoNothing)));
 
         private static ScriptFile File(params ScriptCondition[] entries)
         {

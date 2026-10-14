@@ -335,6 +335,11 @@ namespace Arcanum.Script
                     SetValue(a.OpType[2], a.OpValue[2], ctx,
                         _host.GetSkill(GetObj(a.OpType[1], a.OpValue[1], ctx), GetValue(a.OpType[0], a.OpValue[0], ctx)));
                     return Next;
+                case Sat.GetHitPoints: // op0=obj, op1=current dest, op2=maximum dest
+                    _host.GetHitPoints(GetObj(a.OpType[0], a.OpValue[0], ctx), out int currentHp, out int maximumHp);
+                    SetValue(a.OpType[1], a.OpValue[1], ctx, currentHp);
+                    SetValue(a.OpType[2], a.OpValue[2], ctx, maximumHp);
+                    return Next;
                 case Sat.Random: // op0=lower, op1=upper (inclusive), op2=dest var
                 {
                     int lo = GetValue(a.OpType[0], a.OpValue[0], ctx), hi = GetValue(a.OpType[1], a.OpValue[1], ctx);

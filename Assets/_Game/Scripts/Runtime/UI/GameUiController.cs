@@ -321,6 +321,7 @@ namespace Arcanum.Runtime.UI
                 && screen is not (GameUiScreen.Dialogue or GameUiScreen.SaveLoad))
                 return Reject("The interface is locked while another combatant acts.");
             SaveLoad.Close();
+            AbandonBedIfNeeded();
             HudPanel = GameUiHudPanel.None;
             Screen = screen;
             CursorMode = GameUiCursorMode.Default;
@@ -530,7 +531,9 @@ namespace Arcanum.Runtime.UI
             ContextualHelpTitle = string.Empty;
             if (HudPanel != GameUiHudPanel.None)
             {
+                AbandonBedIfNeeded();
                 HudPanel = GameUiHudPanel.None;
+                ActiveSleepMode = SleepLocationMode.Unavailable;
                 Feedback = string.Empty;
                 return;
             }
@@ -582,6 +585,11 @@ namespace Arcanum.Runtime.UI
         {
             if (!HasPlayer) return Reject("Start or load a game first.");
             if (Screen != GameUiScreen.None) Close();
+            if (HudPanel == GameUiHudPanel.Sleep)
+            {
+                AbandonBedIfNeeded();
+                ActiveSleepMode = SleepLocationMode.Unavailable;
+            }
             HudPanel = HudPanel == GameUiHudPanel.Skills ? GameUiHudPanel.None : GameUiHudPanel.Skills;
             Feedback = string.Empty;
             return true;
@@ -740,6 +748,11 @@ namespace Arcanum.Runtime.UI
         {
             if (HudPanel == GameUiHudPanel.Fate) { HudPanel = GameUiHudPanel.None; return true; }
             if (!HasPlayer || !_session.Vitality.IsAlive(Player)) return Reject("Fate is unavailable.");
+            if (HudPanel == GameUiHudPanel.Sleep)
+            {
+                AbandonBedIfNeeded();
+                ActiveSleepMode = SleepLocationMode.Unavailable;
+            }
             CloseScreenForHudPanel();
             HudPanel = GameUiHudPanel.Fate;
             Feedback = string.Empty;
@@ -760,7 +773,12 @@ namespace Arcanum.Runtime.UI
         public bool ToggleSleepPanel()
         {
             if (HudPanel == GameUiHudPanel.Sleep)
-            { HudPanel = GameUiHudPanel.None; ActiveSleepMode = SleepLocationMode.Unavailable; return true; }
+            {
+                AbandonBedIfNeeded();
+                HudPanel = GameUiHudPanel.None;
+                ActiveSleepMode = SleepLocationMode.Unavailable;
+                return true;
+            }
             SleepFailure preview = _session.GameplayHud.PreviewSleep(out SleepLocationMode mode);
             if (preview != SleepFailure.None) return Reject(SleepFailureMessage(preview));
             CloseScreenForHudPanel();
@@ -778,6 +796,18 @@ namespace Arcanum.Runtime.UI
             ActiveSleepMode = SleepLocationMode.Unavailable;
             string verb = result.Mode == SleepLocationMode.TownWait ? "Waited" : "Rested";
             return Complete(true, $"{verb} for {result.HoursAdvanced} hour{(result.HoursAdvanced == 1 ? string.Empty : "s")}.");
+        }
+
+        public bool PresentBedUse(WorldInteractionResult result)
+        {
+            if (!result.BedFailure.HasValue) return false;
+            if (!result.IsSuccess || result.BedFailure.Value != BedUseFailure.None)
+                return Reject(BedUseFailureMessage(result.BedFailure.Value));
+            CloseScreenForHudPanel();
+            ActiveSleepMode = SleepLocationMode.BedSleep;
+            HudPanel = GameUiHudPanel.Sleep;
+            Feedback = string.Empty;
+            return true;
         }
 
         private static string SlotLabel(int index) => index == 9 ? "0" : (index + 1).ToString();
@@ -897,6 +927,21 @@ namespace Arcanum.Runtime.UI
             SleepFailure.InvalidOption => "That rest option is unavailable here.",
             _ => failure.ToString(),
         };
+
+        private static string BedUseFailureMessage(BedUseFailure failure) => failure switch
+        {
+            BedUseFailure.Unconscious => "You are unconscious already.",
+            BedUseFailure.CombatActive => "You cannot sleep with enemies near.",
+            BedUseFailure.Occupied => "That bed is occupied.",
+            BedUseFailure.PermissionDenied or BedUseFailure.ScriptFailure
+                => "You cannot sleep here. Find an inn and pay for a bed.",
+            _ => "You cannot sleep here. Find an inn and pay for a bed.",
+        };
+
+        private void AbandonBedIfNeeded()
+        {
+            if (HasPlayer && _session.Beds.IsActiveFor(Player)) _session.Beds.Leave(Player);
+        }
 
         public IReadOnlyList<GameUiItemView> ProjectInventory(ArcanumObjectId owner = default)
         {

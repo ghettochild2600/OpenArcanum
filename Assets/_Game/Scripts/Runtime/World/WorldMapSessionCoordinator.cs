@@ -65,6 +65,7 @@ namespace Arcanum.Runtime.World
         private AreaEntranceResolver _areaEntrances;
         private MapAreaResolver _mapAreas;
         private ISleepLocationSource _sleepLocations;
+        private BedSleepAuthority _beds;
         private AreaList _areaSource;
         private WorldMapDestinationProjection _worldMapDestinations;
         private WorldMapTravelSource _worldMapTravelSource;
@@ -128,6 +129,7 @@ namespace Arcanum.Runtime.World
         public GameplayHudStateService GameplayHud => _gameplayHud ??= new GameplayHudStateService(this);
         public SourceTimeService SourceTime => _sourceTime ??= new SourceTimeService();
         public ISleepLocationSource SleepLocations => _sleepLocations;
+        public BedSleepAuthority Beds => _beds ??= new BedSleepAuthority(this);
         public MagicStateService Magic => _magic ??= new MagicStateService(this);
         public SpellPresentationCatalog SpellPresentation => _spellPresentation;
         public TechnologyStateService Technology => _technology ??= new TechnologyStateService(this);
@@ -1701,6 +1703,19 @@ namespace Arcanum.Runtime.World
                 return new WorldInteractionResult(command, WorldInteractionResultCode.TargetNotFound);
             if (targetState.Type == ObjectType.Scenery && target.Type == ObjectType.Scenery)
             {
+                if (BedSleepAuthority.IsBed(targetState))
+                {
+                    if (!SectorCoordinate.TryParse(targetState.Placement.Sector, out SectorCoordinate bedSector)
+                        || !InteractionRangeRules.IsWithin(PlayerState.MapPosition,
+                            bedSector.ToGlobal(targetState.Placement.TilePosition), InteractionRangeRules.PortalUseRange))
+                        return new WorldInteractionResult(command, WorldInteractionResultCode.OutOfRange);
+                    BedUseResult bed = Beds.Begin(command.Actor, command.Target);
+                    return new WorldInteractionResult(command,
+                        bed.Succeeded ? WorldInteractionResultCode.Success : WorldInteractionResultCode.Blocked,
+                        scriptNum: bed.ScriptNum, scriptStatus: bed.ScriptStatus,
+                        scriptRunDefault: bed.ScriptRunDefault, bedFailure: bed.Failure,
+                        sleepMode: bed.Succeeded ? SleepLocationMode.BedSleep : null);
+                }
                 AreaEntranceResult travel = RequestAreaEntrance(command.Actor, command.Target);
                 return new WorldInteractionResult(command, travel.Succeeded ? WorldInteractionResultCode.Success
                         : travel.Failure == AreaEntranceFailure.OutOfRange ? WorldInteractionResultCode.OutOfRange
@@ -2216,6 +2231,7 @@ namespace Arcanum.Runtime.World
             _shortcuts = null;
             _gameplayHud?.Dispose();
             _gameplayHud = null;
+            _beds = null;
             _magic = null;
             _technology = null;
             _crafting = null;
@@ -2240,6 +2256,7 @@ namespace Arcanum.Runtime.World
             foreach (string sector in new List<string>(_loaded.Keys)) UnloadSector(sector);
             _gameplayHud?.Dispose();
             _gameplayHud = null;
+            _beds = null;
             _poison?.Dispose();
             _poison = null;
 
@@ -2299,7 +2316,9 @@ namespace Arcanum.Runtime.World
             _poison.FinalizeRestore();
             _gameplayHud = new GameplayHudStateService(this);
             _gameplayHud.RestoreSaveData(plan.GameplayHud);
-            return SelectSector(plan.SelectedSector);
+            bool selected = SelectSector(plan.SelectedSector);
+            if (selected) Beds.RestoreTransient(PlayerState.Identity);
+            return selected;
         }
 
         private void OnDestroy()

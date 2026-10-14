@@ -207,6 +207,9 @@ namespace Arcanum.Runtime.Save
         public bool Off { get; set; }
         public bool Locked { get; set; }
         public int UseScriptNum { get; set; }
+        public uint UseScriptLocalFlags { get; set; }
+        public uint UseScriptLocalCounters { get; set; }
+        public string SceneryOccupantIdentity { get; set; }
         public int DialogNum { get; set; }
         public int ItemFlags { get; set; }
         public uint? InventoryArtId { get; set; }

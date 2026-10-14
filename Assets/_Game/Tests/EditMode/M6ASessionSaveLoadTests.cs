@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using Arcanum.Formats.Art;
 using Arcanum.Formats.Objects;
 using Arcanum.Formats.Quest;
 using Arcanum.Runtime.Campaign;
@@ -364,6 +365,29 @@ namespace Arcanum.Formats.Tests
             string text = File.ReadAllText(path);
             Assert.That(text.Replace("\r\n", "\n"), Does.StartWith("{\n  \"format\""));
             Assert.That(_session.SaveGames.LoadSession(path).Succeeded, Is.True);
+        }
+
+        [Test]
+        public void BedScriptLocalsAndOccupancyRoundTripWithActiveBedState()
+        {
+            uint art = ((uint)ArtId.TypeScenery << 28)
+                       | ((uint)BedSleepAuthority.SourceBedScenerySubtype << 6) | (2u << 19);
+            PersistentObjectState bed = AddAuthored(ObjectType.Scenery, 20002, 30, 6, art);
+            bed.UseScriptNum = 1729;
+            bed.UseScriptLocalFlags = 1u << 7;
+            bed.UseScriptLocalCounters = 0x01020304u;
+            bed.SceneryOccupantIdentity = _pc.Identity;
+
+            string json = _session.SaveGames.SerializeCurrentSession();
+            SessionLoadResult result = _session.SaveGames.LoadJson(json);
+
+            Assert.That(result.Succeeded, Is.True, result.Message);
+            PersistentObjectState restored = _session.States[bed.Identity];
+            Assert.That(restored.UseScriptNum, Is.EqualTo(1729));
+            Assert.That(restored.UseScriptLocalFlags, Is.EqualTo(1u << 7));
+            Assert.That(restored.UseScriptLocalCounters, Is.EqualTo(0x01020304u));
+            Assert.That(restored.SceneryOccupantIdentity, Is.EqualTo(_session.PlayerState.Identity));
+            Assert.That(_session.Beds.IsActiveFor(_session.PlayerState.Identity), Is.True);
         }
 
         [Test]

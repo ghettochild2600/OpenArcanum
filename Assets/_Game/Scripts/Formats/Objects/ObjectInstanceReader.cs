@@ -62,6 +62,11 @@ namespace Arcanum.Formats.Objects
         /// object is used/clicked (door teleporters, levers); 0 = none.</summary>
         public int UseScriptNum { get; internal set; }
 
+        /// <summary>Persistent header state for this instance's <c>SAP_USE</c> slot. Retail bed scripts use
+        /// these flags/counters to encode which room the scenery belongs to.</summary>
+        public uint UseScriptLocalFlags { get; internal set; }
+        public uint UseScriptLocalCounters { get; internal set; }
+
         /// <summary>The <c>SAP_EXAMINE</c> script number — runs when the object is looked at (signs, examinable
         /// scenery; usually floats a line of text); 0 = none.</summary>
         public int ExamineScriptNum { get; internal set; }
@@ -262,6 +267,10 @@ namespace Arcanum.Formats.Objects
         /// <summary><c>OBJ_F_SCENERY_FLAGS</c> (<c>OSCF_*</c>: nocturnal, is-fire, …); null if unset.</summary>
         public int? SceneryFlags { get; internal set; }
 
+        /// <summary><c>OBJ_F_SCENERY_WHOS_IN_ME</c>; non-null when a bed is authored as occupied.</summary>
+        public byte[] SceneryOccupantOid { get; internal set; }
+        public ArcanumObjectId SceneryOccupantIdentity => ArcanumObjectId.FromBytes(SceneryOccupantOid);
+
         /// <summary>This instance's own object id (24-byte <c>ObjectID</c>) — the key inventory/parent refs point at.</summary>
         public byte[] Oid { get; }
 
@@ -326,6 +335,7 @@ namespace Arcanum.Formats.Objects
         private const int F_LIGHT_AID = 14;                  // OBJ_F_LIGHT_AID (INT32 art id) → object emits a light
         private const int F_LIGHT_COLOR = 15;                // OBJ_F_LIGHT_COLOR (INT32 tig_color 0x00RRGGBB)
         private const int F_SCENERY_FLAGS = 69;              // OBJ_F_SCENERY_FLAGS (INT32) → OSCF_* (nocturnal, is_fire, …)
+        private const int F_SCENERY_WHOS_IN_ME = 70;         // OBJ_F_SCENERY_WHOS_IN_ME (HANDLE) → bed occupant
         private const int F_OFFSET_X = 3;                    // OBJ_F_OFFSET_X (common field)
         private const int F_OFFSET_Y = 4;                    // OBJ_F_OFFSET_Y
         private const int F_FLAGS = 19;                      // OBJ_F_FLAGS (common INT32) → OF_* bitset
@@ -505,6 +515,8 @@ namespace Arcanum.Formats.Objects
             uint? lightAid = null;
             int? lightColor = null;
             int? sceneryFlags = null;
+            byte[] sceneryOccupantOid = null;
+            uint useScriptLocalFlags = 0, useScriptLocalCounters = 0;
             int? hpPoints = null, hpAdjustment = null, fatiguePoints = null, fatigueAdjustment = null,
                 fatigueDamage = null, itemFlags = null, genericFlags = null, weaponFlags = null, goldQuantity = null,
                 critterFlags = null, critterFlags2 = null;
@@ -560,6 +572,16 @@ namespace Arcanum.Formats.Objects
                         sceneryFlags = I32(b, o);
                         o += 4;
                         break;
+                    case F_SCENERY_WHOS_IN_ME:
+                    {
+                        byte present = b[o++];
+                        if (present != 0)
+                        {
+                            sceneryOccupantOid = Slice(b, o, OidSize);
+                            o += OidSize;
+                        }
+                        break;
+                    }
                     case F_FLAGS:
                         flags = I32(b, o);
                         o += 4;
@@ -855,6 +877,7 @@ namespace Arcanum.Formats.Objects
                             dialogOverrideNum = ScriptNum(b, o, SAP_DIALOG_OVERRIDE); // also barter chatter overrides
                             if (dialogNum == 0) dialogNum = dialogOverrideNum;
                             useScriptNum = ScriptNum(b, o, SAP_USE);             // the use/teleport script (doors, levers)
+                            ScriptHeader(b, o, SAP_USE, out useScriptLocalFlags, out useScriptLocalCounters);
                             examineScriptNum = ScriptNum(b, o, SAP_EXAMINE);     // look-at script (signs, often floats text)
                             heartbeatScriptNum = ScriptNum(b, o, SAP_HEARTBEAT); // periodic tick (AI / self-gating NPCs)
                             firstHeartbeatScriptNum = ScriptNum(b, o, SAP_FIRST_HEARTBEAT);
@@ -885,7 +908,10 @@ namespace Arcanum.Formats.Objects
                 LightAid = lightAid,
                 LightColor = lightColor,
                 SceneryFlags = sceneryFlags,
+                SceneryOccupantOid = sceneryOccupantOid,
                 UseScriptNum = useScriptNum,
+                UseScriptLocalFlags = useScriptLocalFlags,
+                UseScriptLocalCounters = useScriptLocalCounters,
                 ExamineScriptNum = examineScriptNum,
                 HeartbeatScriptNum = heartbeatScriptNum,
                 FirstHeartbeatScriptNum = firstHeartbeatScriptNum,
@@ -1026,6 +1052,29 @@ namespace Arcanum.Formats.Objects
             if (rank >= count) return 0;
 
             return I32(b, dataStart + rank * size + ScriptNumOffset);
+        }
+
+        private static void ScriptHeader(byte[] b, int o, int sap, out uint flags, out uint counters)
+        {
+            flags = 0;
+            counters = 0;
+            int size = I32(b, o + 1);
+            int count = I32(b, o + 5);
+            int dataStart = o + 13;
+            int bitsetOff = dataStart + size * count;
+            int bitsetCnt = I32(b, bitsetOff);
+            int bitsetData = bitsetOff + 4;
+            int word = sap >> 5;
+            if (word >= bitsetCnt) return;
+            uint storage = U32(b, bitsetData + word * 4);
+            uint bit = 1u << (sap & 31);
+            if ((storage & bit) == 0) return;
+            int rank = PopCount(storage & (bit - 1));
+            for (int w = 0; w < word; w++) rank += PopCount(U32(b, bitsetData + w * 4));
+            if (rank >= count || size < 12) return;
+            int slot = dataStart + rank * size;
+            flags = U32(b, slot);
+            counters = U32(b, slot + 4);
         }
 
         /// <summary>Reads the first <paramref name="count"/> elements of a sparse INT32 SizeableArray into a

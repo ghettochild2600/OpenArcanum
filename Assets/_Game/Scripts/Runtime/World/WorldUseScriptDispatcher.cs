@@ -32,6 +32,15 @@ namespace Arcanum.Runtime.World
         }
 
         public ScriptExecutionResult DispatchUse(ArcanumObjectId actor, ArcanumObjectId target, int scriptNum)
+            => Dispatch(actor, target, scriptNum, bedUse: false);
+
+        /// <summary>Runs the exact bounded opcode family used by shipped bed permission scripts. Source
+        /// <c>sleep_ui_toggle</c> treats run-default as refusal and skip-default as permission.</summary>
+        public ScriptExecutionResult DispatchBedUse(ArcanumObjectId actor, ArcanumObjectId target, int scriptNum)
+            => Dispatch(actor, target, scriptNum, bedUse: true);
+
+        private ScriptExecutionResult Dispatch(ArcanumObjectId actor, ArcanumObjectId target, int scriptNum,
+            bool bedUse)
         {
             if (_session.PlayerState == null || _session.PlayerState.Identity != actor
                 || !_session.TryGetObjectState(target, out PersistentObjectState state)
@@ -40,7 +49,7 @@ namespace Arcanum.Runtime.World
 
             ScriptFile file = _resolveScript(scriptNum);
             if (file == null) return new ScriptExecutionResult(ScriptExecutionStatus.MissingScript);
-            if (!ProductionUseScriptPolicy.Supports(file, out string unsupported))
+            if (!ProductionUseScriptPolicy.Supports(file, bedUse, out string unsupported))
                 return new ScriptExecutionResult(ScriptExecutionStatus.UnsupportedOpcode, detail: unsupported);
 
             var context = new ScriptContext
@@ -49,13 +58,19 @@ namespace Arcanum.Runtime.World
                 Attachee = new WorldScriptObjectReference(target),
                 AttachmentPoint = (int)Sap.Use,
                 ScriptNum = scriptNum,
+                LocalFlags = state.UseScriptLocalFlags,
+                LocalCounters = state.UseScriptLocalCounters,
             };
-            return new ScriptVm(_host, Globals).ExecuteStrict(file, context);
+            ScriptExecutionResult result = new ScriptVm(_host, Globals).ExecuteStrict(file, context);
+            state.UseScriptLocalFlags = context.LocalFlags;
+            state.UseScriptLocalCounters = context.LocalCounters;
+            if (context.RemoveScript) state.UseScriptNum = 0;
+            return result;
         }
 
         private static class ProductionUseScriptPolicy
         {
-            public static bool Supports(ScriptFile file, out string detail)
+            public static bool Supports(ScriptFile file, bool bedUse, out string detail)
             {
                 if (file.Entries.Count == 0)
                 {
@@ -65,14 +80,14 @@ namespace Arcanum.Runtime.World
                 for (int i = 0; i < file.Entries.Count; i++)
                 {
                     ScriptCondition entry = file.Entries[i];
-                    if (!SupportedCondition((Sct)entry.Type))
+                    if (!SupportedCondition((Sct)entry.Type, bedUse))
                     {
                         detail = $"condition {(Sct)entry.Type} at line {i}";
                         return false;
                     }
-                    if (!SupportedAction(entry.Action) || !SupportedAction(entry.Els))
+                    if (!SupportedAction(entry.Action, bedUse) || !SupportedAction(entry.Els, bedUse))
                     {
-                        ScriptAction action = !SupportedAction(entry.Action) ? entry.Action : entry.Els;
+                        ScriptAction action = !SupportedAction(entry.Action, bedUse) ? entry.Action : entry.Els;
                         detail = $"action {(Sat)action.Type} at line {i}";
                         return false;
                     }
@@ -81,16 +96,19 @@ namespace Arcanum.Runtime.World
                 return true;
             }
 
-            private static bool SupportedCondition(Sct condition)
+            private static bool SupportedCondition(Sct condition, bool bedUse)
                 => condition == Sct.True || condition == Sct.Eq || condition == Sct.Le
-                   || condition == Sct.GlobalFlag || condition == Sct.LocalFlag;
+                   || condition == Sct.GlobalFlag || condition == Sct.LocalFlag
+                   || bedUse && condition == Sct.PcQuestState;
 
-            private static bool SupportedAction(ScriptAction action)
+            private static bool SupportedAction(ScriptAction action, bool bedUse)
             {
                 if (action == null) return false;
                 Sat type = (Sat)action.Type;
                 return type == Sat.DoNothing || type == Sat.ReturnAndSkipDefault
-                       || type == Sat.ReturnAndRunDefault || type == Sat.Goto;
+                       || type == Sat.ReturnAndRunDefault || type == Sat.Goto
+                       || bedUse && (type is Sat.SetLocalFlag or Sat.ClearLocalFlag or Sat.AssignNum
+                           or Sat.FloatLine or Sat.GetHitPoints);
             }
         }
 
@@ -121,6 +139,20 @@ namespace Arcanum.Runtime.World
             }
 
             public override ScriptFile GetScript(int num) => _resolveScript(num);
+
+            public override void GetHitPoints(object obj, out int current, out int maximum)
+            {
+                current = 0;
+                maximum = 0;
+                if (obj is not WorldScriptObjectReference reference
+                    || !_session.Vitality.TryGet(reference.Identity, out var vitality)) return;
+                current = vitality.CurrentHitPoints;
+                maximum = vitality.MaximumHitPoints;
+            }
+
+            // Bed scripts float an authored reason before sleep_ui emits its standard refusal. The bounded
+            // world dispatcher does not own transient bubbles, so presentation retains the standard refusal.
+            public override void FloatLine(object obj, int scriptNum, int lineNum) { }
 
             private static object[] One(object value) => value != null ? new[] { value } : Array.Empty<object>();
         }

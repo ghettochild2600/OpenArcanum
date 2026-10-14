@@ -131,6 +131,9 @@ namespace Arcanum.Script
         /// skill index (basic, then tech).</summary>
         int GetSkill(object obj, int skill);
 
+        /// <summary>Returns current and maximum HP for <c>SAT_GET_HIT_POINTS</c>.</summary>
+        void GetHitPoints(object obj, out int current, out int maximum);
+
         /// <summary>Critter knows the spell with id <paramref name="spell"/> (engine <c>SCT_KNOWS_SPELL</c> →
         /// <c>spell_is_known</c>).</summary>
         bool KnowsSpell(object obj, int spell);

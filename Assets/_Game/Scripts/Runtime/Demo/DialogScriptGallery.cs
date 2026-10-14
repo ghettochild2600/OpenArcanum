@@ -505,6 +505,11 @@ namespace Arcanum.Runtime.Demo
             public bool IsWithinRange(object obj, int x, int y, int range) => false;
             public int GetStat(object obj, int stat) => stat == 4 ? IntelligenceValue : 8;
             public int GetSkill(object obj, int skill) => 5;
+            public void GetHitPoints(object obj, out int current, out int maximum)
+            {
+                current = 1;
+                maximum = 1;
+            }
             public void Teleport(int mapId, int x, int y) => _log?.Invoke($"  SAT_TELEPORT map {mapId} ({x},{y})");
             public void TogglePortal(object obj) { }
             public void SetLocked(object obj, bool locked) { }

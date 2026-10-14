@@ -346,6 +346,10 @@ namespace Arcanum.Runtime.Save
                 Off = state.Off,
                 Locked = state.Locked,
                 UseScriptNum = state.UseScriptNum,
+                UseScriptLocalFlags = state.UseScriptLocalFlags,
+                UseScriptLocalCounters = state.UseScriptLocalCounters,
+                SceneryOccupantIdentity = state.SceneryOccupantIdentity.IsNull
+                    ? null : state.SceneryOccupantIdentity.Key,
                 DialogNum = state.DialogNum,
                 ItemFlags = state.ItemFlags,
                 InventoryArtId = state.InventoryArtId,
@@ -816,6 +820,9 @@ namespace Arcanum.Runtime.Save
             if (!TryNullableIdentity(value.SubstituteInventoryIdentity, out ArcanumObjectId substituteInventory))
                 return Failure(SessionLoadFailure.InvalidIdentity,
                     $"Object {identity} has an invalid substitute inventory.");
+            if (!TryNullableIdentity(value.SceneryOccupantIdentity, out ArcanumObjectId sceneryOccupant))
+                return Failure(SessionLoadFailure.InvalidIdentity,
+                    $"Object {identity} has an invalid scenery occupant.");
             SessionLoadResult placementResult = TryRestorePlacement(value.Placement, out ObjectPlacement placement);
             if (!placementResult.Succeeded) return placementResult;
 
@@ -834,7 +841,8 @@ namespace Arcanum.Runtime.Save
                     value.StackQuantity, value.PortalOpen, new Vector2(value.TileX, value.TileY), placement,
                     value.RuntimeCreated,
                     prototype?.Weapon != null ? Combat.Weapon.FromFields(prototype.Weapon) : null,
-                    prototype?.AmmoItemType, value.DeathConsequencesProcessed);
+                    prototype?.AmmoItemType, value.DeathConsequencesProcessed,
+                    value.UseScriptLocalFlags, value.UseScriptLocalCounters, sceneryOccupant);
             }
             catch (Exception ex)
             {
@@ -887,8 +895,20 @@ namespace Arcanum.Runtime.Save
             HashSet<ArcanumObjectId> tombstones)
         {
             var occupied = new HashSet<string>(StringComparer.Ordinal);
+            var bedOccupants = new HashSet<ArcanumObjectId>();
             foreach (PersistentObjectState state in objects.Values)
             {
+                if (!state.SceneryOccupantIdentity.IsNull)
+                {
+                    ArcanumObjectId occupant = state.SceneryOccupantIdentity;
+                    if (!BedSleepAuthority.IsBed(state)
+                        || tombstones.Contains(occupant)
+                        || occupant != player && (!objects.TryGetValue(occupant, out PersistentObjectState critter)
+                            || critter.Type is not ObjectType.Pc and not ObjectType.Npc)
+                        || !bedOccupants.Add(occupant))
+                        return Failure(SessionLoadFailure.InvalidReference,
+                            $"Scenery occupant {occupant} for {state.Identity} is invalid.");
+                }
                 if (state.Placement.Kind == ObjectPlacementKind.World) continue;
                 ArcanumObjectId parent = state.ParentIdentity;
                 if (tombstones.Contains(parent))

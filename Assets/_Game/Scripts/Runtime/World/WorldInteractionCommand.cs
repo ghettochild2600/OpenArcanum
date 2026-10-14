@@ -87,13 +87,16 @@ namespace Arcanum.Runtime.World
         public bool? ScriptRunDefault { get; }
         public InventoryResultCode? InventoryStatus { get; }
         public AreaEntranceResult? AreaEntrance { get; }
+        public BedUseFailure? BedFailure { get; }
+        public SleepLocationMode? SleepMode { get; }
         public bool IsSuccess => Code == WorldInteractionResultCode.Success;
         public bool IsAccepted => IsSuccess || Code == WorldInteractionResultCode.Approaching;
 
         public WorldInteractionResult(WorldInteractionCommand command, WorldInteractionResultCode code,
             bool? requestedPortalOpen = null, int scriptNum = 0,
             ScriptExecutionStatus? scriptStatus = null, bool? scriptRunDefault = null,
-            InventoryResultCode? inventoryStatus = null, AreaEntranceResult? areaEntrance = null)
+            InventoryResultCode? inventoryStatus = null, AreaEntranceResult? areaEntrance = null,
+            BedUseFailure? bedFailure = null, SleepLocationMode? sleepMode = null)
         {
             Command = command;
             Code = code;
@@ -103,6 +106,8 @@ namespace Arcanum.Runtime.World
             ScriptRunDefault = scriptRunDefault;
             InventoryStatus = inventoryStatus;
             AreaEntrance = areaEntrance;
+            BedFailure = bedFailure;
+            SleepMode = sleepMode;
         }
     }
 

@@ -308,6 +308,11 @@ namespace Arcanum.Runtime.UI
                 || vitality.CurrentHitPoints <= 0) return SleepFailure.Dead;
             if (vitality.CurrentFatigue <= 0) return SleepFailure.Unconscious;
             if (_world.Combat.IsActive) return SleepFailure.CombatActive;
+            if (_world.Beds.IsActiveFor(player))
+            {
+                mode = SleepLocationMode.BedSleep;
+                return SleepFailure.None;
+            }
             mode = _world.SleepLocations?.Resolve(_world.SelectedSector) ?? SleepLocationMode.Unavailable;
             return mode == SleepLocationMode.Unavailable ? SleepFailure.UnsupportedLocation : SleepFailure.None;
         }
@@ -328,14 +333,24 @@ namespace Arcanum.Runtime.UI
                 if (PhaseOneSpellCatalog.TryGet(effect.SpellId, out SpellDefinition spell) && spell.Maintained)
                     _world.Magic.CancelMaintainedEffect(player, effect.Id);
 
-            for (int hour = 0; hour < hours; hour++)
+            try
             {
-                _world.SourceTime.Advance(SourceHourMilliseconds);
-                if (mode == SleepLocationMode.WildernessSleep)
+                for (int hour = 0; hour < hours; hour++)
                 {
-                    RestingHeal(player, 1);
-                    foreach (PartyMember member in _world.Party.Members) RestingHeal(member.Identity, 1);
+                    _world.SourceTime.Advance(SourceHourMilliseconds);
+                    int recoveryHours = mode == SleepLocationMode.BedSleep ? 2
+                        : mode == SleepLocationMode.WildernessSleep ? 1 : 0;
+                    if (recoveryHours > 0)
+                    {
+                        RestingHeal(player, recoveryHours);
+                        foreach (PartyMember member in _world.Party.Members)
+                            RestingHeal(member.Identity, recoveryHours);
+                    }
                 }
+            }
+            finally
+            {
+                if (mode == SleepLocationMode.BedSleep) _world.Beds.Leave(player);
             }
             return new SleepResult(SleepFailure.None, hours, mode);
         }
@@ -451,7 +466,8 @@ namespace Arcanum.Runtime.UI
                     int damage = vitality.MaximumHitPoints - vitality.CurrentHitPoints;
                     int healRate = Math.Max(1, _world.DerivedStats.GetDerivedStat(
                         _world.PlayerState.Identity, CharacterDerivedStat.HealRate));
-                    return Math.Max(1, (damage + healRate - 1) / healRate);
+                    int multiplier = _world.Beds.IsActiveFor(_world.PlayerState.Identity) ? 2 : 1;
+                    return Math.Max(1, (damage + healRate * multiplier - 1) / (healRate * multiplier));
                 default: return 0;
             }
         }

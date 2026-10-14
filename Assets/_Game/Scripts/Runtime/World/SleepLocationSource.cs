@@ -10,6 +10,7 @@ namespace Arcanum.Runtime.World
         Unavailable,
         WildernessSleep,
         TownWait,
+        BedSleep,
     }
 
     public interface ISleepLocationSource

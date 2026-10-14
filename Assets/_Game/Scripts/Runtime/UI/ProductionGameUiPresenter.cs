@@ -140,6 +140,12 @@ namespace Arcanum.Runtime.UI
 
         private void OnInteractionResolved(WorldInteractionResult result)
         {
+            if (result.Command.Type == WorldInteractionCommandType.Use && result.BedFailure.HasValue)
+            {
+                Controller.PresentBedUse(result);
+                SyncInputGate();
+                return;
+            }
             if (!result.IsSuccess || result.Command.Type != WorldInteractionCommandType.Loot) return;
             if (Controller.BeginCorpseLoot(result.Command.Target))
             {
