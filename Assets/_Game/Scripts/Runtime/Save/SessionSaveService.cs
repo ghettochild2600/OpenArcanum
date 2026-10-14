@@ -104,6 +104,7 @@ namespace Arcanum.Runtime.Save
         internal SocialSaveData Social;
         internal CharacterCreationSaveData CharacterCreation;
         internal GameplayHudSaveData GameplayHud;
+        internal LocalMapSaveData LocalMap;
     }
 
     /// <summary>Versioned, presentation-independent persistence for the bounded M1-M5 session state.</summary>
@@ -297,6 +298,7 @@ namespace Arcanum.Runtime.Save
                 Social = _session.Social.ExportSaveData(),
                 CharacterCreation = _session.CharacterCreation.ExportSaveData(),
                 GameplayHud = _session.GameplayHud.ExportSaveData(),
+                LocalMap = _session.LocalMap.ExportSaveData(),
                 Party = new PartySaveData
                 {
                     LeaderIdentity = _session.Party.Leader.Key,
@@ -497,6 +499,16 @@ namespace Arcanum.Runtime.Save
             if (!result.Succeeded) { plan = null; return result; }
             result = BuildGameplayHud(data.GameplayHud, plan);
             if (!result.Succeeded) { plan = null; return result; }
+            result = BuildLocalMap(data.LocalMap, plan);
+            if (!result.Succeeded) { plan = null; return result; }
+            return new SessionLoadResult(SessionLoadFailure.None);
+        }
+
+        private static SessionLoadResult BuildLocalMap(LocalMapSaveData data, SessionRestorePlan plan)
+        {
+            if (!LocalMapStateService.ValidateSaveData(data, out string error))
+                return Failure(SessionLoadFailure.InvalidWorld, error);
+            plan.LocalMap = data;
             return new SessionLoadResult(SessionLoadFailure.None);
         }
 

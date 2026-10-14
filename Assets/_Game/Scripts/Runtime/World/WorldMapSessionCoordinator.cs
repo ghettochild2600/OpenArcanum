@@ -88,6 +88,8 @@ namespace Arcanum.Runtime.World
         private SocialAiCatalog _socialAiSource;
         private CharacterCreationCatalog _characterCreationSource;
         private CharacterCreationStateService _characterCreation;
+        private LocalMapStateService _localMap;
+        private LocalMapSource _localMapSource;
         private bool _mapTransitionActive;
         private ulong _nextDynamicIdentity = 1;
 
@@ -138,6 +140,7 @@ namespace Arcanum.Runtime.World
         public SocialStateService Social => _social ??= CreateSocial();
         public CharacterCreationStateService CharacterCreation
             => _characterCreation ??= new CharacterCreationStateService(this, _characterCreationSource);
+        public LocalMapStateService LocalMap => _localMap ??= new LocalMapStateService(this, _localMapSource);
         internal bool HasMagicCritterFlag(ArcanumObjectId identity, int flag)
             => _magic?.HasActiveCritterFlag(identity, flag) == true;
         public bool IsMapTransitionActive => _mapTransitionActive;
@@ -390,6 +393,12 @@ namespace Arcanum.Runtime.World
         public void BindSleepLocationSource(ISleepLocationSource source)
             => _sleepLocations = source ?? throw new ArgumentNullException(nameof(source));
 
+        public void BindLocalMapSource(LocalMapSource source)
+        {
+            _localMapSource = source ?? throw new ArgumentNullException(nameof(source));
+            LocalMap.BindSource(source);
+        }
+
         public int CurrentArea => PlayerState != null && HasSelectedSector && _mapAreas != null
             ? _mapAreas.Resolve(SelectedSector, PlayerState.MapPosition) : 0;
 
@@ -477,6 +486,7 @@ namespace Arcanum.Runtime.World
             }
 
             SelectedSector = sector;
+            _localMap?.MarkCurrentVisited();
             SectorSelected?.Invoke(sector);
             if (PlayerState != null)
                 Combat.RegisterActorSource(new CombatActorSource(PlayerState.Identity, ObjectType.Pc, null,
@@ -2264,6 +2274,7 @@ namespace Arcanum.Runtime.World
             _campaign = null;
             _worldMapDestinations = null;
             _worldMapTravel = null;
+            _localMap = null;
             _combat = null;
             _deathConsequences = null;
             _party = null;
@@ -2355,6 +2366,8 @@ namespace Arcanum.Runtime.World
             _poison.FinalizeRestore();
             _gameplayHud = new GameplayHudStateService(this);
             _gameplayHud.RestoreSaveData(plan.GameplayHud);
+            _localMap = new LocalMapStateService(this, _localMapSource);
+            _localMap.RestoreSaveData(plan.LocalMap);
             bool selected = SelectSector(plan.SelectedSector);
             if (selected) Beds.RestoreTransient(PlayerState.Identity);
             return selected;

@@ -19,6 +19,19 @@ namespace Arcanum.Runtime.Save
         public SocialSaveData Social { get; set; }
         public CharacterCreationSaveData CharacterCreation { get; set; }
         public GameplayHudSaveData GameplayHud { get; set; }
+        public LocalMapSaveData LocalMap { get; set; }
+    }
+
+    /// <summary>Optional source town-map discovered-tile state inside the compatible V1 envelope.</summary>
+    public sealed class LocalMapSaveData
+    {
+        public List<LocalMapKnownTilesSaveData> Maps { get; set; }
+    }
+
+    public sealed class LocalMapKnownTilesSaveData
+    {
+        public int TownMapId { get; set; }
+        public List<int> TileIndices { get; set; }
     }
 
     /// <summary>Optional authoritative poison state inside the compatible V1 envelope.</summary>
