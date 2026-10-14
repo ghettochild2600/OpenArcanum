@@ -1,7 +1,7 @@
 # OpenArcanum Source-of-Truth Audit
 
 Audit date: 2026-10-11
-Current-branch reconciliation: 2026-10-12 against `5926bb42ff0f1fe261ba8deb71716d149733c9d3`; the latest production commit remains `d0740332afeef46637d298063693371861f6cb07` (`feature/session-save-load`).
+Current-branch contributor reconciliation: 2026-10-13 against `bad3431` (`feature/session-save-load`).
 
 This is a source-first implementation audit, not a feature roadmap. It records what Arcanum requires, what OpenArcanum currently owns, and where evidence is incomplete. A completed infrastructure milestone is not evidence that all retail content which depends on that infrastructure is implemented.
 
@@ -33,8 +33,8 @@ For player-facing terminology, explanations, progression tables, items, quests, 
 | Area | Classification | Source truth and current boundary |
 |---|---|---|
 | Character creation | `PARTIAL` | Race, sex, attributes, portraits, name validation, source-ordered Background selection, twelve pregenerated characters, auto-level execution, and the Human Shopkeeper route exist. The selector exposes every source-legal Background; separate effect execution remains incomplete and unsupported effect families fail closed at finalization. |
-| Backgrounds | `PARTIAL` | All 79 source records and numeric order are catalogued. Eligibility now follows source identity masks, but reaction, critical, speed, follower, experience, alignment, expertise, time, and environment effects are incomplete. |
-| Statistics and derived values | `PARTIAL` | Primary attributes, maxima, vitality, carry, damage, AC, heal rate, poison recovery, reaction, follower cap, and aptitude kernels exist. Equipment, spell, status, sector, and environment contributions are not complete end-to-end. |
+| Backgrounds | `PARTIAL` | All 79 source records and numeric order are catalogued. Eligibility follows source identity masks; supported attribute, skill, resistance, Speed, and aptitude-point effects now use the shared contributor framework, while reaction, critical, follower, experience, alignment, expertise, time, and environment effects remain incomplete. |
+| Statistics and derived values | `PARTIAL` | The typed source contributor framework and core formulas are complete at the audited boundary. Race, sex, supported Backgrounds, Persuasion follower-cap training, maintained attribute spells, resistances, and aptitude inputs use it; equipment, broader spell/status, sector, time, and environment producers remain incomplete. |
 | Skills and training | `PARTIAL` | Ownership, point spending, caps, ranks, training, and UI exist. Several player actions and many Apprentice/Expert/Master effects are absent. |
 | Technology and schematics | `PARTIAL` | Eight disciplines, seven degrees, 118-recipe catalog, ingredients, and generic crafting exist. Most crafted-item runtime effects and Technical Manual expertise are missing. |
 | Magic | `PARTIAL` | College/rank ownership and a reusable spell kernel exist. Only 4 of the source 80 spells are production-catalogued. |
@@ -83,13 +83,28 @@ The eight primary attributes are Strength, Constitution, Dexterity, Beauty, Inte
 - Heal rate: `(CN + 1) / 3`, clamp 0..6.
 - Poison recovery: CN, clamp 1..20.
 - Beauty reaction adjustment for BE 1..20: `-65,-52,-42,-33,-25,-18,-12,-7,-3,0,3,7,12,18,25,33,42,52,65,75`; above 20 use `2 × (5 × BE - 50)`.
-- Maximum followers: `CH / 4`, plus one at Expert Persuasion and another at Master, clamp 1..7.
+- Maximum followers: `CH / 4`, plus one when Persuasion is Expert or Master, clamp 1..7.
 - Aptitude: `(50 × magic points - 55 × technology points) / 10`, plus source sector/effect terms, clamp -100..100.
 - Maximum hit points: `4 × HP points + HP adjustment + WP + 2 × (ST + level) + 4`.
 - Maximum fatigue: `4 × fatigue points + fatigue adjustment + 2 × (level + CN) + WP + 4`.
 - Constitution adds `max(0, 5 × (CN - 4))` poison resistance; ordinary resistances clamp 0..95.
 
-Core ownership and formulas are implemented. The principal gap is not the arithmetic kernel but the incomplete contributor graph: many Background tokens, equipment properties, spell conditions, poisons, injuries, sector aptitude, time, and environment effects never reach the authoritative value.
+The authoritative contributor framework is `COMPLETE` at its infrastructure boundary. Every contribution records its owner, domain, source/effect identity, target, operation, amount, and deterministic source order. Replacing an owner is atomic and idempotent, exact owner removal prevents stacking, and save/load reconstructs contributions from authoritative persisted state rather than serializing transient totals.
+
+Source evaluation groups effects by operation in this order: percentage, multiply, divide, add, minimum floor, maximum ceiling. Primary-attribute limits are applied after the graph. Resistance contributions are applied after the base/Constitution input and before the ordinary 0..95 clamp. Derived formulas consume effective attributes and then accept their own target contributions before their final source clamp.
+
+| Contributor domain | Current boundary |
+|---|---|
+| Base | Formula/stored inputs remain authoritative and are not duplicated as transient contributors. |
+| Race / Sex | `COMPLETE` for implemented attribute, resistance, and aptitude-point rules. |
+| Background | `PARTIAL`: supported attribute, skill, resistance, Hyperactive Speed, and aptitude-point effects use one replaceable owner; other Background effect families remain missing. |
+| Training | `PARTIAL`: Persuasion Expert-or-Master follower-cap contribution is migrated; other training effects remain independently incomplete. |
+| Spell | `PARTIAL`: maintained attribute modifiers use the graph and remove cleanly on cancel; the broader spell catalog remains incomplete. |
+| Technology | `PARTIAL`: technology-point aptitude inputs use typed targets; product/manual/status effects remain incomplete. |
+| Equipment / Status / Environment / Time | `MISSING/PARTIAL`: typed domains exist, but their complete source producers are not implemented by this milestone. |
+| Other | Compatibility entry point for already-supported effects; new source systems should use their explicit domain. |
+
+The remaining gap is therefore source-effect coverage, not a second modifier architecture: many Background tokens, equipment properties, spell conditions, poisons, injuries, sector aptitude, time, and environment effects still do not produce contributors.
 
 ## Skills and training
 
