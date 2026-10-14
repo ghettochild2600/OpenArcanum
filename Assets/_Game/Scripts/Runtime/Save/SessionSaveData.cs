@@ -20,6 +20,37 @@ namespace Arcanum.Runtime.Save
         public CharacterCreationSaveData CharacterCreation { get; set; }
         public GameplayHudSaveData GameplayHud { get; set; }
         public LocalMapSaveData LocalMap { get; set; }
+        public LogbookSaveData Logbook { get; set; }
+    }
+
+    public sealed class LogbookSaveData { public List<LogbookCharacterSaveData> Characters { get; set; } }
+    public sealed class LogbookCharacterSaveData
+    {
+        public string Identity { get; set; }
+        public List<LogbookEffectSaveData> Effects { get; set; }
+        public List<LogbookInjurySaveData> Injuries { get; set; }
+        public List<int> Keys { get; set; }
+        public LogbookKillSaveData Kills { get; set; }
+    }
+    public sealed class LogbookEffectSaveData
+    { public int Id { get; set; } public long Timestamp { get; set; } public bool IsBlessing { get; set; } }
+    public sealed class LogbookInjurySaveData
+    { public int SourceDescriptionId { get; set; } public int Type { get; set; } public bool Active { get; set; } }
+    public sealed class LogbookKillSaveData
+    {
+        public int TotalKills { get; set; }
+        public int MostPowerfulDescriptionId { get; set; }
+        public int MostPowerfulLevel { get; set; }
+        public int LeastPowerfulDescriptionId { get; set; }
+        public int LeastPowerfulLevel { get; set; }
+        public int MostGoodDescriptionId { get; set; }
+        public int MostGoodValue { get; set; }
+        public int MostEvilDescriptionId { get; set; }
+        public int MostEvilValue { get; set; }
+        public int MostMagicalDescriptionId { get; set; }
+        public int MostMagicalValue { get; set; }
+        public int MostTechnicalDescriptionId { get; set; }
+        public int MostTechnicalValue { get; set; }
     }
 
     /// <summary>Optional source town-map discovered-tile state inside the compatible V1 envelope.</summary>
@@ -239,6 +270,7 @@ namespace Arcanum.Runtime.Save
         public int GenericFlags { get; set; }
         public int WrittenSubtype { get; set; } = -1;
         public int WrittenStartLine { get; set; }
+        public int KeyId { get; set; }
         public int UnitWeight { get; set; }
         public int FootprintWidth { get; set; }
         public int FootprintHeight { get; set; }

@@ -158,6 +158,7 @@ namespace Arcanum.Formats.Tests
                 _ => null,
             });
             _session.BindCharacterCreationSource(CreateCatalog(_longBody));
+            _session.BindDescriptionSource(id => $"Description {id}");
             Finalize(0, "First");
             _session.BindSocialSources(
                 ReputationCatalog.FromMes(MesReader.Read(
@@ -327,6 +328,104 @@ namespace Arcanum.Formats.Tests
             Assert.That(_view.GetComponentsInChildren<SourceUiButton>(true)
                 .Where(value => value.name is "Previous Page" or "Next Page")
                 .All(value => !value.gameObject.activeSelf), Is.True);
+        }
+
+        [Test]
+        public void BlessingsAndCursesMergeByAcquisitionTimeUsingSourceNamesAndColors()
+        {
+            ArcanumObjectId pc = _session.PlayerState.Identity;
+            int blessing = FirstSourceMessage("mes/gamebless.mes", 50, 500, id => id * 10);
+            int curse = FirstSourceMessage("mes/gamecurse.mes", 50, 500, id => id * 10);
+            long blessingTime = _session.SourceTime.CampaignMilliseconds;
+            Assert.That(_session.Logbook.AddBlessing(pc, blessing), Is.True);
+            _session.SourceTime.Advance(60_000);
+            long curseTime = _session.SourceTime.CampaignMilliseconds;
+            Assert.That(_session.Logbook.AddCurse(pc, curse), Is.True);
+            Assert.That(_session.Logbook.AddBlessing(pc, blessing), Is.False);
+
+            _view.SelectTab(RetailLogbookTab.BlessingsAndCurses);
+            SourceUiBitmapText[] lines = RenderedText();
+            Assert.That(lines.Select(value => value.Text), Does.Contain(
+                SourceCalendar.FormatLogbook(SourceCalendar.Timestamp(blessingTime))));
+            Assert.That(lines.Select(value => value.Text), Does.Contain(
+                SourceCalendar.FormatLogbook(SourceCalendar.Timestamp(curseTime))));
+            Assert.That(lines.SelectMany(value => value.GetComponentsInChildren<Image>(true))
+                .Any(value => value.color == new Color32(0, 0, 150, 255)), Is.True);
+            Assert.That(lines.SelectMany(value => value.GetComponentsInChildren<Image>(true))
+                .Any(value => value.color == new Color32(150, 0, 0, 255)), Is.True);
+            Assert.That(_view.ProjectedEntryCount, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void KillsAndInjuriesUseSourceStatisticsAndStrikeOnlyHealedHistory()
+        {
+            ArcanumObjectId pc = _session.PlayerState.Identity;
+            _session.Logbook.RecordKill(pc, 4321, 5, 25, -40);
+            _session.Logbook.RecordKill(pc, 4322, 8, -50, 60);
+            _session.Logbook.RecordInjury(pc, 4321, LogbookInjuryType.Blinded);
+            _session.Logbook.RecordInjury(pc, 4322, LogbookInjuryType.Scarred);
+            Assert.That(_session.Logbook.HealInjury(pc, LogbookInjuryType.Blinded), Is.True);
+
+            LogbookKillStatistics kills = _session.Logbook.GetKills(pc);
+            Assert.That(kills.TotalKills, Is.EqualTo(2));
+            Assert.That(kills.MostPowerfulDescriptionId, Is.EqualTo(4322));
+            Assert.That(kills.LeastPowerfulDescriptionId, Is.EqualTo(4321));
+            Assert.That(kills.MostGoodDescriptionId, Is.EqualTo(4321));
+            Assert.That(kills.MostEvilDescriptionId, Is.EqualTo(4322));
+            Assert.That(kills.MostMagicalDescriptionId, Is.EqualTo(4322));
+            Assert.That(kills.MostTechnicalDescriptionId, Is.EqualTo(4321));
+
+            _view.SelectTab(RetailLogbookTab.KillsAndInjuries);
+            string flattened = string.Join(" ", RenderedLines());
+            Assert.That(flattened, Does.Contain("2"));
+            Assert.That(flattened, Does.Contain("Description 4321"));
+            Assert.That(flattened, Does.Contain("Description 4322"));
+            Assert.That(_view.GetComponentsInChildren<RectTransform>(true)
+                .Count(value => value.gameObject.name == "Quest Strikethrough"), Is.EqualTo(1));
+        }
+
+        [Test]
+        public void KeysProjectActualAcquisitionOrderAndEmptySourcePagesHaveNoFabricatedMessage()
+        {
+            _view.SelectTab(RetailLogbookTab.Keys);
+            Assert.That(RenderedLines(), Is.Empty);
+            Assert.That(PageControl("Previous Page").gameObject.activeSelf, Is.False);
+            Assert.That(PageControl("Next Page").gameObject.activeSelf, Is.False);
+
+            int first = FirstSourceMessage("mes/gamekey.mes", 1, 1000, id => id);
+            int second = FirstSourceMessage("mes/gamekey.mes", first + 1, 1000, id => id);
+            ArcanumObjectId pc = _session.PlayerState.Identity;
+            Assert.That(_session.Logbook.AcquireKey(pc, first), Is.True);
+            Assert.That(_session.Logbook.AcquireKey(pc, second), Is.True);
+            Assert.That(_session.Logbook.AcquireKey(pc, first), Is.False);
+            _view.Synchronize();
+
+            Assert.That(_session.Logbook.GetKeys(pc), Is.EqualTo(new[] { first, second }));
+            string flattened = string.Join(" ", RenderedLines());
+            Assert.That(_retail.TryReadMessage("mes/gamekey.mes", first, out string firstName), Is.True);
+            Assert.That(_retail.TryReadMessage("mes/gamekey.mes", second, out string secondName), Is.True);
+            Assert.That(flattened, Does.Contain(firstName));
+            Assert.That(flattened, Does.Contain(secondName));
+        }
+
+        [Test]
+        public void RemainingLogbookAuthoritySurvivesSessionSaveRestore()
+        {
+            ArcanumObjectId pc = _session.PlayerState.Identity;
+            int blessing = FirstSourceMessage("mes/gamebless.mes", 50, 500, id => id * 10);
+            int key = FirstSourceMessage("mes/gamekey.mes", 1, 1000, id => id);
+            _session.Logbook.AddBlessing(pc, blessing);
+            _session.Logbook.RecordKill(pc, 4321, 5, 20, -30);
+            _session.Logbook.RecordInjury(pc, 4321, LogbookInjuryType.CrippledArm);
+            _session.Logbook.AcquireKey(pc, key);
+            string json = _session.SaveGames.SerializeCurrentSession();
+
+            Assert.That(_session.SaveGames.LoadJson(json).Succeeded, Is.True);
+            pc = _session.PlayerState.Identity;
+            Assert.That(_session.Logbook.GetEffects(pc).Single().Id, Is.EqualTo(blessing));
+            Assert.That(_session.Logbook.GetKills(pc).TotalKills, Is.EqualTo(1));
+            Assert.That(_session.Logbook.GetInjuries(pc).Single().Active, Is.True);
+            Assert.That(_session.Logbook.GetKeys(pc), Is.EqualTo(new[] { key }));
         }
 
         [Test]
@@ -512,6 +611,19 @@ namespace Arcanum.Formats.Tests
                 .Where(value => value.gameObject.name == "Quest Text")
                 .Select(value => value.Text)
                 .ToArray();
+
+        private SourceUiBitmapText[] RenderedText()
+            => _view.GetComponentsInChildren<SourceUiBitmapText>(true)
+                .Where(value => value.gameObject.name == "Quest Text").ToArray();
+
+        private static int FirstSourceMessage(string path, int start, int end, Func<int, int> key)
+        {
+            for (int id = start; id < end; id++)
+                if (_retail.TryReadMessage(path, key(id), out string value) && !string.IsNullOrWhiteSpace(value))
+                    return id;
+            Assert.Fail($"No source message was found in {path}.");
+            return -1;
+        }
 
         private SourceUiButton PageControl(string name)
             => _view.GetComponentsInChildren<SourceUiButton>(true)

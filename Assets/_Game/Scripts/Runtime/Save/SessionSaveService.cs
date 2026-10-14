@@ -105,6 +105,7 @@ namespace Arcanum.Runtime.Save
         internal CharacterCreationSaveData CharacterCreation;
         internal GameplayHudSaveData GameplayHud;
         internal LocalMapSaveData LocalMap;
+        internal LogbookSaveData Logbook;
     }
 
     /// <summary>Versioned, presentation-independent persistence for the bounded M1-M5 session state.</summary>
@@ -299,6 +300,7 @@ namespace Arcanum.Runtime.Save
                 CharacterCreation = _session.CharacterCreation.ExportSaveData(),
                 GameplayHud = _session.GameplayHud.ExportSaveData(),
                 LocalMap = _session.LocalMap.ExportSaveData(),
+                Logbook = _session.Logbook.ExportSaveData(),
                 Party = new PartySaveData
                 {
                     LeaderIdentity = _session.Party.Leader.Key,
@@ -359,6 +361,7 @@ namespace Arcanum.Runtime.Save
                 GenericFlags = state.GenericFlags,
                 WrittenSubtype = state.WrittenSubtype,
                 WrittenStartLine = state.WrittenStartLine,
+                KeyId = state.KeyId,
                 UnitWeight = state.UnitWeight,
                 FootprintWidth = state.InventoryFootprint.Width,
                 FootprintHeight = state.InventoryFootprint.Height,
@@ -501,6 +504,16 @@ namespace Arcanum.Runtime.Save
             if (!result.Succeeded) { plan = null; return result; }
             result = BuildLocalMap(data.LocalMap, plan);
             if (!result.Succeeded) { plan = null; return result; }
+            result = BuildLogbook(data.Logbook, plan);
+            if (!result.Succeeded) { plan = null; return result; }
+            return new SessionLoadResult(SessionLoadFailure.None);
+        }
+
+        private static SessionLoadResult BuildLogbook(LogbookSaveData data, SessionRestorePlan plan)
+        {
+            if (!LogbookStateService.ValidateSaveData(data, plan.Player.Identity, out string error))
+                return Failure(SessionLoadFailure.InvalidCampaign, error);
+            plan.Logbook = data;
             return new SessionLoadResult(SessionLoadFailure.None);
         }
 
@@ -876,7 +889,7 @@ namespace Arcanum.Runtime.Save
                     value.RuntimeCreated,
                     prototype?.Weapon != null ? Combat.Weapon.FromFields(prototype.Weapon) : null,
                     prototype?.AmmoItemType, value.DeathConsequencesProcessed,
-                    value.UseScriptLocalFlags, value.UseScriptLocalCounters, sceneryOccupant);
+                    value.UseScriptLocalFlags, value.UseScriptLocalCounters, sceneryOccupant, value.KeyId);
             }
             catch (Exception ex)
             {

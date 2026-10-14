@@ -57,6 +57,8 @@ namespace Arcanum.Runtime.World
         public int GenericFlags { get; }
         public int WrittenSubtype { get; }
         public int WrittenStartLine { get; }
+        /// <summary>Effective source OBJ_F_KEY_KEY_ID used by the PC keyring and Logbook.</summary>
+        public int KeyId { get; }
         /// <summary>Effective stored OBJ_F_ITEM_WEIGHT (instance override, otherwise prototype).</summary>
         public int UnitWeight { get; }
         /// <summary>First inventory ART frame rounded up to source 32-pixel grid cells.</summary>
@@ -105,7 +107,8 @@ namespace Arcanum.Runtime.World
             int? faction = null,
             int? writtenSubtype = null,
             int? writtenStartLine = null,
-            int? descriptionId = null)
+            int? descriptionId = null,
+            int? keyId = null)
         {
             Identity = identity;
             AuthoredParentIdentity = source.ParentIdentity;
@@ -144,6 +147,7 @@ namespace Arcanum.Runtime.World
             GenericFlags = genericFlags;
             WrittenSubtype = writtenSubtype ?? source.WrittenSubtype ?? -1;
             WrittenStartLine = writtenStartLine ?? source.TextStartLine ?? 0;
+            KeyId = keyId ?? source.KeyId ?? 0;
             UnitWeight = unitWeight ?? source.Weight ?? 0;
             InventoryFootprint = inventoryFootprint ?? InventoryFootprint.OneCell;
             StackQuantity = ValidateStackQuantity(Type, stackQuantity);
@@ -203,6 +207,7 @@ namespace Arcanum.Runtime.World
             GenericFlags = prototype.GenericFlags ?? 0;
             WrittenSubtype = prototype.WrittenSubtype ?? -1;
             WrittenStartLine = prototype.TextStartLine ?? 0;
+            KeyId = prototype.KeyId ?? 0;
             UnitWeight = prototype.Weight;
             InventoryFootprint = inventoryFootprint;
             StackQuantity = ValidateStackQuantity(Type, Type switch
@@ -256,6 +261,7 @@ namespace Arcanum.Runtime.World
             GenericFlags = source.GenericFlags;
             WrittenSubtype = source.WrittenSubtype;
             WrittenStartLine = source.WrittenStartLine;
+            KeyId = source.KeyId;
             UnitWeight = source.UnitWeight;
             InventoryFootprint = source.InventoryFootprint;
             StackQuantity = ValidateStackQuantity(Type, stackQuantity);
@@ -280,7 +286,7 @@ namespace Arcanum.Runtime.World
             Vector2 tilePosition, ObjectPlacement placement, bool isRuntimeCreated,
             Weapon weaponData = null, int? ammoItemType = null, bool deathConsequencesProcessed = false,
             uint useScriptLocalFlags = 0, uint useScriptLocalCounters = 0,
-            ArcanumObjectId sceneryOccupantIdentity = default)
+            ArcanumObjectId sceneryOccupantIdentity = default, int keyId = 0)
         {
             Identity = identity;
             AuthoredParentIdentity = authoredParentIdentity;
@@ -319,6 +325,7 @@ namespace Arcanum.Runtime.World
             GenericFlags = genericFlags;
             WrittenSubtype = writtenSubtype;
             WrittenStartLine = writtenStartLine;
+            KeyId = keyId;
             UnitWeight = unitWeight;
             InventoryFootprint = inventoryFootprint;
             InventoryLocation = inventoryLocation;

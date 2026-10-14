@@ -89,6 +89,7 @@ namespace Arcanum.Runtime.World
         private CharacterCreationCatalog _characterCreationSource;
         private CharacterCreationStateService _characterCreation;
         private LocalMapStateService _localMap;
+        private LogbookStateService _logbook;
         private LocalMapSource _localMapSource;
         private bool _mapTransitionActive;
         private ulong _nextDynamicIdentity = 1;
@@ -141,6 +142,7 @@ namespace Arcanum.Runtime.World
         public CharacterCreationStateService CharacterCreation
             => _characterCreation ??= new CharacterCreationStateService(this, _characterCreationSource);
         public LocalMapStateService LocalMap => _localMap ??= new LocalMapStateService(this, _localMapSource);
+        public LogbookStateService Logbook => _logbook ??= new LogbookStateService(this);
         internal bool HasMagicCritterFlag(ArcanumObjectId identity, int flag)
             => _magic?.HasActiveCritterFlag(identity, flag) == true;
         public bool IsMapTransitionActive => _mapTransitionActive;
@@ -346,6 +348,12 @@ namespace Arcanum.Runtime.World
             int description = prototype?.Description ?? prototypeNumber;
             string value = _resolveDescription?.Invoke(description);
             return !string.IsNullOrWhiteSpace(value) ? value.Trim() : prototypeNumber.ToString();
+        }
+
+        public string ResolveDescriptionId(int descriptionId)
+        {
+            string value = descriptionId > 0 ? _resolveDescription?.Invoke(descriptionId) : null;
+            return !string.IsNullOrWhiteSpace(value) ? value.Trim() : string.Empty;
         }
 
         public void BindSpellPresentationSource(SpellPresentationCatalog source)
@@ -699,7 +707,8 @@ namespace Arcanum.Runtime.World
             int? faction = null,
             int? writtenSubtype = null,
             int? writtenStartLine = null,
-            int? descriptionId = null)
+            int? descriptionId = null,
+            int? keyId = null)
         {
             if (!identity.IsPersistent) return null;
             if (_removedObjectIdentities.Contains(identity)) return null;
@@ -713,7 +722,7 @@ namespace Arcanum.Runtime.World
                 inventoryLocation, nameIndex, socialClass, weaponData, ammoItemType, sourceWorth,
                 maximumHitPoints, hitPointDamage, retailPriceMultiplier, inventorySourceId,
                 substituteInventoryIdentity, npcFlags, buyObjectScriptNum, containerFlags, aiData, origin, faction,
-                writtenSubtype, writtenStartLine, descriptionId);
+                writtenSubtype, writtenStartLine, descriptionId, keyId);
             _states.Add(identity, state);
             return state;
         }
@@ -727,13 +736,14 @@ namespace Arcanum.Runtime.World
             int? inventorySourceId = null, ArcanumObjectId substituteInventoryIdentity = default,
             int npcFlags = 0, int buyObjectScriptNum = 0, int containerFlags = 0,
             int? aiData = null, int? origin = null, int? faction = null,
-            int? writtenSubtype = null, int? writtenStartLine = null, int? descriptionId = null)
+            int? writtenSubtype = null, int? writtenStartLine = null, int? descriptionId = null,
+            int? keyId = null)
             => GetOrCreate(source, source.Identity, sector, artId, off, locked, itemFlags, inventoryArtId,
                 weaponFlags, genericFlags, stackQuantity, unitWeight, inventoryFootprint, inventoryLocation,
                 nameIndex, socialClass, weaponData, ammoItemType, sourceWorth, maximumHitPoints,
                 hitPointDamage, retailPriceMultiplier, inventorySourceId, substituteInventoryIdentity,
                 npcFlags, buyObjectScriptNum, containerFlags, aiData, origin, faction,
-                writtenSubtype, writtenStartLine, descriptionId);
+                writtenSubtype, writtenStartLine, descriptionId, keyId);
 
         public void Bind(string sector, PersistentObjectState state, WorldObject runtime)
         {
@@ -1290,6 +1300,8 @@ namespace Arcanum.Runtime.World
             if (previous == destination)
                 return new InventoryTransferResult(InventoryResultCode.AlreadyAtDestination, itemIdentity, previous,
                     destination);
+            if (CanAbsorbIntoPlayerKeyring(item, destination))
+                return new InventoryTransferResult(InventoryResultCode.Success, itemIdentity, previous, destination);
 
             PersistentObjectState existing = null;
             if (destination.Kind == ObjectPlacementKind.Contained && item.StackQuantity.HasValue)
@@ -1326,6 +1338,15 @@ namespace Arcanum.Runtime.World
             if (previous == destination)
                 return new InventoryTransferResult(InventoryResultCode.AlreadyAtDestination, itemIdentity, previous, destination);
 
+            if (CanAbsorbIntoPlayerKeyring(item, destination))
+            {
+                Logbook.AcquireKey(destination.ParentIdentity, item.KeyId);
+                _states.Remove(item.Identity);
+                _removedObjectIdentities.Add(item.Identity);
+                ObjectStateRemoved?.Invoke(item, previous);
+                return new InventoryTransferResult(InventoryResultCode.Success, itemIdentity, previous, destination);
+            }
+
             PersistentObjectState existing = null;
             if (destination.Kind == ObjectPlacementKind.Contained && item.StackQuantity.HasValue)
             {
@@ -1357,6 +1378,14 @@ namespace Arcanum.Runtime.World
             ObjectPlacementChanged?.Invoke(item, previous, destination);
             return new InventoryTransferResult(InventoryResultCode.Success, itemIdentity, previous, destination);
         }
+
+        private bool CanAbsorbIntoPlayerKeyring(PersistentObjectState item, ObjectPlacement destination)
+            => item.Type == ObjectType.Key && item.KeyId > 0
+               && destination.Kind == ObjectPlacementKind.Contained
+               && PlayerState?.Identity == destination.ParentIdentity
+               && _states.Values.Any(value => value.Type == ObjectType.KeyRing
+                   && value.ParentIdentity == destination.ParentIdentity
+                   && value.Placement.Kind is ObjectPlacementKind.Contained or ObjectPlacementKind.Equipped);
 
         /// <summary>
         /// Atomic source-owner transfer used only after the death-consequence service has established a corpse.
@@ -2277,6 +2306,7 @@ namespace Arcanum.Runtime.World
             _worldMapDestinations = null;
             _worldMapTravel = null;
             _localMap = null;
+            _logbook = null;
             _combat = null;
             _deathConsequences = null;
             _party = null;
@@ -2332,6 +2362,7 @@ namespace Arcanum.Runtime.World
             _crafting = null;
             _economy = null;
             _social = null;
+            _logbook = null;
             _sourceTime = new SourceTimeService();
             _sourceTime.Restore(plan.Magic?.ElapsedMilliseconds ?? 0);
             _poison = new CharacterPoisonService(_characters, _derivedStats, _vitality, _sourceTime);
@@ -2364,6 +2395,8 @@ namespace Arcanum.Runtime.World
             _economy.RestoreSaveData(plan.Economy);
             _social = CreateSocial();
             _social.RestoreSaveData(plan.Social);
+            _logbook = new LogbookStateService(this);
+            _logbook.RestoreSaveData(plan.Logbook);
             CharacterCreation.RestoreSaveData(plan.CharacterCreation);
             _poison.FinalizeRestore();
             _gameplayHud = new GameplayHudStateService(this);

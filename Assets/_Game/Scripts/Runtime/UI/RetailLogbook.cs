@@ -91,6 +91,15 @@ namespace Arcanum.Runtime.UI
         }
     }
 
+    public sealed class RetailLogbookDisplayBlock
+    {
+        public IReadOnlyList<string> Lines { get; }
+        public Color Color { get; }
+        public bool Strike { get; }
+        public RetailLogbookDisplayBlock(IReadOnlyList<string> lines, Color color, bool strike = false)
+        { Lines = lines ?? throw new ArgumentNullException(nameof(lines)); Color = color; Strike = strike; }
+    }
+
     /// <summary>Pure two-page packing used by the runtime view and EditMode checks.</summary>
     public static class RetailLogbookPaginator
     {
@@ -184,6 +193,8 @@ namespace Arcanum.Runtime.UI
         // against this constant color.
         private static readonly Color Ink = new Color32(0, 0, 0, 255);
         private static readonly Color Active = new Color32(35, 72, 165, 255);
+        private static readonly Color SourceActive = new Color32(0, 0, 150, 255);
+        private static readonly Color SourceCurse = new Color32(150, 0, 0, 255);
         private static readonly Color Completed = new Color32(30, 112, 45, 255);
         private static readonly Color Failed = new Color32(165, 35, 30, 255);
 
@@ -244,17 +255,22 @@ namespace Arcanum.Runtime.UI
             GameUiBackgroundLogbookView background = _controller.ProjectBackgroundLogbook();
             IReadOnlyList<ReputationLogbookEntry> reputations =
                 _session.Social.GetReputationLogbookEntries(_controller.Player);
+            IReadOnlyList<LogbookEffectEntry> effects = _session.Logbook.GetEffects(_controller.Player);
+            LogbookKillStatistics kills = _session.Logbook.GetKills(_controller.Player);
+            IReadOnlyList<LogbookInjuryEntry> injuries = _session.Logbook.GetInjuries(_controller.Player);
+            IReadOnlyList<int> keys = _session.Logbook.GetKeys(_controller.Player);
             int backgroundSignature = BackgroundSignature(background);
             if (_tab == RetailLogbookTab.Background && _backgroundSignature != int.MinValue
                 && backgroundSignature != _backgroundSignature)
                 ResetPagination();
             _backgroundSignature = backgroundSignature;
-            int signature = ProjectionSignature(entries, rumors, background, reputations);
+            int signature = ProjectionSignature(entries, rumors, background, reputations, effects, kills,
+                injuries, keys);
             if (_dirty || signature != _signature)
             {
                 _dirty = false;
                 _signature = signature;
-                RebuildPages(entries, rumors, background, reputations);
+                RebuildPages(entries, rumors, background, reputations, effects, kills, injuries, keys);
             }
         }
 
@@ -350,14 +366,19 @@ namespace Arcanum.Runtime.UI
         private void RebuildPages(IReadOnlyList<QuestJournalEntry> entries,
             IReadOnlyList<RumorJournalEntry> rumors,
             GameUiBackgroundLogbookView background,
-            IReadOnlyList<ReputationLogbookEntry> reputations)
+            IReadOnlyList<ReputationLogbookEntry> reputations,
+            IReadOnlyList<LogbookEffectEntry> effects,
+            LogbookKillStatistics kills,
+            IReadOnlyList<LogbookInjuryEntry> injuries,
+            IReadOnlyList<int> keys)
         {
             ClearPageText();
             _notice.Bind(_resolver, string.Empty, Failed, RetailLogbookLayout.BodyFontSourceId);
             foreach ((RetailLogbookTab tab, SourceUiButton button) in _tabs)
                 button.SetSelected(tab == _tab);
 
-            string tabLabel = Array.Find(RetailLogbookLayout.Tabs, value => value.Tab == _tab).Label;
+            string fallbackLabel = Array.Find(RetailLogbookLayout.Tabs, value => value.Tab == _tab).Label;
+            string tabLabel = Message("mes/logbk_ui.mes", (int)_tab, fallbackLabel);
             AddCenteredText("Left Header", RetailLogbookLayout.LeftHeader, $"-{tabLabel}-",
                 RetailLogbookLayout.HeaderFontSourceId, Ink);
             AddCenteredText("Right Header", RetailLogbookLayout.RightHeader, $"-{tabLabel}-",
@@ -383,6 +404,24 @@ namespace Arcanum.Runtime.UI
             if (_tab == RetailLogbookTab.Reputations)
             {
                 RebuildReputationPages(reputations);
+                return;
+            }
+
+            if (_tab == RetailLogbookTab.BlessingsAndCurses)
+            {
+                RebuildBlessingCursePages(effects);
+                return;
+            }
+
+            if (_tab == RetailLogbookTab.KillsAndInjuries)
+            {
+                RebuildKillsAndInjuriesPages(kills, injuries);
+                return;
+            }
+
+            if (_tab == RetailLogbookTab.Keys)
+            {
+                RebuildKeyPages(keys);
                 return;
             }
 
@@ -523,6 +562,137 @@ namespace Arcanum.Runtime.UI
                 _lastVisibleEntry >= 0 && _lastVisibleEntry < blocks.Count - 1);
         }
 
+        private void RebuildBlessingCursePages(IReadOnlyList<LogbookEffectEntry> effects)
+        {
+            var blocks = new List<RetailLogbookDisplayBlock>();
+            foreach (LogbookEffectEntry entry in effects)
+            {
+                string path = entry.IsBlessing ? "mes/gamebless.mes" : "mes/gamecurse.mes";
+                if (!_resolver.Original.TryReadMessage(path, entry.Id * 10, out string name)
+                    || string.IsNullOrWhiteSpace(name)) continue;
+                var lines = new List<string>
+                    { SourceCalendar.FormatLogbook(SourceCalendar.Timestamp(entry.Timestamp)) };
+                lines.AddRange(RetailLogbookPaginator.Wrap(name, RetailLogbookLayout.LeftContent.width,
+                    GlyphAdvance));
+                blocks.Add(new RetailLogbookDisplayBlock(lines,
+                    entry.IsBlessing ? SourceActive : SourceCurse));
+            }
+            RebuildDisplayBlocks(blocks, true);
+        }
+
+        private void RebuildKillsAndInjuriesPages(LogbookKillStatistics kills,
+            IReadOnlyList<LogbookInjuryEntry> injuries)
+        {
+            int[] descriptions =
+            {
+                0, kills.MostPowerfulDescriptionId, kills.LeastPowerfulDescriptionId,
+                kills.MostGoodDescriptionId, kills.MostEvilDescriptionId,
+                kills.MostMagicalDescriptionId, kills.MostTechnicalDescriptionId,
+            };
+            _projectedEntryCount = 9 + injuries.Count;
+            int start = _spreadStarts[Mathf.Min(_spreadIndex, _spreadStarts.Count - 1)];
+            _lastVisibleEntry = start - 1;
+            if (start == 0)
+            {
+                int leftLine = 0;
+                for (int index = 0; index < descriptions.Length; index++)
+                {
+                    string label = Message("mes/logbk_ui.mes", 26 + index,
+                        index == 0 ? "Total Kills" : "Unknown");
+                    string value = index == 0 ? kills.TotalKills.ToString() : ResolveDescription(descriptions[index]);
+                    if (string.IsNullOrWhiteSpace(value)) value = "-----";
+                    foreach (string line in RetailLogbookPaginator.Wrap($"{label}: {value}",
+                                 RetailLogbookLayout.LeftContent.width, GlyphAdvance))
+                        AddPageLine(0, leftLine++, line, Ink, false);
+                }
+                _lastVisibleEntry = 8;
+            }
+
+            int injuryStart = Math.Max(0, start - 9);
+            int page = start == 0 ? 1 : 0;
+            int lineIndex = 0;
+            if (start == 0)
+            {
+                foreach (string line in RetailLogbookPaginator.Wrap(
+                             Message("mes/logbk_ui.mes", 33, "Injury History"),
+                             RetailLogbookLayout.RightContent.width, GlyphAdvance))
+                    AddPageLine(1, lineIndex++, line, Ink, false);
+            }
+            for (int index = injuryStart; index < injuries.Count; index++)
+            {
+                LogbookInjuryEntry injury = injuries[index];
+                string prefix = Message("mes/logbk_ui.mes", 34 + (int)injury.Type, string.Empty);
+                IReadOnlyList<string> lines = RetailLogbookPaginator.Wrap(
+                    ($"{prefix} {ResolveDescription(injury.SourceDescriptionId)}").Trim(),
+                    RetailLogbookLayout.LeftContent.width, GlyphAdvance);
+                if (lines.Count > RetailLogbookLayout.PageLineCapacity - lineIndex)
+                {
+                    if (page == 1) break;
+                    page = 1;
+                    lineIndex = 0;
+                }
+                foreach (string line in lines)
+                    AddPageLine(page, lineIndex++, line, Ink, !injury.Active);
+                _lastVisibleEntry = 9 + index;
+            }
+            SetPageControlAvailability(_spreadIndex > 0,
+                _lastVisibleEntry < _projectedEntryCount - 1);
+        }
+
+        private void RebuildKeyPages(IReadOnlyList<int> keys)
+        {
+            var blocks = new List<RetailLogbookDisplayBlock>();
+            foreach (int key in keys)
+            {
+                string name = Message("mes/gamekey.mes", key, string.Empty);
+                if (!string.IsNullOrWhiteSpace(name))
+                    blocks.Add(new RetailLogbookDisplayBlock(RetailLogbookPaginator.Wrap(name,
+                        RetailLogbookLayout.LeftContent.width, GlyphAdvance), Ink));
+            }
+            RebuildDisplayBlocks(blocks, true);
+        }
+
+        private void RebuildDisplayBlocks(IReadOnlyList<RetailLogbookDisplayBlock> blocks, bool addSpacing)
+        {
+            _projectedEntryCount = blocks.Count;
+            int start = blocks.Count == 0 ? 0 : Mathf.Clamp(_spreadStarts[Mathf.Min(_spreadIndex,
+                _spreadStarts.Count - 1)], 0, blocks.Count - 1);
+            int page = 0;
+            int line = 0;
+            _lastVisibleEntry = -1;
+            for (int index = start; index < blocks.Count; index++)
+            {
+                RetailLogbookDisplayBlock block = blocks[index];
+                int spacing = addSpacing && index < blocks.Count - 1 ? 1 : 0;
+                int required = block.Lines.Count + spacing;
+                if (required > RetailLogbookLayout.PageLineCapacity - line)
+                {
+                    if (page == 1) break;
+                    page = 1;
+                    line = 0;
+                }
+                int count = Mathf.Min(block.Lines.Count, RetailLogbookLayout.PageLineCapacity - line);
+                for (int offset = 0; offset < count; offset++)
+                    AddPageLine(page, line++, block.Lines[offset], block.Color, block.Strike);
+                line = Mathf.Min(RetailLogbookLayout.PageLineCapacity, line + spacing);
+                _lastVisibleEntry = index;
+            }
+            SetPageControlAvailability(_spreadIndex > 0,
+                _lastVisibleEntry >= 0 && _lastVisibleEntry < blocks.Count - 1);
+        }
+
+        private string Message(string path, int id, string fallback)
+            => _resolver.Original.TryReadMessage(path, id, out string value) && !string.IsNullOrWhiteSpace(value)
+                ? value : fallback;
+
+        private string ResolveDescription(int id)
+        {
+            if (id <= 0) return string.Empty;
+            string runtime = _session.ResolveDescriptionId(id);
+            if (!string.IsNullOrWhiteSpace(runtime)) return runtime;
+            return Message("mes/description.mes", id, string.Empty);
+        }
+
         private void RebuildBackgroundPages(GameUiBackgroundLogbookView background)
         {
             if (background == null)
@@ -606,7 +776,11 @@ namespace Arcanum.Runtime.UI
         private static int ProjectionSignature(IReadOnlyList<QuestJournalEntry> entries,
             IReadOnlyList<RumorJournalEntry> rumors,
             GameUiBackgroundLogbookView background,
-            IReadOnlyList<ReputationLogbookEntry> reputations)
+            IReadOnlyList<ReputationLogbookEntry> reputations,
+            IReadOnlyList<LogbookEffectEntry> effects,
+            LogbookKillStatistics kills,
+            IReadOnlyList<LogbookInjuryEntry> injuries,
+            IReadOnlyList<int> keys)
         {
             unchecked
             {
@@ -617,6 +791,15 @@ namespace Arcanum.Runtime.UI
                     hash = hash * 31 + HashCode.Combine(rumor.RumorId, rumor.Timestamp, rumor.Description);
                 foreach (ReputationLogbookEntry reputation in reputations)
                     hash = hash * 31 + HashCode.Combine(reputation.Reputation, reputation.Timestamp);
+                foreach (LogbookEffectEntry effect in effects)
+                    hash = hash * 31 + HashCode.Combine(effect.Id, effect.Timestamp, effect.IsBlessing);
+                hash = hash * 31 + HashCode.Combine(kills.TotalKills, kills.MostPowerfulDescriptionId,
+                    kills.LeastPowerfulDescriptionId, kills.MostGoodDescriptionId);
+                hash = hash * 31 + HashCode.Combine(kills.MostEvilDescriptionId,
+                    kills.MostMagicalDescriptionId, kills.MostTechnicalDescriptionId);
+                foreach (LogbookInjuryEntry injury in injuries)
+                    hash = hash * 31 + HashCode.Combine(injury.SourceDescriptionId, injury.Type, injury.Active);
+                foreach (int key in keys) hash = hash * 31 + key;
                 hash = hash * 31 + BackgroundSignature(background);
                 return hash;
             }

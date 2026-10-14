@@ -499,7 +499,8 @@ namespace Arcanum.Runtime.World
                     instance.Faction ?? proto?.Faction ?? 0,
                     instance.WrittenSubtype ?? proto?.WrittenSubtype ?? -1,
                     instance.TextStartLine ?? proto?.TextStartLine ?? 0,
-                    instance.Description ?? proto?.Description);
+                    instance.Description ?? proto?.Description,
+                    instance.KeyId ?? proto?.KeyId);
                 if (state == null && Session.IsObjectRemoved(identity))
                 {
                     suppressed++;

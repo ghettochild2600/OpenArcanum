@@ -3,6 +3,7 @@ using System.Collections;
 using System.Linq;
 using Arcanum.Formats.Quest;
 using Arcanum.Runtime.Character;
+using Arcanum.Runtime.Campaign;
 using Arcanum.Runtime.Creation;
 using Arcanum.Runtime.Social;
 using Arcanum.Runtime.UI;
@@ -151,12 +152,38 @@ namespace OpenArcanum.Editor
                   && reputationLines.Select(value => value.Text).Contains(reputationName)
                   && view.CurrentLeftPage == 1 && view.LastVisibleEntry == 0,
                 "Reputations tab renders authoritative acquisition time and retail name");
+
+            int blessing = FirstMessage(hud.Resolver, "mes/gamebless.mes", 50, 500, true);
+            int curse = FirstMessage(hud.Resolver, "mes/gamecurse.mes", 50, 500, true);
+            int key = FirstMessage(hud.Resolver, "mes/gamekey.mes", 1, 1000, false);
+            Check(session.Logbook.AddBlessing(controller.Player, blessing),
+                "source blessing enters authoritative PC Logbook state");
+            session.SourceTime.Advance(60_000);
+            Check(session.Logbook.AddCurse(controller.Player, curse),
+                "source curse enters authoritative PC Logbook state");
+            Check(session.Logbook.AcquireKey(controller.Player, key),
+                "source key id enters authoritative PC keyring state");
+            session.Logbook.RecordKill(controller.Player, 105, 3, 15, -20);
+            session.Logbook.RecordInjury(controller.Player, 105, LogbookInjuryType.Scarred);
+
+            view.SelectTab(RetailLogbookTab.BlessingsAndCurses);
+            yield return null;
+            Check(view.ProjectedEntryCount == 2 && view.RenderedLineCount >= 6,
+                "Blessings and Curses merges source names with acquisition timestamps");
+            view.SelectTab(RetailLogbookTab.Keys);
+            yield return null;
+            Check(view.ProjectedEntryCount == 1 && view.RenderedLineCount >= 5,
+                "Keyring Contents projects the acquired source key description");
+            view.SelectTab(RetailLogbookTab.KillsAndInjuries);
+            yield return null;
+            Check(view.ProjectedEntryCount == 10 && view.RenderedLineCount >= 13,
+                "Kills and Injuries projects kill statistics and injury history");
             controller.Close();
             view.Synchronize();
             Check(!view.IsVisible, "Logbook closes without mutating selected-tab presentation state");
             Check(controller.Open(GameUiScreen.Journal), "Logbook reopens through Journal authority");
             view.Synchronize();
-            Check(view.IsVisible && view.SelectedTab == RetailLogbookTab.Reputations,
+            Check(view.IsVisible && view.SelectedTab == RetailLogbookTab.KillsAndInjuries,
                 "Logbook reopen retains the selected tab");
             view.SelectTab(RetailLogbookTab.Quests);
             Check(view.SelectedTab == RetailLogbookTab.Quests && view.RenderedLineCount > 4,
@@ -216,12 +243,19 @@ namespace OpenArcanum.Editor
             view.Synchronize();
             Check(view.SelectedTab == RetailLogbookTab.Background && view.CurrentLeftPage == 1,
                 "Background reopen preserves its source page state");
+            view.SelectTab(RetailLogbookTab.KillsAndInjuries);
+            yield return null;
+            Check(view.SelectedTab == RetailLogbookTab.KillsAndInjuries
+                  && view.ProjectedEntryCount == 10,
+                "final native spread shows authoritative Kills and Injuries state");
             Debug.Log("UI-F.2 PHYSICAL VALIDATION: PASS; source IDs=198/260/261/264-273; tabs=7; "
                       + "Quests=authoritative/two-page; Reputations=timestamp+retail-name; pages=1-2->3-4->1-2; "
+                      + "Blessings+Curses=chronological/source-color; Kills+Injuries=source-stat/history; "
+                      + "Keys=authoritative-keyring; "
                       + $"Background={background.BackgroundId}/{background.TextId}/authored-body; "
                       + "HUD=visible; geometry=800x600/768p/1080p/1440p/4K; "
                       + "graphics=Original->Enhanced->Original; presenters=1; EventSystems=1. "
-                      + "Play Mode remains open on the first Background spread.");
+                      + "Play Mode remains open on the Kills and Injuries spread.");
         }
 
         private sealed class Results : ICallbacks
@@ -245,6 +279,15 @@ namespace OpenArcanum.Editor
         private static void Check(bool condition, string description)
         {
             if (!condition) throw new InvalidOperationException("Failed: " + description + ".");
+        }
+
+        private static int FirstMessage(UiSkinResolver resolver, string path, int start, int end,
+            bool timesTen)
+        {
+            for (int id = start; id < end; id++)
+                if (resolver.Original.TryReadMessage(path, timesTen ? id * 10 : id, out string value)
+                    && !string.IsNullOrWhiteSpace(value)) return id;
+            throw new InvalidOperationException("No source message was found in " + path + ".");
         }
     }
 }
