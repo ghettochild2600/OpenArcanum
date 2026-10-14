@@ -104,12 +104,21 @@ namespace Arcanum.Runtime.Save
     public sealed class TechnologySaveData
     {
         public List<TechnologyCharacterSaveData> Characters { get; set; }
+        public List<TechnologyManualSaveData> Manuals { get; set; }
     }
 
     public sealed class TechnologyCharacterSaveData
     {
         public string Identity { get; set; }
         public int[] DisciplineRanks { get; set; }
+    }
+
+    public sealed class TechnologyManualSaveData
+    {
+        public string ItemIdentity { get; set; }
+        public string OwnerIdentity { get; set; }
+        public int Discipline { get; set; }
+        public int Expertise { get; set; }
     }
 
     public sealed class CraftingSaveData

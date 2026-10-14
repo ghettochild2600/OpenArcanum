@@ -175,6 +175,26 @@ namespace Arcanum.Formats.Tests
         }
 
         [Test]
+        public void HeldTechnicalManualChangesFoundSchematicEligibilityWithoutGrantingKnowledge()
+        {
+            _prototypes[10084].ItemComplexity = -8;
+            _prototypes[10084].ItemDiscipline = (int)TechnologyDiscipline.Herbology;
+            Item(41, 10084);
+            Item(42, 15116);
+            var schematic = new SchematicId(4020);
+            Assert.That(_session.Crafting.Knows(_pc.Identity, schematic), Is.False);
+
+            _prototypes[15190] = new ObjectProtoInfo(15190, ObjectType.Generic, 0x50000000u)
+                { ItemDiscipline = (int)TechnologyDiscipline.Herbology };
+            Item(43, 15190, ObjectType.Generic);
+            Assert.That(_session.Crafting.Knows(_pc.Identity, schematic), Is.False);
+
+            Learn(44, 4020);
+            Assert.That(_session.Crafting.Preview(new CraftingRequest(_pc.Identity, schematic)).Succeeded,
+                Is.True);
+        }
+
+        [Test]
         public void AlternativeComponentSelectsCorrespondingProductVariant()
         {
             BindRecipe(4450, 15108, 8075, 8229, "8075 8083 8088", "8229 8230 8231");

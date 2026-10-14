@@ -670,6 +670,28 @@ namespace Arcanum.Runtime.Save
                     || value.DisciplineRanks.Any(rank => rank < 0 || rank > 7))
                     return Failure(SessionLoadFailure.InvalidCharacter,
                         $"Technology knowledge for '{value?.Identity}' is invalid.");
+            var manuals = new HashSet<ArcanumObjectId>();
+            foreach (TechnologyManualSaveData value in data.Manuals ?? new List<TechnologyManualSaveData>())
+            {
+                if (value == null
+                    || !TryIdentity(value.ItemIdentity, out ArcanumObjectId itemIdentity)
+                    || !TryIdentity(value.OwnerIdentity, out ArcanumObjectId ownerIdentity)
+                    || !manuals.Add(itemIdentity)
+                    || !plan.Objects.TryGetValue(itemIdentity, out PersistentObjectState item)
+                    || !plan.Characters.TryGet(ownerIdentity, out _)
+                    || item.ParentIdentity != ownerIdentity
+                    || item.Placement.Kind is not (ObjectPlacementKind.Contained or ObjectPlacementKind.Equipped)
+                    || !TechnologyManualCatalog.TryGet(item.PrototypeNumber,
+                        out TechnologyManualDefinition definition)
+                    || value.Discipline != (int)definition.Discipline
+                    || value.Expertise < 0 || value.Expertise > 100)
+                    return Failure(SessionLoadFailure.InvalidCharacter,
+                        $"Technical Manual contribution for '{value?.ItemIdentity}' is invalid.");
+                ObjectProtoInfo prototype = _session.ResolvePrototype(item.PrototypeNumber);
+                if (prototype?.ItemDiscipline != value.Discipline)
+                    return Failure(SessionLoadFailure.InvalidCharacter,
+                        $"Technical Manual prototype for '{value.ItemIdentity}' is invalid.");
+            }
             plan.Technology = data;
             return new SessionLoadResult(SessionLoadFailure.None);
         }
