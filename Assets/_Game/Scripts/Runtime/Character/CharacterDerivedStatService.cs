@@ -183,6 +183,14 @@ namespace Arcanum.Runtime.Character
             state.SetTechnologyPointAdjustment(checked(state.TechnologyPointAdjustment + 1));
         }
 
+        internal void RemoveTechnologyPoint(ArcanumObjectId identity)
+        {
+            PersistentCharacterDerivedState state = Get(identity);
+            if (state.TechnologyPointAdjustment <= 0)
+                throw new InvalidOperationException("No purchased technology point is available to refund.");
+            state.SetTechnologyPointAdjustment(state.TechnologyPointAdjustment - 1);
+        }
+
         public CharacterReactionInputs GetReactionInputs(ArcanumObjectId npcIdentity, ArcanumObjectId pcIdentity)
         {
             PersistentCharacterDerivedState npc = Get(npcIdentity);

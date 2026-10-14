@@ -3,7 +3,9 @@ using System.Collections.Generic;
 using System.Linq;
 using Arcanum.Runtime.Character;
 using Arcanum.Runtime.Creation;
+using Arcanum.Runtime.Crafting;
 using Arcanum.Runtime.Magic;
+using Arcanum.Runtime.Technology;
 using Arcanum.Runtime.World;
 using OpenArcanum.UI;
 using UnityEngine;
@@ -17,6 +19,7 @@ namespace Arcanum.Runtime.UI
     {
         public const int BackgroundSourceId = 22;
         public const int SkillsPanelSourceId = 29;
+        public const int TechnologyPanelSourceId = 30;
         public const int MagicPanelSourceId = 31;
         public const int MinusSourceId = 23;
         public const int PlusSourceId = 24;
@@ -24,6 +27,14 @@ namespace Arcanum.Runtime.UI
         public static readonly Rect Portrait = new(12f, 10f, 89f, 89f);
         public static readonly Rect SkillsPanel = new(503f, 63f, 235f, 325f);
         public static readonly Rect MagicPanel = SkillsPanel;
+        public static readonly Rect TechnologyPanel = SkillsPanel;
+
+        public static readonly Vector2[] TechnologyPositions =
+        {
+            new(8f, 7f), new(34f, 29f), new(61f, 7f), new(88f, 28f),
+            new(116f, 7f), new(142f, 29f), new(171f, 7f), new(198f, 29f),
+        };
+        public static readonly int[] TechnologyDegreeIcons = { 653, 649, 650, 651, 652, 654, 655, 656 };
 
         public static readonly int[] SpellCollegeIcons =
             { 11, 44, 38, 92, 50, 86, 56, 98, 62, 68, 74, 104, 110, 80, 116, 122 };
@@ -55,7 +66,8 @@ namespace Arcanum.Runtime.UI
         };
 
         public static readonly int[] RequiredSourceIds =
-            { 22, 23, 24, 29, 31, 34, 35, 36, 568, 302, 303, 304, 305, 624, 625 };
+            { 22, 23, 24, 29, 30, 31, 34, 35, 36, 568, 302, 303, 304, 305,
+                306, 307, 308, 309, 310, 311, 312, 313, 624, 625, 647, 648 };
 
         public static Rect ScreenRect(int width, int height)
         {
@@ -107,11 +119,13 @@ namespace Arcanum.Runtime.UI
         private int _signature = int.MinValue;
         private int _skillGroup;
         private SpellCollege _selectedCollege;
+        private TechnologyDiscipline _selectedTechnology;
 
         public bool IsAvailable => _canvasRoot != null && _resolver != null;
         public bool IsVisible => IsAvailable && _canvasRoot.activeSelf;
         public int SkillGroup => _skillGroup;
         public SpellCollege SelectedCollege => _selectedCollege;
+        public TechnologyDiscipline SelectedTechnology => _selectedTechnology;
         public RectTransform WindowTransform => _window;
         public RectTransform SkillsPanelTransform => _skillsPanel;
         public IReadOnlyDictionary<CharacterSkill, Image> SkillGauges => _skillGauges;
@@ -139,14 +153,17 @@ namespace Arcanum.Runtime.UI
         {
             if (!IsAvailable || _controller == null) return;
             bool visible = _controller.HasPlayer
-                           && _controller.Screen is GameUiScreen.Character or GameUiScreen.Magic;
+                           && _controller.Screen is GameUiScreen.Character or GameUiScreen.Magic
+                               or GameUiScreen.Technology;
             if (_canvasRoot.activeSelf != visible) _canvasRoot.SetActive(visible);
             if (!visible) return;
             GameUiCharacterView projection = _controller.ProjectCharacter();
             if (projection == null) return;
             int signature = HashCode.Combine(ProjectionSignature(projection), _controller.Screen,
                 _selectedCollege, _controller.Screen == GameUiScreen.Magic
-                    ? _session.Magic.GetKnownCollegeRank(_controller.Player, _selectedCollege) : 0);
+                    ? _session.Magic.GetKnownCollegeRank(_controller.Player, _selectedCollege)
+                    : _controller.Screen == GameUiScreen.Technology
+                        ? (int)_session.Technology.GetLearnedDegree(_controller.Player, _selectedTechnology) : 0);
             if (_dirty || signature != _signature)
             {
                 LastProjection = projection;
@@ -154,6 +171,7 @@ namespace Arcanum.Runtime.UI
                 _dirty = false;
                 RefreshCharacter(projection);
                 if (_controller.Screen == GameUiScreen.Magic) RebuildMagic();
+                else if (_controller.Screen == GameUiScreen.Technology) RebuildTechnology();
                 else RebuildSkills(projection);
             }
             _skillsButton?.SetSelected(_controller.Screen == GameUiScreen.Character);
@@ -179,6 +197,13 @@ namespace Arcanum.Runtime.UI
         public void SelectCollege(SpellCollege college)
         {
             _selectedCollege = college;
+            _dirty = true;
+            Synchronize();
+        }
+
+        public void SelectTechnology(TechnologyDiscipline discipline)
+        {
+            _selectedTechnology = discipline;
             _dirty = true;
             Synchronize();
         }
@@ -417,6 +442,112 @@ namespace Arcanum.Runtime.UI
                     .SetInteractable(CanAdjustSpell(-1));
         }
 
+        private void RebuildTechnology()
+        {
+            ClearChildren(_skillsPanel);
+            _skillGauges.Clear();
+            AddSourceImage("Technology Window", _skillsPanel,
+                RetailCharacterSheetLayout.TechnologyPanelSourceId, new Rect(0f, 0f, 235f, 325f));
+            for (int index = 0; index < RetailCharacterSheetLayout.TechnologyPositions.Length; index++)
+            {
+                TechnologyDiscipline discipline = (TechnologyDiscipline)index;
+                SourceUiButton button = AddSourceButtonTopLeft(discipline.ToString(), _skillsPanel,
+                    306 + index, RetailCharacterSheetLayout.TechnologyPositions[index],
+                    () => SelectTechnology(discipline));
+                button.SetSelected(discipline == _selectedTechnology);
+                BindTechnologyDisciplineHint(button.gameObject, discipline);
+            }
+
+            TechnologyDegree learned = _session.Technology.GetLearnedDegree(_controller.Player, _selectedTechnology);
+            int rank = (int)learned;
+            AddText("Technology Discipline Icon", _skillsPanel, new Rect(17f, 69f, 18f, 19f),
+                    300, SourceWhite)
+                .Bind(_resolver, ((char)('1' + (int)_selectedTechnology)).ToString(), SourceWhite, 300);
+            SourceUiBitmapText technologyName = AddText("Technology Name", _skillsPanel,
+                new Rect(35f, 69f, 159f, 19f), 301, SourceWhite);
+            SetCenteredText(technologyName, $"{Friendly(_selectedTechnology)} {Friendly(learned)}", SourceWhite);
+            AddText("Technology Expertise", _skillsPanel, new Rect(194f, 72f, 31f, 15f), 229, SourceBlue)
+                .Bind(_resolver, _session.Technology.GetEffectiveLevel(_controller.Player, _selectedTechnology)
+                    .ToString(), SourceBlue, 229);
+
+            IReadOnlyList<SchematicDefinition> schematics = _session.Crafting.ProjectBuiltIn(_selectedTechnology);
+            for (int index = 0; index < schematics.Count; index++)
+            {
+                SchematicDefinition schematic = schematics[index];
+                int degree = (int)schematic.BuiltInDegree.Value;
+                Color tint = degree <= rank ? SourceWhite : degree == rank + 1 ? SourceYellow : SourceGray;
+                if (degree <= rank)
+                    AddSourceImageTopLeft($"Degree {degree} Icon", _skillsPanel,
+                        RetailCharacterSheetLayout.TechnologyDegreeIcons[(int)_selectedTechnology],
+                        new Vector2(8f, 96f + 33f * index));
+                SourceUiBitmapText name = AddText($"Schematic {degree}", _skillsPanel,
+                    new Rect(46f, 94f + 33f * index, 175f, 16f), 301, tint);
+                name.Bind(_resolver, schematic.Name ?? string.Empty, tint, 301);
+                string first = _session.ResolvePrototypeDisplayName(schematic.ComponentOneAliases[0]);
+                string second = _session.ResolvePrototypeDisplayName(schematic.ComponentTwoAliases[0]);
+                SourceUiBitmapText components = AddText($"Schematic Components {degree}", _skillsPanel,
+                    new Rect(46f, 109f + 33f * index, 175f, 14f), 483, tint);
+                components.Bind(_resolver, $"[{first}]+[{second}]", tint, 483);
+                BindTechnologyDegreeHint(name.gameObject, _selectedTechnology, (TechnologyDegree)degree, schematic);
+                BindTechnologyDegreeHint(components.gameObject, _selectedTechnology,
+                    (TechnologyDegree)degree, schematic);
+            }
+
+            if (rank < 7)
+                AddSourceButtonTopLeft("Increase Technology", _skillsPanel, 647,
+                        new Vector2(8f, 96f + rank * 33f), () => AdjustTechnology(1))
+                    .SetInteractable(_session.Technology.PreviewLearnNextDegree(
+                        _controller.Player, _selectedTechnology).Succeeded);
+            if (rank > 0)
+                AddSourceButtonTopLeft("Decrease Technology", _skillsPanel, 648,
+                    new Vector2(8f, 96f + (rank - 1) * 33f), () => AdjustTechnology(-1));
+        }
+
+        private void AdjustTechnology(int delta)
+        {
+            _controller.AdjustTechnologyDiscipline(_selectedTechnology, delta);
+            _dirty = true;
+            Synchronize();
+        }
+
+        private void BindTechnologyDisciplineHint(GameObject target, TechnologyDiscipline discipline)
+        {
+            SourceHoverHintTarget hint = target.GetComponent<SourceHoverHintTarget>()
+                                         ?? target.AddComponent<SourceHoverHintTarget>();
+            string owner = "technology-discipline:" + (int)discipline;
+            hint.Bind(() =>
+            {
+                string message = ReadMessage("mes/charedit.mes", 4000 + (int)discipline,
+                    Friendly(discipline));
+                RetailMessageWindowProjection projection = RetailMessageWindowProjection.FromSource(message);
+                _controller.ShowContextualHelp(owner, projection.Body, projection.Title);
+            }, () => _controller.ClearContextualHelp(owner));
+        }
+
+        private void BindTechnologyDegreeHint(GameObject target, TechnologyDiscipline discipline,
+            TechnologyDegree degree, SchematicDefinition schematic)
+        {
+            SourceHoverHintTarget hint = target.GetComponent<SourceHoverHintTarget>()
+                                         ?? target.AddComponent<SourceHoverHintTarget>();
+            string owner = $"technology-degree:{(int)discipline}:{(int)degree}";
+            hint.Bind(() =>
+            {
+                int rank = (int)degree;
+                string title = ReadMessage("mes/tech.mes", 8 + rank, Friendly(degree)).Trim();
+                string body = ReadMessage("mes/tech.mes", 24 + (int)discipline * 8 + rank,
+                    schematic.Description ?? string.Empty).Trim();
+                string requirement = $"Minimum IN: {TechnologyIntelligenceRequirement(rank)}";
+                _controller.ShowContextualHelp(owner,
+                    string.IsNullOrWhiteSpace(body) ? requirement : requirement + "\n" + body, title);
+            }, () => _controller.ClearContextualHelp(owner));
+        }
+
+        private string ReadMessage(string path, int key, string fallback)
+            => _resolver.Original.TryReadMessage(path, key, out string value) ? value : fallback;
+
+        private static int TechnologyIntelligenceRequirement(int rank)
+            => new[] { 0, 5, 8, 11, 13, 15, 17, 19 }[Mathf.Clamp(rank, 0, 7)];
+
         private void AdjustSpell(int delta)
         {
             _controller.AdjustSpellCollege(_selectedCollege, delta);
@@ -566,6 +697,14 @@ namespace Arcanum.Runtime.UI
             SourceUiImage source = target.gameObject.AddComponent<SourceUiImage>();
             source.Bind(_resolver, new UiAssetKey(sourceId));
             return source;
+        }
+
+        private SourceUiImage AddSourceImageTopLeft(string name, RectTransform parent, int sourceId,
+            Vector2 topLeft)
+        {
+            Vector2 size = _resolver.TryResolve(new UiAssetKey(sourceId), out UiResolvedAsset asset)
+                ? asset.LogicalSize : new Vector2(16f, 16f);
+            return AddSourceImage(name, parent, sourceId, new Rect(topLeft, size));
         }
 
         private Image AddSkillGauge(string name, RectTransform parent, Rect rect, int sourceLevel)

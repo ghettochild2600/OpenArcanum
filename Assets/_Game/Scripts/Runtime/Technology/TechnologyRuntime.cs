@@ -244,6 +244,18 @@ namespace Arcanum.Runtime.Technology
             return preview;
         }
 
+        internal bool RefundLastDegree(ArcanumObjectId identity, TechnologyDiscipline discipline)
+        {
+            if (!_world.Characters.TryGet(identity, out _) || !_world.Progression.TryGet(identity, out _)
+                || !_world.DerivedStats.TryGet(identity, out _)) return false;
+            int[] ranks = GetRanks(identity);
+            if (ranks[(int)discipline] <= 0) return false;
+            ranks[(int)discipline]--;
+            _world.DerivedStats.RemoveTechnologyPoint(identity);
+            _world.Progression.RefundCharacterPoint(identity);
+            return true;
+        }
+
         public TechnologyUseResult PreviewUse(TechnologyUseRequest request) => PreviewUseInternal(request, false);
         public TechnologyUseResult Use(TechnologyUseRequest request) => UseInternal(request, false);
         internal TechnologyUseResult PreviewScheduledUse(TechnologyUseRequest request) => PreviewUseInternal(request, true);

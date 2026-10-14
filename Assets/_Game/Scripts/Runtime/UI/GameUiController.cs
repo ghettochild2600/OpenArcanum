@@ -244,6 +244,7 @@ namespace Arcanum.Runtime.UI
         private int[] _acceptedCharacterAttributes;
         private int[] _acceptedCharacterSkills;
         private int[] _acceptedSpellRanks;
+        private int[] _acceptedTechnologyRanks;
         private int _acceptedHitPointPoints;
         private int _acceptedFatiguePoints;
         private readonly Func<long> _utcNowTicks;
@@ -338,8 +339,10 @@ namespace Arcanum.Runtime.UI
             SelectedWorldTarget = default;
             if (screen != GameUiScreen.Corpse) _corpse = default;
             _character = screen is GameUiScreen.Character or GameUiScreen.Skills or GameUiScreen.Magic
+                or GameUiScreen.Technology
                 ? Player : default;
-            if (screen is GameUiScreen.Character or GameUiScreen.Magic) CaptureAcceptedCharacterEditorState();
+            if (screen is GameUiScreen.Character or GameUiScreen.Magic or GameUiScreen.Technology)
+                CaptureAcceptedCharacterEditorState();
             else ClearAcceptedCharacterEditorState();
             Feedback = string.Empty;
             ContextualHelp = string.Empty;
@@ -1259,6 +1262,8 @@ namespace Arcanum.Runtime.UI
                 .Select(value => _session.Progression.GetPurchasedSkillPoints(Player, value)).ToArray();
             _acceptedSpellRanks = Enum.GetValues(typeof(SpellCollege)).Cast<SpellCollege>()
                 .Select(value => _session.Magic.GetKnownCollegeRank(Player, value)).ToArray();
+            _acceptedTechnologyRanks = Enum.GetValues(typeof(TechnologyDiscipline)).Cast<TechnologyDiscipline>()
+                .Select(value => (int)_session.Technology.GetLearnedDegree(Player, value)).ToArray();
             PersistentCharacterVitalityState vitality = _session.Vitality.Get(Player);
             _acceptedHitPointPoints = vitality.Source.HitPointPoints;
             _acceptedFatiguePoints = vitality.Source.FatiguePoints;
@@ -1275,6 +1280,7 @@ namespace Arcanum.Runtime.UI
             _acceptedCharacterAttributes = null;
             _acceptedCharacterSkills = null;
             _acceptedSpellRanks = null;
+            _acceptedTechnologyRanks = null;
             _acceptedHitPointPoints = 0;
             _acceptedFatiguePoints = 0;
         }
@@ -1360,6 +1366,26 @@ namespace Arcanum.Runtime.UI
                     Effective = _session.Technology.GetEffectiveDegree(Player, value),
                     EffectiveLevel = _session.Technology.GetEffectiveLevel(Player, value),
                 }).ToArray();
+
+        public bool AdjustTechnologyDiscipline(TechnologyDiscipline discipline, int delta)
+        {
+            if (CharacterReadOnly) return Reject("This character examination is read-only.");
+            if (delta is not (-1 or 1) || !Enum.IsDefined(typeof(TechnologyDiscipline), discipline))
+                return Reject("Invalid technology adjustment.");
+            EnsureAcceptedCharacterEditorState();
+            int learned = (int)_session.Technology.GetLearnedDegree(Player, discipline);
+            if (delta < 0)
+            {
+                if (learned <= _acceptedTechnologyRanks[(int)discipline])
+                    return Reject(RuntimeCharacterAdjustmentResult.AcceptedBaseline.ToString());
+                return Complete(_session.Technology.RefundLastDegree(Player, discipline),
+                    $"Reduced {discipline}.");
+            }
+
+            TechnologyLearningResult result = _session.Technology.LearnNextDegree(Player, discipline);
+            return Complete(result.Succeeded, result.Succeeded
+                ? $"Learned {discipline} {result.Degree}." : result.Failure.ToString());
+        }
 
         public IReadOnlyList<GameUiItemView> ProjectUsableTechnologyItems()
             => ProjectInventory().Where(value => PhaseOneTechnologyCatalog.TryGetItem(value.PrototypeNumber, out _)).ToArray();

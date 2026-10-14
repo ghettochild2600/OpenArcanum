@@ -5,8 +5,10 @@ using System.Linq;
 using Arcanum.Formats.Objects;
 using Arcanum.Formats.Text;
 using Arcanum.Runtime.Character;
+using Arcanum.Runtime.Crafting;
 using Arcanum.Runtime.Magic;
 using Arcanum.Runtime.Save;
+using Arcanum.Runtime.Technology;
 using Arcanum.Runtime.UI;
 using Arcanum.Runtime.World;
 using Arcanum.World;
@@ -50,6 +52,7 @@ namespace Arcanum.Formats.Tests
             _pc = ProductionPlayerLifecycle.DefaultPlayerIdentity;
             _session.GetOrCreatePlayer(_pc, Sector, Vector2.one, 0x28100000u);
             _session.BindSpellPresentationSource(CreateSpellText());
+            _session.BindCraftingSource(CreateSchematicCatalog());
             _controller = new GameUiController(_session, new EmptySlots());
             Assert.That(_controller.Open(GameUiScreen.Character), Is.True);
             _view = _root.AddComponent<RetailCharacterSheetView>();
@@ -334,6 +337,93 @@ namespace Arcanum.Formats.Tests
         }
 
         [Test]
+        public void RuntimeTechnologyUsesSourcePanelDisciplinesAndDegreeRows()
+        {
+            _session.Technology.LearnNextDegree(_pc, TechnologyDiscipline.Herbology);
+            Assert.That(_controller.Open(GameUiScreen.Technology), Is.True);
+            _view.SelectTechnology(TechnologyDiscipline.Herbology);
+            _view.Synchronize();
+
+            Assert.That(_view.IsVisible, Is.True);
+            Assert.That(_view.SelectedTechnology, Is.EqualTo(TechnologyDiscipline.Herbology));
+            Assert.That(_view.GetComponentsInChildren<SourceUiImage>(true)
+                .Single(value => value.name == "Technology Window").Key.SourceId, Is.EqualTo(30));
+            SourceUiButton[] disciplines = _view.GetComponentsInChildren<SourceUiButton>(true)
+                .Where(value => Enum.TryParse(value.name, out TechnologyDiscipline _)).ToArray();
+            Assert.That(disciplines, Has.Length.EqualTo(8));
+            for (int index = 0; index < disciplines.Length; index++)
+            {
+                SourceUiButton button = disciplines.Single(value =>
+                    value.name == ((TechnologyDiscipline)index).ToString());
+                Assert.That(button.CurrentPresentationKey.SourceId, Is.EqualTo(306 + index));
+                RectTransform rect = (RectTransform)button.transform;
+                Assert.That(rect.anchoredPosition,
+                    Is.EqualTo(new Vector2(RetailCharacterSheetLayout.TechnologyPositions[index].x,
+                        -RetailCharacterSheetLayout.TechnologyPositions[index].y)));
+            }
+
+            SourceUiBitmapText[] text = _view.GetComponentsInChildren<SourceUiBitmapText>(true);
+            Assert.That(text.Single(value => value.name == "Technology Discipline Icon").FontSourceId,
+                Is.EqualTo(300));
+            Assert.That(text.Single(value => value.name == "Technology Name").Text,
+                Is.EqualTo("Herbology Novice"));
+            Assert.That(text.Single(value => value.name == "Technology Name").FontSourceId, Is.EqualTo(301));
+            Assert.That(text.Single(value => value.name == "Technology Expertise").Text, Is.EqualTo("10"));
+            Assert.That(text.Single(value => value.name == "Technology Expertise").FontSourceId, Is.EqualTo(229));
+            for (int degree = 1; degree <= 7; degree++)
+            {
+                Assert.That(text.Single(value => value.name == $"Schematic {degree}").Text,
+                    Is.EqualTo($"Herbology Schematic {degree}"));
+                Assert.That(text.Single(value => value.name == $"Schematic {degree}").FontSourceId, Is.EqualTo(301));
+                Assert.That(text.Single(value => value.name == $"Schematic Components {degree}").FontSourceId,
+                    Is.EqualTo(483));
+            }
+            Assert.That(_view.GetComponentsInChildren<SourceUiImage>(true)
+                .Single(value => value.name == "Degree 1 Icon").Key.SourceId, Is.EqualTo(653));
+        }
+
+        [Test]
+        public void RuntimeTechnologyHoverUsesSourceDegreeHelpAndIntelligenceRequirement()
+        {
+            Assert.That(_controller.Open(GameUiScreen.Technology), Is.True);
+            _view.SelectTechnology(TechnologyDiscipline.Herbology);
+            _view.Synchronize();
+            SourceHoverHintTarget degree = _view.GetComponentsInChildren<SourceHoverHintTarget>(true)
+                .Single(value => value.name == "Schematic 1");
+            degree.OnPointerEnter(null);
+            Assert.That(_controller.ContextualHelpTitle, Is.Not.Empty);
+            Assert.That(_controller.ContextualHelp, Does.StartWith("Minimum IN: 5"));
+            degree.OnPointerExit(null);
+            Assert.That(_controller.ContextualHelp, Is.Empty);
+        }
+
+        [Test]
+        public void RuntimeTechnologyAdvancementUsesAuthorityAndAcceptedBaseline()
+        {
+            Assert.That(_controller.Open(GameUiScreen.Technology), Is.True);
+            int points = _session.Progression.GetUnspentCharacterPoints(_pc);
+            Assert.That(_controller.AdjustTechnologyDiscipline(TechnologyDiscipline.Herbology, 1), Is.True);
+            Assert.That(_session.Technology.GetLearnedDegree(_pc, TechnologyDiscipline.Herbology),
+                Is.EqualTo(TechnologyDegree.Novice));
+            Assert.That(_session.Progression.GetUnspentCharacterPoints(_pc), Is.EqualTo(points - 1));
+            Assert.That(_controller.AdjustTechnologyDiscipline(TechnologyDiscipline.Herbology, -1), Is.True);
+            Assert.That(_session.Technology.GetLearnedDegree(_pc, TechnologyDiscipline.Herbology),
+                Is.EqualTo(TechnologyDegree.Layman));
+            Assert.That(_session.Progression.GetUnspentCharacterPoints(_pc), Is.EqualTo(points));
+
+            Assert.That(_controller.AdjustTechnologyDiscipline(TechnologyDiscipline.Herbology, 1), Is.True);
+            _controller.Close();
+            Assert.That(_controller.Open(GameUiScreen.Technology), Is.True);
+            int acceptedPoints = _session.Progression.GetUnspentCharacterPoints(_pc);
+            Assert.That(_controller.AdjustTechnologyDiscipline(TechnologyDiscipline.Herbology, -1), Is.False);
+            Assert.That(_controller.Feedback,
+                Is.EqualTo(nameof(RuntimeCharacterAdjustmentResult.AcceptedBaseline)));
+            Assert.That(_session.Technology.GetLearnedDegree(_pc, TechnologyDiscipline.Herbology),
+                Is.EqualTo(TechnologyDegree.Novice));
+            Assert.That(_session.Progression.GetUnspentCharacterPoints(_pc), Is.EqualTo(acceptedPoints));
+        }
+
+        [Test]
         public void SkillsHudRouteTogglesWithoutCreatingModalAuthority()
         {
             _controller.Close();
@@ -411,6 +501,34 @@ namespace Arcanum.Formats.Tests
             }
             return SpellPresentationCatalog.FromMes(new MesFile(rows));
         }
+
+        private static SchematicCatalog CreateSchematicCatalog()
+        {
+            var rules = new List<KeyValuePair<int, string>>();
+            var text = new List<KeyValuePair<int, string>>();
+            for (int discipline = 0; discipline < 8; discipline++)
+            for (int degree = 1; degree <= 7; degree++)
+            {
+                int id = 1990 + 200 * discipline + 10 * degree;
+                int name = id + 10000;
+                int description = id + 11000;
+                rules.Add(new KeyValuePair<int, string>(id, name.ToString()));
+                rules.Add(new KeyValuePair<int, string>(id + 1, description.ToString()));
+                rules.Add(new KeyValuePair<int, string>(id + 2, (700 + degree).ToString()));
+                rules.Add(new KeyValuePair<int, string>(id + 3, (6000 + degree).ToString()));
+                rules.Add(new KeyValuePair<int, string>(id + 4, (6100 + degree).ToString()));
+                rules.Add(new KeyValuePair<int, string>(id + 5, (6200 + degree).ToString()));
+                rules.Add(new KeyValuePair<int, string>(id + 6, "1"));
+                text.Add(new KeyValuePair<int, string>(name,
+                    $"{FriendlyDiscipline((TechnologyDiscipline)discipline)} Schematic {degree}"));
+                text.Add(new KeyValuePair<int, string>(description,
+                    $"Source technology description {discipline}:{degree}"));
+            }
+            return SchematicCatalog.FromMes(new MesFile(rules), new MesFile(text));
+        }
+
+        private static string FriendlyDiscipline(TechnologyDiscipline value)
+            => value == TechnologyDiscipline.GunSmithy ? "Gun Smithy" : value.ToString();
 
         private sealed class Owner : ISectorPresentationOwner
         {
