@@ -84,7 +84,7 @@ namespace Arcanum.Formats.Tests
             int[] ids = { 3, 17, 18, 19, 20, 82, 93, 105, 111, 137, 169, 171, 172, 173, 181,
                 184, 185, 186, 187, 188, 192, 193, 194, 195, 207, 208, 216, 229, 250, 251,
                 252, 253, 279, 280, 292, 293, 354, 469, 470, 471, 472, 473, 474, 558, 559,
-                503, 504, 505, 560, 561, 565, 616, 628, 632, 772, 773, 782 };
+                503, 504, 505, 560, 561, 565, 616, 628, 632, 772, 773, 782, 826 };
             foreach (int id in ids)
                 Assert.That(_retail.TryResolve(new UiAssetKey(id), out _), Is.True, $"source id {id}");
             Assert.That(Original(RetailGameplayHudLayout.TopSourceId).LogicalSize,
@@ -179,6 +179,73 @@ namespace Arcanum.Formats.Tests
             Assert.That((RetailGameplayHudLayout.FollowerLowHealthThreshold,
                     RetailGameplayHudLayout.FollowerPoisonThreshold), Is.EqualTo((20, 20)));
             Assert.That(RetailGameplayHudLayout.FollowerVisiblePixels(50), Is.EqualTo(17));
+        }
+
+        [Test]
+        public void FollowerPortraitHoverClickAndCommandMenuFollowSourceRouting()
+        {
+            ArcanumObjectId follower = AddFollower("G_22222222_2222_2222_2222_222222222222", 28423,
+                "Virgil");
+            _view.Synchronize(true);
+            Transform slot = Descendant("Follower Slot 1");
+            RetailFollowerSlotTarget target = slot.GetComponent<RetailFollowerSlotTarget>();
+
+            target.OnPointerEnter(null);
+            Assert.That(_view.WorldTarget?.Identity, Is.EqualTo(follower));
+            target.OnPointerExit(null);
+            Assert.That(_view.WorldTarget, Is.Null);
+            target.OnPointerClick(new PointerEventData(EventSystem.current)
+                { button = PointerEventData.InputButton.Left });
+            Assert.That(_controller.SelectedWorldTarget, Is.EqualTo(follower));
+
+            target.OnPointerClick(new PointerEventData(EventSystem.current)
+                { button = PointerEventData.InputButton.Right });
+            RectTransform menu = (RectTransform)Descendant("Follower Command Menu");
+            Assert.That(menu.gameObject.activeSelf, Is.True);
+            Assert.That(menu.anchoredPosition, Is.EqualTo(new Vector2(51f, -50f)));
+            Assert.That(menu.Find("Follower Command Background").GetComponent<SourceUiImage>().Key.SourceId,
+                Is.EqualTo(RetailGameplayHudLayout.FollowerCommandMenuSourceId));
+            for (int index = 0; index < RetailGameplayHudLayout.FollowerCommandCount; index++)
+            {
+                Assert.That(_retail.TryReadMessage("mes/follower_ui.mes", index, out string source), Is.True);
+                Assert.That(menu.Find($"Follower Command Label {index}").GetComponent<SourceUiBitmapText>().Text,
+                    Is.EqualTo(source));
+                RectTransform row = (RectTransform)menu.Find($"Follower Command {index}");
+                Assert.That(row.anchoredPosition,
+                    Is.EqualTo(new Vector2(10f, -(3f + 18f * index))));
+                Assert.That(row.sizeDelta, Is.EqualTo(new Vector2(118f, 15f)));
+            }
+        }
+
+        [Test]
+        public void FollowerCommandsTargetOneMemberAndUseSourceWaitBackOffSemantics()
+        {
+            ArcanumObjectId virgil = AddFollower("G_33333333_3333_3333_3333_333333333333", 28424,
+                "Virgil");
+            ArcanumObjectId sogg = AddFollower("G_44444444_4444_4444_4444_444444444444", 28425,
+                "Sogg");
+
+            Assert.That(_controller.IssueFollowerOrder(virgil, PartyOrder.Wait), Is.True);
+            PartyFollowerOrderState virgilState = _session.Party.GetOrderState(virgil);
+            PartyFollowerOrderState soggState = _session.Party.GetOrderState(sogg);
+            Assert.That((virgilState.LastOrder, virgilState.FollowingEnabled),
+                Is.EqualTo((PartyOrder.Wait, false)));
+            Assert.That(soggState.FollowingEnabled, Is.True);
+
+            Assert.That(_controller.IssueFollowerOrder(virgil, PartyOrder.BackOff), Is.True);
+            Assert.That(_session.Party.GetOrderState(virgil).FollowingEnabled, Is.False,
+                "source Back Off stops attacking but does not cancel Wait");
+            Assert.That(_controller.IssueFollowerOrder(virgil, PartyOrder.StayClose), Is.True);
+            Assert.That((_session.Party.GetOrderState(virgil).FollowingEnabled,
+                    _session.Party.GetOrderState(virgil).DesiredFollowRange),
+                Is.EqualTo((true, PartyFollowerMovementService.SourceCloseRange)));
+            Assert.That(_controller.IssueFollowerOrder(virgil, PartyOrder.SpreadOut), Is.True);
+            Assert.That(_session.Party.GetOrderState(virgil).DesiredFollowRange,
+                Is.EqualTo(PartyFollowerMovementService.SourceSpreadRange));
+
+            Assert.That(_controller.OpenFollowerCharacter(virgil), Is.True);
+            Assert.That((_controller.Screen, _controller.CharacterTarget, _controller.CharacterReadOnly),
+                Is.EqualTo((GameUiScreen.Character, virgil, true)));
         }
 
         [Test]
@@ -1040,6 +1107,31 @@ namespace Arcanum.Formats.Tests
 
         private Transform Descendant(string name)
             => _root.GetComponentsInChildren<Transform>(true).Single(value => value.name == name);
+
+        private ArcanumObjectId AddFollower(string identity, int prototype, string name)
+        {
+            ArcanumObjectId follower = Parse(identity);
+            var proto = new ObjectProtoInfo(prototype, ObjectType.Npc, 0x28100000u,
+                description: prototype) { Portrait = 1000 };
+            _session.BindPrototypeSource(number => number == prototype ? proto : null);
+            _session.BindDescriptionSource(id => id == prototype ? name : null);
+            var source = new ObjectInstance(ObjectType.Npc, prototype, 0L,
+                0x28100000u, 0, 0, oid: Bytes(follower));
+            _session.GetOrCreate(source, follower, Sector, source.CurrentArtId.Value, false, false);
+            int[] stats = Enumerable.Repeat(8, CharacterAttributeSet.SourceStatArrayCount).ToArray();
+            stats[CharacterAttributeSet.RaceSourceSlot] = (int)CharacterRace.Human;
+            stats[CharacterAttributeSet.GenderSourceSlot] = (int)CharacterGender.Male;
+            _session.Characters.GetOrCreateSourceCharacter(follower, ObjectType.Npc, prototype, stats, null);
+            _session.Progression.GetOrCreateSourceCharacter(follower, ObjectType.Npc, prototype,
+                CharacterProgressionSource.Resolve(stats, null, null, null, null, null, 0));
+            _session.DerivedStats.GetOrCreateSourceCharacter(follower, ObjectType.Npc, prototype,
+                CharacterDerivedSource.Resolve(stats, null, null, 0, null, null, null, 50, 0, 0));
+            _session.Vitality.GetOrCreateSourceCharacter(follower, ObjectType.Npc, prototype,
+                CharacterVitalitySource.Resolve(stats, null, null, 0, null, 15, null, 0,
+                    null, 0, null, 0, null, 0));
+            Assert.That(_session.Party.Join(follower).Succeeded, Is.True);
+            return follower;
+        }
 
         private PersistentObjectState AddStack(int sequence, int quantity)
         {

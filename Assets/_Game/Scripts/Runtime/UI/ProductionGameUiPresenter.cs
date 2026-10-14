@@ -104,7 +104,8 @@ namespace Arcanum.Runtime.UI
             _retailMainMenu.Bind(_controller, Application.Quit);
             _retailGameplayHud = GetComponent<RetailGameplayHudView>()
                                  ?? gameObject.AddComponent<RetailGameplayHudView>();
-            _retailGameplayHud.Bind(_controller, _session, Open);
+            _retailGameplayHud.Bind(_controller, _session, Open, null, InteractWithFollower,
+                PresentFollowerOrder);
             _retailCharacterCreation = GetComponent<RetailCharacterCreationView>()
                                        ?? gameObject.AddComponent<RetailCharacterCreationView>();
             _retailCharacterCreation.Bind(_controller, _session, _retailGameplayHud.Resolver);
@@ -295,10 +296,9 @@ namespace Arcanum.Runtime.UI
                 WorldObjectTargetSelector.TrySelectCombatTarget(_loader.SpriteOwners, world, out target);
             bool accepted = _session.Party.IssueOrder(order, location, target);
             if (accepted && order == PartyOrder.Attack) Controller.StartAttack(target, true);
-            if (accepted && order == PartyOrder.BackOff && _session.Combat.IsActive)
-                foreach (PartyMember member in _session.Party.Members.ToArray())
-                    if (_session.Combat.IsParticipantEngaged(member.Identity))
-                        _session.Combat.RemoveParticipant(member.Identity);
+            if (accepted && order == PartyOrder.BackOff)
+                foreach (PartyMember member in _session.Party.Members)
+                    GetComponent<ProductionCombatAiDriver>()?.Controller.CommandBackOff(member.Identity);
             Controller.ShowFeedback(accepted ? $"Followers: {order}." : $"Followers cannot {order} here.");
         }
 
@@ -371,18 +371,66 @@ namespace Arcanum.Runtime.UI
             SyncInputGate();
         }
 
+        private void InteractWithFollower(ArcanumObjectId follower)
+        {
+            EnsureInteractionSubscription();
+            if (_interaction == null)
+            {
+                Controller.ShowFeedback("Follower interaction is unavailable.");
+                return;
+            }
+            WorldInteractionResult result = _interaction.TryTalk(follower);
+            if (!result.IsSuccess)
+                Controller.ShowFeedback(result.Code.ToString());
+        }
+
+        private void PresentFollowerOrder(ArcanumObjectId follower, PartyOrder order)
+        {
+            if (order == PartyOrder.BackOff)
+                GetComponent<ProductionCombatAiDriver>()?.Controller.CommandBackOff(follower);
+        }
+
         private void HandleWorldPointer()
         {
             if (!Input.GetMouseButtonUp(0)) return;
             GameUiCursorMode cursor = Controller.CursorMode;
             bool targeting = cursor is GameUiCursorMode.SpellTarget or GameUiCursorMode.TechnologyTarget
-                or GameUiCursorMode.MerchantTarget;
+                or GameUiCursorMode.MerchantTarget or GameUiCursorMode.FollowerWalkTarget
+                or GameUiCursorMode.FollowerAttackTarget;
             if (!targeting || PointerOverInterface(Input.mousePosition)) return;
             Camera camera = Camera.main;
             if (camera == null || _loader == null) return;
             Vector3 screen = Input.mousePosition;
             screen.z = Mathf.Abs(camera.transform.position.z - _loader.transform.position.z);
             Vector3 world = camera.ScreenToWorldPoint(screen);
+            if (cursor == GameUiCursorMode.FollowerWalkTarget)
+            {
+                Controller.SubmitFollowerOrderTarget(WorldToGlobalTile(world));
+                return;
+            }
+            if (cursor == GameUiCursorMode.FollowerAttackTarget)
+            {
+                if (!WorldObjectTargetSelector.TrySelectCombatTarget(_loader.SpriteOwners, world,
+                        out ArcanumObjectId followerTarget))
+                {
+                    Controller.SubmitFollowerOrderTarget(null);
+                    return;
+                }
+                ArcanumObjectId follower = Controller.PendingFollower;
+                if (!Controller.SubmitFollowerOrderTarget(null, followerTarget)) return;
+                CombatResult combat = _session.Combat.IsActive
+                    ? _session.Combat.EngageParticipant(follower)
+                    : _session.Combat.StartCombat(follower, followerTarget, CombatMode.RealTime, true);
+                if (_session.Combat.IsActive)
+                {
+                    _session.Combat.EngageParticipant(followerTarget);
+                    GetComponent<ProductionCombatAiDriver>()?.Controller.CommandAttack(follower, followerTarget);
+                }
+                if (!combat.Succeeded && combat.Failure is not (CombatFailure.AlreadyActive
+                        or CombatFailure.AlreadyRegistered))
+                    Controller.ShowFeedback(combat.Failure.ToString());
+                return;
+            }
             if (WorldObjectTargetSelector.TrySelectCombatTarget(_loader.SpriteOwners, world,
                     out ArcanumObjectId target)) Controller.SubmitWorldTarget(target);
             else Controller.SubmitWorldTarget(default);
@@ -436,7 +484,7 @@ namespace Arcanum.Runtime.UI
             bool sourceInventory = Controller.Screen == GameUiScreen.Inventory
                                    && _retailInventory?.IsAvailable == true;
             bool sourceInventoryInteraction = (Controller.Screen is GameUiScreen.Container
-                    or GameUiScreen.Corpse or GameUiScreen.Merchant)
+                    or GameUiScreen.Corpse or GameUiScreen.Merchant or GameUiScreen.FollowerInventory)
                                                && _retailInventoryInteraction?.IsAvailable == true;
             bool sourceCharacter = (Controller.Screen == GameUiScreen.Character
                                     || Controller.Screen == GameUiScreen.Magic
@@ -591,6 +639,7 @@ namespace Arcanum.Runtime.UI
                 case GameUiScreen.Dialogue: DrawDialogue(); break;
                 case GameUiScreen.Corpse: DrawCorpse(); break;
                 case GameUiScreen.Container: DrawCorpse(); break;
+                case GameUiScreen.FollowerInventory: DrawCorpse(); break;
             }
             GUILayout.EndScrollView();
             if (!string.IsNullOrEmpty(Controller.Feedback)) GUILayout.Label(Controller.Feedback, GUI.skin.box);
@@ -1184,6 +1233,7 @@ namespace Arcanum.Runtime.UI
             GameUiScreen.Dialogue => "DIALOGUE",
             GameUiScreen.Corpse => "CORPSE",
             GameUiScreen.Container => "CONTAINER",
+            GameUiScreen.FollowerInventory => "FOLLOWER INVENTORY",
             _ => "OPENARCANUM",
         };
     }

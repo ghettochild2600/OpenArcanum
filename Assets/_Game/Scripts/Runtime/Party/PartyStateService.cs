@@ -9,7 +9,38 @@ using UnityEngine;
 
 namespace Arcanum.Runtime.Party
 {
-    public enum PartyOrder { Walk, Attack, StayClose, SpreadOut, BackOff, Follow }
+    public enum PartyOrder
+    {
+        Follow = -1,
+        Walk = 0,
+        Attack = 1,
+        StayClose = 2,
+        SpreadOut = 3,
+        BackOff = 4,
+        Wait = 5,
+    }
+
+    public readonly struct PartyFollowerOrderState
+    {
+        public PartyOrder LastOrder { get; }
+        public bool FollowingEnabled { get; }
+        public int DesiredFollowRange { get; }
+        public Vector2Int? OrderedLocation { get; }
+        public ArcanumObjectId OrderedTarget { get; }
+
+        internal PartyFollowerOrderState(PartyOrder lastOrder, bool followingEnabled,
+            int desiredFollowRange, Vector2Int? orderedLocation, ArcanumObjectId orderedTarget)
+        {
+            LastOrder = lastOrder;
+            FollowingEnabled = followingEnabled;
+            DesiredFollowRange = desiredFollowRange;
+            OrderedLocation = orderedLocation;
+            OrderedTarget = orderedTarget;
+        }
+
+        internal static PartyFollowerOrderState SourceDefault => new(PartyOrder.Follow, true,
+            PartyFollowerMovementService.SourceFollowRange, null, default);
+    }
 
     public enum PartyMutationFailure
     {
@@ -56,6 +87,7 @@ namespace Arcanum.Runtime.Party
     {
         private readonly WorldMapSessionCoordinator _world;
         private readonly List<PartyMember> _members = new();
+        private readonly Dictionary<ArcanumObjectId, PartyFollowerOrderState> _orders = new();
 
         public ArcanumObjectId Leader => _world.PlayerState?.Identity ?? default;
         public IReadOnlyList<PartyMember> Members => _members;
@@ -83,37 +115,84 @@ namespace Arcanum.Runtime.Party
         public bool IsPartyAlly(ArcanumObjectId identity)
             => identity.IsPersistent && (identity == Leader || IsMember(identity));
 
-        /// <summary>Records the six retail broadcast orders; follower movement/AI remains authoritative.</summary>
+        /// <summary>Records the six retail broadcast orders for every current follower.</summary>
         public bool IssueOrder(PartyOrder order, Vector2Int? location = null, ArcanumObjectId target = default)
         {
-            if (!Enum.IsDefined(typeof(PartyOrder), order) || !Leader.IsPersistent) return false;
-            if (order == PartyOrder.Walk && !location.HasValue) return false;
-            if (order == PartyOrder.Attack && !target.IsPersistent) return false;
-            LastOrder = order;
-            OrderedLocation = order == PartyOrder.Walk ? location : null;
-            OrderedTarget = order == PartyOrder.Attack ? target : default;
+            if (!ValidateOrder(order, location, target) || !Leader.IsPersistent) return false;
+            PartyFollowerOrderState next = ApplyOrder(CurrentAggregate(), order, location, target);
+            ApplyAggregate(next);
+            foreach (PartyMember member in _members)
+                _orders[member.Identity] = ApplyOrder(GetOrderState(member.Identity), order, location, target);
+            OrderChanged?.Invoke(order);
+            return true;
+        }
+
+        /// <summary>Source follower-menu route: the named portrait receives the order, not the whole party.</summary>
+        public bool IssueOrder(ArcanumObjectId follower, PartyOrder order,
+            Vector2Int? location = null, ArcanumObjectId target = default)
+        {
+            if (!IsMember(follower) || !ValidateOrder(order, location, target)) return false;
+            PartyFollowerOrderState next = ApplyOrder(GetOrderState(follower), order, location, target);
+            _orders[follower] = next;
+            ApplyAggregate(next);
+            OrderChanged?.Invoke(order);
+            return true;
+        }
+
+        public PartyFollowerOrderState GetOrderState(ArcanumObjectId follower)
+            => _orders.TryGetValue(follower, out PartyFollowerOrderState state)
+                ? state : PartyFollowerOrderState.SourceDefault;
+
+        private bool ValidateOrder(PartyOrder order, Vector2Int? location, ArcanumObjectId target)
+            => Enum.IsDefined(typeof(PartyOrder), order)
+               && (order != PartyOrder.Walk || location.HasValue)
+               && (order != PartyOrder.Attack || target.IsPersistent);
+
+        private PartyFollowerOrderState CurrentAggregate()
+            => new(LastOrder, FollowingEnabled, DesiredFollowRange, OrderedLocation, OrderedTarget);
+
+        private void ApplyAggregate(PartyFollowerOrderState state)
+        {
+            LastOrder = state.LastOrder;
+            FollowingEnabled = state.FollowingEnabled;
+            DesiredFollowRange = state.DesiredFollowRange;
+            OrderedLocation = state.OrderedLocation;
+            OrderedTarget = state.OrderedTarget;
+        }
+
+        private static PartyFollowerOrderState ApplyOrder(PartyFollowerOrderState current,
+            PartyOrder order, Vector2Int? location, ArcanumObjectId target)
+        {
+            bool following = current.FollowingEnabled;
+            int range = current.DesiredFollowRange;
             switch (order)
             {
                 case PartyOrder.Walk:
                 case PartyOrder.Attack:
+                    following = true;
+                    break;
                 case PartyOrder.Follow:
-                    FollowingEnabled = true;
-                    if (order == PartyOrder.Follow) DesiredFollowRange = PartyFollowerMovementService.SourceFollowRange;
+                    following = true;
+                    range = PartyFollowerMovementService.SourceFollowRange;
                     break;
                 case PartyOrder.StayClose:
-                    FollowingEnabled = true;
-                    DesiredFollowRange = PartyFollowerMovementService.SourceCloseRange;
+                    following = true;
+                    range = PartyFollowerMovementService.SourceCloseRange;
                     break;
                 case PartyOrder.SpreadOut:
-                    FollowingEnabled = true;
-                    DesiredFollowRange = PartyFollowerMovementService.SourceSpreadRange;
+                    following = true;
+                    range = PartyFollowerMovementService.SourceSpreadRange;
                     break;
                 case PartyOrder.BackOff:
-                    FollowingEnabled = false;
+                    // Source only clears this follower's attack intent; it does not make them wait.
+                    break;
+                case PartyOrder.Wait:
+                    following = false;
                     break;
             }
-            OrderChanged?.Invoke(order);
-            return true;
+            return new PartyFollowerOrderState(order, following, range,
+                order == PartyOrder.Walk ? location : null,
+                order == PartyOrder.Attack ? target : default);
         }
 
         public PartyMutationResult Join(ArcanumObjectId follower, bool forced = false)
@@ -122,6 +201,7 @@ namespace Arcanum.Runtime.Party
             if (!preview.Succeeded) return preview;
 
             _members.Add(new PartyMember(follower, forced));
+            _orders[follower] = PartyFollowerOrderState.SourceDefault;
             MembershipChanged?.Invoke();
             return new PartyMutationResult(PartyMutationFailure.None, follower);
         }
@@ -144,6 +224,7 @@ namespace Arcanum.Runtime.Party
             if (!preview.Succeeded) return preview;
             int index = IndexOf(follower);
             _members.RemoveAt(index);
+            _orders.Remove(follower);
             MembershipChanged?.Invoke();
             return new PartyMutationResult(PartyMutationFailure.None, follower);
         }
@@ -158,7 +239,10 @@ namespace Arcanum.Runtime.Party
         internal void RestoreMembership(IEnumerable<PartyMember> members)
         {
             _members.Clear();
+            _orders.Clear();
             if (members != null) _members.AddRange(members);
+            foreach (PartyMember member in _members)
+                _orders[member.Identity] = PartyFollowerOrderState.SourceDefault;
             MembershipChanged?.Invoke();
         }
 
@@ -181,6 +265,7 @@ namespace Arcanum.Runtime.Party
                 return false;
             }
             _members.Add(member);
+            _orders[member.Identity] = PartyFollowerOrderState.SourceDefault;
             return true;
         }
 

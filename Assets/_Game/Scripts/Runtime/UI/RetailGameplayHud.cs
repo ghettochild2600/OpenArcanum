@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Arcanum.Formats.Objects;
 using Arcanum.Runtime.Magic;
+using Arcanum.Runtime.Party;
 using Arcanum.Runtime.World;
 using OpenArcanum.UI;
 using UnityEngine;
@@ -36,6 +37,10 @@ namespace Arcanum.Runtime.UI
         public const int FollowerFatigueSourceId = 504;
         public const int FollowerHealthSourceId = 505;
         public const int FollowerPoisonSourceId = 616;
+        public const int FollowerCommandMenuSourceId = 826;
+        public const int FollowerCommandFontSourceId = 229;
+        public const int FollowerCommandCount = 8;
+        public const float FollowerCommandRowHeight = 18f;
         public const int FollowerLowHealthThreshold = 20;
         public const int FollowerPoisonThreshold = 20;
 
@@ -60,6 +65,7 @@ namespace Arcanum.Runtime.UI
         public static readonly Rect FollowerPortrait = new Rect(4f, 4f, 32f, 32f);
         public static readonly Rect FollowerHealth = new Rect(3f, 39f, 34f, 3f);
         public static readonly Rect FollowerFatigue = new Rect(3f, 44f, 34f, 3f);
+        public static readonly Rect FollowerCommandFirstRow = new Rect(10f, 3f, 118f, 15f);
         public static readonly Rect AmmoButton = new Rect(61f, 509f, 37f, 24f);
         public static readonly Rect[] RecentActions =
             { new Rect(69f, 548f, 32f, 32f), new Rect(114f, 548f, 32f, 32f) };
@@ -232,6 +238,17 @@ namespace Arcanum.Runtime.UI
         private readonly SourceUiImage[] _followerHealthBars = new SourceUiImage[RetailGameplayHudLayout.FollowerSlotCount];
         private readonly SourceUiImage[] _followerFatigueBars = new SourceUiImage[RetailGameplayHudLayout.FollowerSlotCount];
         private readonly Image[] _followerDangerTints = new Image[RetailGameplayHudLayout.FollowerSlotCount];
+        private readonly ArcanumObjectId[] _followerIdentities =
+            new ArcanumObjectId[RetailGameplayHudLayout.FollowerSlotCount];
+        private readonly SourceUiBitmapText[] _followerCommandLabels =
+            new SourceUiBitmapText[RetailGameplayHudLayout.FollowerCommandCount];
+        private readonly RetailFollowerCommandTarget[] _followerCommandTargets =
+            new RetailFollowerCommandTarget[RetailGameplayHudLayout.FollowerCommandCount];
+        private Action<ArcanumObjectId> _interactFollower;
+        private Action<ArcanumObjectId, PartyOrder> _presentFollowerOrder;
+        private RectTransform _followerCommandDismissLayer;
+        private RectTransform _followerCommandMenu;
+        private ArcanumObjectId _followerCommandMember;
         private Camera _managedCamera;
         private Rect _originalCameraRect;
         private float _originalCameraOrthographicSize;
@@ -257,7 +274,9 @@ namespace Arcanum.Runtime.UI
         public void SetWorldTarget(GameUiWorldTargetView target) => _worldTarget = target;
 
         public void Bind(GameUiController controller, WorldMapSessionCoordinator session,
-            Action<GameUiScreen> openScreen, UiSkinResolver resolver = null)
+            Action<GameUiScreen> openScreen, UiSkinResolver resolver = null,
+            Action<ArcanumObjectId> interactFollower = null,
+            Action<ArcanumObjectId, PartyOrder> presentFollowerOrder = null)
         {
             if (controller == null) throw new ArgumentNullException(nameof(controller));
             if (session == null) throw new ArgumentNullException(nameof(session));
@@ -269,6 +288,8 @@ namespace Arcanum.Runtime.UI
             _controller = controller;
             _session = session;
             _openScreen = openScreen ?? throw new ArgumentNullException(nameof(openScreen));
+            _interactFollower = interactFollower;
+            _presentFollowerOrder = presentFollowerOrder;
             try
             {
                 _resolver = resolver ?? UiSkinResolver.CreateProduction(ReportProductionDiagnostic);
@@ -1075,8 +1096,138 @@ namespace Arcanum.Runtime.UI
                 tint.color = new Color(1f, 0f, 0f, .35f);
                 tint.raycastTarget = false;
                 _followerDangerTints[index] = tint;
+
+                Image hit = slot.gameObject.AddComponent<Image>();
+                hit.color = Color.clear;
+                hit.raycastTarget = true;
+                slot.gameObject.AddComponent<RetailFollowerSlotTarget>().Bind(index,
+                    FollowerPointerEnter, FollowerPointerExit, FollowerPointerClick);
                 slot.gameObject.SetActive(false);
             }
+            BuildFollowerCommandMenu();
+        }
+
+        private void BuildFollowerCommandMenu()
+        {
+            _followerCommandDismissLayer = AddRect("Follower Command Dismiss Layer", _followerLayer,
+                new Rect(0f, 0f, 800f, 600f));
+            Image dismiss = _followerCommandDismissLayer.gameObject.AddComponent<Image>();
+            dismiss.color = Color.clear;
+            dismiss.raycastTarget = true;
+            _followerCommandDismissLayer.gameObject.AddComponent<RetailFollowerCommandTarget>()
+                .Bind(-1, null, null, _ => CloseFollowerCommandMenu());
+
+            Vector2 size = ResolveLogicalSize(new UiAssetKey(RetailGameplayHudLayout.FollowerCommandMenuSourceId));
+            _followerCommandMenu = AddRect("Follower Command Menu", _followerLayer,
+                new Rect(51f, 50f, size.x, size.y));
+            AddImage("Follower Command Background", _followerCommandMenu,
+                new UiAssetKey(RetailGameplayHudLayout.FollowerCommandMenuSourceId),
+                new Rect(0f, 0f, size.x, size.y), false);
+            string[] fallback =
+            {
+                "Walk", "Attack", "Stay Close", "Spread Out", "Back Off", "Wait", "Inventory",
+                "Character Sheet",
+            };
+            for (int index = 0; index < RetailGameplayHudLayout.FollowerCommandCount; index++)
+            {
+                Rect row = RetailGameplayHudLayout.FollowerCommandFirstRow;
+                row.y += RetailGameplayHudLayout.FollowerCommandRowHeight * index;
+                RectTransform hit = AddRect($"Follower Command {index}", _followerCommandMenu, row);
+                Image image = hit.gameObject.AddComponent<Image>();
+                image.color = Color.clear;
+                image.raycastTarget = true;
+                int captured = index;
+                _followerCommandTargets[index] = hit.gameObject.AddComponent<RetailFollowerCommandTarget>();
+                _followerCommandTargets[index].Bind(index,
+                    _ => RefreshFollowerCommandMenu(captured),
+                    _ => RefreshFollowerCommandMenu(-1),
+                    ExecuteFollowerCommand);
+                SourceUiBitmapText label = AddText($"Follower Command Label {index}", _followerCommandMenu,
+                    row, SourceMessage("mes/follower_ui.mes", index, fallback[index]),
+                    RetailGameplayHudLayout.FollowerCommandFontSourceId);
+                label.transform.SetAsLastSibling();
+                _followerCommandLabels[index] = label;
+            }
+            CloseFollowerCommandMenu();
+        }
+
+        private void FollowerPointerEnter(int index)
+        {
+            if (index < 0 || index >= _followerIdentities.Length) return;
+            ArcanumObjectId identity = _followerIdentities[index];
+            if (!identity.IsNull) SetWorldTarget(_controller.ProjectWorldTarget(identity));
+        }
+
+        private void FollowerPointerExit(int index)
+        {
+            if (index < 0 || index >= _followerIdentities.Length) return;
+            if (_worldTarget?.Identity == _followerIdentities[index]) SetWorldTarget(null);
+        }
+
+        private void FollowerPointerClick(int index, PointerEventData.InputButton button)
+        {
+            if (index < 0 || index >= _followerIdentities.Length) return;
+            ArcanumObjectId identity = _followerIdentities[index];
+            if (identity.IsNull) return;
+            if (button == PointerEventData.InputButton.Right) OpenFollowerCommandMenu(index, identity);
+            else if (button == PointerEventData.InputButton.Left)
+            {
+                CloseFollowerCommandMenu();
+                if (_interactFollower != null) _interactFollower(identity);
+                else _controller.SubmitWorldTarget(identity);
+            }
+        }
+
+        private void OpenFollowerCommandMenu(int index, ArcanumObjectId identity)
+        {
+            _followerCommandMember = identity;
+            Rect slot = RetailGameplayHudLayout.FollowerSlot(index);
+            _followerCommandMenu.anchoredPosition = new Vector2(slot.x + slot.width, -slot.y);
+            _followerCommandDismissLayer.gameObject.SetActive(true);
+            _followerCommandMenu.gameObject.SetActive(true);
+            _followerCommandDismissLayer.SetAsLastSibling();
+            _followerCommandMenu.SetAsLastSibling();
+            RefreshFollowerCommandMenu(-1);
+        }
+
+        private void CloseFollowerCommandMenu()
+        {
+            _followerCommandMember = default;
+            if (_followerCommandMenu != null) _followerCommandMenu.gameObject.SetActive(false);
+            if (_followerCommandDismissLayer != null)
+                _followerCommandDismissLayer.gameObject.SetActive(false);
+        }
+
+        private bool FollowerCommandEnabled(int index)
+            => !_followerCommandMember.IsNull
+               && (index != 6 || _controller.CanOpenFollowerInventory(_followerCommandMember));
+
+        private void RefreshFollowerCommandMenu(int highlighted)
+        {
+            for (int index = 0; index < _followerCommandLabels.Length; index++)
+            {
+                bool enabled = FollowerCommandEnabled(index);
+                Color color = !enabled ? new Color32(128, 128, 128, 255)
+                    : index == highlighted ? new Color32(255, 210, 0, 255) : Color.white;
+                _followerCommandLabels[index].SetTint(color);
+                _followerCommandTargets[index].SetEnabled(enabled);
+            }
+        }
+
+        private void ExecuteFollowerCommand(int index)
+        {
+            if (!FollowerCommandEnabled(index)) return;
+            ArcanumObjectId follower = _followerCommandMember;
+            CloseFollowerCommandMenu();
+            if (index <= (int)PartyOrder.Wait)
+            {
+                PartyOrder order = (PartyOrder)index;
+                if (_controller.IssueFollowerOrder(follower, order)
+                    && order is not (PartyOrder.Walk or PartyOrder.Attack))
+                    _presentFollowerOrder?.Invoke(follower, order);
+            }
+            else if (index == 6) _controller.OpenFollowerInventory(follower);
+            else if (index == 7) _controller.OpenFollowerCharacter(follower);
         }
 
         private SourceUiImage AddFollowerBar(string name, RectTransform slot, int sourceId, Rect rect)
@@ -1095,6 +1246,7 @@ namespace Arcanum.Runtime.UI
             {
                 bool active = index < members.Count;
                 _followerSlots[index].gameObject.SetActive(active);
+                _followerIdentities[index] = active ? members[index].Identity : default;
                 if (!active) continue;
                 GameUiPartyMemberView member = members[index];
                 SourceUiImage health = _followerHealthBars[index];
@@ -1328,6 +1480,14 @@ namespace Arcanum.Runtime.UI
             Array.Clear(_followerHealthBars, 0, _followerHealthBars.Length);
             Array.Clear(_followerFatigueBars, 0, _followerFatigueBars.Length);
             Array.Clear(_followerDangerTints, 0, _followerDangerTints.Length);
+            Array.Clear(_followerIdentities, 0, _followerIdentities.Length);
+            Array.Clear(_followerCommandLabels, 0, _followerCommandLabels.Length);
+            Array.Clear(_followerCommandTargets, 0, _followerCommandTargets.Length);
+            _followerCommandDismissLayer = null;
+            _followerCommandMenu = null;
+            _followerCommandMember = default;
+            _interactFollower = null;
+            _presentFollowerOrder = null;
             Array.Clear(_maintainedSpellSlots, 0, _maintainedSpellSlots.Length);
             Array.Clear(_maintainedSpellButtons, 0, _maintainedSpellButtons.Length);
             Array.Clear(_recentActionImages, 0, _recentActionImages.Length);
@@ -1344,6 +1504,55 @@ namespace Arcanum.Runtime.UI
         {
             if (message?.IndexOf(" is missing; using Original retail frame", StringComparison.Ordinal) >= 0) return;
             Debug.LogWarning(message);
+        }
+    }
+
+    public sealed class RetailFollowerSlotTarget : MonoBehaviour, IPointerEnterHandler,
+        IPointerExitHandler, IPointerClickHandler
+    {
+        private int _index;
+        private Action<int> _entered;
+        private Action<int> _exited;
+        private Action<int, PointerEventData.InputButton> _clicked;
+
+        public void Bind(int index, Action<int> entered, Action<int> exited,
+            Action<int, PointerEventData.InputButton> clicked)
+        {
+            _index = index;
+            _entered = entered;
+            _exited = exited;
+            _clicked = clicked;
+        }
+
+        public void OnPointerEnter(PointerEventData eventData) => _entered?.Invoke(_index);
+        public void OnPointerExit(PointerEventData eventData) => _exited?.Invoke(_index);
+        public void OnPointerClick(PointerEventData eventData)
+            => _clicked?.Invoke(_index, eventData?.button ?? PointerEventData.InputButton.Left);
+    }
+
+    public sealed class RetailFollowerCommandTarget : MonoBehaviour, IPointerEnterHandler,
+        IPointerExitHandler, IPointerClickHandler
+    {
+        private int _index;
+        private bool _enabled = true;
+        private Action<int> _entered;
+        private Action<int> _exited;
+        private Action<int> _clicked;
+
+        public void Bind(int index, Action<int> entered, Action<int> exited, Action<int> clicked)
+        {
+            _index = index;
+            _entered = entered;
+            _exited = exited;
+            _clicked = clicked;
+        }
+
+        public void SetEnabled(bool enabled) => _enabled = enabled;
+        public void OnPointerEnter(PointerEventData eventData) => _entered?.Invoke(_index);
+        public void OnPointerExit(PointerEventData eventData) => _exited?.Invoke(_index);
+        public void OnPointerClick(PointerEventData eventData)
+        {
+            if (_enabled) _clicked?.Invoke(_index);
         }
     }
 }

@@ -2,11 +2,14 @@ using System;
 using System.Collections;
 using System.Linq;
 using Arcanum.Formats.Objects;
+using Arcanum.Runtime.Dialogue;
+using Arcanum.Runtime.Party;
 using Arcanum.Runtime.UI;
 using Arcanum.Runtime.World;
 using OpenArcanum.UI;
 using UnityEditor;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.UI;
 using Object = UnityEngine.Object;
 
@@ -95,6 +98,73 @@ namespace OpenArcanum.Editor
             Check(Descendant(slot, "Portrait").GetComponent<Image>().sprite != null,
                 "retail portrait/gameport source supplies the live Virgil portrait");
 
+            RetailFollowerSlotTarget slotTarget = Require(slot.GetComponent<RetailFollowerSlotTarget>(),
+                "follower portrait pointer target");
+            slotTarget.OnPointerEnter(null);
+            view.Synchronize(true);
+            Check(view.WorldTarget?.Identity == Virgil && !string.IsNullOrWhiteSpace(view.WorldTarget.Name),
+                "portrait hover projects Virgil examination into the bottom HUD");
+            slotTarget.OnPointerExit(null);
+            view.Synchronize(true);
+            Check(view.WorldTarget == null, "portrait exit clears Virgil examination");
+
+            slotTarget.OnPointerClick(new PointerEventData(EventSystem.current)
+                { button = PointerEventData.InputButton.Left });
+            yield return null;
+            Check(session.Dialogue.Phase == DialogueSessionPhase.AwaitingPlayerChoice,
+                "left click routes through normal Virgil interaction/dialogue");
+            controller.CancelDialogue();
+            yield return null;
+
+            slotTarget.OnPointerClick(new PointerEventData(EventSystem.current)
+                { button = PointerEventData.InputButton.Right });
+            RectTransform commandMenu = (RectTransform)Descendant(view, "Follower Command Menu");
+            Check(commandMenu.gameObject.activeSelf && commandMenu.anchoredPosition == new Vector2(51f, -50f),
+                "right click opens source command menu beside the portrait");
+            SourceUiImage commandBackground = Descendant(commandMenu, "Follower Command Background")
+                .GetComponent<SourceUiImage>();
+            Check(commandBackground.Key.SourceId == RetailGameplayHudLayout.FollowerCommandMenuSourceId,
+                "command menu uses source ART 826");
+            string[] expectedCommands =
+            {
+                "Walk", "Attack", "Stay Close", "Spread Out", "Back Off", "Wait", "Inventory",
+                "Character Sheet",
+            };
+            for (int index = 0; index < expectedCommands.Length; index++)
+            {
+                RectTransform row = (RectTransform)Descendant(commandMenu, $"Follower Command {index}");
+                SourceUiBitmapText label = Descendant(commandMenu, $"Follower Command Label {index}")
+                    .GetComponent<SourceUiBitmapText>();
+                Check(row.anchoredPosition == new Vector2(10f, -(3f + 18f * index))
+                      && row.sizeDelta == new Vector2(118f, 15f), $"source command row {index} rectangle");
+                Check(label.Text == expectedCommands[index]
+                      && label.FontSourceId == RetailGameplayHudLayout.FollowerCommandFontSourceId,
+                    $"source command row {index} label/font");
+            }
+
+            Descendant(commandMenu, "Follower Command 5").GetComponent<RetailFollowerCommandTarget>()
+                .OnPointerClick(null);
+            PartyFollowerOrderState order = session.Party.GetOrderState(Virgil);
+            Check(order.LastOrder == PartyOrder.Wait && !order.FollowingEnabled,
+                "Wait stops only Virgil following");
+            slotTarget.OnPointerClick(new PointerEventData(EventSystem.current)
+                { button = PointerEventData.InputButton.Right });
+            Descendant(commandMenu, "Follower Command 2").GetComponent<RetailFollowerCommandTarget>()
+                .OnPointerClick(null);
+            order = session.Party.GetOrderState(Virgil);
+            Check(order.LastOrder == PartyOrder.StayClose && order.FollowingEnabled
+                  && order.DesiredFollowRange == PartyFollowerMovementService.SourceCloseRange,
+                "Stay Close restores source formation for Virgil");
+            Check(controller.CanOpenFollowerInventory(Virgil)
+                  && controller.OpenFollowerInventory(Virgil)
+                  && controller.OpenInventoryTarget == Virgil,
+                "legal active follower inventory opens through shared inventory authority");
+            controller.Close();
+            Check(controller.OpenFollowerCharacter(Virgil)
+                  && controller.CharacterTarget == Virgil && controller.CharacterReadOnly,
+                "Character Sheet opens passive Virgil examination");
+            controller.Close();
+
             int maximumFatigue = session.Vitality.GetMaximumFatigue(Virgil);
             session.Vitality.ApplyHitPointDamage(Virgil,
                 Mathf.Max(1, session.Vitality.GetCurrentHitPoints(Virgil) - 1));
@@ -132,10 +202,20 @@ namespace OpenArcanum.Editor
                   && member.HealthPercent < RetailGameplayHudLayout.FollowerLowHealthThreshold,
                 "save/load reconstructs follower membership, poison, and vitality projection");
 
+            slot = (RectTransform)Descendant(view, "Follower Slot 1");
+            slotTarget = Require(slot.GetComponent<RetailFollowerSlotTarget>(),
+                "reconstructed follower portrait pointer target");
+            slotTarget.OnPointerClick(new PointerEventData(EventSystem.current)
+                { button = PointerEventData.InputButton.Right });
+            commandMenu = (RectTransform)Descendant(view, "Follower Command Menu");
+            Check(commandMenu.gameObject.activeSelf, "source follower command menu remains open for inspection");
+
             Debug.Log("UI-C FOLLOWER HUD PHYSICAL VALIDATION: PASS; resolution=800x600; "
                       + "follower=authentic Virgil 17102; slots=6; first=(11,50,40,49); "
                       + $"portrait={member.PortraitId}; health={member.HealthPercent}%; "
                       + $"fatigue={member.FatiguePercent}%; poison={member.PoisonLevel}; "
+                      + "hover=examination; left-click=dialogue; right-click=ART826; commands=8; "
+                      + "wait/stay-close=per-member; inventory=shared-authority; character=passive; "
                       + "poison-art=616; low-health-tint=active; save-load=reconstructed. "
                       + "Play Mode remains open for native inspection.");
         }

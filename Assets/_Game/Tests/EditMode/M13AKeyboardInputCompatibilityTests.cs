@@ -180,6 +180,10 @@ namespace Arcanum.Formats.Tests
             Assert.That(party.IssueOrder(PartyOrder.SpreadOut), Is.True);
             Assert.That(party.DesiredFollowRange, Is.EqualTo(PartyFollowerMovementService.SourceSpreadRange));
             Assert.That(party.IssueOrder(PartyOrder.BackOff), Is.True);
+            Assert.That((party.FollowingEnabled, party.DesiredFollowRange),
+                Is.EqualTo((true, PartyFollowerMovementService.SourceSpreadRange)),
+                "source Back Off stops attacking without changing the follow/formation order");
+            Assert.That(party.IssueOrder(PartyOrder.Wait), Is.True);
             Assert.That(party.FollowingEnabled, Is.False);
             Assert.That(party.IssueOrder(PartyOrder.Follow), Is.True);
             Assert.That((party.FollowingEnabled, party.DesiredFollowRange),

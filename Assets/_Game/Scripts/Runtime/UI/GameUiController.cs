@@ -15,18 +15,20 @@ using Arcanum.Runtime.Save;
 using Arcanum.Runtime.Technology;
 using Arcanum.Runtime.World;
 using Arcanum.Runtime.Audio;
+using UnityEngine;
 
 namespace Arcanum.Runtime.UI
 {
     public enum GameUiScreen
     {
         None, MainMenu, CharacterCreation, PregeneratedCharacter, StartingEquipment, Inventory, Character, Skills, Magic, Technology, Crafting, Options,
-        Journal, Map, Party, Merchant, SaveLoad, Dialogue, Container, Corpse,
+        Journal, Map, Party, Merchant, SaveLoad, Dialogue, Container, Corpse, FollowerInventory,
     }
 
     public enum GameUiCursorMode
     {
         Default, Move, Use, Attack, Invalid, Item, SpellTarget, TechnologyTarget, MerchantTarget,
+        FollowerWalkTarget, FollowerAttackTarget,
     }
 
     public enum GameUiHudPanel { None, Fate, Sleep, Skills }
@@ -252,7 +254,10 @@ namespace Arcanum.Runtime.UI
         private ArcanumObjectId _merchant;
         private ArcanumObjectId _corpse;
         private ArcanumObjectId _container;
+        private ArcanumObjectId _followerInventory;
         private ArcanumObjectId _character;
+        private ArcanumObjectId _pendingFollower;
+        private PartyOrder _pendingFollowerOrder = PartyOrder.Follow;
         private int _pendingSpell = -1;
         private ArcanumObjectId _pendingTechnologyItem;
         private IGameAudioPresentation _audio;
@@ -272,7 +277,10 @@ namespace Arcanum.Runtime.UI
         public ArcanumObjectId Corpse => _corpse;
         public ArcanumObjectId Container => _container;
         public ArcanumObjectId OpenInventoryTarget => Screen == GameUiScreen.Corpse ? _corpse
-            : Screen == GameUiScreen.Container ? _container : default;
+            : Screen == GameUiScreen.Container ? _container
+            : Screen == GameUiScreen.FollowerInventory ? _followerInventory : default;
+        public ArcanumObjectId FollowerInventoryTarget => _followerInventory;
+        public ArcanumObjectId PendingFollower => _pendingFollower;
         public ArcanumObjectId MerchantTarget => _merchant;
         public ArcanumObjectId CharacterTarget => _character.IsNull ? Player : _character;
         public bool CharacterReadOnly => CharacterTarget != Player;
@@ -289,7 +297,9 @@ namespace Arcanum.Runtime.UI
         public bool HasPlayer => _session.PlayerState != null;
         public ArcanumObjectId Player => _session.PlayerState?.Identity ?? default;
         public bool IsModalOpen => Screen != GameUiScreen.None;
-        public bool BlocksWorldInput => Screen != GameUiScreen.None && Screen != GameUiScreen.Dialogue;
+        public bool BlocksWorldInput => Screen != GameUiScreen.None && Screen != GameUiScreen.Dialogue
+                                        || CursorMode is GameUiCursorMode.FollowerWalkTarget
+                                            or GameUiCursorMode.FollowerAttackTarget;
         public GameUiHudPanel HudPanel { get; private set; }
         public SleepLocationMode ActiveSleepMode { get; private set; }
         public bool IsHudPanelOpen => HudPanel != GameUiHudPanel.None;
@@ -353,10 +363,13 @@ namespace Arcanum.Runtime.UI
             HudPanel = GameUiHudPanel.None;
             Screen = screen;
             CursorMode = GameUiCursorMode.Default;
+            _pendingFollower = default;
+            _pendingFollowerOrder = PartyOrder.Follow;
             SelectedItem = default;
             SelectedWorldTarget = default;
             if (screen != GameUiScreen.Corpse) _corpse = default;
             if (screen != GameUiScreen.Container) _container = default;
+            if (screen != GameUiScreen.FollowerInventory) _followerInventory = default;
             _character = screen is GameUiScreen.Character or GameUiScreen.Skills or GameUiScreen.Magic
                 or GameUiScreen.Technology
                 ? Player : default;
@@ -575,12 +588,17 @@ namespace Arcanum.Runtime.UI
             SaveLoad.Close();
             Screen = GameUiScreen.None;
             CursorMode = GameUiCursorMode.Default;
+            _pendingFollower = default;
+            _pendingFollowerOrder = PartyOrder.Follow;
             SelectedItem = default;
             SelectedWorldTarget = default;
             _merchant = default;
             _corpse = default;
             _container = default;
+            _followerInventory = default;
             _character = default;
+            _pendingFollower = default;
+            _pendingFollowerOrder = PartyOrder.Follow;
             _pendingSpell = -1;
             _pendingTechnologyItem = default;
             ClearAcceptedCharacterEditorState();
@@ -1132,6 +1150,78 @@ namespace Arcanum.Runtime.UI
             if (!Open(GameUiScreen.Container)) return false;
             _container = container;
             return true;
+        }
+
+        public bool CanOpenFollowerInventory(ArcanumObjectId follower)
+        {
+            if (!_session.Party.IsMember(follower)
+                || !_session.TryGetObjectState(follower, out PersistentObjectState state)
+                || state.Type != ObjectType.Npc || state.Off
+                || !_session.TryGetLoadedObject(follower, out _)
+                || !_session.Vitality.TryGet(follower, out _)
+                || _session.Vitality.IsDead(follower)) return false;
+            bool fatigueImmune = _session.Combat.TryGetActorSource(follower, out CombatActorSource source)
+                                 && (source.CritterFlags & 0x04000004) != 0;
+            return !_session.Vitality.IsUnconscious(follower, fatigueImmune)
+                   && (!_session.Combat.IsActive || !_session.Combat.IsParticipantEngaged(follower));
+        }
+
+        public bool OpenFollowerInventory(ArcanumObjectId follower)
+        {
+            if (!CanOpenFollowerInventory(follower)) return Reject("That follower's inventory is unavailable.");
+            if (!Open(GameUiScreen.FollowerInventory)) return false;
+            _followerInventory = follower;
+            return true;
+        }
+
+        public bool OpenFollowerCharacter(ArcanumObjectId follower)
+        {
+            if (!_session.Party.IsMember(follower)) return Reject("That follower is unavailable.");
+            if (!Open(GameUiScreen.Character)) return false;
+            _character = follower;
+            return true;
+        }
+
+        public bool BeginFollowerOrder(ArcanumObjectId follower, PartyOrder order)
+        {
+            if (!_session.Party.IsMember(follower)
+                || order is not (PartyOrder.Walk or PartyOrder.Attack))
+                return Reject("That follower order is unavailable.");
+            if (!_session.Party.CanAccompany(follower))
+                return Reject("That follower cannot act.");
+            _pendingFollower = follower;
+            _pendingFollowerOrder = order;
+            CursorMode = order == PartyOrder.Walk
+                ? GameUiCursorMode.FollowerWalkTarget : GameUiCursorMode.FollowerAttackTarget;
+            Feedback = order == PartyOrder.Walk ? "Select a destination." : "Select a target.";
+            return true;
+        }
+
+        public bool IssueFollowerOrder(ArcanumObjectId follower, PartyOrder order)
+        {
+            if (order is PartyOrder.Walk or PartyOrder.Attack)
+                return BeginFollowerOrder(follower, order);
+            bool accepted = _session.Party.IssueOrder(follower, order);
+            return Complete(accepted, accepted ? $"{ObjectName(follower)}: {order}."
+                : "That follower order is unavailable.");
+        }
+
+        public bool SubmitFollowerOrderTarget(Vector2Int? location, ArcanumObjectId target = default)
+        {
+            if (_pendingFollower.IsNull
+                || _pendingFollowerOrder is not (PartyOrder.Walk or PartyOrder.Attack))
+                return Reject("No follower order is awaiting a target.");
+            ArcanumObjectId follower = _pendingFollower;
+            PartyOrder order = _pendingFollowerOrder;
+            bool accepted = _session.Party.IssueOrder(follower, order, location, target);
+            if (accepted)
+            {
+                _pendingFollower = default;
+                _pendingFollowerOrder = PartyOrder.Follow;
+                CursorMode = GameUiCursorMode.Default;
+            }
+            return Complete(accepted, accepted ? $"{ObjectName(follower)}: {order}."
+                : "That follower target is unavailable.");
         }
 
         public IReadOnlyList<GameUiItemView> ProjectOpenInventoryTarget()

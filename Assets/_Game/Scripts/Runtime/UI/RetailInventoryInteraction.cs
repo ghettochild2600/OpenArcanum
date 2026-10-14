@@ -88,28 +88,29 @@ namespace Arcanum.Runtime.UI
         {
             if (!IsAvailable || _controller == null) return;
             bool visible = _controller.HasPlayer && _controller.Screen is GameUiScreen.Container
-                or GameUiScreen.Corpse or GameUiScreen.Merchant;
+                or GameUiScreen.Corpse or GameUiScreen.Merchant or GameUiScreen.FollowerInventory;
             if (_canvasRoot.activeSelf != visible) _canvasRoot.SetActive(visible);
             if (!visible) return;
 
-            bool barter = _controller.Screen == GameUiScreen.Merchant;
-            _takeAll.SetActive(!barter);
-            _background.SetKey(new UiAssetKey(barter
+            bool merchantMode = _controller.Screen == GameUiScreen.Merchant;
+            bool barterPresentation = merchantMode || _controller.Screen == GameUiScreen.FollowerInventory;
+            _takeAll.SetActive(!barterPresentation);
+            _background.SetKey(new UiAssetKey(barterPresentation
                 ? RetailInventoryInteractionLayout.BarterBackgroundSourceId
                 : RetailInventoryInteractionLayout.LootBackgroundSourceId));
-            Rect targetGrid = barter ? RetailInventoryInteractionLayout.BarterGrid
+            Rect targetGrid = barterPresentation ? RetailInventoryInteractionLayout.BarterGrid
                 : RetailInventoryInteractionLayout.LootGrid;
             Place(_targetDrop, targetGrid);
-            Place((RectTransform)_scrollbar.transform, barter
+            Place((RectTransform)_scrollbar.transform, barterPresentation
                 ? RetailInventoryInteractionLayout.BarterScrollbar
                 : RetailInventoryInteractionLayout.LootScrollbar);
 
-            IReadOnlyList<GameUiMerchantItemView> merchant = barter
+            IReadOnlyList<GameUiMerchantItemView> merchant = merchantMode
                 ? _controller.ProjectMerchantWares() : Array.Empty<GameUiMerchantItemView>();
-            IReadOnlyList<GameUiItemView> target = barter
+            IReadOnlyList<GameUiItemView> target = merchantMode
                 ? merchant.Select(value => value.Item).ToArray()
                 : _controller.ProjectOpenInventoryTarget();
-            IReadOnlyList<GameUiItemView> player = barter
+            IReadOnlyList<GameUiItemView> player = merchantMode
                 ? _controller.ProjectPlayerSaleItems().Select(value => value.Item).ToArray()
                 : _controller.ProjectInventory().Where(value => !value.IsEquipped).ToArray();
             _maximumScrollRow = MaximumScrollRow(target, Mathf.FloorToInt(targetGrid.height / 32f));
@@ -120,12 +121,12 @@ namespace Arcanum.Runtime.UI
             _scrollbar.size = _maximumScrollRow == 0 ? 1f
                 : Mathf.Clamp01((targetGrid.height / 32f) / (_maximumScrollRow + targetGrid.height / 32f));
 
-            int signature = ProjectionSignature(barter, target, player, merchant);
+            int signature = ProjectionSignature(merchantMode, target, player, merchant);
             if (_dirty || signature != _signature)
             {
                 _dirty = false;
                 _signature = signature;
-                Rebuild(barter, targetGrid, target, player, merchant);
+                Rebuild(merchantMode, targetGrid, target, player, merchant);
             }
         }
 
@@ -173,7 +174,8 @@ namespace Arcanum.Runtime.UI
             _takeAll = AddSourceButton("Take All", _window, RetailInventoryInteractionLayout.TakeAllSourceId,
                 RetailInventoryInteractionLayout.TakeAll, () =>
                 {
-                    if (_controller.Screen is GameUiScreen.Container or GameUiScreen.Corpse)
+                    if (_controller.Screen is GameUiScreen.Container or GameUiScreen.Corpse
+                        or GameUiScreen.FollowerInventory)
                         _controller.TakeAllOpenInventory();
                     _dirty = true;
                     Synchronize();
