@@ -29,6 +29,8 @@ namespace Arcanum.Runtime.UI
         public const int CounterFontSourceId = 171;
         public const int ContextualHelpIconSourceId = 444;
         public const int ContextualHelpFontSourceId = 229;
+        public const int ContextualHelpTitleFontSourceId = 27;
+        public const float ContextualHelpLineHeight = 18f;
 
         public static readonly Rect TopInterface = new Rect(0f, 0f, 800f, 41f);
         public static readonly Rect WorldViewport = new Rect(0f, 41f, 800f, 400f);
@@ -46,6 +48,8 @@ namespace Arcanum.Runtime.UI
         public static readonly Rect WorldTargetName = new Rect(290f, 504f, 291f, 19f);
         public static readonly Rect WorldTargetStatus = new Rect(290f, 528f, 291f, 18f);
         public static readonly Rect ContextualHelpText = new Rect(290f, 504f, 291f, 78f);
+        public static readonly Rect ContextualHelpTitle = new Rect(290f, 504f, 291f, 19f);
+        public static readonly Rect ContextualHelpBody = new Rect(290f, 528f, 291f, 54f);
         public static readonly Rect AmmoButton = new Rect(61f, 509f, 37f, 24f);
         public static readonly Rect[] RecentActions =
             { new Rect(69f, 548f, 32f, 32f), new Rect(114f, 548f, 32f, 32f) };
@@ -144,8 +148,10 @@ namespace Arcanum.Runtime.UI
     [DisallowMultipleComponent]
     public sealed class RetailGameplayHudView : MonoBehaviour
     {
+        private const string ClockHelpKey = "mes/intgame.mes:clock";
         private static readonly Color SourceText = new Color32(231, 217, 174, 255);
         private static readonly Color SelectedText = new Color32(240, 190, 45, 255);
+        private static readonly Color ContextualHelpTextColor = Color.white;
 
         private GameUiController _controller;
         private WorldMapSessionCoordinator _session;
@@ -170,7 +176,8 @@ namespace Arcanum.Runtime.UI
         private Image _worldTargetItemIcon;
         private SourceUiBitmapText _worldTargetName;
         private SourceUiBitmapText _worldTargetStatus;
-        private SourceUiBitmapText _contextualHelpText;
+        private readonly SourceUiBitmapText[] _contextualHelpLines = new SourceUiBitmapText[4];
+        private SourceUiBitmapText _contextualHelpTitle;
         private GameUiWorldTargetView _worldTarget;
         private SourceUiImage _ammoImage;
         private readonly SourceUiBitmapText[] _slotLabels = new SourceUiBitmapText[10];
@@ -179,12 +186,12 @@ namespace Arcanum.Runtime.UI
         private readonly Button[] _maintainedSpellButtons = new Button[5];
         private readonly SourceUiImage[] _recentActionImages = new SourceUiImage[2];
         private readonly Button[] _recentActionButtons = new Button[2];
+        private readonly string[] _recentActionHelpOwners = new string[2];
         private readonly SourceUiImage[] _experienceSegments = new SourceUiImage[10];
         private SourceUiImage _experiencePartial;
         private RectTransform _clockClip;
         private readonly SourceUiImage[] _clockBands = new SourceUiImage[3];
         private SourceUiImage _clockPointer;
-        private bool _clockHovered;
         private SourceUiButton _characterButton;
         private SourceUiButton _logbookButton;
         private SourceUiButton _mapButton;
@@ -216,8 +223,10 @@ namespace Arcanum.Runtime.UI
         public RetailClockPeriod ClockPeriod { get; private set; }
         public GameUiWorldTargetView WorldTarget => _worldTarget;
         public Canvas CursorCanvas => _cursorLayer != null ? _cursorLayer.GetComponent<Canvas>() : null;
-        public bool IsContextualHelpVisible => _contextualHelpText != null && _contextualHelpText.gameObject.activeSelf;
-        public string ContextualHelpText => _contextualHelpText?.Text ?? string.Empty;
+        public bool IsContextualHelpVisible => _contextualHelpLines[0] != null
+                                               && _contextualHelpLines[0].gameObject.activeSelf;
+        public string ContextualHelpText => _controller?.ContextualHelp ?? string.Empty;
+        public string ContextualHelpTitle => _controller?.ContextualHelpTitle ?? string.Empty;
 
         public void SetWorldTarget(GameUiWorldTargetView target) => _worldTarget = target;
 
@@ -270,21 +279,22 @@ namespace Arcanum.Runtime.UI
             SetCounter(_fatigueText, Mathf.Max(0, LastProjection.Fatigue));
             RefreshMaintainedSpellSlots(LastProjection.MaintainedSpellSlotCapacity, LastProjection.ActiveEffects);
 
-            bool contextualHelpVisible = !string.IsNullOrWhiteSpace(_controller.ContextualHelp);
-            bool targetVisible = !contextualHelpVisible && !_clockHovered && _worldTarget != null
+            bool contextualHelpVisible = !string.IsNullOrWhiteSpace(_controller.ContextualHelp)
+                                         || !string.IsNullOrWhiteSpace(_controller.ContextualHelpTitle);
+            bool targetVisible = !contextualHelpVisible && _worldTarget != null
                                  && _controller.Screen == GameUiScreen.None;
             bool itemTarget = targetVisible && _worldTarget.Item != null;
             _worldTargetIcon.gameObject.SetActive(contextualHelpVisible || targetVisible && !itemTarget);
             _worldTargetItemIcon.gameObject.SetActive(itemTarget);
             _worldTargetName.gameObject.SetActive(targetVisible);
             _worldTargetStatus.gameObject.SetActive(targetVisible);
-            _contextualHelpText.gameObject.SetActive(contextualHelpVisible);
             _messageLineOne.gameObject.SetActive(!contextualHelpVisible && !targetVisible);
             _messageLineTwo.gameObject.SetActive(!contextualHelpVisible && !targetVisible);
+            if (!contextualHelpVisible) HideContextualHelp();
             if (contextualHelpVisible)
             {
                 _worldTargetIcon.SetKey(new UiAssetKey(RetailGameplayHudLayout.ContextualHelpIconSourceId));
-                SetText(_contextualHelpText, _controller.ContextualHelp, SourceText);
+                RefreshContextualHelp();
             }
             else if (targetVisible)
             {
@@ -302,21 +312,11 @@ namespace Arcanum.Runtime.UI
             }
             else
             {
-                if (_clockHovered)
-                {
-                    SetText(_messageLineOne,
-                        SourceCalendar.FormatHud(SourceTimeService.InitialMilliseconds
-                                                 + LastProjection.SourceTimeMilliseconds), SourceText);
-                    SetText(_messageLineTwo, string.Empty, SourceText);
-                }
-                else
-                {
-                    SetText(_messageLineOne, Clip(_controller.Feedback, 46), SourceText);
-                    string combat = LastProjection.CombatActive
-                        ? $"{LastProjection.CombatMode}  AP {LastProjection.ActionPoints}/{LastProjection.MaximumActionPoints}  {LastProjection.Readiness}"
-                        : string.Empty;
-                    SetText(_messageLineTwo, Clip(combat, 46), SourceText);
-                }
+                SetText(_messageLineOne, Clip(_controller.Feedback, 46), SourceText);
+                string combat = LastProjection.CombatActive
+                    ? $"{LastProjection.CombatMode}  AP {LastProjection.ActionPoints}/{LastProjection.MaximumActionPoints}  {LastProjection.Readiness}"
+                    : string.Empty;
+                SetText(_messageLineTwo, Clip(combat, 46), SourceText);
             }
             SetCounter(_fateText, Mathf.Max(0, LastProjection.FatePoints), 2);
             SetCounter(_contextText, Mathf.Max(0, LastProjection.ContextQuantity), 6);
@@ -395,7 +395,7 @@ namespace Arcanum.Runtime.UI
             clockHit.color = Color.clear;
             clockHit.raycastTarget = true;
             _clockClip.gameObject.AddComponent<SourceHoverHintTarget>().Bind(
-                () => _clockHovered = true, () => _clockHovered = false);
+                ShowClockContextualHelp, () => _controller.ClearContextualHelp(ClockHelpKey));
             for (int index = 0; index < _clockBands.Length; index++)
                 _clockBands[index] = AddImage($"Clock Band {index + 1}", _clockClip,
                     new UiAssetKey(index % 2 == 0 ? 207 : 208), new Rect(0f, 0f, 1f, 30f), false);
@@ -454,9 +454,18 @@ namespace Arcanum.Runtime.UI
                 RetailGameplayHudLayout.BottomWindowLocal(RetailGameplayHudLayout.WorldTargetName), string.Empty, 27);
             _worldTargetStatus = AddText("World Target Status", _bottomWindow,
                 RetailGameplayHudLayout.BottomWindowLocal(RetailGameplayHudLayout.WorldTargetStatus), string.Empty, 229);
-            _contextualHelpText = AddText("Contextual Help", _bottomWindow,
-                RetailGameplayHudLayout.BottomWindowLocal(RetailGameplayHudLayout.ContextualHelpText), string.Empty,
-                RetailGameplayHudLayout.ContextualHelpFontSourceId);
+            _contextualHelpTitle = AddText("Contextual Help Title", _bottomWindow,
+                RetailGameplayHudLayout.BottomWindowLocal(RetailGameplayHudLayout.ContextualHelpTitle), string.Empty,
+                RetailGameplayHudLayout.ContextualHelpTitleFontSourceId);
+            for (int index = 0; index < _contextualHelpLines.Length; index++)
+                _contextualHelpLines[index] = AddText(index == 0 ? "Contextual Help" : $"Contextual Help {index + 1}",
+                    _bottomWindow, RetailGameplayHudLayout.BottomWindowLocal(new Rect(
+                        RetailGameplayHudLayout.ContextualHelpText.x,
+                        RetailGameplayHudLayout.ContextualHelpText.y
+                        + RetailGameplayHudLayout.ContextualHelpLineHeight * index,
+                        RetailGameplayHudLayout.ContextualHelpText.width,
+                        RetailGameplayHudLayout.ContextualHelpLineHeight)), string.Empty,
+                    RetailGameplayHudLayout.ContextualHelpFontSourceId);
 
             _ammoImage = AddImage("Ammo", _bottomWindow, new UiAssetKey(251),
                 RetailGameplayHudLayout.BottomWindowLocal(RetailGameplayHudLayout.AmmoButton), false);
@@ -470,12 +479,25 @@ namespace Arcanum.Runtime.UI
             _fateButton = AddButton("Fate", _topWindow, 137, 157f, 9f, () => _controller.ToggleFatePanel());
             _sleepButton = AddButton("Sleep", _topWindow, 137, 605f, 9f,
                 () => _controller.ToggleSleepPanel(), hasPressedFrame: false);
-            AddButton("Skills", _bottomWindow, 472, 693f, 456f - 441f,
+            SourceUiButton skills = AddButton("Skills", _bottomWindow, 472, 693f, 456f - 441f,
                 () => _controller.ToggleSkillsPanel());
-            AddScreenButton("Spells", _bottomWindow, 473, 649f, 494f - 441f, GameUiScreen.Magic);
+            SourceUiButton spells = AddScreenButton("Spells", _bottomWindow, 473, 649f, 494f - 441f,
+                GameUiScreen.Magic);
             _combatButton = AddButton("Combat", _bottomWindow, 470, 86f, 457f - 441f,
                 () => _controller.ToggleCombatMode());
-            AddScreenButton("Schematics", _bottomWindow, 471, 693f, 539f - 441f, GameUiScreen.Crafting);
+            SourceUiButton schematics = AddScreenButton("Schematics", _bottomWindow, 471, 693f, 539f - 441f,
+                GameUiScreen.Crafting);
+
+            BindFeedbackHelp(_characterButton, 1005);
+            BindFeedbackHelp(_logbookButton, 1004);
+            BindFeedbackHelp(_mapButton, 1007);
+            BindFeedbackHelp(_inventoryButton, 1006);
+            BindFeedbackHelp(_fateButton, 1008);
+            BindFeedbackHelp(_sleepButton, 1009);
+            BindFeedbackHelp(_combatButton, 1002);
+            BindFeedbackHelp(skills, 1001);
+            BindFeedbackHelp(spells, 1000);
+            BindFeedbackHelp(schematics, 1003);
 
             for (int index = 0; index < _recentActionImages.Length; index++) AddRecentAction(index);
 
@@ -543,6 +565,9 @@ namespace Arcanum.Runtime.UI
             button.transition = Selectable.Transition.None;
             int captured = index;
             button.onClick.AddListener(() => _controller.ActivateRecentAction(captured));
+            image.gameObject.AddComponent<SourceHoverHintTarget>().Bind(
+                () => ShowRecentActionContextualHelp(captured),
+                () => ClearRecentActionContextualHelp(captured));
             _recentActionImages[index] = image;
             _recentActionButtons[index] = button;
         }
@@ -654,6 +679,141 @@ namespace Arcanum.Runtime.UI
         private string SourceMessage(string path, int key, string fallback)
             => _resolver.Original.TryReadMessage(path, key, out string value)
                 && !string.IsNullOrWhiteSpace(value) ? value : fallback;
+
+        private void BindFeedbackHelp(SourceUiButton button, int messageKey)
+        {
+            string owner = $"mes/intgame.mes:{messageKey}";
+            button.gameObject.AddComponent<SourceHoverHintTarget>().Bind(
+                () => _controller.ShowContextualHelp(owner,
+                    SourceMessage("mes/intgame.mes", messageKey, string.Empty)),
+                () => _controller.ClearContextualHelp(owner));
+        }
+
+        private void ShowRecentActionContextualHelp(int index)
+        {
+            if (LastProjection?.RecentActions == null || index < 0
+                || index >= LastProjection.RecentActions.Count)
+                return;
+
+            RecentActionBinding binding = LastProjection.RecentActions[index];
+            int titleKey;
+            int bodyKey;
+            if (binding.Kind != RecentActionKind.Skill)
+                return;
+            switch (binding.SourceId)
+            {
+                case 0: // hotkey_ui_init source slot: Prowling.
+                    titleKey = 6;
+                    bodyKey = 26;
+                    break;
+                case 1: // hotkey_ui_init source slot: Pick Pocket.
+                    titleKey = 5;
+                    bodyKey = 25;
+                    break;
+                default:
+                    return;
+            }
+
+            string owner = $"mes/skill.mes:{titleKey}+{bodyKey}";
+            _recentActionHelpOwners[index] = owner;
+            _controller.ShowContextualHelp(owner,
+                SourceMessage("mes/skill.mes", bodyKey, string.Empty),
+                SourceMessage("mes/skill.mes", titleKey, string.Empty));
+        }
+
+        private void ClearRecentActionContextualHelp(int index)
+        {
+            if (index < 0 || index >= _recentActionHelpOwners.Length) return;
+            string owner = _recentActionHelpOwners[index];
+            _recentActionHelpOwners[index] = null;
+            if (!string.IsNullOrEmpty(owner)) _controller.ClearContextualHelp(owner);
+        }
+
+        private void ShowClockContextualHelp()
+        {
+            var timestamp = SourceCalendar.Timestamp(_session.SourceTime.CampaignMilliseconds);
+            string timeLabel = SourceMessage("mes/intgame.mes", 22, string.Empty);
+            string dateLabel = SourceMessage("mes/intgame.mes", 23, string.Empty);
+            _controller.ShowContextualHelp(ClockHelpKey,
+                $"{timeLabel}: {SourceCalendar.FormatHudTime(timestamp)}   "
+                + $"{dateLabel}: {SourceCalendar.FormatHudDate(timestamp)}");
+        }
+
+        private void RefreshContextualHelp()
+        {
+            bool titled = !string.IsNullOrWhiteSpace(_controller.ContextualHelpTitle);
+            _contextualHelpTitle.gameObject.SetActive(titled);
+            SetText(_contextualHelpTitle, titled ? _controller.ContextualHelpTitle : string.Empty,
+                ContextualHelpTextColor);
+            Rect sourceRect = titled
+                ? RetailGameplayHudLayout.ContextualHelpBody
+                : RetailGameplayHudLayout.ContextualHelpText;
+            int maximumLines = titled ? 3 : 4;
+            IReadOnlyList<string> lines = WrapSourceText(_controller.ContextualHelp,
+                RetailGameplayHudLayout.ContextualHelpFontSourceId, sourceRect.width, maximumLines);
+            for (int index = 0; index < _contextualHelpLines.Length; index++)
+            {
+                SourceUiBitmapText line = _contextualHelpLines[index];
+                bool active = index < lines.Count;
+                line.gameObject.SetActive(active);
+                if (!active) continue;
+                Place((RectTransform)line.transform, RetailGameplayHudLayout.BottomWindowLocal(new Rect(
+                    sourceRect.x, sourceRect.y + RetailGameplayHudLayout.ContextualHelpLineHeight * index,
+                    sourceRect.width, RetailGameplayHudLayout.ContextualHelpLineHeight)));
+                SetText(line, lines[index], ContextualHelpTextColor);
+            }
+        }
+
+        private void HideContextualHelp()
+        {
+            _contextualHelpTitle.gameObject.SetActive(false);
+            foreach (SourceUiBitmapText line in _contextualHelpLines)
+                line.gameObject.SetActive(false);
+        }
+
+        private IReadOnlyList<string> WrapSourceText(string value, int fontSourceId, float maximumWidth,
+            int maximumLines)
+        {
+            var lines = new List<string>();
+            value ??= string.Empty;
+            int start = 0;
+            while (start < value.Length && lines.Count < maximumLines)
+            {
+                while (start < value.Length && value[start] == ' ') start++;
+                if (start >= value.Length) break;
+                int cursor = start;
+                int lastSpace = -1;
+                float width = 0f;
+                while (cursor < value.Length)
+                {
+                    char character = value[cursor];
+                    if (character is '\r' or '\n') break;
+                    float advance = SourceGlyphAdvance(fontSourceId, character);
+                    if (cursor > start && width + advance > maximumWidth) break;
+                    width += advance;
+                    if (character == ' ') lastSpace = cursor;
+                    cursor++;
+                }
+                int end = cursor;
+                if (cursor < value.Length && value[cursor] is not ('\r' or '\n') && lastSpace >= start)
+                    end = lastSpace;
+                string line = value.Substring(start, Math.Max(1, end - start)).TrimEnd();
+                lines.Add(line);
+                start = Math.Max(start + 1, end);
+                while (start < value.Length && value[start] is ' ' or '\r' or '\n') start++;
+            }
+            if (lines.Count == 0) lines.Add(string.Empty);
+            return lines;
+        }
+
+        private float SourceGlyphAdvance(int fontSourceId, char character)
+        {
+            int frame = (byte)character - 31;
+            if (frame >= 0 && _resolver.TryResolve(new UiAssetKey(fontSourceId, frame: frame),
+                    out UiResolvedAsset asset))
+                return asset.Hotspot.x > 0 ? asset.Hotspot.x : asset.LogicalSize.x;
+            return 0f;
+        }
 
         private static Button AddChoiceHitArea(string name, RectTransform parent, Rect rect, Action clicked)
         {
@@ -1026,7 +1186,8 @@ namespace Arcanum.Runtime.UI
             _contextText = null;
             _messageLineOne = null;
             _messageLineTwo = null;
-            _contextualHelpText = null;
+            _contextualHelpTitle = null;
+            Array.Clear(_contextualHelpLines, 0, _contextualHelpLines.Length);
             _ammoImage = null;
             _clockClip = null;
             _clockPointer = null;
@@ -1040,6 +1201,7 @@ namespace Arcanum.Runtime.UI
             _sleepPanel = null;
             _skillsPanel = null;
             Array.Clear(_skillActionButtons, 0, _skillActionButtons.Length);
+            Array.Clear(_recentActionHelpOwners, 0, _recentActionHelpOwners.Length);
             _combatButton = null;
             Array.Clear(_maintainedSpellSlots, 0, _maintainedSpellSlots.Length);
             Array.Clear(_maintainedSpellButtons, 0, _maintainedSpellButtons.Length);

@@ -576,8 +576,115 @@ namespace Arcanum.Formats.Tests
                 Is.EqualTo(5));
         }
 
+        [TestCase("Character", 1005)]
+        [TestCase("Logbook", 1004)]
+        [TestCase("Map", 1007)]
+        [TestCase("Inventory", 1006)]
+        [TestCase("Fate", 1008)]
+        [TestCase("Sleep", 1009)]
+        [TestCase("Combat", 1002)]
+        [TestCase("Skills", 1001)]
+        [TestCase("Spells", 1000)]
+        [TestCase("Schematics", 1003)]
+        public void PermanentHudControlHoverResolvesOwnedSourceFeedbackWithoutGameplayMutation(
+            string controlName, int messageKey)
+        {
+            Assert.That(_retail.TryReadMessage("mes/intgame.mes", messageKey, out string sourceText), Is.True);
+            GameUiScreen screen = _controller.Screen;
+            GameUiHudPanel panel = _controller.HudPanel;
+            bool combat = _controller.ProjectHud().CombatActive;
+            long time = _session.SourceTime.ElapsedMilliseconds;
+            SourceHoverHintTarget hint = Descendant(controlName).GetComponent<SourceHoverHintTarget>();
+
+            Assert.That(hint, Is.Not.Null);
+            hint.OnPointerEnter(null);
+            _view.Synchronize(true);
+
+            Assert.That(_controller.ContextualHelpKey, Is.EqualTo($"mes/intgame.mes:{messageKey}"));
+            Assert.That(_controller.ContextualHelp, Is.EqualTo(sourceText));
+            Assert.That(_controller.ContextualHelpTitle, Is.Empty);
+            Assert.That(_view.ContextualHelpText, Is.EqualTo(sourceText));
+            Assert.That((_controller.Screen, _controller.HudPanel, _controller.ProjectHud().CombatActive,
+                    _session.SourceTime.ElapsedMilliseconds),
+                Is.EqualTo((screen, panel, combat, time)));
+
+            hint.OnPointerExit(null);
+            _view.Synchronize(true);
+            Assert.That((_controller.ContextualHelpKey, _controller.ContextualHelp),
+                Is.EqualTo((string.Empty, string.Empty)));
+        }
+
+        [TestCase("Recent Action 2", 6, 26)]
+        [TestCase("Recent Action 1", 5, 25)]
+        public void PermanentBottomLeftSkillHoverUsesMorphTitleAndFlareBodyFromRetailMes(
+            string controlName, int titleKey, int bodyKey)
+        {
+            Assert.That(_retail.TryReadMessage("mes/skill.mes", titleKey, out string title), Is.True);
+            Assert.That(_retail.TryReadMessage("mes/skill.mes", bodyKey, out string body), Is.True);
+            SourceHoverHintTarget hint = Descendant(controlName).GetComponent<SourceHoverHintTarget>();
+
+            hint.OnPointerEnter(null);
+            _view.Synchronize(true);
+
+            Assert.That(_controller.ContextualHelpKey, Is.EqualTo($"mes/skill.mes:{titleKey}+{bodyKey}"));
+            Assert.That((_view.ContextualHelpTitle, _view.ContextualHelpText), Is.EqualTo((title, body)));
+            SourceUiBitmapText renderedTitle = Descendant("Contextual Help Title")
+                .GetComponent<SourceUiBitmapText>();
+            SourceUiBitmapText renderedBody = Descendant("Contextual Help").GetComponent<SourceUiBitmapText>();
+            Assert.That(renderedTitle.FontSourceId,
+                Is.EqualTo(RetailGameplayHudLayout.ContextualHelpTitleFontSourceId));
+            Assert.That(renderedBody.FontSourceId,
+                Is.EqualTo(RetailGameplayHudLayout.ContextualHelpFontSourceId));
+            Assert.That(renderedTitle.gameObject.activeSelf, Is.True);
+            Assert.That(renderedBody.gameObject.activeSelf, Is.True);
+            Assert.That(renderedBody.GetComponentsInChildren<Image>(true).First().color, Is.EqualTo(Color.white));
+
+            hint.OnPointerExit(null);
+            _view.Synchronize(true);
+            Assert.That(_view.IsContextualHelpVisible, Is.False);
+        }
+
         [Test]
-        public void OpeningClockAndLogbookUseAuthoritative1885Calendar()
+        public void DirectHudHoverReplacementUsesOwnerKeyAndStaleExitCannotClearNewHelp()
+        {
+            SourceHoverHintTarget character = Descendant("Character").GetComponent<SourceHoverHintTarget>();
+            SourceHoverHintTarget logbook = Descendant("Logbook").GetComponent<SourceHoverHintTarget>();
+            character.OnPointerEnter(null);
+            logbook.OnPointerEnter(null);
+            character.OnPointerExit(null);
+
+            Assert.That(_controller.ContextualHelpKey, Is.EqualTo("mes/intgame.mes:1004"));
+            Assert.That(_retail.TryReadMessage("mes/intgame.mes", 1004, out string logbookText), Is.True);
+            Assert.That(_controller.ContextualHelp, Is.EqualTo(logbookText));
+
+            logbook.OnPointerExit(null);
+            Assert.That(_controller.ContextualHelp, Is.Empty);
+        }
+
+        [Test]
+        public void HudContextualHelpUsesSourceIconFontsColorsAndTextRectangles()
+        {
+            Assert.That(RetailGameplayHudLayout.WorldTargetIcon, Is.EqualTo(new Rect(217, 510, 64, 64)));
+            Assert.That(RetailGameplayHudLayout.ContextualHelpText, Is.EqualTo(new Rect(290, 504, 291, 78)));
+            Assert.That(RetailGameplayHudLayout.ContextualHelpTitle, Is.EqualTo(new Rect(290, 504, 291, 19)));
+            Assert.That(RetailGameplayHudLayout.ContextualHelpBody, Is.EqualTo(new Rect(290, 528, 291, 54)));
+            Assert.That(RetailGameplayHudLayout.ContextualHelpIconSourceId, Is.EqualTo(444));
+            Assert.That(RetailGameplayHudLayout.ContextualHelpTitleFontSourceId, Is.EqualTo(27));
+            Assert.That(RetailGameplayHudLayout.ContextualHelpFontSourceId, Is.EqualTo(229));
+
+            SourceHoverHintTarget character = Descendant("Character").GetComponent<SourceHoverHintTarget>();
+            character.OnPointerEnter(null);
+            _view.Synchronize(true);
+            SourceUiImage icon = Descendant("World Target Icon").GetComponent<SourceUiImage>();
+            SourceUiBitmapText text = Descendant("Contextual Help").GetComponent<SourceUiBitmapText>();
+            Assert.That(icon.Key.SourceId, Is.EqualTo(444));
+            Assert.That(((RectTransform)text.transform).anchoredPosition,
+                Is.EqualTo(new Vector2(290f, -(504f - 441f))));
+            Assert.That(text.GetComponentsInChildren<Image>(true).First().color, Is.EqualTo(Color.white));
+        }
+
+        [Test]
+        public void OpeningClockAndLogbookUseAuthoritative1885CalendarAndClockHelpSnapshotsOnEnter()
         {
             Assert.That(SourceCalendar.FormatHud(SourceTimeService.InitialMilliseconds + 37_000L),
                 Is.EqualTo("Current Time: 15:00:37   Current Date: 1/1/1885"));
@@ -590,13 +697,20 @@ namespace Arcanum.Formats.Tests
                 .Single(value => value.gameObject.name == "Clock Clip");
             clock.OnPointerEnter(null);
             _view.Synchronize(true);
-            SourceUiBitmapText message = _root.GetComponentsInChildren<SourceUiBitmapText>(true)
-                .Single(value => value.name == "Message");
-            Assert.That(message.Text, Is.EqualTo(
-                "Current Time: 15:00:00   Current Date: 1/1/1885"));
+            string snapshot = _controller.ContextualHelp;
+            Assert.That(_controller.ContextualHelpKey, Is.EqualTo("mes/intgame.mes:clock"));
+            Assert.That(snapshot, Is.EqualTo("Current Time: 15:00:00   Current Date: 1/1/1885"));
+            _session.SourceTime.Advance(37_000);
+            _view.Synchronize(true);
+            Assert.That(_controller.ContextualHelp, Is.EqualTo(snapshot),
+                "the source freezes only the displayed hover snapshot");
+            Assert.That(_session.SourceTime.ElapsedMilliseconds, Is.EqualTo(37_000));
             clock.OnPointerExit(null);
             _view.Synchronize(true);
-            Assert.That(message.Text, Is.Not.StartsWith("Current Time:"));
+            Assert.That(_controller.ContextualHelp, Is.Empty);
+            clock.OnPointerEnter(null);
+            Assert.That(_controller.ContextualHelp,
+                Is.EqualTo("Current Time: 15:00:37   Current Date: 1/1/1885"));
         }
 
         [Test]

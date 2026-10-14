@@ -112,8 +112,19 @@ namespace Arcanum.Runtime.World
         public static string FormatHud(long campaignMilliseconds)
         {
             QuestTimestamp timestamp = Timestamp(campaignMilliseconds);
-            DateParts(timestamp, out int year, out int month, out int day, out int hour, out int minute, out int second);
-            return $"Current Time: {hour:00}:{minute:00}:{second:00}   Current Date: {month}/{day}/{year}";
+            return $"Current Time: {FormatHudTime(timestamp)}   Current Date: {FormatHudDate(timestamp)}";
+        }
+
+        public static string FormatHudTime(QuestTimestamp timestamp)
+        {
+            DateParts(timestamp, out _, out _, out _, out int hour, out int minute, out int second);
+            return $"{hour:00}:{minute:00}:{second:00}";
+        }
+
+        public static string FormatHudDate(QuestTimestamp timestamp)
+        {
+            DateParts(timestamp, out int year, out int month, out int day, out _, out _, out _);
+            return $"{month}/{day}/{year}";
         }
 
         private static void DateParts(QuestTimestamp timestamp, out int year, out int month, out int day,

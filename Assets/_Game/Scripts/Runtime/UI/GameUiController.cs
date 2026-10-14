@@ -251,6 +251,8 @@ namespace Arcanum.Runtime.UI
         public bool CharacterReadOnly => CharacterTarget != Player;
         public string Feedback { get; private set; } = string.Empty;
         public string ContextualHelp { get; private set; } = string.Empty;
+        public string ContextualHelpKey { get; private set; } = string.Empty;
+        public string ContextualHelpTitle { get; private set; } = string.Empty;
         public CombatUiController Combat { get; }
         public SaveLoadPanelController SaveLoad { get; }
         public CharacterCreationSpecification CreationDraft { get; private set; }
@@ -330,6 +332,8 @@ namespace Arcanum.Runtime.UI
             else ClearAcceptedCharacterEditorState();
             Feedback = string.Empty;
             ContextualHelp = string.Empty;
+            ContextualHelpKey = string.Empty;
+            ContextualHelpTitle = string.Empty;
             if (screen == GameUiScreen.SaveLoad) SaveLoad.Open(SaveLoadPanelMode.Save);
             ClearPrimaryNotification(screen);
             _audio?.PresentInterface(screen is GameUiScreen.Journal or GameUiScreen.Map
@@ -522,6 +526,8 @@ namespace Arcanum.Runtime.UI
         public void Close()
         {
             ContextualHelp = string.Empty;
+            ContextualHelpKey = string.Empty;
+            ContextualHelpTitle = string.Empty;
             if (HudPanel != GameUiHudPanel.None)
             {
                 HudPanel = GameUiHudPanel.None;
@@ -553,12 +559,23 @@ namespace Arcanum.Runtime.UI
         }
 
         public void ShowContextualHelp(string message)
-            => ContextualHelp = message ?? string.Empty;
+            => ShowContextualHelp(message, message);
 
-        public void ClearContextualHelp(string message = null)
+        public void ShowContextualHelp(string key, string message, string title = null)
         {
-            if (message == null || string.Equals(ContextualHelp, message, StringComparison.Ordinal))
+            ContextualHelpKey = key ?? string.Empty;
+            ContextualHelp = message ?? string.Empty;
+            ContextualHelpTitle = title ?? string.Empty;
+        }
+
+        public void ClearContextualHelp(string key = null)
+        {
+            if (key == null || string.Equals(ContextualHelpKey, key, StringComparison.Ordinal))
+            {
                 ContextualHelp = string.Empty;
+                ContextualHelpKey = string.Empty;
+                ContextualHelpTitle = string.Empty;
+            }
         }
 
         public bool ToggleSkillsPanel()
