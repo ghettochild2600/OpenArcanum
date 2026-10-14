@@ -341,8 +341,10 @@ namespace Arcanum.Runtime.World
         public string ResolvePrototypeDisplayName(int prototypeNumber)
         {
             ObjectProtoInfo prototype = ResolvePrototype(prototypeNumber);
-            string value = prototype?.Description is int description
-                ? _resolveDescription?.Invoke(description) : null;
+            // proto.c owns a number of basic prototypes (including schematic ingredients) that have no
+            // authored .pro override.  Those objects use their basic-prototype number as description.mes id.
+            int description = prototype?.Description ?? prototypeNumber;
+            string value = _resolveDescription?.Invoke(description);
             return !string.IsNullOrWhiteSpace(value) ? value.Trim() : prototypeNumber.ToString();
         }
 

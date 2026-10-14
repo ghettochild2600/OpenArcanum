@@ -51,6 +51,12 @@ namespace Arcanum.Formats.Tests
             Assert.That(_session.SelectSector(Sector), Is.True);
             _pc = ProductionPlayerLifecycle.DefaultPlayerIdentity;
             _session.GetOrCreatePlayer(_pc, Sector, Vector2.one, 0x28100000u);
+            _session.BindDescriptionSource(id => id switch
+            {
+                6001 => "Ginkgo Root",
+                6101 => "Kadura Stem",
+                _ => null,
+            });
             _session.BindSpellPresentationSource(CreateSpellText());
             _session.BindCraftingSource(CreateSchematicCatalog());
             _controller = new GameUiController(_session, new EmptySlots());
@@ -80,6 +86,16 @@ namespace Arcanum.Formats.Tests
             Assert.That(_view.WindowTransform.anchoredPosition, Is.EqualTo(new Vector2(0, 59)));
             Assert.That(RetailCharacterSheetLayout.SkillsPanel, Is.EqualTo(new Rect(503, 63, 235, 325)));
             Assert.That(_view.SkillsPanelTransform.anchoredPosition, Is.EqualTo(new Vector2(503, -63)));
+            Assert.That(_view.GetComponentsInChildren<RectTransform>(true)
+                .Single(value => value.name == "Live PC Lens").anchoredPosition,
+                Is.EqualTo(new Vector2(12, -10)));
+            Assert.That(_view.GetComponentsInChildren<SourceUiImage>(true)
+                .Single(value => value.name == "PC Lens Frame").Key.SourceId,
+                Is.EqualTo(RetailCharacterSheetLayout.PcLensFrameSourceId));
+            RectTransform portrait = _view.GetComponentsInChildren<RectTransform>(true)
+                .Single(value => value.name == "Portrait");
+            Assert.That(portrait.anchoredPosition, Is.EqualTo(new Vector2(141, -21)));
+            Assert.That(portrait.sizeDelta, Is.EqualTo(new Vector2(66, 66)));
             Assert.That(_view.GetComponentsInChildren<RectTransform>(true)
                 .Single(value => value.name == "Name").anchoredPosition, Is.EqualTo(new Vector2(212, -15)));
             Assert.That(_view.GetComponentsInChildren<RectTransform>(true)
@@ -378,6 +394,8 @@ namespace Arcanum.Formats.Tests
                 Assert.That(text.Single(value => value.name == $"Schematic Components {degree}").FontSourceId,
                     Is.EqualTo(483));
             }
+            Assert.That(text.Single(value => value.name == "Schematic Components 1").Text,
+                Is.EqualTo("[Ginkgo Root]+[Kadura Stem]"));
             Assert.That(_view.GetComponentsInChildren<SourceUiImage>(true)
                 .Single(value => value.name == "Degree 1 Icon").Key.SourceId, Is.EqualTo(653));
         }

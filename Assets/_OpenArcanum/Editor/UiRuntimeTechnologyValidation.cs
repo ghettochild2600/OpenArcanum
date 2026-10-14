@@ -81,30 +81,34 @@ namespace OpenArcanum.Editor
 
             Check(view.IsVisible && view.BackgroundAsset?.Key.SourceId == 22,
                 "Technology shares the source active Character Editor shell ID 22");
-            Check(view.GetComponentsInChildren<SourceUiImage>(true)
+            Check(view.SkillsPanelTransform.GetComponentsInChildren<SourceUiImage>(true)
                       .Single(value => value.name == "Technology Window").Key.SourceId == 30,
                 "Technology mounts source subwindow ART 30");
-            Check(view.GetComponentsInChildren<SourceUiButton>(true).Count(value =>
-                    Enum.TryParse(value.name, out TechnologyDiscipline _)) == 8,
+            SourceUiButton[] technologyButtons =
+                view.SkillsPanelTransform.GetComponentsInChildren<SourceUiButton>(true);
+            Check(Enum.GetValues(typeof(TechnologyDiscipline)).Cast<TechnologyDiscipline>().All(discipline =>
+                    technologyButtons.Count(value => value.name == discipline.ToString()) == 1),
                 "all eight source discipline controls are present");
-            Check(view.GetComponentsInChildren<SourceUiBitmapText>(true).Count(value =>
+            Check(view.SkillsPanelTransform.GetComponentsInChildren<SourceUiBitmapText>(true).Count(value =>
                     value.name.StartsWith("Schematic ", StringComparison.Ordinal)
                     && !value.name.StartsWith("Schematic Components", StringComparison.Ordinal)) == 7,
                 "selected discipline projects seven source degree schematic rows");
 
             int points = session.Progression.GetUnspentCharacterPoints(controller.Player);
-            FindButton(view, "Increase Technology").onClick.Invoke();
+            FindButton(view.SkillsPanelTransform, "Increase Technology").onClick.Invoke();
             yield return null;
             view.Synchronize();
+            yield return null;
             Check(session.Technology.GetLearnedDegree(controller.Player, TechnologyDiscipline.Herbology)
                   == TechnologyDegree.Novice
                   && session.Progression.GetUnspentCharacterPoints(controller.Player) == points - 1,
                 "source plus learns Novice through Technology/Progression authority");
-            Check(view.GetComponentsInChildren<SourceUiImage>(true)
+            Check(view.SkillsPanelTransform.GetComponentsInChildren<SourceUiImage>(true)
                       .Single(value => value.name == "Degree 1 Icon").Key.SourceId == 653,
                 "learned Herbology row projects the source discipline icon");
 
-            SourceHoverHintTarget degreeHint = view.GetComponentsInChildren<SourceHoverHintTarget>(true)
+            SourceHoverHintTarget degreeHint = view.SkillsPanelTransform
+                .GetComponentsInChildren<SourceHoverHintTarget>(true)
                 .Single(value => value.name == "Schematic 1");
             degreeHint.OnPointerEnter(null);
             hud.Synchronize(true);
@@ -113,11 +117,12 @@ namespace OpenArcanum.Editor
                 "degree hover projects source title/body and minimum Intelligence into contextual help");
             degreeHint.OnPointerExit(null);
 
-            FindButton(view, nameof(TechnologyDiscipline.Chemistry)).onClick.Invoke();
+            FindButton(view.SkillsPanelTransform, nameof(TechnologyDiscipline.Chemistry)).onClick.Invoke();
             yield return null;
             view.Synchronize();
+            yield return null;
             Check(view.SelectedTechnology == TechnologyDiscipline.Chemistry
-                  && view.GetComponentsInChildren<SourceUiBitmapText>(true)
+                  && view.SkillsPanelTransform.GetComponentsInChildren<SourceUiBitmapText>(true)
                       .Single(value => value.name == "Technology Name").Text.StartsWith("Chemistry "),
                 "clicking a discipline changes only the selected source presentation");
 

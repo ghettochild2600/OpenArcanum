@@ -3,6 +3,7 @@ using System.Collections;
 using System.Linq;
 using Arcanum.Formats.Objects;
 using Arcanum.Runtime.Character;
+using Arcanum.Runtime.Technology;
 using Arcanum.Runtime.UI;
 using Arcanum.Runtime.World;
 using OpenArcanum.Rendering;
@@ -86,6 +87,15 @@ namespace OpenArcanum.Editor
             hud.Synchronize(true);
             Check(character.IsVisible && hud.IsVisible && character.BackgroundAsset?.Key.SourceId == 22,
                 "C/Character composes source ID 22 between the retained HUD bars");
+            RectTransform liveLens = character.WindowTransform.GetComponentsInChildren<RectTransform>(true)
+                .Single(value => value.name == "Live PC Lens");
+            RectTransform portrait = character.WindowTransform.GetComponentsInChildren<RectTransform>(true)
+                .Single(value => value.name == "Portrait");
+            Check(liveLens.anchoredPosition == new Vector2(12, -10)
+                  && liveLens.sizeDelta == new Vector2(89, 89)
+                  && portrait.anchoredPosition == new Vector2(141, -21)
+                  && portrait.sizeDelta == new Vector2(66, 66),
+                "Character uses the source live PC lens and separate 66x66 portrait rectangles");
             Check(character.SkillsPanelTransform.GetComponentInChildren<SourceUiImage>(true)?.Key.SourceId == 29,
                 "active editor mounts source Skills child window ID 29");
             Check(character.LastProjection.Attributes.Count == 8 && character.LastProjection.Skills.Count == 16
@@ -114,6 +124,19 @@ namespace OpenArcanum.Editor
             character.Synchronize();
             Check(character.LastProjection.Skills.Single(value => value.Skill == CharacterSkill.Melee).Training
                   == SkillTrainingLevel.Apprentice, "Skills panel projects M4C training state");
+
+            Check(controller.Open(GameUiScreen.Technology), "Technology tab opens through shared Character family");
+            yield return null;
+            character.SelectTechnology(TechnologyDiscipline.Herbology);
+            character.Synchronize();
+            string ingredients = character.SkillsPanelTransform.GetComponentsInChildren<SourceUiBitmapText>(true)
+                .Single(value => value.name == "Schematic Components 1").Text;
+            Check(ingredients.Any(char.IsLetter)
+                  && !ingredients.Contains("10061") && !ingredients.Contains("10062"),
+                "source engine-owned schematic components resolve through description.mes rather than numeric ids");
+            Check(controller.Open(GameUiScreen.Character), "Character tab reopens after Technology comparison");
+            yield return null;
+            character.Synchronize();
 
             GraphicsMode originalMode = OpenArcanumGraphicsSettings.Mode;
             OpenArcanumGraphicsSettings.SetRuntimeMode(GraphicsMode.Enhanced);

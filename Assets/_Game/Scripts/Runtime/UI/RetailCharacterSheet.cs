@@ -21,10 +21,12 @@ namespace Arcanum.Runtime.UI
         public const int SkillsPanelSourceId = 29;
         public const int TechnologyPanelSourceId = 30;
         public const int MagicPanelSourceId = 31;
+        public const int PcLensFrameSourceId = 222;
         public const int MinusSourceId = 23;
         public const int PlusSourceId = 24;
         public static readonly Rect Window = new(0f, 41f, 800f, 400f);
-        public static readonly Rect Portrait = new(12f, 10f, 89f, 89f);
+        public static readonly Rect PcLens = new(12f, 10f, 89f, 89f);
+        public static readonly Rect Portrait = new(141f, 21f, 66f, 66f);
         public static readonly Rect SkillsPanel = new(503f, 63f, 235f, 325f);
         public static readonly Rect MagicPanel = SkillsPanel;
         public static readonly Rect TechnologyPanel = SkillsPanel;
@@ -66,7 +68,7 @@ namespace Arcanum.Runtime.UI
         };
 
         public static readonly int[] RequiredSourceIds =
-            { 22, 23, 24, 29, 30, 31, 34, 35, 36, 568, 302, 303, 304, 305,
+            { 22, 23, 24, 29, 30, 31, 34, 35, 36, 222, 568, 302, 303, 304, 305,
                 306, 307, 308, 309, 310, 311, 312, 313, 624, 625, 647, 648 };
 
         public static Rect ScreenRect(int width, int height)
@@ -235,6 +237,10 @@ namespace Arcanum.Runtime.UI
             blockerImage.color = Color.clear;
             blockerImage.raycastTarget = true;
 
+            RectTransform lens = AddRect("Live PC Lens", _window, RetailCharacterSheetLayout.PcLens);
+            lens.gameObject.AddComponent<RetailPcLensView>().Bind(_session);
+            AddSourceImage("PC Lens Frame", _window, RetailCharacterSheetLayout.PcLensFrameSourceId,
+                RetailCharacterSheetLayout.PcLens);
             _portrait = AddPortrait("Portrait", _window, RetailCharacterSheetLayout.Portrait);
             // charedit_ui.c stores these basic-info rectangles in desktop coordinates;
             // sub_55B880 subtracts the big-window origin (y=41) before drawing.
