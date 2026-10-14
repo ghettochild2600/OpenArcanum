@@ -481,6 +481,16 @@ namespace Arcanum.Formats.Tests
             SourceUiButton inventory = _root.GetComponentsInChildren<SourceUiButton>(true)
                 .Single(value => value.name == "Inventory");
             Assert.That(inventory.CurrentPresentationKey.SourceId, Is.EqualTo(559));
+            Assert.That(inventory.CurrentPresentationKey.Frame, Is.Zero);
+
+            inventory.OnPointerEnter(null);
+            Assert.That(inventory.CurrentPresentationKey.Frame, Is.Zero,
+                "source notification ART has no separate hover frame");
+            inventory.OnPointerDown(null);
+            Assert.That(inventory.CurrentPresentationKey.Frame, Is.EqualTo(1),
+                "source notification ART uses its second and final frame while pressed");
+            inventory.OnPointerUp(null);
+            inventory.OnPointerExit(null);
 
             inventory.Button.onClick.Invoke();
             _view.Synchronize(true);

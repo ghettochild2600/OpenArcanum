@@ -984,9 +984,15 @@ namespace Arcanum.Runtime.UI
         private void BindButtonPresentation(SourceUiButton button, int sourceId)
         {
             if (button == null) return;
+            // The source swaps primary notification buttons to the dedicated *_on ART set. Those assets contain
+            // only the up/down frames; TIG leaves the up frame unchanged on hover and uses frame 1 while pressed.
+            // The ordinary *_but assets retain their three-frame normal/hover/pressed presentation.
+            bool highlighted = sourceId == 195 || sourceId is >= 558 and <= 561;
             button.Bind(_resolver, new UiAssetKey(sourceId, frame: 0),
-                new UiAssetKey(sourceId, frame: 1), new UiAssetKey(sourceId, frame: 2),
-                new UiAssetKey(sourceId, frame: 0), new UiAssetKey(sourceId, frame: 1));
+                new UiAssetKey(sourceId, frame: highlighted ? 0 : 1),
+                new UiAssetKey(sourceId, frame: highlighted ? 1 : 2),
+                new UiAssetKey(sourceId, frame: 0),
+                new UiAssetKey(sourceId, frame: highlighted ? 0 : 1));
         }
 
         private void RefreshClock()
