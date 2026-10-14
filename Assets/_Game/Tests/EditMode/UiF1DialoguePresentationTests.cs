@@ -77,7 +77,7 @@ namespace Arcanum.Formats.Tests
         public void ResponseTintReconcilesStationaryPointerAndClearsStaleHover()
         {
             Assert.That(RetailDialogueView.ResponseTint(true, false), Is.EqualTo(Color.white));
-            Assert.That(RetailDialogueView.ResponseTint(true, true),
+            Assert.That((Color32)RetailDialogueView.ResponseTint(true, true),
                 Is.EqualTo(new Color32(244, 214, 67, 255)));
             Assert.That(RetailDialogueView.ResponseTint(false, true), Is.EqualTo(Color.white));
         }
