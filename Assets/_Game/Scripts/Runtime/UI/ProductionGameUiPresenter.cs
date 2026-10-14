@@ -45,6 +45,7 @@ namespace Arcanum.Runtime.UI
         private RetailCharacterSheetView _retailCharacterSheet;
         private RetailSchematicView _retailSchematic;
         private RetailSaveLoadView _retailSaveLoad;
+        private RetailOptionsView _retailOptions;
         private RetailDialogueView _retailDialogue;
         private RetailLogbookView _retailLogbook;
         private RetailLocalMapView _retailLocalMap;
@@ -128,6 +129,9 @@ namespace Arcanum.Runtime.UI
             _retailSchematic.Bind(_controller, _session, _retailGameplayHud.Resolver);
             _retailSaveLoad = GetComponent<RetailSaveLoadView>() ?? gameObject.AddComponent<RetailSaveLoadView>();
             _retailSaveLoad.Bind(_controller, _session, _retailGameplayHud.Resolver);
+            _retailOptions = GetComponent<RetailOptionsView>() ?? gameObject.AddComponent<RetailOptionsView>();
+            _retailOptions.Bind(_controller, _session, _retailGameplayHud.Resolver, _keyboard,
+                GetComponent<Arcanum.Runtime.Audio.ProductionAudioPresenter>());
             _retailDialogue = GetComponent<RetailDialogueView>() ?? gameObject.AddComponent<RetailDialogueView>();
             _retailDialogue.Bind(_controller, _session, _retailGameplayHud.Resolver);
             _retailLogbook = GetComponent<RetailLogbookView>() ?? gameObject.AddComponent<RetailLogbookView>();
@@ -192,6 +196,7 @@ namespace Arcanum.Runtime.UI
             _retailCharacterSheet?.Synchronize();
             _retailSchematic?.Synchronize();
             _retailSaveLoad?.Synchronize();
+            _retailOptions?.Synchronize();
             _retailDialogue?.Synchronize();
             _retailLogbook?.Synchronize();
             _retailLocalMap?.Synchronize();
@@ -444,6 +449,7 @@ namespace Arcanum.Runtime.UI
             if (_retailCharacterSheet?.ContainsScreenPoint(mouse) == true) return true;
             if (_retailSchematic?.ContainsScreenPoint(mouse) == true) return true;
             if (_retailSaveLoad?.ContainsScreenPoint(mouse) == true) return true;
+            if (_retailOptions?.ContainsScreenPoint(mouse) == true) return true;
             if (_retailInventory?.ContainsScreenPoint(mouse) == true) return true;
             if (_retailInventoryInteraction?.ContainsScreenPoint(mouse) == true) return true;
             if (_retailDialogue?.ContainsScreenPoint(mouse) == true) return true;
@@ -470,6 +476,7 @@ namespace Arcanum.Runtime.UI
             _retailCharacterSheet?.Synchronize();
             _retailSchematic?.Synchronize();
             _retailSaveLoad?.Synchronize();
+            _retailOptions?.Synchronize();
             _retailDialogue?.Synchronize();
             _retailLogbook?.Synchronize();
             _retailLocalMap?.Synchronize();
@@ -498,6 +505,8 @@ namespace Arcanum.Runtime.UI
                                  && _retailLogbook?.IsAvailable == true;
             bool sourceSaveLoad = Controller.Screen == GameUiScreen.SaveLoad
                                   && _retailSaveLoad?.IsAvailable == true;
+            bool sourceOptions = Controller.Screen == GameUiScreen.Options
+                                 && _retailOptions?.IsAvailable == true;
             bool sourceLocalMap = Controller.Screen == GameUiScreen.Map
                                   && _retailLocalMap?.IsVisible == true;
             GUI.depth = -120;
@@ -506,7 +515,7 @@ namespace Arcanum.Runtime.UI
                 && !sourceStartingEquipment && !sourceInventory
                 && !sourceInventoryInteraction
                 && !sourceCharacter && !sourceSchematic && !sourceDialogue && !sourceLogbook && !sourceSaveLoad
-                && !sourceLocalMap)
+                && !sourceLocalMap && !sourceOptions)
                 DrawScreen();
             DrawCursorLabel();
         }

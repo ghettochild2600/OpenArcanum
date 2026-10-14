@@ -68,6 +68,8 @@ namespace Arcanum.Runtime.UI
         // whether Always Run is off or already on; it is not an inversion modifier for pointer locomotion.
         public bool EffectiveRun => AlwaysRun || ControlHeld;
 
+        public void SetAlwaysRun(bool value) => AlwaysRun = value;
+
         public void SetModifiers(bool control, bool shift, bool alt)
         {
             ControlHeld = control;

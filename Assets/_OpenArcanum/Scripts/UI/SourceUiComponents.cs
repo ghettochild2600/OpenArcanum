@@ -102,7 +102,8 @@ namespace OpenArcanum.UI
 
             CurrentAsset = resolved;
             Image.sprite = resolved.Sprite;
-            Image.color = Color.white;
+            // Tint belongs to the presenter (bitmap glyph coverage, disabled icons, status overlays).
+            // Refreshing or re-enabling the source asset must not silently erase that presentation state.
             ApplyScalePolicy(SourceUiScaleMetadataCatalog.Get(resolved.Key.SourceId));
             if (applyNativeLogicalSize)
                 ((RectTransform)transform).sizeDelta = resolved.LogicalSize;

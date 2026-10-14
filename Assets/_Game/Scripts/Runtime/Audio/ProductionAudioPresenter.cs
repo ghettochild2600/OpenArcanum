@@ -40,6 +40,7 @@ namespace Arcanum.Runtime.Audio
         private long _sequence;
         private bool _combatWasActive;
         private string _voiceKey;
+        private float _voiceVolume = 0.5f;
 
         public bool IsInitialized => _bank != null;
         public SoundBank Bank => _bank;
@@ -48,6 +49,15 @@ namespace Arcanum.Runtime.Audio
         public AudioSource VoiceSource => _voice;
         public AudioPlaybackRecord LastVoicePlayback { get; private set; }
         public IReadOnlyList<AudioPlaybackRecord> History => _history;
+
+        /// <summary>Applies the source 0..10 Options scales without changing channel ownership.</summary>
+        public void ApplySourceOptionVolumes(int effects, int voice, int music)
+        {
+            if (_effects != null) _effects.EffectsVolume = Mathf.Clamp(effects, 0, 10) * .08f;
+            _voiceVolume = Mathf.Clamp(voice, 0, 10) * .1f;
+            if (_voice != null) _voice.volume = _voiceVolume;
+            if (_music != null) _music.MusicVolume = Mathf.Clamp(music, 0, 10) * .08f;
+        }
 
         public void ClearDiagnosticHistory() => _history.Clear();
 
@@ -320,7 +330,7 @@ namespace Arcanum.Runtime.Audio
             yield return _music.StreamMp3(path, value => clip = value);
             if (_voiceKey != key || clip == null) yield break;
             _voice.clip = clip;
-            _voice.volume = 0.8f;
+            _voice.volume = _voiceVolume;
             _voice.loop = false;
             _voice.Play();
             LastVoicePlayback = new AudioPlaybackRecord
