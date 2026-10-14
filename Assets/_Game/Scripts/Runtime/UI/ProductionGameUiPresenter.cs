@@ -41,6 +41,7 @@ namespace Arcanum.Runtime.UI
         private RetailStartingEquipmentView _retailStartingEquipment;
         private RetailGameplayHudView _retailGameplayHud;
         private RetailInventoryEquipmentView _retailInventory;
+        private RetailInventoryInteractionView _retailInventoryInteraction;
         private RetailCharacterSheetView _retailCharacterSheet;
         private RetailSchematicView _retailSchematic;
         private RetailSaveLoadView _retailSaveLoad;
@@ -115,6 +116,9 @@ namespace Arcanum.Runtime.UI
             _retailInventory = GetComponent<RetailInventoryEquipmentView>()
                                ?? gameObject.AddComponent<RetailInventoryEquipmentView>();
             _retailInventory.Bind(_controller, _session, _retailGameplayHud.Resolver);
+            _retailInventoryInteraction = GetComponent<RetailInventoryInteractionView>()
+                                          ?? gameObject.AddComponent<RetailInventoryInteractionView>();
+            _retailInventoryInteraction.Bind(_controller, _retailGameplayHud.Resolver);
             _retailCharacterSheet = GetComponent<RetailCharacterSheetView>()
                                     ?? gameObject.AddComponent<RetailCharacterSheetView>();
             _retailCharacterSheet.Bind(_controller, _session, _retailGameplayHud.Resolver);
@@ -152,8 +156,14 @@ namespace Arcanum.Runtime.UI
                 SyncInputGate();
                 return;
             }
-            if (!result.IsSuccess || result.Command.Type != WorldInteractionCommandType.Loot) return;
-            if (Controller.BeginCorpseLoot(result.Command.Target))
+            if (!result.IsSuccess || result.ScriptRunDefault == false) return;
+            bool opened = result.Command.Type == WorldInteractionCommandType.Loot
+                ? Controller.BeginCorpseLoot(result.Command.Target)
+                : result.Command.Type == WorldInteractionCommandType.Use
+                  && _session.TryGetObjectState(result.Command.Target, out PersistentObjectState target)
+                  && target.Type == Arcanum.Formats.Objects.ObjectType.Container
+                  && Controller.BeginContainerLoot(result.Command.Target);
+            if (opened)
             {
                 _scroll = Vector2.zero;
                 SyncInputGate();
@@ -174,6 +184,7 @@ namespace Arcanum.Runtime.UI
             RefreshWorldHover();
             _retailGameplayHud?.Synchronize(_showHud);
             _retailInventory?.Synchronize();
+            _retailInventoryInteraction?.Synchronize();
             _retailCharacterSheet?.Synchronize();
             _retailSchematic?.Synchronize();
             _retailSaveLoad?.Synchronize();
@@ -382,6 +393,7 @@ namespace Arcanum.Runtime.UI
             if (_retailSchematic?.ContainsScreenPoint(mouse) == true) return true;
             if (_retailSaveLoad?.ContainsScreenPoint(mouse) == true) return true;
             if (_retailInventory?.ContainsScreenPoint(mouse) == true) return true;
+            if (_retailInventoryInteraction?.ContainsScreenPoint(mouse) == true) return true;
             if (_retailDialogue?.ContainsScreenPoint(mouse) == true) return true;
             if (_retailLogbook?.ContainsScreenPoint(mouse) == true) return true;
             if (_retailGameplayHud?.ContainsScreenPoint(mouse) == true) return true;
@@ -401,6 +413,7 @@ namespace Arcanum.Runtime.UI
             _retailStartingEquipment?.Synchronize();
             _retailGameplayHud?.Synchronize(_showHud);
             _retailInventory?.Synchronize();
+            _retailInventoryInteraction?.Synchronize();
             _retailCharacterSheet?.Synchronize();
             _retailSchematic?.Synchronize();
             _retailSaveLoad?.Synchronize();
@@ -416,6 +429,9 @@ namespace Arcanum.Runtime.UI
                                            && _retailStartingEquipment?.IsAvailable == true;
             bool sourceInventory = Controller.Screen == GameUiScreen.Inventory
                                    && _retailInventory?.IsAvailable == true;
+            bool sourceInventoryInteraction = (Controller.Screen is GameUiScreen.Container
+                    or GameUiScreen.Corpse or GameUiScreen.Merchant)
+                                               && _retailInventoryInteraction?.IsAvailable == true;
             bool sourceCharacter = (Controller.Screen == GameUiScreen.Character
                                     || Controller.Screen == GameUiScreen.Magic
                                     || Controller.Screen == GameUiScreen.Technology)
@@ -432,6 +448,7 @@ namespace Arcanum.Runtime.UI
             if (_showHud && _retailGameplayHud?.IsAvailable != true) DrawHud();
             if (Controller.IsModalOpen && !sourceMainMenu && !sourceCharacterCreation && !sourcePregeneratedCharacter
                 && !sourceStartingEquipment && !sourceInventory
+                && !sourceInventoryInteraction
                 && !sourceCharacter && !sourceSchematic && !sourceDialogue && !sourceLogbook && !sourceSaveLoad)
                 DrawScreen();
             DrawCursorLabel();
@@ -564,6 +581,7 @@ namespace Arcanum.Runtime.UI
                 case GameUiScreen.SaveLoad: DrawSaveLoad(); break;
                 case GameUiScreen.Dialogue: DrawDialogue(); break;
                 case GameUiScreen.Corpse: DrawCorpse(); break;
+                case GameUiScreen.Container: DrawCorpse(); break;
             }
             GUILayout.EndScrollView();
             if (!string.IsNullOrEmpty(Controller.Feedback)) GUILayout.Label(Controller.Feedback, GUI.skin.box);
@@ -1156,6 +1174,7 @@ namespace Arcanum.Runtime.UI
             GameUiScreen.SaveLoad => "SAVE / LOAD",
             GameUiScreen.Dialogue => "DIALOGUE",
             GameUiScreen.Corpse => "CORPSE",
+            GameUiScreen.Container => "CONTAINER",
             _ => "OPENARCANUM",
         };
     }

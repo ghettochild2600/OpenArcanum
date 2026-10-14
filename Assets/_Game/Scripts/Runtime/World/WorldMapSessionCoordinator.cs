@@ -1722,6 +1722,45 @@ namespace Arcanum.Runtime.World
                         : WorldInteractionResultCode.TravelFailed,
                     scriptNum: targetState.UseScriptNum, scriptRunDefault: false, areaEntrance: travel);
             }
+            if (targetState.Type == ObjectType.Container && target.Type == ObjectType.Container)
+            {
+                if (!SectorCoordinate.TryParse(targetState.Placement.Sector, out SectorCoordinate containerSector)
+                    || !InteractionRangeRules.IsWithin(PlayerState.MapPosition,
+                        containerSector.ToGlobal(targetState.Placement.TilePosition), InteractionRangeRules.PortalUseRange))
+                    return new WorldInteractionResult(command, WorldInteractionResultCode.OutOfRange);
+                int containerScript = targetState.UseScriptNum;
+                ScriptExecutionResult containerResult = default;
+                if (containerScript != 0)
+                {
+                    if (UseScripts == null)
+                        return new WorldInteractionResult(command, WorldInteractionResultCode.ScriptUnavailable,
+                            scriptNum: containerScript);
+                    containerResult = UseScripts.DispatchUse(command.Actor, command.Target, containerScript);
+                    if (!containerResult.Succeeded)
+                    {
+                        WorldInteractionResultCode failure = containerResult.Status switch
+                        {
+                            ScriptExecutionStatus.MissingScript => WorldInteractionResultCode.ScriptMissing,
+                            ScriptExecutionStatus.UnsupportedOpcode or ScriptExecutionStatus.EmptyScript
+                                => WorldInteractionResultCode.ScriptUnsupported,
+                            _ => WorldInteractionResultCode.ScriptFailed,
+                        };
+                        return new WorldInteractionResult(command, failure, scriptNum: containerScript,
+                            scriptStatus: containerResult.Status, scriptRunDefault: false);
+                    }
+                    if (!containerResult.RunDefault)
+                        return new WorldInteractionResult(command, WorldInteractionResultCode.Success,
+                            scriptNum: containerScript, scriptStatus: containerResult.Status,
+                            scriptRunDefault: false);
+                }
+                if (targetState.Locked)
+                    return new WorldInteractionResult(command, WorldInteractionResultCode.Blocked,
+                        scriptNum: containerScript, scriptStatus: ScriptStatus(containerScript, containerResult),
+                        scriptRunDefault: ScriptDefault(containerScript, containerResult));
+                return new WorldInteractionResult(command, WorldInteractionResultCode.Success,
+                    scriptNum: containerScript, scriptStatus: ScriptStatus(containerScript, containerResult),
+                    scriptRunDefault: ScriptDefault(containerScript, containerResult));
+            }
             if (targetState.Type != ObjectType.Portal || target.Type != ObjectType.Portal)
                 return new WorldInteractionResult(command, WorldInteractionResultCode.InvalidTarget);
             if (!SectorCoordinate.TryParse(targetState.SourceSector, out SectorCoordinate targetSector))

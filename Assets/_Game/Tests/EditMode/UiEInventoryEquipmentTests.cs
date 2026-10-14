@@ -78,6 +78,46 @@ namespace Arcanum.Formats.Tests
         }
 
         [Test]
+        public void RuntimeInventoryModesUseExactSourceRootsAndGridGeometry()
+        {
+            foreach (int id in new[] { RetailInventoryInteractionLayout.LootBackgroundSourceId,
+                         RetailInventoryInteractionLayout.BarterBackgroundSourceId,
+                         RetailInventoryInteractionLayout.PlayerInventorySourceId,
+                         RetailInventoryInteractionLayout.TakeAllSourceId })
+                Assert.That(_retail.TryResolve(new UiAssetKey(id), out _), Is.True, $"source id {id}");
+            Assert.That(RetailInventoryInteractionLayout.LootGrid, Is.EqualTo(new Rect(8, 136, 320, 256)));
+            Assert.That(RetailInventoryInteractionLayout.LootScrollbar, Is.EqualTo(new Rect(330, 136, 17, 256)));
+            Assert.That(RetailInventoryInteractionLayout.BarterGrid, Is.EqualTo(new Rect(8, 168, 320, 224)));
+            Assert.That(RetailInventoryInteractionLayout.BarterScrollbar, Is.EqualTo(new Rect(330, 168, 17, 224)));
+            Assert.That(RetailInventoryInteractionLayout.ScreenRect(800, 600), Is.EqualTo(new Rect(0, 41, 800, 400)));
+        }
+
+        [Test]
+        public void ContainerModeTransfersThroughExistingInventoryAuthority()
+        {
+            var source = new ObjectInstance(ObjectType.Container, 9700, 1L | (1L << 32),
+                0xA0000000u, 0, 0, oid: GuidBytes(70));
+            PersistentObjectState container = _session.GetOrCreate(source, Sector, source.CurrentArtId.Value,
+                false, false);
+            var runtimeObject = new GameObject("Container Runtime");
+            runtimeObject.transform.SetParent(_root.transform);
+            WorldObject runtime = runtimeObject.AddComponent<WorldObject>();
+            runtime.Type = ObjectType.Container;
+            _session.Bind(Sector, container, runtime);
+            var itemSource = new ObjectInstance(ObjectType.Armor, 9771, null, 0x40000000u, 0, 0,
+                oid: GuidBytes(71), parentOid: Bytes(container.Identity), invLocation: 0, invAid: InventoryAid);
+            PersistentObjectState item = _session.GetOrCreate(itemSource, Sector, itemSource.CurrentArtId.Value,
+                false, false, inventoryArtId: InventoryAid, inventoryFootprint: InventoryFootprint.OneCell,
+                inventoryLocation: 0);
+
+            Assert.That(_controller.BeginContainerLoot(container.Identity), Is.True, _controller.Feedback);
+            Assert.That(_controller.Screen, Is.EqualTo(GameUiScreen.Container));
+            Assert.That(_controller.ProjectOpenInventoryTarget().Single().Identity, Is.EqualTo(item.Identity));
+            Assert.That(_controller.TransferOpenInventoryItem(item.Identity), Is.True, _controller.Feedback);
+            Assert.That(item.ParentIdentity, Is.EqualTo(_session.PlayerState.Identity));
+        }
+
+        [Test]
         public void OrdinaryInventoryUsesExactSourcePanelComposition()
         {
             Assert.That(RetailInventoryEquipmentLayout.PaperDoll, Is.EqualTo(new Rect(0, 0, 800, 400)));

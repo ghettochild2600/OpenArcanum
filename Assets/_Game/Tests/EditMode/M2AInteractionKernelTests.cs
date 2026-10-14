@@ -85,6 +85,20 @@ namespace Arcanum.Formats.Tests
         }
 
         [Test]
+        public void ContainerUseRunsTheSharedUseBoundaryThenOpensOnlyWhenUnlocked()
+        {
+            WorldObject container = Container(41, 2, 1, locked: false);
+            WorldInteractionResult opened = _session.ExecuteInteraction(new WorldInteractionCommand(
+                _playerState.Identity, container.Identity, WorldInteractionCommandType.Use));
+            Assert.That(opened.Code, Is.EqualTo(WorldInteractionResultCode.Success));
+
+            WorldObject locked = Container(42, 2, 1, locked: true);
+            WorldInteractionResult rejected = _session.ExecuteInteraction(new WorldInteractionCommand(
+                _playerState.Identity, locked.Identity, WorldInteractionCommandType.Use));
+            Assert.That(rejected.Code, Is.EqualTo(WorldInteractionResultCode.Blocked));
+        }
+
+        [Test]
         public void DeterministicOverlappingSelectionUsesFrontmostThenObjectId()
         {
             Texture2D texture = SolidTexture();
@@ -275,6 +289,17 @@ namespace Arcanum.Formats.Tests
             state.UseScriptNum = useScript;
             runtime.UseScriptNum = state.UseScriptNum;
             _session.BindPortal(state, runtime, 7, 8);
+            _map.Register(runtime, 0);
+            return runtime;
+        }
+
+        private WorldObject Container(int number, int x, int y, bool locked)
+        {
+            const uint art = 0xA0000000u;
+            ObjectInstance source = Source(number, x, y, ObjectType.Container, art);
+            PersistentObjectState state = _session.GetOrCreate(source, Sector, art, false, locked);
+            WorldObject runtime = Runtime("Container" + number, ObjectType.Container);
+            _session.Bind(Sector, state, runtime);
             _map.Register(runtime, 0);
             return runtime;
         }

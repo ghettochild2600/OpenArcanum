@@ -21,7 +21,7 @@ namespace Arcanum.Runtime.UI
     public enum GameUiScreen
     {
         None, MainMenu, CharacterCreation, PregeneratedCharacter, StartingEquipment, Inventory, Character, Skills, Magic, Technology, Crafting, Options,
-        Journal, Map, Party, Merchant, SaveLoad, Dialogue, Corpse,
+        Journal, Map, Party, Merchant, SaveLoad, Dialogue, Container, Corpse,
     }
 
     public enum GameUiCursorMode
@@ -251,6 +251,7 @@ namespace Arcanum.Runtime.UI
         private readonly ISessionSaveSlotOperations _saveOperations;
         private ArcanumObjectId _merchant;
         private ArcanumObjectId _corpse;
+        private ArcanumObjectId _container;
         private ArcanumObjectId _character;
         private int _pendingSpell = -1;
         private ArcanumObjectId _pendingTechnologyItem;
@@ -269,6 +270,9 @@ namespace Arcanum.Runtime.UI
         public ArcanumObjectId SelectedItem { get; private set; }
         public ArcanumObjectId SelectedWorldTarget { get; private set; }
         public ArcanumObjectId Corpse => _corpse;
+        public ArcanumObjectId Container => _container;
+        public ArcanumObjectId OpenInventoryTarget => Screen == GameUiScreen.Corpse ? _corpse
+            : Screen == GameUiScreen.Container ? _container : default;
         public ArcanumObjectId MerchantTarget => _merchant;
         public ArcanumObjectId CharacterTarget => _character.IsNull ? Player : _character;
         public bool CharacterReadOnly => CharacterTarget != Player;
@@ -352,6 +356,7 @@ namespace Arcanum.Runtime.UI
             SelectedItem = default;
             SelectedWorldTarget = default;
             if (screen != GameUiScreen.Corpse) _corpse = default;
+            if (screen != GameUiScreen.Container) _container = default;
             _character = screen is GameUiScreen.Character or GameUiScreen.Skills or GameUiScreen.Magic
                 or GameUiScreen.Technology
                 ? Player : default;
@@ -574,6 +579,7 @@ namespace Arcanum.Runtime.UI
             SelectedWorldTarget = default;
             _merchant = default;
             _corpse = default;
+            _container = default;
             _character = default;
             _pendingSpell = -1;
             _pendingTechnologyItem = default;
@@ -1117,6 +1123,23 @@ namespace Arcanum.Runtime.UI
             return true;
         }
 
+        public bool BeginContainerLoot(ArcanumObjectId container)
+        {
+            if (!_session.TryGetObjectState(container, out PersistentObjectState state)
+                || state.Type != ObjectType.Container || state.Off || state.Locked
+                || !_session.TryGetLoadedObject(container, out _))
+                return Reject("That container is unavailable.");
+            if (!Open(GameUiScreen.Container)) return false;
+            _container = container;
+            return true;
+        }
+
+        public IReadOnlyList<GameUiItemView> ProjectOpenInventoryTarget()
+        {
+            ArcanumObjectId target = OpenInventoryTarget;
+            return target.IsNull ? Array.Empty<GameUiItemView>() : ProjectInventory(target);
+        }
+
         public IReadOnlyList<GameUiItemView> ProjectCorpseInventory()
             => _corpse.IsNull ? Array.Empty<GameUiItemView>() : ProjectInventory(_corpse);
 
@@ -1128,6 +1151,60 @@ namespace Arcanum.Runtime.UI
             CorpseLootResult result = _session.DeathConsequences.LootItem(_corpse, Player, item);
             return Complete(result.Succeeded,
                 result.Succeeded ? $"Looted {name}." : result.Failure.ToString());
+        }
+
+        public bool TransferOpenInventoryItem(ArcanumObjectId item, int quantity = int.MaxValue)
+        {
+            ArcanumObjectId sourceOwner = OpenInventoryTarget;
+            if (sourceOwner.IsNull || !_session.TryGetObjectState(item, out PersistentObjectState state)
+                || state.ParentIdentity != sourceOwner || state.Placement.Kind != ObjectPlacementKind.Contained)
+                return Reject("That item is not in the open inventory.");
+            ArcanumObjectId movedItem = item;
+            if (state.StackQuantity is > 1 && quantity > 0 && quantity < state.StackQuantity.Value)
+            {
+                StackSplitResult split = _session.SplitStack(item, quantity);
+                if (!split.Succeeded) return Reject(split.Code.ToString());
+                movedItem = split.CreatedState.Identity;
+            }
+            if (Screen == GameUiScreen.Corpse)
+            {
+                CorpseLootResult loot = _session.DeathConsequences.LootItem(_corpse, Player, movedItem);
+                return Complete(loot.Succeeded, loot.Succeeded ? $"Looted {ItemName(state)}."
+                    : loot.Failure.ToString());
+            }
+            InventoryTransferResult result = _session.TransferItem(movedItem,
+                _session.States[movedItem].Placement, ObjectPlacement.ContainedBy(Player));
+            return Complete(result.Succeeded, result.Succeeded ? $"Took {ItemName(state)}."
+                : result.Code.ToString());
+        }
+
+        public bool TransferPlayerItemToOpenInventory(ArcanumObjectId item, int quantity = int.MaxValue)
+        {
+            ArcanumObjectId target = OpenInventoryTarget;
+            if (target.IsNull || !_session.TryGetObjectState(item, out PersistentObjectState state)
+                || state.ParentIdentity != Player || state.Placement.Kind != ObjectPlacementKind.Contained)
+                return Reject("That item is not available to transfer.");
+            ArcanumObjectId movedItem = item;
+            if (state.StackQuantity is > 1 && quantity > 0 && quantity < state.StackQuantity.Value)
+            {
+                StackSplitResult split = _session.SplitStack(item, quantity);
+                if (!split.Succeeded) return Reject(split.Code.ToString());
+                movedItem = split.CreatedState.Identity;
+            }
+            InventoryTransferResult result = _session.TransferItem(movedItem,
+                _session.States[movedItem].Placement, ObjectPlacement.ContainedBy(target));
+            return Complete(result.Succeeded, result.Succeeded ? $"Placed {ItemName(state)}."
+                : result.Code.ToString());
+        }
+
+        public int TakeAllOpenInventory()
+        {
+            ArcanumObjectId target = OpenInventoryTarget;
+            if (target.IsNull) return 0;
+            int moved = 0;
+            foreach (GameUiItemView item in ProjectOpenInventoryTarget().Where(value => !value.IsEquipped).ToArray())
+                if (TransferOpenInventoryItem(item.Identity)) moved++;
+            return moved;
         }
 
         public bool SelectItem(ArcanumObjectId item)
