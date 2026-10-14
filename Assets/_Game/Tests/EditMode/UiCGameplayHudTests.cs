@@ -7,6 +7,7 @@ using Arcanum.Formats.Text;
 using Arcanum.Formats.World;
 using Arcanum.Runtime.Character;
 using Arcanum.Runtime.Magic;
+using Arcanum.Runtime.Party;
 using Arcanum.Runtime.Save;
 using Arcanum.Runtime.UI;
 using Arcanum.Runtime.World;
@@ -83,13 +84,101 @@ namespace Arcanum.Formats.Tests
             int[] ids = { 3, 17, 18, 19, 20, 82, 93, 105, 111, 137, 169, 171, 172, 173, 181,
                 184, 185, 186, 187, 188, 192, 193, 194, 195, 207, 208, 216, 229, 250, 251,
                 252, 253, 279, 280, 292, 293, 354, 469, 470, 471, 472, 473, 474, 558, 559,
-                560, 561, 565, 628, 632, 772, 773, 782 };
+                503, 504, 505, 560, 561, 565, 616, 628, 632, 772, 773, 782 };
             foreach (int id in ids)
                 Assert.That(_retail.TryResolve(new UiAssetKey(id), out _), Is.True, $"source id {id}");
             Assert.That(Original(RetailGameplayHudLayout.TopSourceId).LogicalSize,
                 Is.EqualTo(new Vector2Int(800, 41)));
             Assert.That(Original(RetailGameplayHudLayout.BottomSourceId).LogicalSize,
                 Is.EqualTo(new Vector2Int(800, 159)));
+        }
+
+        [Test]
+        public void FollowerHudProjectsSourceSlotsPortraitVitalsPoisonSaveLoadAndRemoval()
+        {
+            const int followerPrototype = 28422;
+            var followerProto = new ObjectProtoInfo(followerPrototype, ObjectType.Npc, 0x28100000u,
+                description: followerPrototype) { Portrait = 1000 };
+            var gold = new ObjectProtoInfo(9056, ObjectType.Gold, 0x60000003u, invAid: 3)
+                { GoldQuantity = 1 };
+            _session.BindPrototypeSource(number => number == followerPrototype ? followerProto
+                : number == 9056 ? gold : null);
+            _session.BindDescriptionSource(id => id == followerPrototype ? "Virgil" : null);
+            ArcanumObjectId follower = Parse("G_11111111_1111_1111_1111_111111111111");
+            var source = new ObjectInstance(ObjectType.Npc, followerPrototype, 0L,
+                0x28100000u, 0, 0, oid: Bytes(follower));
+            _session.GetOrCreate(source, follower, Sector, source.CurrentArtId.Value, false, false);
+            int[] stats = Enumerable.Repeat(8, CharacterAttributeSet.SourceStatArrayCount).ToArray();
+            stats[CharacterAttributeSet.RaceSourceSlot] = (int)CharacterRace.Human;
+            stats[CharacterAttributeSet.GenderSourceSlot] = (int)CharacterGender.Male;
+            _session.Characters.GetOrCreateSourceCharacter(follower, ObjectType.Npc, followerPrototype, stats, null);
+            _session.Progression.GetOrCreateSourceCharacter(follower, ObjectType.Npc, followerPrototype,
+                CharacterProgressionSource.Resolve(stats, null, null, null, null, null, 0));
+            _session.DerivedStats.GetOrCreateSourceCharacter(follower, ObjectType.Npc, followerPrototype,
+                CharacterDerivedSource.Resolve(stats, null, null, 0, null, null, null, 50, 0, 0));
+            _session.Vitality.GetOrCreateSourceCharacter(follower, ObjectType.Npc, followerPrototype,
+                CharacterVitalitySource.Resolve(stats, null, null, 0, null, 15, null, 0,
+                    null, 0, null, 0, null, 0));
+            Assert.That(_session.Party.Join(follower).Succeeded, Is.True);
+
+            _view.Synchronize(true);
+            GameUiPartyMemberView projected = _controller.ProjectParty().Single();
+            Assert.That((projected.Name, projected.PortraitId, projected.PoisonLevel,
+                    projected.HealthPercent, projected.FatiguePercent),
+                Is.EqualTo(("Virgil", 1000, 0, 100, 100)));
+            RectTransform slot = (RectTransform)Descendant("Follower Slot 1");
+            Assert.That((slot.anchoredPosition, slot.sizeDelta),
+                Is.EqualTo((new Vector2(11f, -50f), new Vector2(40f, 49f))));
+            Assert.That(Descendant("Follower Slot 6").gameObject.activeSelf, Is.False);
+            Assert.That(Descendant("Follower Slot 1").Find("Frame").GetComponent<SourceUiImage>().Key.SourceId,
+                Is.EqualTo(RetailGameplayHudLayout.FollowerFrameSourceId));
+            Assert.That(Descendant("Follower Slot 1").Find("Portrait").GetComponent<Image>().sprite,
+                Is.Not.Null);
+
+            int hpDamage = _session.Vitality.GetMaximumHitPoints(follower) * 3 / 4;
+            int fatigueDamage = _session.Vitality.GetMaximumFatigue(follower) / 2;
+            _session.Vitality.ApplyHitPointDamage(follower, hpDamage);
+            _session.Vitality.ApplyFatigueDamage(follower, fatigueDamage);
+            _session.Poison.Apply(follower, 50);
+            _view.Synchronize(true);
+            projected = _controller.ProjectParty().Single();
+            SourceUiImage health = Descendant("Follower Slot 1").Find("Health").GetComponent<SourceUiImage>();
+            SourceUiImage fatigue = Descendant("Follower Slot 1").Find("Fatigue").GetComponent<SourceUiImage>();
+            Assert.That((projected.Poisoned, health.Key.SourceId),
+                Is.EqualTo((true, RetailGameplayHudLayout.FollowerPoisonSourceId)));
+            Assert.That(health.Image.fillAmount,
+                Is.EqualTo(RetailGameplayHudLayout.FollowerVisiblePixels(projected.HealthPercent) / 34f));
+            Assert.That(fatigue.Image.fillAmount,
+                Is.EqualTo(RetailGameplayHudLayout.FollowerVisiblePixels(projected.FatiguePercent) / 34f));
+
+            string json = _session.SaveGames.SerializeCurrentSession();
+            Assert.That(_session.SaveGames.LoadJson(json).Succeeded, Is.True);
+            _view.Synchronize(true);
+            Assert.That((_controller.ProjectParty().Single().Identity,
+                    _controller.ProjectParty().Single().PoisonLevel),
+                Is.EqualTo((follower, projected.PoisonLevel)));
+            Assert.That(_session.Party.Remove(follower).Succeeded, Is.True);
+            _view.Synchronize(true);
+            Assert.That(Descendant("Follower Slot 1").gameObject.activeSelf, Is.False);
+        }
+
+        [Test]
+        public void FollowerHudGeometryAndThresholdsMatchFollowerUiSource()
+        {
+            Assert.That(RetailGameplayHudLayout.FollowerSlotCount, Is.EqualTo(6));
+            Assert.That(Enumerable.Range(0, 6).Select(RetailGameplayHudLayout.FollowerSlot),
+                Is.EqualTo(new[]
+                {
+                    new Rect(11, 50, 40, 49), new Rect(11, 112, 40, 49),
+                    new Rect(11, 174, 40, 49), new Rect(11, 236, 40, 49),
+                    new Rect(11, 298, 40, 49), new Rect(11, 360, 40, 49),
+                }));
+            Assert.That(RetailGameplayHudLayout.FollowerPortrait, Is.EqualTo(new Rect(4, 4, 32, 32)));
+            Assert.That(RetailGameplayHudLayout.FollowerHealth, Is.EqualTo(new Rect(3, 39, 34, 3)));
+            Assert.That(RetailGameplayHudLayout.FollowerFatigue, Is.EqualTo(new Rect(3, 44, 34, 3)));
+            Assert.That((RetailGameplayHudLayout.FollowerLowHealthThreshold,
+                    RetailGameplayHudLayout.FollowerPoisonThreshold), Is.EqualTo((20, 20)));
+            Assert.That(RetailGameplayHudLayout.FollowerVisiblePixels(50), Is.EqualTo(17));
         }
 
         [Test]

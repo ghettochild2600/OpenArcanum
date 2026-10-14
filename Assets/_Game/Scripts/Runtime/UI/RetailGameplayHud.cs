@@ -31,6 +31,13 @@ namespace Arcanum.Runtime.UI
         public const int ContextualHelpFontSourceId = 229;
         public const int ContextualHelpTitleFontSourceId = 27;
         public const float ContextualHelpLineHeight = 18f;
+        public const int FollowerSlotCount = 6;
+        public const int FollowerFrameSourceId = 503;
+        public const int FollowerFatigueSourceId = 504;
+        public const int FollowerHealthSourceId = 505;
+        public const int FollowerPoisonSourceId = 616;
+        public const int FollowerLowHealthThreshold = 20;
+        public const int FollowerPoisonThreshold = 20;
 
         public static readonly Rect TopInterface = new Rect(0f, 0f, 800f, 41f);
         public static readonly Rect WorldViewport = new Rect(0f, 41f, 800f, 400f);
@@ -50,6 +57,9 @@ namespace Arcanum.Runtime.UI
         public static readonly Rect ContextualHelpText = new Rect(290f, 504f, 291f, 78f);
         public static readonly Rect ContextualHelpTitle = new Rect(290f, 504f, 291f, 19f);
         public static readonly Rect ContextualHelpBody = new Rect(290f, 528f, 291f, 54f);
+        public static readonly Rect FollowerPortrait = new Rect(4f, 4f, 32f, 32f);
+        public static readonly Rect FollowerHealth = new Rect(3f, 39f, 34f, 3f);
+        public static readonly Rect FollowerFatigue = new Rect(3f, 44f, 34f, 3f);
         public static readonly Rect AmmoButton = new Rect(61f, 509f, 37f, 24f);
         public static readonly Rect[] RecentActions =
             { new Rect(69f, 548f, 32f, 32f), new Rect(114f, 548f, 32f, 32f) };
@@ -64,6 +74,15 @@ namespace Arcanum.Runtime.UI
             { 198f, 237f, 276f, 315f, 354f, 418f, 456f, 495f, 534f, 573f };
         public static readonly int[] MaintainedSpellOpenSourceIds = { 188, 189, 190, 191, 192 };
         public static readonly int[] MaintainedSpellPluggedSourceIds = { 628, 629, 630, 631, 632 };
+
+        public static Rect FollowerSlot(int index)
+        {
+            if (index < 0 || index >= FollowerSlotCount) throw new ArgumentOutOfRangeException(nameof(index));
+            return new Rect(11f, 50f + 62f * index, 40f, 49f);
+        }
+
+        public static int FollowerVisiblePixels(int percent)
+            => 34 * Mathf.Clamp(percent, 0, 100) / 100;
 
         /// <summary>
         /// The retail blitter keeps an eight-pixel liquid overlap under the vial neck. Zero remains genuinely empty;
@@ -162,6 +181,7 @@ namespace Arcanum.Runtime.UI
         private RectTransform _topWindow;
         private RectTransform _bottomWindow;
         private RectTransform _cursorLayer;
+        private RectTransform _followerLayer;
         private SourceUiImage _topBackground;
         private SourceUiImage _bottomBackground;
         private Image _healthLiquid;
@@ -206,6 +226,12 @@ namespace Arcanum.Runtime.UI
         private readonly SourceUiButton[] _sleepButtons = new SourceUiButton[8];
         private readonly Button[] _sleepRows = new Button[8];
         private SourceUiButton _combatButton;
+        private readonly RectTransform[] _followerSlots = new RectTransform[RetailGameplayHudLayout.FollowerSlotCount];
+        private readonly Image[] _followerPortraits = new Image[RetailGameplayHudLayout.FollowerSlotCount];
+        private readonly SourceUiImage[] _followerFallbackIcons = new SourceUiImage[RetailGameplayHudLayout.FollowerSlotCount];
+        private readonly SourceUiImage[] _followerHealthBars = new SourceUiImage[RetailGameplayHudLayout.FollowerSlotCount];
+        private readonly SourceUiImage[] _followerFatigueBars = new SourceUiImage[RetailGameplayHudLayout.FollowerSlotCount];
+        private readonly Image[] _followerDangerTints = new Image[RetailGameplayHudLayout.FollowerSlotCount];
         private Camera _managedCamera;
         private Rect _originalCameraRect;
         private float _originalCameraOrthographicSize;
@@ -325,6 +351,7 @@ namespace Arcanum.Runtime.UI
             RefreshClock();
             RefreshExperienceGauge();
             RefreshRecentActions();
+            RefreshFollowerSlots();
             if (_fatePanel != null) _fatePanel.gameObject.SetActive(_controller.HudPanel == GameUiHudPanel.Fate);
             if (_sleepPanel != null)
             {
@@ -339,8 +366,17 @@ namespace Arcanum.Runtime.UI
         }
 
         public bool ContainsScreenPoint(Vector2 screenBottomLeft)
-            => IsVisible && RetailGameplayHudLayout.ContainsInterfacePoint(
-                screenBottomLeft, Screen.width, Screen.height);
+        {
+            if (!IsVisible) return false;
+            if (RetailGameplayHudLayout.ContainsInterfacePoint(screenBottomLeft, Screen.width, Screen.height))
+                return true;
+            Vector2 topLeft = new Vector2(screenBottomLeft.x, Screen.height - screenBottomLeft.y);
+            int visible = Mathf.Min(RetailGameplayHudLayout.FollowerSlotCount,
+                _controller?.ProjectParty().Count ?? 0);
+            for (int index = 0; index < visible; index++)
+                if (RetailGameplayHudLayout.FollowerSlot(index).Contains(topLeft)) return true;
+            return false;
+        }
 
         private void BuildPresentation()
         {
@@ -360,6 +396,7 @@ namespace Arcanum.Runtime.UI
             RectTransform canvasRect = (RectTransform)_canvasRoot.transform;
             _topWindow = AddWindow("Retail Top HUD Window", canvasRect, top: true);
             _bottomWindow = AddWindow("Retail Bottom HUD Window", canvasRect, top: false);
+            _followerLayer = AddFullScreenLayer("Retail Follower HUD Layer", canvasRect);
             _cursorLayer = AddFullScreenLayer("Retail Gameplay Cursor Layer", canvasRect);
             Canvas cursorCanvas = _cursorLayer.gameObject.AddComponent<Canvas>();
             cursorCanvas.overrideSorting = true;
@@ -506,6 +543,7 @@ namespace Arcanum.Runtime.UI
             BuildFatePanel();
             BuildSleepPanel();
             BuildSkillsPanel();
+            BuildFollowerSlots();
 
             var cursor = new GameObject("Retail Gameplay Cursor",
                 typeof(RectTransform), typeof(Image), typeof(SourceUiImage), typeof(RetailMainMenuCursorView));
@@ -1004,6 +1042,84 @@ namespace Arcanum.Runtime.UI
             }
         }
 
+        private void BuildFollowerSlots()
+        {
+            for (int index = 0; index < RetailGameplayHudLayout.FollowerSlotCount; index++)
+            {
+                RectTransform slot = AddRect($"Follower Slot {index + 1}", _followerLayer,
+                    RetailGameplayHudLayout.FollowerSlot(index));
+                _followerSlots[index] = slot;
+                AddImage("Frame", slot, new UiAssetKey(RetailGameplayHudLayout.FollowerFrameSourceId),
+                    new Rect(0f, 0f, 40f, 49f), false);
+
+                SourceUiImage fallback = AddImage("Fallback Portrait", slot, new UiAssetKey(375),
+                    RetailGameplayHudLayout.FollowerPortrait, false);
+                fallback.Image.preserveAspect = true;
+                _followerFallbackIcons[index] = fallback;
+
+                RectTransform portraitRect = AddRect("Portrait", slot, RetailGameplayHudLayout.FollowerPortrait);
+                Image portrait = portraitRect.gameObject.AddComponent<Image>();
+                portrait.preserveAspect = true;
+                portrait.raycastTarget = false;
+                _followerPortraits[index] = portrait;
+
+                _followerHealthBars[index] = AddFollowerBar("Health", slot,
+                    RetailGameplayHudLayout.FollowerHealthSourceId, RetailGameplayHudLayout.FollowerHealth);
+                _followerFatigueBars[index] = AddFollowerBar("Fatigue", slot,
+                    RetailGameplayHudLayout.FollowerFatigueSourceId, RetailGameplayHudLayout.FollowerFatigue);
+
+                RectTransform tintRect = AddRect("Low Health Tint", slot, RetailGameplayHudLayout.FollowerPortrait);
+                Image tint = tintRect.gameObject.AddComponent<Image>();
+                tint.color = new Color(1f, 0f, 0f, .35f);
+                tint.raycastTarget = false;
+                _followerDangerTints[index] = tint;
+                slot.gameObject.SetActive(false);
+            }
+        }
+
+        private SourceUiImage AddFollowerBar(string name, RectTransform slot, int sourceId, Rect rect)
+        {
+            SourceUiImage bar = AddImage(name, slot, new UiAssetKey(sourceId), rect, false);
+            bar.Image.type = Image.Type.Filled;
+            bar.Image.fillMethod = Image.FillMethod.Horizontal;
+            bar.Image.fillOrigin = (int)Image.OriginHorizontal.Left;
+            return bar;
+        }
+
+        private void RefreshFollowerSlots()
+        {
+            IReadOnlyList<GameUiPartyMemberView> members = _controller.ProjectParty();
+            for (int index = 0; index < _followerSlots.Length; index++)
+            {
+                bool active = index < members.Count;
+                _followerSlots[index].gameObject.SetActive(active);
+                if (!active) continue;
+                GameUiPartyMemberView member = members[index];
+                SourceUiImage health = _followerHealthBars[index];
+                health.SetKey(new UiAssetKey(member.Poisoned
+                    ? RetailGameplayHudLayout.FollowerPoisonSourceId
+                    : RetailGameplayHudLayout.FollowerHealthSourceId));
+                health.Image.type = Image.Type.Filled;
+                health.Image.fillMethod = Image.FillMethod.Horizontal;
+                health.Image.fillOrigin = (int)Image.OriginHorizontal.Left;
+                health.Image.fillAmount = RetailGameplayHudLayout.FollowerVisiblePixels(member.HealthPercent) / 34f;
+                _followerFatigueBars[index].Image.fillAmount =
+                    RetailGameplayHudLayout.FollowerVisiblePixels(member.FatiguePercent) / 34f;
+                _followerDangerTints[index].gameObject.SetActive(member.LowHealth);
+
+                Image portrait = _followerPortraits[index];
+                RetailPortraitAsset portraitAsset = null;
+                bool resolved = member.PortraitId > 0
+                                && _resolver.Original.TryResolvePortrait(member.PortraitId,
+                                    out portraitAsset);
+                portrait.gameObject.SetActive(resolved);
+                portrait.sprite = resolved ? portraitAsset.Sprite : null;
+                _followerFallbackIcons[index].gameObject.SetActive(!resolved);
+                if (!resolved)
+                    _followerFallbackIcons[index].SetKey(new UiAssetKey(member.FallbackIconSourceId));
+            }
+        }
+
         private SourceUiImage AddImage(string name, RectTransform parent, UiAssetKey key, Rect sourceRect,
             bool raycast)
         {
@@ -1175,6 +1291,7 @@ namespace Arcanum.Runtime.UI
             _canvasRoot = null;
             _topWindow = null;
             _bottomWindow = null;
+            _followerLayer = null;
             _cursorLayer = null;
             _topBackground = null;
             _bottomBackground = null;
@@ -1203,6 +1320,12 @@ namespace Arcanum.Runtime.UI
             Array.Clear(_skillActionButtons, 0, _skillActionButtons.Length);
             Array.Clear(_recentActionHelpOwners, 0, _recentActionHelpOwners.Length);
             _combatButton = null;
+            Array.Clear(_followerSlots, 0, _followerSlots.Length);
+            Array.Clear(_followerPortraits, 0, _followerPortraits.Length);
+            Array.Clear(_followerFallbackIcons, 0, _followerFallbackIcons.Length);
+            Array.Clear(_followerHealthBars, 0, _followerHealthBars.Length);
+            Array.Clear(_followerFatigueBars, 0, _followerFatigueBars.Length);
+            Array.Clear(_followerDangerTints, 0, _followerDangerTints.Length);
             Array.Clear(_maintainedSpellSlots, 0, _maintainedSpellSlots.Length);
             Array.Clear(_maintainedSpellButtons, 0, _maintainedSpellButtons.Length);
             Array.Clear(_recentActionImages, 0, _recentActionImages.Length);

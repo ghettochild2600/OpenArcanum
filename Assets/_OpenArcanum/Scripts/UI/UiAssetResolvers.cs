@@ -266,6 +266,17 @@ namespace OpenArcanum.UI
             }
         }
 
+        /// <summary>Resolves a retail portrait number through <c>portrait/gameport.mes</c>.</summary>
+        public bool TryResolvePortrait(int portraitId, out RetailPortraitAsset asset)
+        {
+            asset = null;
+            int sourceId = portraitId > 0 ? portraitId : 1000;
+            MesFile portraits = ReadMes("portrait/gameport.mes");
+            string sourceName = portraits?.Get(sourceId);
+            return !string.IsNullOrWhiteSpace(sourceName)
+                   && TryResolvePortrait(sourceName.Trim(), out asset);
+        }
+
         private MesFile ReadMes(string path)
         {
             string normalized = DatFileEntry.Normalize(path);

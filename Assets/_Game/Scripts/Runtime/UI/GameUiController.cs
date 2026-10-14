@@ -207,6 +207,13 @@ namespace Arcanum.Runtime.UI
         public int MaximumHitPoints { get; internal set; }
         public int Fatigue { get; internal set; }
         public int MaximumFatigue { get; internal set; }
+        public int PoisonLevel { get; internal set; }
+        public int PortraitId { get; internal set; }
+        public int FallbackIconSourceId { get; internal set; }
+        public int HealthPercent { get; internal set; }
+        public int FatiguePercent { get; internal set; }
+        public bool Poisoned => PoisonLevel > RetailGameplayHudLayout.FollowerPoisonThreshold;
+        public bool LowHealth => HealthPercent < RetailGameplayHudLayout.FollowerLowHealthThreshold;
         public bool Dead { get; internal set; }
         public bool Unconscious { get; internal set; }
         public bool Forced { get; internal set; }
@@ -1445,11 +1452,36 @@ namespace Arcanum.Runtime.UI
                     Identity = member.Identity, Name = ObjectName(member.Identity),
                     HitPoints = vitality.CurrentHitPoints, MaximumHitPoints = vitality.MaximumHitPoints,
                     Fatigue = vitality.CurrentFatigue, MaximumFatigue = vitality.MaximumFatigue,
+                    PoisonLevel = _session.Poison.GetLevel(member.Identity),
+                    PortraitId = _session.TryGetObjectState(member.Identity, out PersistentObjectState state)
+                        ? _session.ResolvePrototype(state.PrototypeNumber)?.Portrait ?? 0 : 0,
+                    FallbackIconSourceId = FollowerFallbackIcon(member.Identity),
+                    HealthPercent = SourcePercent(vitality.CurrentHitPoints, vitality.MaximumHitPoints),
+                    FatiguePercent = SourcePercent(vitality.CurrentFatigue, vitality.MaximumFatigue),
                     Dead = _session.Vitality.IsDead(member.Identity),
                     Unconscious = _session.Vitality.IsUnconscious(member.Identity), Forced = member.Forced,
                 });
             }
             return result;
+        }
+
+        private static int SourcePercent(int current, int maximum)
+            => maximum > 0 ? Math.Clamp(100 * current / maximum, 0, 100) : 0;
+
+        private int FollowerFallbackIcon(ArcanumObjectId identity)
+        {
+            if (!_session.Characters.TryGet(identity, out PersistentCharacterState character)) return 375;
+            return character.Race switch
+            {
+                CharacterRace.Dwarf => 378,
+                CharacterRace.Elf or CharacterRace.DarkElf => 376,
+                CharacterRace.HalfElf => 377,
+                CharacterRace.Gnome => 379,
+                CharacterRace.Halfling => 380,
+                CharacterRace.HalfOrc or CharacterRace.Orc => 381,
+                CharacterRace.HalfOgre or CharacterRace.Ogre => 382,
+                _ => 375,
+            };
         }
 
         public bool DismissFollower(ArcanumObjectId follower)
