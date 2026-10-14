@@ -4,6 +4,7 @@ using System.Linq;
 using Arcanum.Formats.Quest;
 using Arcanum.Runtime.Character;
 using Arcanum.Runtime.Creation;
+using Arcanum.Runtime.Social;
 using Arcanum.Runtime.UI;
 using Arcanum.Runtime.World;
 using OpenArcanum.Rendering;
@@ -132,15 +133,24 @@ namespace OpenArcanum.Editor
 
             view.SelectTab(RetailLogbookTab.Reputations);
             yield return null;
+            long reputationTimestamp = session.SourceTime.ElapsedMilliseconds;
+            Check(session.Social.AddReputation(controller.Player, new ReputationId(1000)),
+                "representative source reputation is acquired once");
+            view.Synchronize();
+            yield return null;
             SourceUiBitmapText leftHeader = view.GetComponentsInChildren<SourceUiBitmapText>(true)
                 .Single(value => value.name == "Left Header");
-            SourceUiBitmapText unsupported = view.GetComponentsInChildren<SourceUiBitmapText>(true)
-                .Single(value => value.name == "Quest Text");
+            SourceUiBitmapText[] reputationLines = view.GetComponentsInChildren<SourceUiBitmapText>(true)
+                .Where(value => value.name == "Quest Text").ToArray();
+            Check(hud.Resolver.Original.TryReadMessage("mes/gamereplog.mes", 1000,
+                out string reputationName), "retail reputation name resolves");
             Check(view.SelectedTab == RetailLogbookTab.Reputations
                   && leftHeader.Text == "-Reputations-"
-                  && unsupported.Text.Contains("No reputations entries", StringComparison.OrdinalIgnoreCase)
-                  && view.CurrentLeftPage == 1 && view.LastVisibleEntry == -1,
-                "unsupported tab remains selected and renders its contained empty state inside the book");
+                  && reputationLines.Any(value => value.Text == SourceCalendar.FormatLogbook(
+                      SourceCalendar.Timestamp(reputationTimestamp)))
+                  && reputationLines.Select(value => value.Text).Contains(reputationName)
+                  && view.CurrentLeftPage == 1 && view.LastVisibleEntry == 0,
+                "Reputations tab renders authoritative acquisition time and retail name");
             controller.Close();
             view.Synchronize();
             Check(!view.IsVisible, "Logbook closes without mutating selected-tab presentation state");
@@ -207,7 +217,7 @@ namespace OpenArcanum.Editor
             Check(view.SelectedTab == RetailLogbookTab.Background && view.CurrentLeftPage == 1,
                 "Background reopen preserves its source page state");
             Debug.Log("UI-F.2 PHYSICAL VALIDATION: PASS; source IDs=198/260/261/264-273; tabs=7; "
-                      + "Quests=authoritative/two-page; unsupported-tabs=selected+contained-empty-state; pages=1-2->3-4->1-2; "
+                      + "Quests=authoritative/two-page; Reputations=timestamp+retail-name; pages=1-2->3-4->1-2; "
                       + $"Background={background.BackgroundId}/{background.TextId}/authored-body; "
                       + "HUD=visible; geometry=800x600/768p/1080p/1440p/4K; "
                       + "graphics=Original->Enhanced->Original; presenters=1; EventSystems=1. "

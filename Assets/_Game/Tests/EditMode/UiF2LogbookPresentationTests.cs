@@ -9,6 +9,7 @@ using Arcanum.Formats.World;
 using Arcanum.Runtime;
 using Arcanum.Runtime.Campaign;
 using Arcanum.Runtime.Creation;
+using Arcanum.Runtime.Social;
 using Arcanum.Runtime.UI;
 using Arcanum.Runtime.World;
 using Arcanum.World;
@@ -158,6 +159,11 @@ namespace Arcanum.Formats.Tests
             });
             _session.BindCharacterCreationSource(CreateCatalog(_longBody));
             Finalize(0, "First");
+            _session.BindSocialSources(
+                ReputationCatalog.FromMes(MesReader.Read(
+                    "{1000}{0 0 0, 10 0 0}\n{1001}{0 0 0, 15 0 0}")),
+                SocialAiCatalog.FromMes(MesReader.Read(
+                    "{1}{0 0 0 0 0 0 0 0 0 0 40 500}")));
             _controller = new GameUiController(_session);
             Assert.That(_controller.Open(GameUiScreen.Journal), Is.True);
             _view = _root.AddComponent<RetailLogbookView>();
@@ -287,6 +293,40 @@ namespace Arcanum.Formats.Tests
             Assert.That(_controller.ContextualHelp, Is.Empty);
             Assert.That(blessings.CurrentPresentationKey,
                 Is.EqualTo(RetailLogbookLayout.ButtonFrame(266, 1)));
+        }
+
+        [Test]
+        public void ReputationPageUsesAuthoritativeAcquisitionTimeSourceOrderAndRetailNames()
+        {
+            ArcanumObjectId pc = _session.PlayerState.Identity;
+            Assert.That(_session.Social.AddReputation(pc, new ReputationId(1001)), Is.True);
+            long firstTimestamp = _session.SourceTime.ElapsedMilliseconds;
+            _session.SourceTime.Advance(3 * 60 * 1000);
+            Assert.That(_session.Social.AddReputation(pc, new ReputationId(1000)), Is.True);
+            long secondTimestamp = _session.SourceTime.ElapsedMilliseconds;
+
+            IReadOnlyList<ReputationLogbookEntry> projection =
+                _session.Social.GetReputationLogbookEntries(pc);
+            Assert.That(projection.Select(value => value.Reputation.Value),
+                Is.EqualTo(new[] { 1001, 1000 }));
+            Assert.That(projection.Select(value => value.Timestamp),
+                Is.EqualTo(new[] { firstTimestamp, secondTimestamp }));
+
+            Assert.That(_retail.TryReadMessage("mes/gamereplog.mes", 1001, out string firstName), Is.True);
+            Assert.That(_retail.TryReadMessage("mes/gamereplog.mes", 1000, out string secondName), Is.True);
+            _view.SelectTab(RetailLogbookTab.Reputations);
+            string[] rendered = RenderedLines();
+            Assert.That(rendered, Does.Contain(SourceCalendar.FormatLogbook(SourceCalendar.Timestamp(firstTimestamp))));
+            Assert.That(rendered, Does.Contain(SourceCalendar.FormatLogbook(SourceCalendar.Timestamp(secondTimestamp))));
+            string flattened = string.Join(" ", rendered);
+            Assert.That(flattened, Does.Contain(firstName));
+            Assert.That(flattened, Does.Contain(secondName));
+            Assert.That(flattened.IndexOf(firstName, StringComparison.Ordinal),
+                Is.LessThan(flattened.IndexOf(secondName, StringComparison.Ordinal)));
+            Assert.That(_view.ProjectedEntryCount, Is.EqualTo(2));
+            Assert.That(_view.GetComponentsInChildren<SourceUiButton>(true)
+                .Where(value => value.name is "Previous Page" or "Next Page")
+                .All(value => !value.gameObject.activeSelf), Is.True);
         }
 
         [Test]

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Arcanum.Formats.Quest;
 using Arcanum.Runtime.Campaign;
+using Arcanum.Runtime.Social;
 using Arcanum.Runtime.World;
 using OpenArcanum.UI;
 using UnityEngine;
@@ -241,17 +242,19 @@ namespace Arcanum.Runtime.UI
             IReadOnlyList<QuestJournalEntry> entries = _controller.ProjectJournal();
             IReadOnlyList<RumorJournalEntry> rumors = _controller.ProjectRumors();
             GameUiBackgroundLogbookView background = _controller.ProjectBackgroundLogbook();
+            IReadOnlyList<ReputationLogbookEntry> reputations =
+                _session.Social.GetReputationLogbookEntries(_controller.Player);
             int backgroundSignature = BackgroundSignature(background);
             if (_tab == RetailLogbookTab.Background && _backgroundSignature != int.MinValue
                 && backgroundSignature != _backgroundSignature)
                 ResetPagination();
             _backgroundSignature = backgroundSignature;
-            int signature = ProjectionSignature(entries, rumors, background);
+            int signature = ProjectionSignature(entries, rumors, background, reputations);
             if (_dirty || signature != _signature)
             {
                 _dirty = false;
                 _signature = signature;
-                RebuildPages(entries, rumors, background);
+                RebuildPages(entries, rumors, background, reputations);
             }
         }
 
@@ -346,7 +349,8 @@ namespace Arcanum.Runtime.UI
 
         private void RebuildPages(IReadOnlyList<QuestJournalEntry> entries,
             IReadOnlyList<RumorJournalEntry> rumors,
-            GameUiBackgroundLogbookView background)
+            GameUiBackgroundLogbookView background,
+            IReadOnlyList<ReputationLogbookEntry> reputations)
         {
             ClearPageText();
             _notice.Bind(_resolver, string.Empty, Failed, RetailLogbookLayout.BodyFontSourceId);
@@ -373,6 +377,12 @@ namespace Arcanum.Runtime.UI
             if (_tab == RetailLogbookTab.RumorsAndNotes)
             {
                 RebuildRumorPages(rumors);
+                return;
+            }
+
+            if (_tab == RetailLogbookTab.Reputations)
+            {
+                RebuildReputationPages(reputations);
                 return;
             }
 
@@ -472,6 +482,47 @@ namespace Arcanum.Runtime.UI
                 _lastVisibleEntry >= 0 && _lastVisibleEntry < blocks.Count - 1);
         }
 
+        private void RebuildReputationPages(IReadOnlyList<ReputationLogbookEntry> reputations)
+        {
+            var blocks = new List<IReadOnlyList<string>>(reputations.Count);
+            foreach (ReputationLogbookEntry entry in reputations)
+            {
+                if (!_resolver.Original.TryReadMessage("mes/gamereplog.mes", entry.Reputation.Value,
+                        out string name) || string.IsNullOrWhiteSpace(name))
+                    continue;
+                var lines = new List<string>
+                    { SourceCalendar.FormatLogbook(SourceCalendar.Timestamp(entry.Timestamp)) };
+                lines.AddRange(RetailLogbookPaginator.Wrap(name,
+                    RetailLogbookLayout.LeftContent.width, GlyphAdvance));
+                blocks.Add(lines);
+            }
+
+            _projectedEntryCount = blocks.Count;
+            int start = blocks.Count == 0 ? 0 : Mathf.Clamp(_spreadStarts[Mathf.Min(_spreadIndex,
+                _spreadStarts.Count - 1)], 0, blocks.Count - 1);
+            int page = 0;
+            int line = 0;
+            _lastVisibleEntry = -1;
+            for (int index = start; index < blocks.Count; index++)
+            {
+                int required = blocks[index].Count + (index < blocks.Count - 1 ? 1 : 0);
+                if (required > RetailLogbookLayout.PageLineCapacity - line)
+                {
+                    if (page == 1) break;
+                    page = 1;
+                    line = 0;
+                }
+                int count = Mathf.Min(blocks[index].Count, RetailLogbookLayout.PageLineCapacity - line);
+                for (int offset = 0; offset < count; offset++)
+                    AddPageLine(page, line++, blocks[index][offset], Ink, false);
+                if (line < RetailLogbookLayout.PageLineCapacity) line++;
+                _lastVisibleEntry = index;
+            }
+            if (blocks.Count == 0) AddPageLine(0, 0, "No known reputations.", Ink, false);
+            SetPageControlAvailability(_spreadIndex > 0,
+                _lastVisibleEntry >= 0 && _lastVisibleEntry < blocks.Count - 1);
+        }
+
         private void RebuildBackgroundPages(GameUiBackgroundLogbookView background)
         {
             if (background == null)
@@ -554,7 +605,8 @@ namespace Arcanum.Runtime.UI
 
         private static int ProjectionSignature(IReadOnlyList<QuestJournalEntry> entries,
             IReadOnlyList<RumorJournalEntry> rumors,
-            GameUiBackgroundLogbookView background)
+            GameUiBackgroundLogbookView background,
+            IReadOnlyList<ReputationLogbookEntry> reputations)
         {
             unchecked
             {
@@ -563,6 +615,8 @@ namespace Arcanum.Runtime.UI
                     hash = hash * 31 + HashCode.Combine(entry.QuestId, entry.State, entry.Timestamp, entry.Description);
                 foreach (RumorJournalEntry rumor in rumors)
                     hash = hash * 31 + HashCode.Combine(rumor.RumorId, rumor.Timestamp, rumor.Description);
+                foreach (ReputationLogbookEntry reputation in reputations)
+                    hash = hash * 31 + HashCode.Combine(reputation.Reputation, reputation.Timestamp);
                 hash = hash * 31 + BackgroundSignature(background);
                 return hash;
             }

@@ -49,6 +49,19 @@ namespace Arcanum.Runtime.Social
             => (Origin == 0 || Origin == origin) && (Faction == 0 || Faction == faction);
     }
 
+    /// <summary>Source logbook projection: the acquired reputation and its original game-time stamp.</summary>
+    public readonly struct ReputationLogbookEntry
+    {
+        public ReputationId Reputation { get; }
+        public long Timestamp { get; }
+
+        public ReputationLogbookEntry(ReputationId reputation, long timestamp)
+        {
+            Reputation = reputation;
+            Timestamp = timestamp;
+        }
+    }
+
     public sealed class ReputationDefinition
     {
         public ReputationId Id { get; }
@@ -259,6 +272,12 @@ namespace Arcanum.Runtime.Social
             => _reputations.TryGetValue(pc, out Dictionary<ReputationId, long> values)
                 ? values.OrderBy(pair => pair.Value).ThenBy(pair => pair.Key.Value).Select(pair => pair.Key).ToArray()
                 : Array.Empty<ReputationId>();
+
+        public IReadOnlyList<ReputationLogbookEntry> GetReputationLogbookEntries(ArcanumObjectId pc)
+            => _reputations.TryGetValue(pc, out Dictionary<ReputationId, long> values)
+                ? values.OrderBy(pair => pair.Value).ThenBy(pair => pair.Key.Value)
+                    .Select(pair => new ReputationLogbookEntry(pair.Key, pair.Value)).ToArray()
+                : Array.Empty<ReputationLogbookEntry>();
 
         public SocialReactionBreakdown GetReactionBreakdown(ArcanumObjectId npc, ArcanumObjectId pc)
         {
