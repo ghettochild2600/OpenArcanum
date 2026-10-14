@@ -12,12 +12,28 @@ namespace Arcanum.Runtime.Save
         public CampaignSaveData Campaign { get; set; }
         public PartySaveData Party { get; set; }
         public MagicSaveData Magic { get; set; }
+        public PoisonSaveData Poison { get; set; }
         public TechnologySaveData Technology { get; set; }
         public CraftingSaveData Crafting { get; set; }
         public EconomySaveData Economy { get; set; }
         public SocialSaveData Social { get; set; }
         public CharacterCreationSaveData CharacterCreation { get; set; }
         public GameplayHudSaveData GameplayHud { get; set; }
+    }
+
+    /// <summary>Optional authoritative poison state inside the compatible V1 envelope.</summary>
+    public sealed class PoisonSaveData
+    {
+        public List<PoisonCharacterSaveData> Characters { get; set; }
+    }
+
+    public sealed class PoisonCharacterSaveData
+    {
+        public string Identity { get; set; }
+        public int Level { get; set; }
+        public long NextDamageAtMilliseconds { get; set; }
+        public long NextRecoveryAtMilliseconds { get; set; }
+        public int CurrentHitPoints { get; set; }
     }
 
     /// <summary>Optional UI-C.4 authority added inside the compatible V1 envelope.</summary>

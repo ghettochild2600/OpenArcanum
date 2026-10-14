@@ -97,6 +97,7 @@ namespace Arcanum.Runtime.Save
         internal CampaignStateService Campaign;
         internal List<PartyMember> PartyMembers;
         internal MagicSaveData Magic;
+        internal PoisonSaveData Poison;
         internal TechnologySaveData Technology;
         internal CraftingSaveData Crafting;
         internal EconomySaveData Economy;
@@ -289,6 +290,7 @@ namespace Arcanum.Runtime.Save
                     .OrderBy(state => state.Identity.Key, StringComparer.Ordinal).Select(CaptureCharacter).ToList(),
                 Campaign = _session.Campaign.ExportSaveData(),
                 Magic = _session.Magic.ExportSaveData(),
+                Poison = _session.Poison.ExportSaveData(),
                 Technology = _session.Technology.ExportSaveData(),
                 Crafting = _session.Crafting.ExportSaveData(),
                 Economy = _session.Economy.ExportSaveData(),
@@ -475,6 +477,8 @@ namespace Arcanum.Runtime.Save
             if (!result.Succeeded) { plan = null; return result; }
             result = BuildMagic(data.Magic, plan);
             if (!result.Succeeded) { plan = null; return result; }
+            result = BuildPoison(data.Poison, plan);
+            if (!result.Succeeded) { plan = null; return result; }
             result = BuildTechnology(data.Technology, plan);
             if (!result.Succeeded) { plan = null; return result; }
             result = BuildCrafting(data.Crafting, plan);
@@ -635,6 +639,16 @@ namespace Arcanum.Runtime.Save
                         $"Active magic effect '{value?.Id}' is invalid.");
             }
             plan.Magic = data;
+            return new SessionLoadResult(SessionLoadFailure.None);
+        }
+
+        private static SessionLoadResult BuildPoison(PoisonSaveData data, SessionRestorePlan plan)
+        {
+            long elapsed = plan.Magic?.ElapsedMilliseconds ?? 0;
+            if (!CharacterPoisonService.ValidateSaveData(data, plan.Characters, plan.Vitality, elapsed,
+                    out string error))
+                return Failure(SessionLoadFailure.InvalidCharacter, error);
+            plan.Poison = data;
             return new SessionLoadResult(SessionLoadFailure.None);
         }
 

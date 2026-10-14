@@ -224,6 +224,29 @@ namespace Arcanum.Formats.Tests
             Assert.That(next.State.Identity, Is.EqualTo(ArcanumObjectId.CreateSessionDynamic(expected)));
         }
 
+        [Test, Category("PoisonRuntime")]
+        public void PoisonLevelAndPendingEventPhaseRoundTrip()
+        {
+            Assert.That(_session.Poison.Apply(_pc.Identity, 250).ResultingLevel, Is.EqualTo(200));
+            _session.SourceTime.Advance(14_999);
+            var before = (_session.Poison.GetLevel(_pc.Identity),
+                _session.Characters.GetEffectiveAttribute(_pc.Identity, CharacterAttribute.Strength),
+                _session.Vitality.GetMaximumHitPoints(_pc.Identity),
+                _session.Vitality.Get(_pc.Identity).HitPointDamage,
+                _session.Vitality.GetCurrentHitPoints(_pc.Identity));
+            string json = _session.SaveGames.SerializeCurrentSession();
+
+            Assert.That(_session.SaveGames.LoadJson(json).Succeeded, Is.True);
+            var restored = (_session.Poison.GetLevel(_pc.Identity),
+                _session.Characters.GetEffectiveAttribute(_pc.Identity, CharacterAttribute.Strength),
+                _session.Vitality.GetMaximumHitPoints(_pc.Identity),
+                _session.Vitality.Get(_pc.Identity).HitPointDamage,
+                _session.Vitality.GetCurrentHitPoints(_pc.Identity));
+            Assert.That(restored, Is.EqualTo(before));
+            _session.SourceTime.Advance(1);
+            Assert.That(_session.Vitality.GetCurrentHitPoints(_pc.Identity), Is.EqualTo(before.Item5 - 2));
+        }
+
         [Test]
         public void ResetThenLoadReplacesEveryAuthoritativeRootAndRebuildsTheSelectedSector()
         {

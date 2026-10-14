@@ -44,6 +44,7 @@ namespace Arcanum.Runtime.World
         private CharacterStatService _characters;
         private InventoryCapacityService _inventoryCapacity;
         private CharacterVitalityService _vitality;
+        private CharacterPoisonService _poison;
         private CharacterProgressionService _progression;
         private CharacterDerivedStatService _derivedStats;
         private ProductionDialogueSession _dialogue;
@@ -100,6 +101,8 @@ namespace Arcanum.Runtime.World
             => _progression ??= new CharacterProgressionService(Characters);
         public CharacterVitalityService Vitality
             => _vitality ??= new CharacterVitalityService(Characters, Progression);
+        public CharacterPoisonService Poison
+            => _poison ??= new CharacterPoisonService(Characters, DerivedStats, Vitality, SourceTime);
         public CharacterDerivedStatService DerivedStats
             => _derivedStats ??= new CharacterDerivedStatService(Characters, Progression, InventoryCapacity);
         public InventoryCapacityService InventoryCapacity
@@ -2200,6 +2203,8 @@ namespace Arcanum.Runtime.World
             _characters = null;
             _progression = null;
             _vitality = null;
+            _poison?.Dispose();
+            _poison = null;
             _inventoryCapacity = null;
             _derivedStats = null;
             _campaign = null;
@@ -2235,6 +2240,8 @@ namespace Arcanum.Runtime.World
             foreach (string sector in new List<string>(_loaded.Keys)) UnloadSector(sector);
             _gameplayHud?.Dispose();
             _gameplayHud = null;
+            _poison?.Dispose();
+            _poison = null;
 
             _states.Clear();
             foreach (var pair in plan.Objects) _states.Add(pair.Key, pair.Value);
@@ -2258,6 +2265,8 @@ namespace Arcanum.Runtime.World
             _social = null;
             _sourceTime = new SourceTimeService();
             _sourceTime.Restore(plan.Magic?.ElapsedMilliseconds ?? 0);
+            _poison = new CharacterPoisonService(_characters, _derivedStats, _vitality, _sourceTime);
+            _poison.RestoreSaveData(plan.Poison);
             _campaign.BindTimeSource(() => SourceTime.CampaignMilliseconds);
             foreach (PartyMember member in plan.PartyMembers)
                 if (!_party.TryAddRestored(member, out string partyError))
@@ -2287,6 +2296,7 @@ namespace Arcanum.Runtime.World
             _social = CreateSocial();
             _social.RestoreSaveData(plan.Social);
             CharacterCreation.RestoreSaveData(plan.CharacterCreation);
+            _poison.FinalizeRestore();
             _gameplayHud = new GameplayHudStateService(this);
             _gameplayHud.RestoreSaveData(plan.GameplayHud);
             return SelectSector(plan.SelectedSector);
@@ -2295,6 +2305,7 @@ namespace Arcanum.Runtime.World
         private void OnDestroy()
         {
             _gameplayHud?.Dispose();
+            _poison?.Dispose();
             foreach (string sector in new List<string>(_loaded.Keys)) UnloadSector(sector);
         }
     }

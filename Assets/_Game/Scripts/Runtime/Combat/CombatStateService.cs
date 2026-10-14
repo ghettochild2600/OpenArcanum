@@ -1040,6 +1040,7 @@ namespace Arcanum.Runtime.Combat
                     return PreviewFailure(CombatFailure.InsufficientActionPoints, request);
                 if (!TryGetMeleeDamageRange(source, meleeWeapon, DamageType.Normal, out _, out _)
                     || !TryGetMeleeDamageRange(source, meleeWeapon, DamageType.Fatigue, out _, out _)
+                    || !TryGetMeleeDamageRange(source, meleeWeapon, DamageType.Poison, out _, out _)
                     || HasUnsupportedMeleeDamage(source, meleeWeapon))
                     return PreviewFailure(CombatFailure.UnsupportedDamageProfile, request);
                 CombatHitChance chance = BuildMeleeHitChance(actor, target, meleeWeapon, request.CalledLocation,
@@ -1075,7 +1076,7 @@ namespace Arcanum.Runtime.Combat
                 return PreviewFailure(CombatFailure.InsufficientActionPoints, request);
             if (!TryGetWeaponDamageRange(weapon, DamageType.Normal, out _, out _)
                 || !TryGetWeaponDamageRange(weapon, DamageType.Fatigue, out _, out _)
-                || weapon.DamageMax[(int)DamageType.Poison] != 0
+                || !TryGetWeaponDamageRange(weapon, DamageType.Poison, out _, out _)
                 || weapon.DamageMax[(int)DamageType.Electrical] != 0
                 || weapon.DamageMax[(int)DamageType.Fire] != 0)
                 return PreviewFailure(CombatFailure.UnsupportedDamageProfile, request);
@@ -1186,6 +1187,8 @@ namespace Arcanum.Runtime.Combat
                     out int normalMaximum)
                 || !TryGetMeleeDamageRange(source, weapon, DamageType.Fatigue, out int fatigueMinimum,
                     out int fatigueMaximum)
+                || !TryGetMeleeDamageRange(source, weapon, DamageType.Poison, out int poisonMinimum,
+                    out int poisonMaximum)
                 || HasUnsupportedMeleeDamage(source, weapon))
                 return AttackFailure(CombatFailure.UnsupportedDamageProfile, request);
 
@@ -1236,6 +1239,7 @@ namespace Arcanum.Runtime.Combat
             int mitigatedNormal = 0;
             int rawFatigue = 0;
             int mitigatedFatigue = 0;
+            int rawPoison = 0;
             CombatCriticalEffect criticalEffect = CombatCriticalEffect.None;
             int criticalEffectRoll = 0;
             int secondaryCriticalEffectRoll = 0;
@@ -1257,6 +1261,7 @@ namespace Arcanum.Runtime.Combat
             {
                 rawNormal = RollDamage(normalMinimum, normalMaximum);
                 rawFatigue = RollDamage(fatigueMinimum, fatigueMaximum);
+                rawPoison = RollDamage(poisonMinimum, poisonMaximum);
                 int resistance = _world.DerivedStats.GetResistance(effectTarget, CharacterResistance.Normal);
                 mitigatedNormal = ApplyResistance(rawNormal, resistance);
                 mitigatedFatigue = ApplyResistance(rawFatigue, 3 * resistance / 4);
@@ -1280,6 +1285,7 @@ namespace Arcanum.Runtime.Combat
             if (overdrawFatigue > 0) _world.Vitality.ApplyFatigueDamage(actor, overdrawFatigue);
             if (mitigatedNormal > 0) _world.Vitality.ApplyHitPointDamage(effectTarget, mitigatedNormal);
             if (mitigatedFatigue > 0) _world.Vitality.ApplyFatigueDamage(effectTarget, mitigatedFatigue);
+            if (rawPoison > 0) _world.Poison.Apply(effectTarget, rawPoison);
             int resultingHitPoints = _world.Vitality.GetCurrentHitPoints(effectTarget);
             int resultingFatigue = _world.Vitality.GetCurrentFatigue(effectTarget);
             if (hitPointsBefore > 0 && resultingHitPoints <= 0)
@@ -1408,7 +1414,8 @@ namespace Arcanum.Runtime.Combat
                     out int normalMaximum)
                 || !TryGetWeaponDamageRange(weapon, DamageType.Fatigue, out int fatigueMinimum,
                     out int fatigueMaximum)
-                || weapon.DamageMax[(int)DamageType.Poison] != 0
+                || !TryGetWeaponDamageRange(weapon, DamageType.Poison, out int poisonMinimum,
+                    out int poisonMaximum)
                 || weapon.DamageMax[(int)DamageType.Electrical] != 0
                 || weapon.DamageMax[(int)DamageType.Fire] != 0)
                 return AttackFailure(CombatFailure.UnsupportedDamageProfile, request);
@@ -1476,6 +1483,7 @@ namespace Arcanum.Runtime.Combat
                 int mitigatedNormal = 0;
                 int rawFatigue = 0;
                 int mitigatedFatigue = 0;
+                int rawPoison = 0;
                 CombatCriticalEffect criticalEffect = transactionCriticalEffect;
                 int criticalEffectRoll = transactionCriticalEffectRoll;
                 int secondaryCriticalEffectRoll = 0;
@@ -1484,6 +1492,7 @@ namespace Arcanum.Runtime.Combat
                 {
                     rawNormal = RollDamage(normalMinimum, normalMaximum);
                     rawFatigue = RollDamage(fatigueMinimum, fatigueMaximum);
+                    rawPoison = RollDamage(poisonMinimum, poisonMaximum);
                     int resistance = _world.DerivedStats.GetResistance(effectTarget,
                         CharacterResistance.Normal);
                     mitigatedNormal = ApplyResistance(rawNormal, resistance);
@@ -1501,7 +1510,7 @@ namespace Arcanum.Runtime.Combat
                     return AttackFailure(CombatFailure.UnresolvedDeathScript, request);
                 projectedHitPoints -= mitigatedNormal;
                 plans[index] = new CombatImpactPlan(rawNormal, mitigatedNormal, rawFatigue,
-                    mitigatedFatigue, criticalEffect, criticalEffectRoll,
+                    mitigatedFatigue, rawPoison, criticalEffect, criticalEffectRoll,
                     secondaryCriticalEffectRoll, tertiaryCriticalEffectRoll);
             }
 
@@ -1530,6 +1539,8 @@ namespace Arcanum.Runtime.Combat
                     _world.Vitality.ApplyHitPointDamage(effectTarget, plan.MitigatedNormal);
                 if (plan.MitigatedFatigue > 0)
                     _world.Vitality.ApplyFatigueDamage(effectTarget, plan.MitigatedFatigue);
+                if (plan.RawPoison > 0)
+                    _world.Poison.Apply(effectTarget, plan.RawPoison);
                 int resultingHitPoints = _world.Vitality.GetCurrentHitPoints(effectTarget);
                 int resultingFatigue = _world.Vitality.GetCurrentFatigue(effectTarget);
                 if (hitPointsBefore > 0 && resultingHitPoints <= 0)
@@ -1667,8 +1678,7 @@ namespace Arcanum.Runtime.Combat
         private static bool HasUnsupportedMeleeDamage(CombatActorSource source, Weapon weapon)
             => weapon == null
                 ? HasUnsupportedNaturalDamage(source)
-                : weapon.DamageMax[(int)DamageType.Poison] != 0
-                  || weapon.DamageMax[(int)DamageType.Electrical] != 0
+                : weapon.DamageMax[(int)DamageType.Electrical] != 0
                   || weapon.DamageMax[(int)DamageType.Fire] != 0;
 
         private bool TryGetUnarmedDamageRange(CombatActorSource source, DamageType type,
@@ -1721,8 +1731,7 @@ namespace Arcanum.Runtime.Combat
             => value <= 0 || value + bonus > 0 ? value + bonus : 1;
 
         private static bool HasUnsupportedNaturalDamage(CombatActorSource source)
-            => source.GetNaturalDamageMaximum(DamageType.Poison) != 0
-               || source.GetNaturalDamageMaximum(DamageType.Electrical) != 0
+            => source.GetNaturalDamageMaximum(DamageType.Electrical) != 0
                || source.GetNaturalDamageMaximum(DamageType.Fire) != 0;
 
         private int RollDamage(int minimum, int maximum)
@@ -1841,13 +1850,14 @@ namespace Arcanum.Runtime.Combat
             public int MitigatedNormal { get; }
             public int RawFatigue { get; }
             public int MitigatedFatigue { get; }
+            public int RawPoison { get; }
             public CombatCriticalEffect CriticalEffect { get; }
             public int CriticalEffectRoll { get; }
             public int SecondaryCriticalEffectRoll { get; }
             public int TertiaryCriticalEffectRoll { get; }
 
             public CombatImpactPlan(int rawNormal, int mitigatedNormal, int rawFatigue,
-                int mitigatedFatigue, CombatCriticalEffect criticalEffect,
+                int mitigatedFatigue, int rawPoison, CombatCriticalEffect criticalEffect,
                 int criticalEffectRoll, int secondaryCriticalEffectRoll,
                 int tertiaryCriticalEffectRoll)
             {
@@ -1855,6 +1865,7 @@ namespace Arcanum.Runtime.Combat
                 MitigatedNormal = mitigatedNormal;
                 RawFatigue = rawFatigue;
                 MitigatedFatigue = mitigatedFatigue;
+                RawPoison = rawPoison;
                 CriticalEffect = criticalEffect;
                 CriticalEffectRoll = criticalEffectRoll;
                 SecondaryCriticalEffectRoll = secondaryCriticalEffectRoll;
