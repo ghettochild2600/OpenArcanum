@@ -243,6 +243,7 @@ namespace Arcanum.Runtime.UI
         private IGameAudioPresentation _audio;
         private int[] _acceptedCharacterAttributes;
         private int[] _acceptedCharacterSkills;
+        private int[] _acceptedSpellRanks;
         private int _acceptedHitPointPoints;
         private int _acceptedFatiguePoints;
         private readonly Func<long> _utcNowTicks;
@@ -260,6 +261,7 @@ namespace Arcanum.Runtime.UI
         public string ContextualHelp { get; private set; } = string.Empty;
         public string ContextualHelpKey { get; private set; } = string.Empty;
         public string ContextualHelpTitle { get; private set; } = string.Empty;
+        public int ContextualHelpIconSourceId { get; private set; } = RetailGameplayHudLayout.ContextualHelpIconSourceId;
         public CombatUiController Combat { get; }
         public SaveLoadPanelController SaveLoad { get; }
         public CharacterCreationSpecification CreationDraft { get; private set; }
@@ -335,13 +337,15 @@ namespace Arcanum.Runtime.UI
             SelectedItem = default;
             SelectedWorldTarget = default;
             if (screen != GameUiScreen.Corpse) _corpse = default;
-            _character = screen is GameUiScreen.Character or GameUiScreen.Skills ? Player : default;
-            if (screen == GameUiScreen.Character) CaptureAcceptedCharacterEditorState();
+            _character = screen is GameUiScreen.Character or GameUiScreen.Skills or GameUiScreen.Magic
+                ? Player : default;
+            if (screen is GameUiScreen.Character or GameUiScreen.Magic) CaptureAcceptedCharacterEditorState();
             else ClearAcceptedCharacterEditorState();
             Feedback = string.Empty;
             ContextualHelp = string.Empty;
             ContextualHelpKey = string.Empty;
             ContextualHelpTitle = string.Empty;
+            ContextualHelpIconSourceId = RetailGameplayHudLayout.ContextualHelpIconSourceId;
             if (screen == GameUiScreen.SaveLoad) SaveLoad.Open(SaveLoadPanelMode.Save);
             ClearPrimaryNotification(screen);
             _audio?.PresentInterface(screen is GameUiScreen.Journal or GameUiScreen.Map
@@ -536,6 +540,7 @@ namespace Arcanum.Runtime.UI
             ContextualHelp = string.Empty;
             ContextualHelpKey = string.Empty;
             ContextualHelpTitle = string.Empty;
+            ContextualHelpIconSourceId = RetailGameplayHudLayout.ContextualHelpIconSourceId;
             if (HudPanel != GameUiHudPanel.None)
             {
                 AbandonBedIfNeeded();
@@ -571,11 +576,13 @@ namespace Arcanum.Runtime.UI
         public void ShowContextualHelp(string message)
             => ShowContextualHelp(message, message);
 
-        public void ShowContextualHelp(string key, string message, string title = null)
+        public void ShowContextualHelp(string key, string message, string title = null,
+            int iconSourceId = RetailGameplayHudLayout.ContextualHelpIconSourceId)
         {
             ContextualHelpKey = key ?? string.Empty;
             ContextualHelp = message ?? string.Empty;
             ContextualHelpTitle = title ?? string.Empty;
+            ContextualHelpIconSourceId = iconSourceId;
         }
 
         public void ClearContextualHelp(string key = null)
@@ -585,6 +592,7 @@ namespace Arcanum.Runtime.UI
                 ContextualHelp = string.Empty;
                 ContextualHelpKey = string.Empty;
                 ContextualHelpTitle = string.Empty;
+                ContextualHelpIconSourceId = RetailGameplayHudLayout.ContextualHelpIconSourceId;
             }
         }
 
@@ -1249,6 +1257,8 @@ namespace Arcanum.Runtime.UI
                 .Select(value => _session.Characters.GetBaseAttribute(Player, value)).ToArray();
             _acceptedCharacterSkills = CharacterSkillRules.AllSkills
                 .Select(value => _session.Progression.GetPurchasedSkillPoints(Player, value)).ToArray();
+            _acceptedSpellRanks = Enum.GetValues(typeof(SpellCollege)).Cast<SpellCollege>()
+                .Select(value => _session.Magic.GetKnownCollegeRank(Player, value)).ToArray();
             PersistentCharacterVitalityState vitality = _session.Vitality.Get(Player);
             _acceptedHitPointPoints = vitality.Source.HitPointPoints;
             _acceptedFatiguePoints = vitality.Source.FatiguePoints;
@@ -1264,8 +1274,41 @@ namespace Arcanum.Runtime.UI
         {
             _acceptedCharacterAttributes = null;
             _acceptedCharacterSkills = null;
+            _acceptedSpellRanks = null;
             _acceptedHitPointPoints = 0;
             _acceptedFatiguePoints = 0;
+        }
+
+        public bool AdjustSpellCollege(SpellCollege college, int delta)
+        {
+            if (CharacterReadOnly) return Reject("This character examination is read-only.");
+            if (delta is not (-1 or 1) || !Enum.IsDefined(typeof(SpellCollege), college))
+                return Reject("Invalid spell adjustment.");
+            EnsureAcceptedCharacterEditorState();
+            int rank = _session.Magic.GetKnownCollegeRank(Player, college);
+            if (delta < 0)
+            {
+                if (rank <= _acceptedSpellRanks[(int)college])
+                    return Reject(RuntimeCharacterAdjustmentResult.AcceptedBaseline.ToString());
+                _session.Magic.SetKnownCollegeRank(Player, college, rank - 1);
+                _session.Progression.RefundCharacterPoint(Player);
+                return Complete(true, $"Reduced {college}.");
+            }
+
+            if (rank >= 5) return Reject("MaximumSpellRank");
+            if (_session.Progression.GetUnspentCharacterPoints(Player) < 1)
+                return Reject(RuntimeCharacterAdjustmentResult.InsufficientCharacterPoints.ToString());
+            int nextRank = rank + 1;
+            int[] willpowerRequirements = { 6, 9, 12, 15, 18 };
+            int[] levelRequirements = { 1, 1, 5, 10, 15 };
+            if (_session.Characters.GetEffectiveAttribute(Player, CharacterAttribute.Intelligence) < 5
+                || _session.Characters.GetEffectiveAttribute(Player, CharacterAttribute.Willpower)
+                < willpowerRequirements[nextRank - 1]
+                || _session.Progression.GetLevel(Player) < levelRequirements[nextRank - 1])
+                return Reject("SpellPrerequisiteNotMet");
+            _session.Magic.SetKnownCollegeRank(Player, college, nextRank);
+            _session.Progression.SpendCharacterPoint(Player);
+            return Complete(true, $"Learned {_session.SpellPresentation?.SpellName((int)college * 5 + rank) ?? college.ToString()}.");
         }
 
         public IReadOnlyList<GameUiSpellView> ProjectSpells(ArcanumObjectId target = default)

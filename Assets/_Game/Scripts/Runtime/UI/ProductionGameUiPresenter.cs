@@ -402,7 +402,8 @@ namespace Arcanum.Runtime.UI
                                            && _retailStartingEquipment?.IsAvailable == true;
             bool sourceInventory = Controller.Screen == GameUiScreen.Inventory
                                    && _retailInventory?.IsAvailable == true;
-            bool sourceCharacter = Controller.Screen == GameUiScreen.Character
+            bool sourceCharacter = (Controller.Screen == GameUiScreen.Character
+                                    || Controller.Screen == GameUiScreen.Magic)
                                    && _retailCharacterSheet?.IsAvailable == true;
             bool sourceDialogue = Controller.Screen == GameUiScreen.Dialogue
                                   && _retailDialogue?.IsAvailable == true;

@@ -1,8 +1,11 @@
 using System;
 using System.IO;
+using System.Collections.Generic;
 using System.Linq;
 using Arcanum.Formats.Objects;
+using Arcanum.Formats.Text;
 using Arcanum.Runtime.Character;
+using Arcanum.Runtime.Magic;
 using Arcanum.Runtime.Save;
 using Arcanum.Runtime.UI;
 using Arcanum.Runtime.World;
@@ -46,6 +49,7 @@ namespace Arcanum.Formats.Tests
             Assert.That(_session.SelectSector(Sector), Is.True);
             _pc = ProductionPlayerLifecycle.DefaultPlayerIdentity;
             _session.GetOrCreatePlayer(_pc, Sector, Vector2.one, 0x28100000u);
+            _session.BindSpellPresentationSource(CreateSpellText());
             _controller = new GameUiController(_session, new EmptySlots());
             Assert.That(_controller.Open(GameUiScreen.Character), Is.True);
             _view = _root.AddComponent<RetailCharacterSheetView>();
@@ -230,6 +234,106 @@ namespace Arcanum.Formats.Tests
         }
 
         [Test]
+        public void RuntimeMagicUsesSourcePanelCollegeAndSpellRows()
+        {
+            _session.Magic.SetKnownCollegeRank(_pc, SpellCollege.Earth, 2);
+            Assert.That(_controller.Open(GameUiScreen.Magic), Is.True);
+            _view.SelectCollege(SpellCollege.Earth);
+            _view.Synchronize();
+
+            Assert.That(_view.IsVisible, Is.True);
+            Assert.That(_view.SelectedCollege, Is.EqualTo(SpellCollege.Earth));
+            Assert.That(RetailCharacterSheetLayout.MagicPanel, Is.EqualTo(new Rect(503, 63, 235, 325)));
+            Assert.That(_view.SkillsPanelTransform.anchoredPosition, Is.EqualTo(new Vector2(503, -63)));
+            Assert.That(_view.GetComponentsInChildren<SourceUiImage>(true)
+                .Single(value => value.name == "Magic Window").Key.SourceId, Is.EqualTo(31));
+
+            SourceUiButton[] colleges = _view.GetComponentsInChildren<SourceUiButton>(true)
+                .Where(value => Enum.TryParse(value.name, out SpellCollege _)).ToArray();
+            Assert.That(colleges, Has.Length.EqualTo(16));
+            for (int index = 0; index < colleges.Length; index++)
+            {
+                SourceUiButton button = colleges.Single(value => value.name == ((SpellCollege)index).ToString());
+                RectTransform rect = (RectTransform)button.transform;
+                Assert.That(rect.anchoredPosition,
+                    Is.EqualTo(new Vector2(RetailCharacterSheetLayout.SpellCollegePositions[index].x,
+                        -RetailCharacterSheetLayout.SpellCollegePositions[index].y)));
+                Assert.That(button.CurrentPresentationKey.SourceId,
+                    Is.EqualTo(RetailCharacterSheetLayout.SpellCollegeIcons[index]));
+            }
+
+            SourceUiBitmapText[] text = _view.GetComponentsInChildren<SourceUiBitmapText>(true);
+            Assert.That(text.Single(value => value.name == "College Name").Text, Is.EqualTo("Earth Source"));
+            for (int rank = 1; rank <= 5; rank++)
+            {
+                int spellId = (int)SpellCollege.Earth * 5 + rank - 1;
+                Assert.That(text.Single(value => value.name == $"Spell {rank}").Text,
+                    Is.EqualTo($"Source Spell {spellId}"));
+                Assert.That(text.Single(value => value.name == $"Spell {rank}").FontSourceId, Is.EqualTo(27));
+                Assert.That(text.Single(value => value.name == $"Spell Level {rank}").Text,
+                    Is.EqualTo($"Minimum Level: {SpellPresentationCatalog.MinimumLevel(rank)}"));
+                Assert.That(text.Single(value => value.name == $"Spell Level {rank}").FontSourceId, Is.EqualTo(28));
+                Assert.That(_view.GetComponentsInChildren<SourceUiImage>(true)
+                    .Single(value => value.name == $"Spell {spellId} Icon").Key.SourceId,
+                    Is.EqualTo(SpellPresentationCatalog.IconSourceId(spellId)));
+            }
+        }
+
+        [Test]
+        public void RuntimeMagicHoverUsesSourceCollegeIconTitleAndDescriptions()
+        {
+            Assert.That(_controller.Open(GameUiScreen.Magic), Is.True);
+            _view.SelectCollege(SpellCollege.Earth);
+            _view.Synchronize();
+
+            SourceHoverHintTarget college = _view.GetComponentsInChildren<SourceHoverHintTarget>(true)
+                .Single(value => value.name == nameof(SpellCollege.Earth));
+            college.OnPointerEnter(null);
+            Assert.That(_controller.ContextualHelpTitle, Is.EqualTo("Earth Source"));
+            Assert.That(_controller.ContextualHelp, Is.EqualTo("College Description 3"));
+            Assert.That(_controller.ContextualHelpIconSourceId, Is.EqualTo(449));
+            college.OnPointerExit(null);
+            Assert.That(_controller.ContextualHelp, Is.Empty);
+
+            SourceHoverHintTarget spell = _view.GetComponentsInChildren<SourceHoverHintTarget>(true)
+                .Single(value => value.name == "Spell 15 Hover");
+            spell.OnPointerEnter(null);
+            Assert.That(_controller.ContextualHelpTitle, Is.EqualTo("Source Spell 15"));
+            Assert.That(_controller.ContextualHelp, Does.StartWith("Willpower: 6    Fatigue: 5"));
+            Assert.That(_controller.ContextualHelp, Does.Contain("Spell Description 15"));
+            Assert.That(_controller.ContextualHelpIconSourceId, Is.EqualTo(449));
+            spell.OnPointerExit(null);
+            Assert.That(_controller.ContextualHelp, Is.Empty);
+        }
+
+        [Test]
+        public void RuntimeMagicAdvancementUsesSourcePrerequisitesAndAcceptedBaseline()
+        {
+            Assert.That(_controller.Open(GameUiScreen.Magic), Is.True);
+            int points = _session.Progression.GetUnspentCharacterPoints(_pc);
+
+            Assert.That(_controller.AdjustSpellCollege(SpellCollege.Earth, 1), Is.True);
+            Assert.That(_session.Magic.GetKnownCollegeRank(_pc, SpellCollege.Earth), Is.EqualTo(1));
+            Assert.That(_session.Progression.GetUnspentCharacterPoints(_pc), Is.EqualTo(points - 1));
+            Assert.That(_controller.AdjustSpellCollege(SpellCollege.Earth, 1), Is.False,
+                "rank two requires source Willpower 9");
+            Assert.That(_controller.Feedback, Is.EqualTo("SpellPrerequisiteNotMet"));
+            Assert.That(_session.Progression.GetUnspentCharacterPoints(_pc), Is.EqualTo(points - 1));
+
+            Assert.That(_controller.AdjustSpellCollege(SpellCollege.Earth, -1), Is.True);
+            Assert.That(_session.Progression.GetUnspentCharacterPoints(_pc), Is.EqualTo(points));
+            Assert.That(_controller.AdjustSpellCollege(SpellCollege.Earth, 1), Is.True);
+            _controller.Close();
+            Assert.That(_controller.Open(GameUiScreen.Magic), Is.True);
+            int acceptedPoints = _session.Progression.GetUnspentCharacterPoints(_pc);
+            Assert.That(_controller.AdjustSpellCollege(SpellCollege.Earth, -1), Is.False);
+            Assert.That(_controller.Feedback,
+                Is.EqualTo(nameof(RuntimeCharacterAdjustmentResult.AcceptedBaseline)));
+            Assert.That(_session.Magic.GetKnownCollegeRank(_pc, SpellCollege.Earth), Is.EqualTo(1));
+            Assert.That(_session.Progression.GetUnspentCharacterPoints(_pc), Is.EqualTo(acceptedPoints));
+        }
+
+        [Test]
         public void SkillsHudRouteTogglesWithoutCreatingModalAuthority()
         {
             _controller.Close();
@@ -289,6 +393,23 @@ namespace Arcanum.Formats.Tests
             public SessionSaveSlotListResult ListSlots()
                 => new(SessionSaveSlotFailure.None, Array.Empty<SessionSaveSlotInfo>());
             public SessionSaveSlotResult DeleteSlot(string slotId) => new(SessionSaveSlotFailure.None);
+        }
+
+        private static SpellPresentationCatalog CreateSpellText()
+        {
+            var rows = new List<KeyValuePair<int, string>>();
+            for (int id = 0; id < 80; id++)
+            {
+                rows.Add(new KeyValuePair<int, string>(id, $"Source Spell {id}"));
+                rows.Add(new KeyValuePair<int, string>(700 + id, $"Spell Description {id}"));
+            }
+            for (int id = 0; id < 16; id++)
+            {
+                rows.Add(new KeyValuePair<int, string>(500 + id,
+                    id == (int)SpellCollege.Earth ? "Earth Source" : $"College {id}"));
+                rows.Add(new KeyValuePair<int, string>(8000 + id, $"College Description {id}"));
+            }
+            return SpellPresentationCatalog.FromMes(new MesFile(rows));
         }
 
         private sealed class Owner : ISectorPresentationOwner

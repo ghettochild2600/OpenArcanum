@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Arcanum.Runtime.Character;
 using Arcanum.Runtime.Creation;
+using Arcanum.Runtime.Magic;
 using Arcanum.Runtime.World;
 using OpenArcanum.UI;
 using UnityEngine;
@@ -16,11 +17,23 @@ namespace Arcanum.Runtime.UI
     {
         public const int BackgroundSourceId = 22;
         public const int SkillsPanelSourceId = 29;
+        public const int MagicPanelSourceId = 31;
         public const int MinusSourceId = 23;
         public const int PlusSourceId = 24;
         public static readonly Rect Window = new(0f, 41f, 800f, 400f);
         public static readonly Rect Portrait = new(12f, 10f, 89f, 89f);
         public static readonly Rect SkillsPanel = new(503f, 63f, 235f, 325f);
+        public static readonly Rect MagicPanel = SkillsPanel;
+
+        public static readonly int[] SpellCollegeIcons =
+            { 11, 44, 38, 92, 50, 86, 56, 98, 62, 68, 74, 104, 110, 80, 116, 122 };
+        public static readonly Vector2[] SpellCollegePositions =
+        {
+            new(13f, 15f), new(38f, 15f), new(63f, 15f), new(88f, 15f),
+            new(113f, 15f), new(138f, 15f), new(162f, 15f), new(187f, 15f),
+            new(25f, 40f), new(50f, 40f), new(75f, 40f), new(100f, 40f),
+            new(124f, 40f), new(149f, 40f), new(174f, 40f), new(199f, 40f),
+        };
 
         public static readonly CharacterAttribute[] Attributes =
         {
@@ -42,7 +55,7 @@ namespace Arcanum.Runtime.UI
         };
 
         public static readonly int[] RequiredSourceIds =
-            { 22, 23, 24, 29, 34, 35, 36, 568, 302, 303, 304, 305, 624, 625 };
+            { 22, 23, 24, 29, 31, 34, 35, 36, 568, 302, 303, 304, 305, 624, 625 };
 
         public static Rect ScreenRect(int width, int height)
         {
@@ -63,6 +76,7 @@ namespace Arcanum.Runtime.UI
         private static readonly Color SourceWhite = new Color32(231, 217, 174, 255);
         private static readonly Color SourceYellow = new Color32(245, 201, 65, 255);
         private static readonly Color SourceBlue = new Color32(108, 155, 215, 255);
+        private static readonly Color SourceGray = new Color32(135, 135, 135, 255);
 
         private GameUiController _controller;
         private WorldMapSessionCoordinator _session;
@@ -86,13 +100,18 @@ namespace Arcanum.Runtime.UI
         private SourceUiBitmapText _gender;
         private SourceUiBitmapText _age;
         private SourceUiBitmapText _feedback;
+        private SourceUiButton _skillsButton;
+        private SourceUiButton _technologyButton;
+        private SourceUiButton _magicButton;
         private bool _dirty = true;
         private int _signature = int.MinValue;
         private int _skillGroup;
+        private SpellCollege _selectedCollege;
 
         public bool IsAvailable => _canvasRoot != null && _resolver != null;
         public bool IsVisible => IsAvailable && _canvasRoot.activeSelf;
         public int SkillGroup => _skillGroup;
+        public SpellCollege SelectedCollege => _selectedCollege;
         public RectTransform WindowTransform => _window;
         public RectTransform SkillsPanelTransform => _skillsPanel;
         public IReadOnlyDictionary<CharacterSkill, Image> SkillGauges => _skillGauges;
@@ -119,20 +138,27 @@ namespace Arcanum.Runtime.UI
         public void Synchronize()
         {
             if (!IsAvailable || _controller == null) return;
-            bool visible = _controller.HasPlayer && _controller.Screen == GameUiScreen.Character;
+            bool visible = _controller.HasPlayer
+                           && _controller.Screen is GameUiScreen.Character or GameUiScreen.Magic;
             if (_canvasRoot.activeSelf != visible) _canvasRoot.SetActive(visible);
             if (!visible) return;
             GameUiCharacterView projection = _controller.ProjectCharacter();
             if (projection == null) return;
-            int signature = ProjectionSignature(projection);
+            int signature = HashCode.Combine(ProjectionSignature(projection), _controller.Screen,
+                _selectedCollege, _controller.Screen == GameUiScreen.Magic
+                    ? _session.Magic.GetKnownCollegeRank(_controller.Player, _selectedCollege) : 0);
             if (_dirty || signature != _signature)
             {
                 LastProjection = projection;
                 _signature = signature;
                 _dirty = false;
                 RefreshCharacter(projection);
-                RebuildSkills(projection);
+                if (_controller.Screen == GameUiScreen.Magic) RebuildMagic();
+                else RebuildSkills(projection);
             }
+            _skillsButton?.SetSelected(_controller.Screen == GameUiScreen.Character);
+            _technologyButton?.SetSelected(_controller.Screen == GameUiScreen.Technology);
+            _magicButton?.SetSelected(_controller.Screen == GameUiScreen.Magic);
             SetText(_feedback, _controller.Feedback);
         }
 
@@ -146,6 +172,13 @@ namespace Arcanum.Runtime.UI
         public void SelectSkillGroup(int group)
         {
             _skillGroup = Mathf.Clamp(group, 0, 3);
+            _dirty = true;
+            Synchronize();
+        }
+
+        public void SelectCollege(SpellCollege college)
+        {
+            _selectedCollege = college;
             _dirty = true;
             Synchronize();
         }
@@ -220,15 +253,16 @@ namespace Arcanum.Runtime.UI
             foreach (GameObject target in new[] { fatigueMinus.gameObject, fatiguePlus.gameObject, _fatigueValue.gameObject })
                 BindHint(target, 107, () => 1);
 
-            SourceUiButton skills = AddSourceButtonTopLeft("Skills", _window, 34, new Vector2(527f, 11f), () => { });
-            SourceUiButton technology = AddSourceButtonTopLeft("Technology", _window, 35, new Vector2(595f, 11f),
+            _skillsButton = AddSourceButtonTopLeft("Skills", _window, 34, new Vector2(527f, 11f),
+                () => _controller.Open(GameUiScreen.Character));
+            _technologyButton = AddSourceButtonTopLeft("Technology", _window, 35, new Vector2(595f, 11f),
                 () => _controller.Open(GameUiScreen.Technology));
-            SourceUiButton magic = AddSourceButtonTopLeft("Magic", _window, 36, new Vector2(663f, 11f),
+            _magicButton = AddSourceButtonTopLeft("Magic", _window, 36, new Vector2(663f, 11f),
                 () => _controller.Open(GameUiScreen.Magic));
-            skills.SetSelected(true);
-            BindHint(skills.gameObject, 132, () => 0);
-            BindHint(technology.gameObject, 133, () => 0);
-            BindHint(magic.gameObject, 134, () => 0);
+            _skillsButton.SetSelected(true);
+            BindHint(_skillsButton.gameObject, 132, () => 0);
+            BindHint(_technologyButton.gameObject, 133, () => 0);
+            BindHint(_magicButton.gameObject, 134, () => 0);
             AddSourceButtonTopLeft("Auto-Level Schemes", _window, 568, new Vector2(754f, 21f),
                 () => _controller.ShowFeedback("Auto-level schemes are not available in the current runtime."));
 
@@ -332,6 +366,111 @@ namespace Arcanum.Runtime.UI
                 _skillGauges[skill.Skill] = AddSkillGauge($"{skill.Skill} Gauge", _skillsPanel,
                     new Rect(59f, 87f + 66f * row, 120f, 27f), skill.EffectiveRank);
             }
+        }
+
+        private void RebuildMagic()
+        {
+            ClearChildren(_skillsPanel);
+            _skillGauges.Clear();
+            AddSourceImage("Magic Window", _skillsPanel, RetailCharacterSheetLayout.MagicPanelSourceId,
+                new Rect(0f, 0f, 235f, 325f));
+            for (int index = 0; index < RetailCharacterSheetLayout.SpellCollegePositions.Length; index++)
+            {
+                SpellCollege college = (SpellCollege)index;
+                SourceUiButton button = AddSourceButtonTopLeft(college.ToString(), _skillsPanel,
+                    RetailCharacterSheetLayout.SpellCollegeIcons[index],
+                    RetailCharacterSheetLayout.SpellCollegePositions[index], () => SelectCollege(college));
+                button.SetSelected(college == _selectedCollege);
+                BindMagicCollegeHint(button.gameObject, college);
+            }
+
+            int rank = _session.Magic.GetKnownCollegeRank(_controller.Player, _selectedCollege);
+            string collegeName = _session.SpellPresentation?.CollegeName(_selectedCollege) ?? string.Empty;
+            SourceUiBitmapText collegeTitle = AddText("College Name", _skillsPanel,
+                new Rect(18f, 69f, 205f, 19f), 27, SourceBlue);
+            SetCenteredText(collegeTitle, collegeName, SourceBlue);
+            for (int level = 0; level < 5; level++)
+            {
+                int spellId = (int)_selectedCollege * 5 + level;
+                bool learned = level < rank;
+                Color tint = learned ? SourceWhite : level == rank ? SourceYellow : SourceGray;
+                SourceUiImage icon = AddSourceImage($"Spell {spellId} Icon", _skillsPanel,
+                    SpellPresentationCatalog.IconSourceId(spellId), new Rect(18f, 82f + 48f * level, 32f, 32f));
+                if (!learned) icon.Image.color = SourceGray;
+                AddText($"Spell {level + 1}", _skillsPanel,
+                    new Rect(59f, 76f + 48f * level, 160f, 18f), 27, tint)
+                    .Bind(_resolver, _session.SpellPresentation?.SpellName(spellId) ?? string.Empty, tint, 27);
+                AddText($"Spell Level {level + 1}", _skillsPanel,
+                    new Rect(59f, 97f + 48f * level, 160f, 14f), 28, tint)
+                    .Bind(_resolver, $"Minimum Level: {SpellPresentationCatalog.MinimumLevel(level + 1)}", tint, 28);
+                BindMagicSpellHint(AddHintArea($"Spell {spellId} Hover", _skillsPanel,
+                    new Rect(18f, 73f + 48f * level, 199f, 39f)), spellId);
+            }
+
+            if (rank < 5)
+                AddSourceButtonTopLeft("Increase Spell", _skillsPanel, 647,
+                        new Vector2(18f, 82f + 48f * rank), () => AdjustSpell(1))
+                    .SetInteractable(CanAdjustSpell(1));
+            if (rank > 0)
+                AddSourceButtonTopLeft("Decrease Spell", _skillsPanel, 648,
+                        new Vector2(18f, 82f + 48f * (rank - 1)), () => AdjustSpell(-1))
+                    .SetInteractable(CanAdjustSpell(-1));
+        }
+
+        private void AdjustSpell(int delta)
+        {
+            _controller.AdjustSpellCollege(_selectedCollege, delta);
+            _dirty = true;
+            Synchronize();
+        }
+
+        private bool CanAdjustSpell(int delta)
+        {
+            int rank = _session.Magic.GetKnownCollegeRank(_controller.Player, _selectedCollege);
+            if (delta < 0) return rank > 0;
+            if (rank >= 5 || _session.Progression.GetUnspentCharacterPoints(_controller.Player) < 1) return false;
+            int[] willpowerRequirements = { 6, 9, 12, 15, 18 };
+            int[] levelRequirements = { 1, 1, 5, 10, 15 };
+            return _session.Characters.GetEffectiveAttribute(_controller.Player, CharacterAttribute.Intelligence) >= 5
+                   && _session.Characters.GetEffectiveAttribute(_controller.Player, CharacterAttribute.Willpower)
+                   >= willpowerRequirements[rank]
+                   && _session.Progression.GetLevel(_controller.Player) >= levelRequirements[rank];
+        }
+
+        private GameObject AddHintArea(string name, RectTransform parent, Rect rect)
+        {
+            RectTransform target = AddRect(name, parent, rect);
+            Image image = target.gameObject.AddComponent<Image>();
+            image.color = Color.clear;
+            image.raycastTarget = true;
+            return target.gameObject;
+        }
+
+        private void BindMagicCollegeHint(GameObject target, SpellCollege college)
+        {
+            SourceHoverHintTarget hint = target.GetComponent<SourceHoverHintTarget>()
+                                         ?? target.AddComponent<SourceHoverHintTarget>();
+            string owner = "magic-college:" + (int)college;
+            hint.Bind(() => _controller.ShowContextualHelp(owner,
+                    _session.SpellPresentation?.CollegeDescription(college) ?? string.Empty,
+                    _session.SpellPresentation?.CollegeName(college) ?? string.Empty, 446 + (int)college),
+                () => _controller.ClearContextualHelp(owner));
+        }
+
+        private void BindMagicSpellHint(GameObject target, int spellId)
+        {
+            SourceHoverHintTarget hint = target.AddComponent<SourceHoverHintTarget>();
+            string owner = "magic-spell:" + spellId;
+            int rank = spellId % 5;
+            string requirements = $"Willpower: {new[] { 6, 9, 12, 15, 18 }[rank]}";
+            if (PhaseOneSpellCatalog.TryGet(spellId, out SpellDefinition runtime))
+                requirements += $"    Fatigue: {runtime.BaseFatigueCost}";
+            string description = _session.SpellPresentation?.SpellDescription(spellId) ?? string.Empty;
+            string body = string.IsNullOrWhiteSpace(description)
+                ? requirements : requirements + "\n" + description;
+            hint.Bind(() => _controller.ShowContextualHelp(owner, body,
+                    _session.SpellPresentation?.SpellName(spellId) ?? string.Empty, 446 + spellId / 5),
+                () => _controller.ClearContextualHelp(owner));
         }
 
         private void AdjustAttribute(CharacterAttribute attribute, int delta)
@@ -535,6 +674,9 @@ namespace Arcanum.Runtime.UI
             _skillsPanel = null;
             _portrait = null;
             _background = null;
+            _skillsButton = null;
+            _technologyButton = null;
+            _magicButton = null;
             _attributeValues.Clear();
             _attributeButtons.Clear();
             _textBounds.Clear();

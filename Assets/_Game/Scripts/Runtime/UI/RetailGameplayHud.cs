@@ -288,7 +288,9 @@ namespace Arcanum.Runtime.UI
             if (!IsAvailable || _controller == null) return;
             bool visible = show && _controller.HasPlayer
                                 && _controller.Screen is GameUiScreen.None or GameUiScreen.Inventory
-                                    or GameUiScreen.Character or GameUiScreen.Dialogue or GameUiScreen.Journal;
+                                    or GameUiScreen.Character or GameUiScreen.Magic
+                                    or GameUiScreen.Technology or GameUiScreen.Crafting
+                                    or GameUiScreen.Dialogue or GameUiScreen.Journal;
             if (_canvasRoot.activeSelf != visible) _canvasRoot.SetActive(visible);
             ManageWorldViewport(visible);
             if (!visible) return;
@@ -319,7 +321,7 @@ namespace Arcanum.Runtime.UI
             if (!contextualHelpVisible) HideContextualHelp();
             if (contextualHelpVisible)
             {
-                _worldTargetIcon.SetKey(new UiAssetKey(RetailGameplayHudLayout.ContextualHelpIconSourceId));
+                _worldTargetIcon.SetKey(new UiAssetKey(_controller.ContextualHelpIconSourceId));
                 RefreshContextualHelp();
             }
             else if (targetVisible)

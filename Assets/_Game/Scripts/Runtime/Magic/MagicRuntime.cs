@@ -37,11 +37,16 @@ namespace Arcanum.Runtime.Magic
         private static readonly int[] MinimumLevels = { 1, 1, 5, 10, 15 };
         private readonly string[] _spellNames;
         private readonly string[] _collegeNames;
+        private readonly string[] _spellDescriptions;
+        private readonly string[] _collegeDescriptions;
 
-        private SpellPresentationCatalog(string[] spellNames, string[] collegeNames)
+        private SpellPresentationCatalog(string[] spellNames, string[] collegeNames,
+            string[] spellDescriptions, string[] collegeDescriptions)
         {
             _spellNames = spellNames;
             _collegeNames = collegeNames;
+            _spellDescriptions = spellDescriptions;
+            _collegeDescriptions = collegeDescriptions;
         }
 
         public static SpellPresentationCatalog FromMes(MesFile spellText)
@@ -49,14 +54,24 @@ namespace Arcanum.Runtime.Magic
             if (spellText == null) throw new ArgumentNullException(nameof(spellText));
             var spells = new string[80];
             var colleges = new string[16];
+            var spellDescriptions = new string[80];
+            var collegeDescriptions = new string[16];
             for (int id = 0; id < spells.Length; id++) spells[id] = spellText.Get(id)?.Trim();
             for (int id = 0; id < colleges.Length; id++) colleges[id] = spellText.Get(500 + id)?.Trim();
-            return new SpellPresentationCatalog(spells, colleges);
+            for (int id = 0; id < spellDescriptions.Length; id++)
+                spellDescriptions[id] = spellText.Get(700 + id)?.Trim();
+            for (int id = 0; id < collegeDescriptions.Length; id++)
+                collegeDescriptions[id] = spellText.Get(8000 + id)?.Trim();
+            return new SpellPresentationCatalog(spells, colleges, spellDescriptions, collegeDescriptions);
         }
 
         public string SpellName(int id) => id >= 0 && id < _spellNames.Length ? _spellNames[id] : string.Empty;
         public string CollegeName(SpellCollege college)
             => Enum.IsDefined(typeof(SpellCollege), college) ? _collegeNames[(int)college] : string.Empty;
+        public string SpellDescription(int id)
+            => id >= 0 && id < _spellDescriptions.Length ? _spellDescriptions[id] : string.Empty;
+        public string CollegeDescription(SpellCollege college)
+            => Enum.IsDefined(typeof(SpellCollege), college) ? _collegeDescriptions[(int)college] : string.Empty;
         public static int IconSourceId(int id)
             => id >= 0 && id < SourceIcons.Length ? SourceIcons[id] : 0;
         public static int MinimumLevel(int rank)
