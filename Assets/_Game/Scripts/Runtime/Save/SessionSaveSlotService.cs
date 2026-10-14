@@ -10,7 +10,7 @@ using Newtonsoft.Json;
 namespace Arcanum.Runtime.Save
 {
     /// <summary>Owns safe domain slot naming, metadata, enumeration, and single-file atomic lifecycle.</summary>
-    public sealed class SessionSaveSlotService : ISessionSaveSlotOperations
+    public sealed class SessionSaveSlotService : ISessionSaveSlotOperations, ISessionSaveSlotPresentationOperations
     {
         public const string SlotFormatIdentifier = "OpenArcanum.SaveSlot";
         public const int CurrentSlotVersion = 1;
@@ -23,6 +23,7 @@ namespace Arcanum.Runtime.Save
         private readonly Func<DateTime> _utcNow;
 
         public string SaveDirectory => _saveDirectory;
+        public Func<string> ThumbnailProvider { get; set; }
 
         public SessionSaveSlotService(WorldMapSessionCoordinator session)
             : this(session, Path.Combine(UnityEngine.Application.persistentDataPath, "Saves"),
@@ -46,7 +47,9 @@ namespace Arcanum.Runtime.Save
             _utcNow = utcNow ?? throw new ArgumentNullException(nameof(utcNow));
         }
 
-        public SessionSaveSlotResult SaveSlot(string slotId)
+        public SessionSaveSlotResult SaveSlot(string slotId) => SaveSlot(slotId, slotId);
+
+        public SessionSaveSlotResult SaveSlot(string slotId, string displayName)
         {
             if (!TryResolveSlotPath(slotId, out string path)) return InvalidSlot(slotId);
             if (_session.PlayerState == null || !_session.HasSelectedSector)
@@ -61,7 +64,7 @@ namespace Arcanum.Runtime.Save
                 {
                     SlotFormat = SlotFormatIdentifier,
                     SlotVersion = CurrentSlotVersion,
-                    Metadata = CreateMetadata(slotId, snapshot),
+                    Metadata = CreateMetadata(slotId, snapshot, displayName),
                     Session = snapshot,
                 };
                 string json = SerializeSlotData(slot);
@@ -189,10 +192,17 @@ namespace Arcanum.Runtime.Save
                     sessionResult.Failure);
         }
 
-        private SessionSaveSlotMetadata CreateMetadata(string slotId, SessionSaveData snapshot)
+        private SessionSaveSlotMetadata CreateMetadata(string slotId, SessionSaveData snapshot, string displayName)
         {
             CharacterSaveData pc = snapshot.Characters.Single(value =>
                 string.Equals(value.Identity, snapshot.World.Player.Identity, StringComparison.Ordinal));
+            string areaName = null;
+            int currentArea = _session.CurrentArea;
+            if (currentArea > 0 && _session.AreaSource?.TryGet(currentArea, out var area) == true)
+                areaName = area.Name;
+            string thumbnail = null;
+            try { thumbnail = ThumbnailProvider?.Invoke(); }
+            catch { /* A screenshot is optional metadata; saving authority must remain available. */ }
             return new SessionSaveSlotMetadata
             {
                 SlotId = slotId,
@@ -203,6 +213,11 @@ namespace Arcanum.Runtime.Save
                 SelectedSector = snapshot.World.SelectedSector,
                 PcIdentity = snapshot.World.Player.Identity,
                 PcLevel = pc.Progression.Level,
+                DisplayName = string.IsNullOrWhiteSpace(displayName) ? slotId : displayName.Trim(),
+                PcName = snapshot.CharacterCreation?.Name,
+                AreaName = areaName,
+                GameTimeMilliseconds = _session.SourceTime.CampaignMilliseconds,
+                ThumbnailPngBase64 = thumbnail,
             };
         }
 
@@ -240,6 +255,26 @@ namespace Arcanum.Runtime.Save
             {
                 error = "Slot metadata does not match the authoritative snapshot.";
                 return false;
+            }
+            long expectedGameTime = SourceTimeService.InitialMilliseconds
+                                    + (snapshot.Magic?.ElapsedMilliseconds ?? 0);
+            if (metadata.GameTimeMilliseconds != 0 && metadata.GameTimeMilliseconds != expectedGameTime)
+            {
+                error = "The source game-time metadata does not match the authoritative snapshot.";
+                return false;
+            }
+            if (!string.IsNullOrEmpty(metadata.ThumbnailPngBase64))
+            {
+                try
+                {
+                    if (Convert.FromBase64String(metadata.ThumbnailPngBase64).Length > 2_000_000)
+                        throw new FormatException();
+                }
+                catch
+                {
+                    error = "The save thumbnail is malformed or too large.";
+                    return false;
+                }
             }
             return true;
         }

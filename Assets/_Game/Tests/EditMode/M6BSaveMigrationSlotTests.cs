@@ -132,6 +132,21 @@ namespace Arcanum.Formats.Tests
         }
 
         [Test]
+        public void SourcePresentationMetadataUsesAuthoritativeGameTimeAndOptionalThumbnail()
+        {
+            string thumbnail = Convert.ToBase64String(new byte[] { 137, 80, 78, 71 });
+            _slots.ThumbnailProvider = () => thumbnail;
+            _session.SourceTime.Advance(37_000);
+            Assert.That(_slots.SaveSlot("alpha", "The Crash Site").Succeeded, Is.True);
+            string json = File.ReadAllText(_slots.ResolveSlotPathForTests("alpha"));
+            Assert.That(_slots.TryReadSlot(json, "alpha", out SessionSaveSlotData slot).Succeeded, Is.True);
+            Assert.That(slot.Metadata.DisplayName, Is.EqualTo("The Crash Site"));
+            Assert.That(slot.Metadata.GameTimeMilliseconds,
+                Is.EqualTo(SourceTimeService.InitialMilliseconds + 37_000));
+            Assert.That(slot.Metadata.ThumbnailPngBase64, Is.EqualTo(thumbnail));
+        }
+
+        [Test]
         public void ListSlotsIsSortedAndMissingDirectoryIsEmpty()
         {
             Assert.That(_slots.ListSlots().Slots, Is.Empty);
