@@ -33,6 +33,11 @@ namespace Arcanum.Formats.Tests
             public int AdvancedSeconds;
             public int AdvanceCalls;
             public int FatePointCalls;
+            public int ScheduledScript;
+            public int ScheduledLine;
+            public int ScheduledSeconds;
+            public bool ScheduledAt;
+            public int RemovedScript;
             public int FatigueCalls;
             public bool Reputation;
             public bool Identified = true;
@@ -75,6 +80,15 @@ namespace Arcanum.Formats.Tests
             public int GetCurrentMinute() => Minute;
             public int GetHoursSinceStartup() => Hours;
             public void AdvanceTimeSeconds(int seconds) { AdvanceCalls++; AdvancedSeconds += seconds; }
+            public void ScheduleScriptCall(int scriptNumber, int startLine, object triggerer, object attachee,
+                int seconds, bool atTimeOfDay)
+            {
+                ScheduledScript = scriptNumber;
+                ScheduledLine = startLine;
+                ScheduledSeconds = seconds;
+                ScheduledAt = atTimeOfDay;
+            }
+            public void RemoveScriptCall(int scriptNumber, object attachee) => RemovedScript = scriptNumber;
             public void GrantOneFatePoint(object obj) => FatePointCalls++;
         }
 
@@ -195,6 +209,22 @@ namespace Arcanum.Formats.Tests
             Assert.That(host.AdvanceCalls, Is.EqualTo(1));
             Assert.That(host.AdvancedSeconds, Is.EqualTo(45));
             Assert.That(host.FatePointCalls, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void TimerOperationsPreserveSourceOperandLayoutAndCancellationIdentity()
+        {
+            var host = new Host();
+            var context = new ScriptContext { Triggerer = host.Triggerer, Attachee = host.Attachee };
+            ScriptExecutionResult result = new ScriptVm(host).ExecuteStrict(File(
+                Entry(Act(Sat.CallScriptIn, Val(Svt.Number, 1179), Val(Svt.Number, 8),
+                    Obj(Sfo.Triggerer), Obj(Sfo.Attachee), Val(Svt.Number, 30))),
+                Entry(Act(Sat.RemoveScriptCall, Val(Svt.Number, 1179), Obj(Sfo.Attachee)))), context);
+
+            Assert.That(result.Succeeded, Is.True, result.Detail);
+            Assert.That((host.ScheduledScript, host.ScheduledLine, host.ScheduledSeconds, host.ScheduledAt),
+                Is.EqualTo((1179, 8, 30, false)));
+            Assert.That(host.RemovedScript, Is.EqualTo(1179));
         }
 
         [TestCase(28000, Sat.GetMagictechAdjustment)]

@@ -163,6 +163,14 @@ namespace Arcanum.Runtime.World
         public int GetHoursSinceStartup() => checked((int)(CampaignMilliseconds / HourMilliseconds));
         public void AdvanceTimeSeconds(int seconds) => Session.SourceTime.Advance(checked(seconds * 1_000));
 
+        public void ScheduleScriptCall(int scriptNumber, int startLine, object triggerer, object attachee,
+            int seconds, bool atTimeOfDay)
+            => Session.ScriptTimers.Schedule(scriptNumber, startLine, Identity(triggerer), Identity(attachee),
+                seconds, atTimeOfDay);
+
+        public void RemoveScriptCall(int scriptNumber, object attachee)
+            => Session.ScriptTimers.RemoveFirst(scriptNumber, Identity(attachee));
+
         public void GrantOneFatePoint(object obj)
         {
             if (Session.PlayerState?.Identity == Identity(obj)) Session.GameplayHud.GrantFatePoint();

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Arcanum.Formats.Objects;
+using Arcanum.Formats.Script;
 using Arcanum.Formats.Text;
 using Arcanum.Formats.World;
 using Arcanum.Runtime.Character;
@@ -11,6 +12,7 @@ using Arcanum.Runtime.Party;
 using Arcanum.Runtime.Save;
 using Arcanum.Runtime.UI;
 using Arcanum.Runtime.World;
+using Arcanum.Script;
 using Arcanum.World;
 using NUnit.Framework;
 using OpenArcanum.Rendering;
@@ -684,6 +686,34 @@ namespace Arcanum.Formats.Tests
                     _session.Vitality.GetCurrentHitPoints(player), _session.Vitality.GetCurrentFatigue(player)),
                 Is.EqualTo((3_600_000L, hp, fatigue)));
             Assert.That(_session.Magic.ActiveEffects, Is.Empty);
+        }
+
+        [TestCase(SleepLocationMode.WildernessSleep)]
+        [TestCase(SleepLocationMode.TownWait)]
+        public void SleepAndWaitExecuteDuePersistentScriptTimers(SleepLocationMode mode)
+        {
+            _session.BindSleepLocationSource(new FixedSleepLocationSource(mode));
+            var callback = new ScriptFile();
+            callback.Entries.Add(new ScriptCondition
+            {
+                Type = (int)Sct.True,
+                Action = new ScriptAction
+                {
+                    Type = (int)Sat.SetGlobalFlag,
+                    OpType = { [0] = (byte)Svt.Number },
+                    OpValue = { [0] = 611 },
+                },
+                Els = new ScriptAction { Type = (int)Sat.DoNothing },
+            });
+            _session.BindUseScriptSource(number => number == 9000 ? callback : null);
+            ArcanumObjectId player = _session.PlayerState.Identity;
+            _session.ScriptTimers.Schedule(9000, 0, player, player, 1);
+
+            SleepResult result = _session.GameplayHud.Sleep(SleepOption.OneHour);
+
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(_session.Campaign.GetFlag(611), Is.EqualTo(1));
+            Assert.That(_session.ScriptTimers.Calls, Is.Empty);
         }
 
         [Test]

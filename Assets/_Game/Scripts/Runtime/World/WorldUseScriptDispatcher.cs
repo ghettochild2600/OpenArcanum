@@ -39,6 +39,20 @@ namespace Arcanum.Runtime.World
         public ScriptExecutionResult DispatchBedUse(ArcanumObjectId actor, ArcanumObjectId target, int scriptNum)
             => Dispatch(actor, target, scriptNum, bedUse: true);
 
+        internal ScriptExecutionResult DispatchScheduled(ScheduledScriptCall call)
+        {
+            ScriptFile file = _resolveScript(call.ScriptNumber);
+            if (file == null) return new ScriptExecutionResult(ScriptExecutionStatus.MissingScript);
+            var context = new ScriptContext
+            {
+                Triggerer = new WorldScriptObjectReference(call.Triggerer),
+                Attachee = new WorldScriptObjectReference(call.Attachee),
+                AttachmentPoint = (int)Sap.Use,
+                ScriptNum = call.ScriptNumber,
+            };
+            return new ScriptVm(_host, Globals).ExecuteStrict(file, context, call.StartLine);
+        }
+
         private ScriptExecutionResult Dispatch(ArcanumObjectId actor, ArcanumObjectId target, int scriptNum,
             bool bedUse)
         {

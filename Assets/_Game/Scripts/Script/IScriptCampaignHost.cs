@@ -35,6 +35,9 @@ namespace Arcanum.Script
         int GetCurrentMinute();
         int GetHoursSinceStartup();
         void AdvanceTimeSeconds(int seconds);
+        void ScheduleScriptCall(int scriptNumber, int startLine, object triggerer, object attachee,
+            int seconds, bool atTimeOfDay);
+        void RemoveScriptCall(int scriptNumber, object attachee);
         void GrantOneFatePoint(object obj);
     }
 }

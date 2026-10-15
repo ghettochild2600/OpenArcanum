@@ -81,6 +81,7 @@ namespace Arcanum.Runtime.World
         private CraftingStateService _crafting;
         private SchematicCatalog _schematicSource;
         private SourceTimeService _sourceTime;
+        private ScriptTimerAuthority _scriptTimers;
         private EconomyStateService _economy;
         private InventorySourceCatalog _economySource;
         private SocialStateService _social;
@@ -131,6 +132,7 @@ namespace Arcanum.Runtime.World
         public ProductionShortcutState Shortcuts => _shortcuts ??= new ProductionShortcutState(this);
         public GameplayHudStateService GameplayHud => _gameplayHud ??= new GameplayHudStateService(this);
         public SourceTimeService SourceTime => _sourceTime ??= new SourceTimeService();
+        public ScriptTimerAuthority ScriptTimers => _scriptTimers ??= new ScriptTimerAuthority(this, SourceTime);
         public ISleepLocationSource SleepLocations => _sleepLocations;
         public BedSleepAuthority Beds => _beds ??= new BedSleepAuthority(this);
         public MagicStateService Magic => _magic ??= new MagicStateService(this);
@@ -268,6 +270,13 @@ namespace Arcanum.Runtime.World
             _resolveUseScript = resolveScript ?? throw new ArgumentNullException(nameof(resolveScript));
             UseScripts = new WorldUseScriptDispatcher(this, resolveScript, ScriptGlobals);
         }
+
+        internal bool IsScriptObjectAlive(ArcanumObjectId identity)
+            => identity.IsPersistent && (PlayerState?.Identity == identity || _states.ContainsKey(identity));
+
+        internal ScriptExecutionResult DispatchScheduledScript(ScheduledScriptCall call)
+            => UseScripts?.DispatchScheduled(call)
+               ?? new ScriptExecutionResult(ScriptExecutionStatus.MissingScript);
 
         public void BindDialogueSource(Func<int, ScriptFile> resolveScript,
             Func<int, Arcanum.Formats.Dialog.DialogScript> resolveDialogue)
@@ -2342,6 +2351,8 @@ namespace Arcanum.Runtime.World
             _social = null;
             _characterCreation?.ClearFinalized();
             _sourceTime = null;
+            _scriptTimers?.Dispose();
+            _scriptTimers = null;
             _portals = null;
             _dialogue = null;
             _journal = null;
@@ -2386,6 +2397,9 @@ namespace Arcanum.Runtime.World
             _logbook = null;
             _sourceTime = new SourceTimeService();
             _sourceTime.Restore(plan.Magic?.ElapsedMilliseconds ?? 0);
+            _scriptTimers?.Dispose();
+            _scriptTimers = new ScriptTimerAuthority(this, _sourceTime);
+            _scriptTimers.RestoreSaveData(plan.ScriptTimers);
             _poison = new CharacterPoisonService(_characters, _derivedStats, _vitality, _sourceTime);
             _poison.RestoreSaveData(plan.Poison);
             _campaign.BindTimeSource(() => SourceTime.CampaignMilliseconds);
@@ -2431,6 +2445,7 @@ namespace Arcanum.Runtime.World
 
         private void OnDestroy()
         {
+            _scriptTimers?.Dispose();
             _gameplayHud?.Dispose();
             _poison?.Dispose();
             foreach (string sector in new List<string>(_loaded.Keys)) UnloadSector(sector);

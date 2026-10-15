@@ -675,6 +675,26 @@ namespace Arcanum.Script
                     SetValue(a.OpType[0], a.OpValue[0], ctx, value);
                     return Next;
                 }
+                case Sat.CallScriptIn:
+                case Sat.CallScriptAt:
+                {
+                    IScriptCampaignHost host = CampaignHost((Sat)a.Type);
+                    host?.ScheduleScriptCall(
+                        GetValue(a.OpType[0], a.OpValue[0], ctx),
+                        GetValue(a.OpType[1], a.OpValue[1], ctx),
+                        GetObj(a.OpType[2], a.OpValue[2], ctx),
+                        GetObj(a.OpType[3], a.OpValue[3], ctx),
+                        GetValue(a.OpType[4], a.OpValue[4], ctx),
+                        (Sat)a.Type == Sat.CallScriptAt);
+                    return Next;
+                }
+                case Sat.RemoveScriptCall:
+                {
+                    IScriptCampaignHost host = CampaignHost(Sat.RemoveScriptCall);
+                    host?.RemoveScriptCall(GetValue(a.OpType[0], a.OpValue[0], ctx),
+                        GetObj(a.OpType[1], a.OpValue[1], ctx));
+                    return Next;
+                }
 
                 // FOR-loops iterate a focus-object SET (engine script_resolve_focus_obj — nearby critters,
                 // party members, …). We don't resolve that set yet (it needs world spatial queries), so we treat

@@ -377,6 +377,23 @@ namespace Arcanum.Runtime.Save
         public List<ScriptAttachmentSaveData> Attachments { get; set; }
         public List<ReactionSaveData> Reactions { get; set; }
         public List<int> KnownAreas { get; set; } = new List<int>();
+        public ScriptTimerSaveData ScriptTimers { get; set; }
+    }
+
+    public sealed class ScriptTimerSaveData
+    {
+        public long NextSequence { get; set; } = 1;
+        public List<ScheduledScriptCallSaveData> Calls { get; set; } = new List<ScheduledScriptCallSaveData>();
+    }
+
+    public sealed class ScheduledScriptCallSaveData
+    {
+        public long Sequence { get; set; }
+        public long DueCampaignMilliseconds { get; set; }
+        public int ScriptNumber { get; set; }
+        public int StartLine { get; set; }
+        public string TriggererIdentity { get; set; }
+        public string AttacheeIdentity { get; set; }
     }
 
     public sealed class IndexedIntSaveData

@@ -180,6 +180,9 @@ namespace Arcanum.Script
                 case Sat.GetCurrentHour:
                 case Sat.GetCurrentMinute:
                 case Sat.GetHoursSinceStartup:
+                case Sat.CallScriptIn:
+                case Sat.CallScriptAt:
+                case Sat.RemoveScriptCall:
                 case Sat.GetLocation:
                 case Sat.DistanceBetween:
                 case Sat.GetArea:
@@ -238,10 +241,6 @@ namespace Arcanum.Script
                 case Sat.GetCurrentHour:
                 case Sat.GetCurrentMinute:
                 case Sat.GetHoursSinceStartup:
-                case Sat.CallScriptIn:
-                case Sat.CallScriptAt:
-                case Sat.RemoveScriptCall:
-                    return "source time/timer authority";
                 case Sat.GiveQuestXp:
                     return "character progression authority";
                 case Sat.ActionWalkTo:

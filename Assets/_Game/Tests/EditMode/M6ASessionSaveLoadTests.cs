@@ -5,10 +5,12 @@ using System.Linq;
 using Arcanum.Formats.Art;
 using Arcanum.Formats.Objects;
 using Arcanum.Formats.Quest;
+using Arcanum.Formats.Script;
 using Arcanum.Runtime.Campaign;
 using Arcanum.Runtime.Character;
 using Arcanum.Runtime.Save;
 using Arcanum.Runtime.World;
+using Arcanum.Script;
 using Arcanum.World;
 using NUnit.Framework;
 using UnityEngine;
@@ -407,6 +409,33 @@ namespace Arcanum.Formats.Tests
             {
                 Object.DestroyImmediate(emptyRoot);
             }
+        }
+
+        [Test]
+        public void ScheduledScriptCallSurvivesSaveLoadAndExecutesOnceAtDeadline()
+        {
+            var action = new ScriptAction { Type = (int)Sat.SetGlobalFlag };
+            action.OpType[0] = (byte)Svt.Number;
+            action.OpValue[0] = 612;
+            var callback = new ScriptFile();
+            callback.Entries.Add(new ScriptCondition
+            {
+                Type = (int)Sct.True,
+                Action = action,
+                Els = new ScriptAction { Type = (int)Sat.DoNothing },
+            });
+            _session.BindUseScriptSource(number => number == 9001 ? callback : null);
+            _session.ScriptTimers.Schedule(9001, 0, _pc.Identity, _pc.Identity, 2);
+            string json = _session.SaveGames.SerializeCurrentSession();
+
+            Assert.That(_session.SaveGames.LoadJson(json).Succeeded, Is.True);
+            Assert.That(_session.ScriptTimers.Calls, Has.Count.EqualTo(1));
+            _session.SourceTime.Advance(15_999);
+            Assert.That(_session.Campaign.GetFlag(612), Is.Zero);
+            _session.SourceTime.Advance(1);
+
+            Assert.That(_session.Campaign.GetFlag(612), Is.EqualTo(1));
+            Assert.That(_session.ScriptTimers.Calls, Is.Empty);
         }
 
         private void AssertRejected(SessionSaveData data, SessionLoadFailure expected)

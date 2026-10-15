@@ -106,6 +106,7 @@ namespace Arcanum.Runtime.Save
         internal GameplayHudSaveData GameplayHud;
         internal LocalMapSaveData LocalMap;
         internal LogbookSaveData Logbook;
+        internal ScriptTimerSaveData ScriptTimers;
     }
 
     /// <summary>Versioned, presentation-independent persistence for the bounded M1-M5 session state.</summary>
@@ -311,6 +312,7 @@ namespace Arcanum.Runtime.Save
                     }).ToList(),
                 },
             };
+            data.Campaign.ScriptTimers = _session.ScriptTimers.ExportSaveData();
             data.Campaign.Reactions = _session.DerivedStats.ExportReactionAdjustments()
                 .Select(value => new ReactionSaveData
                 {
@@ -498,6 +500,8 @@ namespace Arcanum.Runtime.Save
             if (!result.Succeeded) { plan = null; return result; }
             result = BuildCampaign(data.Campaign, plan);
             if (!result.Succeeded) { plan = null; return result; }
+            result = BuildScriptTimers(data.Campaign.ScriptTimers, plan);
+            if (!result.Succeeded) { plan = null; return result; }
             result = BuildParty(data.Party, plan);
             if (!result.Succeeded) { plan = null; return result; }
             result = BuildGameplayHud(data.GameplayHud, plan);
@@ -508,6 +512,29 @@ namespace Arcanum.Runtime.Save
             if (!result.Succeeded) { plan = null; return result; }
             return new SessionLoadResult(SessionLoadFailure.None);
         }
+
+        private static SessionLoadResult BuildScriptTimers(ScriptTimerSaveData data, SessionRestorePlan plan)
+        {
+            data ??= new ScriptTimerSaveData();
+            if (data.NextSequence < 1 || data.Calls == null)
+                return Failure(SessionLoadFailure.InvalidCampaign, "The script timer state is incomplete.");
+            var sequences = new HashSet<long>();
+            foreach (ScheduledScriptCallSaveData value in data.Calls)
+            {
+                if (value == null || value.Sequence < 1 || value.Sequence >= data.NextSequence
+                    || !sequences.Add(value.Sequence) || value.DueCampaignMilliseconds < 0
+                    || value.ScriptNumber <= 0 || value.StartLine < 0
+                    || !TryIdentity(value.TriggererIdentity, out ArcanumObjectId triggerer)
+                    || !TryIdentity(value.AttacheeIdentity, out ArcanumObjectId attachee)
+                    || !ContainsIdentity(plan, triggerer) || !ContainsIdentity(plan, attachee))
+                    return Failure(SessionLoadFailure.InvalidCampaign, "A scheduled script callback is invalid.");
+            }
+            plan.ScriptTimers = data;
+            return new SessionLoadResult(SessionLoadFailure.None);
+        }
+
+        private static bool ContainsIdentity(SessionRestorePlan plan, ArcanumObjectId identity)
+            => plan.Player.Identity == identity || plan.Objects.ContainsKey(identity);
 
         private static SessionLoadResult BuildLogbook(LogbookSaveData data, SessionRestorePlan plan)
         {
