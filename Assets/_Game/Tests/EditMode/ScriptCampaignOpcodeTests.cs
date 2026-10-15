@@ -35,6 +35,7 @@ namespace Arcanum.Formats.Tests
             public int FatePointCalls;
             public int FatigueCalls;
             public bool Reputation;
+            public bool Identified = true;
             public int MagicCalls;
             public int Day = 3, Hour = 17, Minute = 42, Hours = 89;
 
@@ -56,6 +57,7 @@ namespace Arcanum.Formats.Tests
             public void SetReaction(object npc, object pc, int value) => Reaction = value;
             public void AdjustReaction(object npc, object pc, int delta) => Reaction += delta;
             public bool HasReputation(object obj, int reputation) => Reputation;
+            public bool IsIdentified(object obj) => Identified;
             public void AddReputation(object obj, int reputation) { Reputation = true; AddedReputation = reputation; }
             public void RemoveReputation(object obj, int reputation) { Reputation = false; RemovedReputation = reputation; }
             public int GetFaction(object obj) => Faction;
@@ -116,6 +118,28 @@ namespace Arcanum.Formats.Tests
             Assert.That(host.Reaction, Is.EqualTo(56));
             Assert.That(host.AddedReputation, Is.EqualTo(1007));
             Assert.That(host.RemovedReputation, Is.EqualTo(1007));
+            Assert.That(context.LocalVars[0], Is.EqualTo(1));
+        }
+
+        [Test]
+        public void RealRetailIdentifiedConditionUsesSourceFocusOperand()
+        {
+            using DatVirtualFileSystem vfs = MountSourceData();
+            ScriptFile retail = ScriptDatabase.Load(vfs).Get(28020);
+            ScriptCondition source = retail.Entries.First(entry => entry.Type == (int)Sct.Identified);
+            source.Action = Act(Sat.AssignNum, Val(Svt.LcVar, 0), Val(Svt.Number, 1));
+            source.Els = Nop();
+            var host = new Host();
+            var context = new ScriptContext
+            {
+                ScriptNum = 28020,
+                Triggerer = host.Triggerer,
+                Attachee = host.Attachee,
+            };
+
+            ScriptExecutionResult result = new ScriptVm(host).ExecuteStrict(File(source), context);
+
+            Assert.That(result.Succeeded, Is.True, result.Detail);
             Assert.That(context.LocalVars[0], Is.EqualTo(1));
         }
 

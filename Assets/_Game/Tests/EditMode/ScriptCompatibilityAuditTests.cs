@@ -26,6 +26,8 @@ namespace Arcanum.Formats.Tests
         {
             Assert.That(ScriptOpcodeCompatibility.Condition(Sct.ObjHasReputation).Status,
                 Is.EqualTo(ScriptOpcodeSupportStatus.Implemented));
+            Assert.That(ScriptOpcodeCompatibility.Condition(Sct.Identified).Status,
+                Is.EqualTo(ScriptOpcodeSupportStatus.Implemented));
             Assert.That(ScriptOpcodeCompatibility.Action(Sat.TransferItem).Status,
                 Is.EqualTo(ScriptOpcodeSupportStatus.Implemented));
             Assert.That(ScriptOpcodeCompatibility.Action(Sat.FadeAndTeleport).Status,

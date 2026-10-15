@@ -68,6 +68,7 @@ namespace Arcanum.Script
                 case Sct.ObjIsUndead:
                 case Sct.KnowsSpell:
                 case Sct.ObjHasReputation:
+                case Sct.Identified:
                     return Implemented("IScriptHost production authority", "medium", ConditionSource);
 
                 case Sct.ObjCanOpenContainer:
@@ -100,7 +101,6 @@ namespace Arcanum.Script
                 case Sct.RumorQuelled:
                 case Sct.MonstergenDisabled:
                 case Sct.SectorIsBlocked:
-                case Sct.Identified:
                 case Sct.MasteredSpellCollege:
                     return Stub("missing downstream state authority", "high", ConditionSource,
                         "Strict execution rejects this condition; non-strict execution assumes false.");

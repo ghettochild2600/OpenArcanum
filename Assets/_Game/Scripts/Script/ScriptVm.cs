@@ -227,6 +227,11 @@ namespace Arcanum.Script
                     int reputation = GetValue(c.OpType[1], c.OpValue[1], ctx);
                     return EvalObjSet(c, ctx, o => host.HasReputation(o, reputation));
                 }
+                case Sct.Identified: // op0=set
+                {
+                    IScriptCampaignHost host = CampaignHost(Sct.Identified);
+                    return host != null && EvalObjSet(c, ctx, host.IsIdentified);
+                }
                 // Two-object AI checks (single objects, not sets — engine uses script_get_obj).
                 case Sct.ObjCanSeeObj:
                     return CheckPair(c, ctx, _host.CanSeeObj);
@@ -272,7 +277,6 @@ namespace Arcanum.Script
                 case Sct.RumorQuelled:
                 case Sct.MonstergenDisabled:
                 case Sct.SectorIsBlocked:
-                case Sct.Identified:
                 case Sct.MasteredSpellCollege:
                     WarnOnce($"state condition {(Sct)c.Type} (assumed FALSE — state not modelled)");
                     return false;

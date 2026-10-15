@@ -89,6 +89,15 @@ namespace Arcanum.Runtime.World
         public bool HasReputation(object obj, int reputation)
             => Session.Social.HasReputation(Identity(obj), new ReputationId(reputation));
 
+        public bool IsIdentified(object obj)
+        {
+            PersistentObjectState state = State(Identity(obj));
+            if (!WorldMapSessionCoordinator.IsItemType(state.Type)) return false;
+            int complexity = Session.ResolvePrototype(state.PrototypeNumber)?.ItemComplexity ?? 0;
+            return complexity <= 0
+                || (state.ItemFlags & Arcanum.Runtime.Economy.EconomyStateService.ItemFlagIdentified) != 0;
+        }
+
         public void AddReputation(object obj, int reputation)
             => Session.Social.AddReputation(Identity(obj), new ReputationId(reputation));
 

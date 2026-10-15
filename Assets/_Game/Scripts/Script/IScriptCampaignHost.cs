@@ -15,6 +15,7 @@ namespace Arcanum.Script
         void SetReaction(object npc, object pc, int value);
         void AdjustReaction(object npc, object pc, int delta);
         bool HasReputation(object obj, int reputation);
+        bool IsIdentified(object obj);
         void AddReputation(object obj, int reputation);
         void RemoveReputation(object obj, int reputation);
         int GetFaction(object obj);
