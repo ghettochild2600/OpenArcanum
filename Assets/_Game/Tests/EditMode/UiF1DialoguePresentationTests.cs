@@ -82,6 +82,20 @@ namespace Arcanum.Formats.Tests
             Assert.That(RetailDialogueView.ResponseTint(false, true), Is.EqualTo(Color.white));
         }
 
+        [Test]
+        public void SourceDialogueCameraCentersParticipantWithGreaterLocationY()
+        {
+            ArcanumObjectId pc = ProductionPlayerLifecycle.DefaultPlayerIdentity;
+            ArcanumObjectId npc = ArcanumObjectId.CreateAuthored(0x1324u);
+            Assert.That(RetailDialogueCameraRule.CenterTarget(pc, new Vector2(10f, 20f),
+                npc, new Vector2(12f, 21f)), Is.EqualTo(npc));
+            Assert.That(RetailDialogueCameraRule.CenterTarget(pc, new Vector2(10f, 20f),
+                npc, new Vector2(12f, 19f)), Is.EqualTo(pc));
+            Assert.That(RetailDialogueCameraRule.CenterTarget(pc, new Vector2(10f, 20f),
+                npc, new Vector2(12f, 20f)), Is.EqualTo(pc),
+                "dialog.c uses a strict greater-than comparison");
+        }
+
         private WorldObject Runtime(string name, ObjectType type)
         {
             var go = new GameObject(name);

@@ -19,6 +19,14 @@ using UnityEngine;
 
 namespace Arcanum.Runtime.UI
 {
+    /// <summary>dialog.c sub_412FD0 centers the participant with the greater source location Y.</summary>
+    public static class RetailDialogueCameraRule
+    {
+        public static ArcanumObjectId CenterTarget(ArcanumObjectId pc, Vector2 pcTile,
+            ArcanumObjectId npc, Vector2 npcTile)
+            => npcTile.y > pcTile.y ? npc : pc;
+    }
+
     /// <summary>
     /// Source-shaped M12C production presentation. This component owns drawing, hotkeys, scrolling and pointer
     /// selection only; <see cref="GameUiController"/> delegates every gameplay command to established services.
@@ -56,6 +64,7 @@ namespace Arcanum.Runtime.UI
         private WorldObject _hoveredWorldObject;
         private Color _hoveredOriginalColor;
         private int _quickSlotAssignment;
+        private ArcanumObjectId _centeredDialogueNpc;
         private readonly ProductionKeyboardController _keyboard = new();
         private static readonly KeyCode[] DownKeys =
         {
@@ -183,6 +192,7 @@ namespace Arcanum.Runtime.UI
             EnsureInteractionSubscription();
             EnsureController();
             Controller.Refresh();
+            SynchronizeDialogueCamera();
             SyncInputGate();
 
             _retailMainMenu?.Synchronize();
@@ -228,6 +238,27 @@ namespace Arcanum.Runtime.UI
             }
             HandleWorldPointer();
             SyncInputGate();
+        }
+
+        private void SynchronizeDialogueCamera()
+        {
+            ProductionDialogueSession dialogue = _session?.Dialogue;
+            if (dialogue == null || dialogue.Phase != DialogueSessionPhase.AwaitingPlayerChoice)
+            {
+                _centeredDialogueNpc = default;
+                return;
+            }
+            if (_centeredDialogueNpc == dialogue.NpcIdentity || Camera.main == null
+                || !_session.TryGetObjectState(dialogue.PcIdentity, out PersistentObjectState pc)
+                || !_session.TryGetObjectState(dialogue.NpcIdentity, out PersistentObjectState npc)) return;
+            ArcanumObjectId target = RetailDialogueCameraRule.CenterTarget(
+                dialogue.PcIdentity, pc.TilePosition, dialogue.NpcIdentity, npc.TilePosition);
+            if (!_session.TryGetLoadedObject(target, out WorldObject runtime)) return;
+            Vector3 position = Camera.main.transform.position;
+            position.x = runtime.transform.position.x;
+            position.y = runtime.transform.position.y;
+            Camera.main.transform.position = position;
+            _centeredDialogueNpc = dialogue.NpcIdentity;
         }
 
         void IProductionKeyboardCommands.Escape()
