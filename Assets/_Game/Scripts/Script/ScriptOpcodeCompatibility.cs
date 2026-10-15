@@ -67,6 +67,7 @@ namespace Arcanum.Script
                 case Sct.ObjIsAnimal:
                 case Sct.ObjIsUndead:
                 case Sct.KnowsSpell:
+                case Sct.ObjHasReputation:
                     return Implemented("IScriptHost production authority", "medium", ConditionSource);
 
                 case Sct.ObjCanOpenContainer:
@@ -93,7 +94,6 @@ namespace Arcanum.Script
                 case Sct.ObjIsInfluencedBySpell:
                 case Sct.ObjHasBadAssociates:
                 case Sct.ObjIsInvulnerable:
-                case Sct.ObjHasReputation:
                 case Sct.Prowling:
                 case Sct.WaitingForLeader:
                 case Sct.ItemsAreBeingRewielded:
@@ -140,6 +140,7 @@ namespace Arcanum.Script
 
                 case Sat.Dialog:
                 case Sat.RemoveThisScript:
+                case Sat.ChangeThisScriptToScript:
                 case Sat.CallScript:
                 case Sat.CritterFollow:
                 case Sat.CritterDisband:
@@ -165,6 +166,28 @@ namespace Arcanum.Script
                 case Sat.GetHitPoints:
                 case Sat.Teleport:
                     return Implemented("IScriptHost production authority", "medium", ActionSource);
+
+                case Sat.GetObjectType:
+                case Sat.GetMagictechAdjustment:
+                case Sat.GetMagictechAdjustmentEx:
+                case Sat.GetReaction:
+                case Sat.SetReaction:
+                case Sat.AdjustReaction:
+                case Sat.AddReputation:
+                case Sat.RemoveReputation:
+                case Sat.GetFaction:
+                case Sat.GetDaySinceStartup:
+                case Sat.GetCurrentHour:
+                case Sat.GetCurrentMinute:
+                case Sat.GetHoursSinceStartup:
+                case Sat.GetLocation:
+                case Sat.DistanceBetween:
+                case Sat.GetArea:
+                case Sat.TransferItem:
+                case Sat.CreateItem:
+                case Sat.Destroy:
+                case Sat.DestroyItemNamed:
+                    return Implemented("IScriptCampaignHost production authority", "medium", ActionSource);
 
                 case Sat.FadeAndTeleport:
                     return Partial("map transition authority", "medium", ActionSource,

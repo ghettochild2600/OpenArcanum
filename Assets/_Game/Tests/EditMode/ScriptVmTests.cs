@@ -736,12 +736,13 @@ namespace Arcanum.Formats.Tests
         }
 
         [Test]
-        public void RemoveThisScript_SignalsRemovalAndZeroesScriptNum()
+        public void RemoveThisScript_RecordsDetachmentWithoutChangingRunningSource()
         {
             var ctx = new ScriptContext { ScriptNum = 1781 };
             new ScriptVm(new StubHost()).Execute(File(Cond(Sct.True, Act(Sat.RemoveThisScript), Nop())), ctx);
             Assert.That(ctx.RemoveScript, Is.True);
-            Assert.That(ctx.ScriptNum, Is.EqualTo(0));
+            Assert.That(ctx.ReplacementScriptNum, Is.EqualTo(0));
+            Assert.That(ctx.ScriptNum, Is.EqualTo(1781));
         }
 
         // The pc_chooses gate: a heartbeat that kills the attachee unless GlobalFlag[N] is set.

@@ -216,6 +216,13 @@ namespace Arcanum.Script
                     object o = GetObj(c.OpType[0], c.OpValue[0], ctx);
                     return o != null && _host.RumorKnown(o, rumor);
                 }
+                case Sct.ObjHasReputation: // op0=set, op1=reputation id
+                {
+                    IScriptCampaignHost host = CampaignHost(Sct.ObjHasReputation);
+                    if (host == null) return false;
+                    int reputation = GetValue(c.OpType[1], c.OpValue[1], ctx);
+                    return EvalObjSet(c, ctx, o => host.HasReputation(o, reputation));
+                }
                 // Two-object AI checks (single objects, not sets — engine uses script_get_obj).
                 case Sct.ObjCanSeeObj:
                     return CheckPair(c, ctx, _host.CanSeeObj);
@@ -255,7 +262,6 @@ namespace Arcanum.Script
                 case Sct.ObjIsInfluencedBySpell:
                 case Sct.ObjHasBadAssociates:
                 case Sct.ObjIsInvulnerable:
-                case Sct.ObjHasReputation:
                 case Sct.Prowling:
                 case Sct.WaitingForLeader:
                 case Sct.ItemsAreBeingRewielded:
@@ -340,6 +346,63 @@ namespace Arcanum.Script
                     SetValue(a.OpType[1], a.OpValue[1], ctx, currentHp);
                     SetValue(a.OpType[2], a.OpValue[2], ctx, maximumHp);
                     return Next;
+                case Sat.GetObjectType: // op0=obj, op1=destination
+                {
+                    IScriptCampaignHost host = CampaignHost(Sat.GetObjectType);
+                    if (host != null)
+                        SetValue(a.OpType[1], a.OpValue[1], ctx,
+                            host.GetObjectType(GetObj(a.OpType[0], a.OpValue[0], ctx)));
+                    return Next;
+                }
+                case Sat.GetMagictechAdjustment: // value,item,source,target,destination
+                {
+                    IScriptCampaignHost host = CampaignHost(Sat.GetMagictechAdjustment);
+                    if (host != null)
+                        SetValue(a.OpType[4], a.OpValue[4], ctx, host.GetMagicTechAdjustment(
+                            GetValue(a.OpType[0], a.OpValue[0], ctx),
+                            GetObj(a.OpType[1], a.OpValue[1], ctx),
+                            GetObj(a.OpType[2], a.OpValue[2], ctx),
+                            GetObj(a.OpType[3], a.OpValue[3], ctx)));
+                    return Next;
+                }
+                case Sat.GetMagictechAdjustmentEx: // value,item,source,destination
+                {
+                    IScriptCampaignHost host = CampaignHost(Sat.GetMagictechAdjustmentEx);
+                    if (host != null)
+                        SetValue(a.OpType[3], a.OpValue[3], ctx, host.GetMagicTechAdjustmentEx(
+                            GetValue(a.OpType[0], a.OpValue[0], ctx),
+                            GetObj(a.OpType[1], a.OpValue[1], ctx),
+                            GetObj(a.OpType[2], a.OpValue[2], ctx)));
+                    return Next;
+                }
+                case Sat.GetLocation: // op0=obj, op1=x destination, op2=y destination
+                {
+                    IScriptCampaignHost host = CampaignHost(Sat.GetLocation);
+                    if (host != null)
+                    {
+                        host.GetLocation(GetObj(a.OpType[0], a.OpValue[0], ctx), out int x, out int y);
+                        SetValue(a.OpType[1], a.OpValue[1], ctx, x);
+                        SetValue(a.OpType[2], a.OpValue[2], ctx, y);
+                    }
+                    return Next;
+                }
+                case Sat.DistanceBetween: // op0=a, op1=b, op2=destination
+                {
+                    IScriptCampaignHost host = CampaignHost(Sat.DistanceBetween);
+                    if (host != null)
+                        SetValue(a.OpType[2], a.OpValue[2], ctx,
+                            host.DistanceBetween(GetObj(a.OpType[0], a.OpValue[0], ctx),
+                                GetObj(a.OpType[1], a.OpValue[1], ctx)));
+                    return Next;
+                }
+                case Sat.GetArea: // op0=obj, op1=destination
+                {
+                    IScriptCampaignHost host = CampaignHost(Sat.GetArea);
+                    if (host != null)
+                        SetValue(a.OpType[1], a.OpValue[1], ctx,
+                            host.GetArea(GetObj(a.OpType[0], a.OpValue[0], ctx)));
+                    return Next;
+                }
                 case Sat.Random: // op0=lower, op1=upper (inclusive), op2=dest var
                 {
                     int lo = GetValue(a.OpType[0], a.OpValue[0], ctx), hi = GetValue(a.OpType[1], a.OpValue[1], ctx);
@@ -388,6 +451,72 @@ namespace Arcanum.Script
                 case Sat.QuellRumor: // op0=rumor, op1=obj → rumor_qstate_set (PC only)
                     _host.QuellRumor(GetObj(a.OpType[1], a.OpValue[1], ctx), GetValue(a.OpType[0], a.OpValue[0], ctx));
                     return Next;
+                case Sat.GetReaction: // op0=npc, op1=pc, op2=destination
+                {
+                    IScriptCampaignHost host = CampaignHost(Sat.GetReaction);
+                    if (host != null)
+                        SetValue(a.OpType[2], a.OpValue[2], ctx,
+                            host.GetReaction(GetObj(a.OpType[0], a.OpValue[0], ctx),
+                                GetObj(a.OpType[1], a.OpValue[1], ctx)));
+                    return Next;
+                }
+                case Sat.SetReaction: // op0=npc, op1=pc, op2=value
+                {
+                    IScriptCampaignHost host = CampaignHost(Sat.SetReaction);
+                    host?.SetReaction(GetObj(a.OpType[0], a.OpValue[0], ctx),
+                        GetObj(a.OpType[1], a.OpValue[1], ctx), GetValue(a.OpType[2], a.OpValue[2], ctx));
+                    return Next;
+                }
+                case Sat.AdjustReaction: // op0=npc, op1=pc, op2=delta
+                {
+                    IScriptCampaignHost host = CampaignHost(Sat.AdjustReaction);
+                    host?.AdjustReaction(GetObj(a.OpType[0], a.OpValue[0], ctx),
+                        GetObj(a.OpType[1], a.OpValue[1], ctx), GetValue(a.OpType[2], a.OpValue[2], ctx));
+                    return Next;
+                }
+                case Sat.AddReputation: // op0=set, op1=reputation id
+                case Sat.RemoveReputation:
+                {
+                    IScriptCampaignHost host = CampaignHost((Sat)a.Type);
+                    if (host == null) return Next;
+                    int reputation = GetValue(a.OpType[1], a.OpValue[1], ctx);
+                    foreach (object obj in ResolveSet(a.OpType[0], a.OpValue[0], ctx))
+                        if (obj != null)
+                        {
+                            if ((Sat)a.Type == Sat.AddReputation) host.AddReputation(obj, reputation);
+                            else host.RemoveReputation(obj, reputation);
+                        }
+                    return Next;
+                }
+                case Sat.GetFaction: // op0=obj, op1=destination
+                {
+                    IScriptCampaignHost host = CampaignHost(Sat.GetFaction);
+                    if (host != null)
+                        SetValue(a.OpType[1], a.OpValue[1], ctx,
+                            host.GetFaction(GetObj(a.OpType[0], a.OpValue[0], ctx)));
+                    return Next;
+                }
+                case Sat.TransferItem: // op0=name, op1=source, op2=destination
+                {
+                    IScriptCampaignHost host = CampaignHost(Sat.TransferItem);
+                    host?.TransferItem(GetValue(a.OpType[0], a.OpValue[0], ctx),
+                        GetObj(a.OpType[1], a.OpValue[1], ctx), GetObj(a.OpType[2], a.OpValue[2], ctx));
+                    return Next;
+                }
+                case Sat.CreateItem: // op0=prototype, op1=parent inventory
+                {
+                    IScriptCampaignHost host = CampaignHost(Sat.CreateItem);
+                    host?.CreateItem(GetValue(a.OpType[0], a.OpValue[0], ctx),
+                        GetObj(a.OpType[1], a.OpValue[1], ctx));
+                    return Next;
+                }
+                case Sat.DestroyItemNamed: // op0=name, op1=owner
+                {
+                    IScriptCampaignHost host = CampaignHost(Sat.DestroyItemNamed);
+                    host?.DestroyItemNamed(GetValue(a.OpType[0], a.OpValue[0], ctx),
+                        GetObj(a.OpType[1], a.OpValue[1], ctx));
+                    return Next;
+                }
                 // Run another object's attachment-point script (engine sub_44B170): op0=attachee, op1=SAP,
                 // op2=line, op3=triggerer. Used by tile/cutscene scripts to open a dialog (SAP_DIALOG @ line).
                 case Sat.CallScriptEx:
@@ -435,9 +564,19 @@ namespace Arcanum.Script
                 case Sat.Kill:
                     _host.Kill(GetObj(a.OpType[0], a.OpValue[0], ctx));
                     return Next;
+                case Sat.Destroy:
+                {
+                    IScriptCampaignHost host = CampaignHost(Sat.Destroy);
+                    host?.Destroy(GetObj(a.OpType[0], a.OpValue[0], ctx));
+                    return Next;
+                }
                 case Sat.RemoveThisScript: // engine state->script_num = 0 — detach this script from the object
-                    ctx.ScriptNum = 0;
+                    ctx.ReplacementScriptNum = 0;
                     ctx.RemoveScript = true;
+                    return Next;
+                case Sat.ChangeThisScriptToScript:
+                    ctx.ReplacementScriptNum = GetValue(a.OpType[0], a.OpValue[0], ctx);
+                    ctx.RemoveScript = ctx.ReplacementScriptNum.Value == 0;
                     return Next;
 
                 // ── portals / locks (host) — op[0] = focus object ──
@@ -470,6 +609,25 @@ namespace Arcanum.Script
                     DoTeleport(GetValue(a.OpType[4], a.OpValue[4], ctx),
                         GetValue(a.OpType[5], a.OpValue[5], ctx), GetValue(a.OpType[6], a.OpValue[6], ctx));
                     return Next;
+
+                // ── source calendar queries ──
+                case Sat.GetDaySinceStartup:
+                case Sat.GetCurrentHour:
+                case Sat.GetCurrentMinute:
+                case Sat.GetHoursSinceStartup:
+                {
+                    IScriptCampaignHost host = CampaignHost((Sat)a.Type);
+                    if (host == null) return Next;
+                    int value = (Sat)a.Type switch
+                    {
+                        Sat.GetDaySinceStartup => host.GetDaySinceStartup(),
+                        Sat.GetCurrentHour => host.GetCurrentHour(),
+                        Sat.GetCurrentMinute => host.GetCurrentMinute(),
+                        _ => host.GetHoursSinceStartup(),
+                    };
+                    SetValue(a.OpType[0], a.OpValue[0], ctx, value);
+                    return Next;
+                }
 
                 // FOR-loops iterate a focus-object SET (engine script_resolve_focus_obj — nearby critters,
                 // party members, …). We don't resolve that set yet (it needs world spatial queries), so we treat
@@ -677,6 +835,20 @@ namespace Arcanum.Script
             if (_strictExecution) throw new UnsupportedOpcodeException(what);
             if (_warned.Add(what))
                 Log?.Invoke($"[ScriptVm] unimplemented {what} — treated as default (see Docs/Scripting.md).");
+        }
+
+        private IScriptCampaignHost CampaignHost(Sat opcode)
+        {
+            if (_host is IScriptCampaignHost host) return host;
+            WarnOnce($"action {opcode} requires campaign authority");
+            return null;
+        }
+
+        private IScriptCampaignHost CampaignHost(Sct opcode)
+        {
+            if (_host is IScriptCampaignHost host) return host;
+            WarnOnce($"condition {opcode} requires campaign authority");
+            return null;
         }
     }
 }

@@ -412,6 +412,17 @@ namespace Arcanum.Runtime.World
         public int CurrentArea => PlayerState != null && HasSelectedSector && _mapAreas != null
             ? _mapAreas.Resolve(SelectedSector, PlayerState.MapPosition) : 0;
 
+        internal int ResolveScriptArea(ArcanumObjectId identity)
+        {
+            if (_mapAreas == null) return 0;
+            if (PlayerState?.Identity == identity)
+                return HasSelectedSector ? _mapAreas.Resolve(SelectedSector, PlayerState.MapPosition) : 0;
+            return _states.TryGetValue(identity, out PersistentObjectState state)
+                   && state.Placement.Kind == ObjectPlacementKind.World
+                ? _mapAreas.Resolve(state.Placement.Sector, state.TilePosition)
+                : 0;
+        }
+
         public bool TryGetCurrentMapId(out int mapId)
         {
             if (_mapTransitions != null && !string.IsNullOrWhiteSpace(CurrentMap))
@@ -1607,6 +1618,16 @@ namespace Arcanum.Runtime.World
             if (!_states.TryGetValue(identity, out PersistentObjectState state)
                 || state.ParentIdentity != expectedOwner
                 || state.Placement.Kind != ObjectPlacementKind.Contained) return false;
+            ObjectPlacement placement = state.Placement;
+            _states.Remove(identity);
+            _removedObjectIdentities.Add(identity);
+            ObjectStateRemoved?.Invoke(state, placement);
+            return true;
+        }
+
+        internal bool DestroyScriptObject(ArcanumObjectId identity)
+        {
+            if (!_states.TryGetValue(identity, out PersistentObjectState state)) return false;
             ObjectPlacement placement = state.Placement;
             _states.Remove(identity);
             _removedObjectIdentities.Add(identity);

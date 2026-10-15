@@ -251,6 +251,8 @@ namespace Arcanum.Runtime.Dialogue
             }
             _campaign.SetScriptAttachment(npc, (int)Sap.Dialog, scriptContext.LocalFlags,
                 scriptContext.LocalCounters);
+            if (scriptContext.ReplacementScriptNum.HasValue)
+                npcState.DialogNum = scriptContext.ReplacementScriptNum.Value;
             LastFailure = null;
             Changed?.Invoke();
             return DialogueStartStatus.Started;
@@ -740,37 +742,21 @@ namespace Arcanum.Runtime.Dialogue
             Diagnostic?.Invoke(diagnostic);
         }
 
-        private sealed class DialogueScriptHost : ScriptHostAdapter
+        private sealed class DialogueScriptHost : WorldScriptCampaignHost
         {
             private readonly ProductionDialogueSession _dialogue;
-            private readonly WorldMapSessionCoordinator _world;
 
             public DialogueScriptHost(ProductionDialogueSession dialogue, WorldMapSessionCoordinator world)
+                : base(world)
             {
                 _dialogue = dialogue;
-                _world = world;
-            }
-
-            public override object[] ResolveFocus(int sfoType, int sfoValue, ScriptContext context)
-            {
-                return (Sfo)sfoType switch
-                {
-                    Sfo.Triggerer => One(context.Triggerer),
-                    Sfo.Attachee => One(context.Attachee),
-                    Sfo.ExtraObject => One(context.Extra),
-                    Sfo.Player => _world.PlayerState == null ? Array.Empty<object>()
-                        : One(new WorldScriptObjectReference(_world.PlayerState.Identity)),
-                    _ => throw Unsupported($"ResolveFocus({(Sfo)sfoType})"),
-                };
             }
 
             public override void StartDialog(object obj, int dialogLine, int scriptNum, int scriptLine)
                 => _dialogue.OpenFromScript(obj, dialogLine, scriptLine);
 
             public override bool IsFollowingPc(object obj)
-                => obj is WorldScriptObjectReference reference && _world.Party.IsMember(reference.Identity);
-
-            private static object[] One(object value) => value == null ? Array.Empty<object>() : new[] { value };
+                => obj is WorldScriptObjectReference reference && Session.Party.IsMember(reference.Identity);
         }
     }
 

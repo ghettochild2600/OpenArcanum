@@ -25,9 +25,9 @@ namespace Arcanum.Formats.Tests
         public void KnownStrictVmFallbacksRemainVisibleToTheAudit()
         {
             Assert.That(ScriptOpcodeCompatibility.Condition(Sct.ObjHasReputation).Status,
-                Is.EqualTo(ScriptOpcodeSupportStatus.Stub));
+                Is.EqualTo(ScriptOpcodeSupportStatus.Implemented));
             Assert.That(ScriptOpcodeCompatibility.Action(Sat.TransferItem).Status,
-                Is.EqualTo(ScriptOpcodeSupportStatus.Unsupported));
+                Is.EqualTo(ScriptOpcodeSupportStatus.Implemented));
             Assert.That(ScriptOpcodeCompatibility.Action(Sat.FadeAndTeleport).Status,
                 Is.EqualTo(ScriptOpcodeSupportStatus.Partial));
             Assert.That(ScriptOpcodeCompatibility.Action(Sat.SetPcQuestState).Status,

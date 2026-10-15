@@ -16,6 +16,27 @@ internal sealed class M8ATestExecution : ScriptableObject, ICallbacks
     private static void RunScriptCompatibilityFocused()
         => Run(Category("ScriptCompatibility"), "script compatibility focused EditMode");
 
+    [MenuItem("OpenArcanum/Script Compatibility/Run Affected Regression Tests", false, 3)]
+    private static void RunScriptCompatibilityAffected()
+    {
+        RunMany(
+            new[]
+            {
+                Test("Arcanum.Formats.Tests.ScriptVmTests"), Category("M2BUseScript"),
+                Category("M3B"), Category("M3D"), Category("M10BTechnologyRuntime"),
+                Category("M11BSocialSystems"),
+            },
+            new[]
+            {
+                "script VM", "use-script dispatch", "inventory commands", "stack state",
+                "technology runtime", "social systems",
+            });
+    }
+
+    [MenuItem("OpenArcanum/Script Compatibility/Run Complete EditMode Tests", false, 4)]
+    private static void RunScriptCompatibilityAll()
+        => Run(new Filter { testMode = TestMode.EditMode }, "script compatibility complete EditMode");
+
     [MenuItem("OpenArcanum/M13A/Run Focused EditMode Tests #&q", false, 1)]
     private static void RunM13AFocused()
         => Run(Category("M13AKeyboardInput"), "M13A keyboard/input focused EditMode");

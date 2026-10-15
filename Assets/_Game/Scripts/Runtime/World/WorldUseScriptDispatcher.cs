@@ -64,7 +64,7 @@ namespace Arcanum.Runtime.World
             ScriptExecutionResult result = new ScriptVm(_host, Globals).ExecuteStrict(file, context);
             state.UseScriptLocalFlags = context.LocalFlags;
             state.UseScriptLocalCounters = context.LocalCounters;
-            if (context.RemoveScript) state.UseScriptNum = 0;
+            if (context.ReplacementScriptNum.HasValue) state.UseScriptNum = context.ReplacementScriptNum.Value;
             return result;
         }
 
@@ -112,40 +112,17 @@ namespace Arcanum.Runtime.World
             }
         }
 
-        private sealed class ProductionUseScriptHost : ScriptHostAdapter
+        private sealed class ProductionUseScriptHost : WorldScriptCampaignHost
         {
-            private readonly WorldMapSessionCoordinator _session;
-            private readonly Func<int, ScriptFile> _resolveScript;
-
             public ProductionUseScriptHost(WorldMapSessionCoordinator session, Func<int, ScriptFile> resolveScript)
-            {
-                _session = session;
-                _resolveScript = resolveScript;
-            }
-
-            public override object[] ResolveFocus(int sfoType, int sfoValue, ScriptContext context)
-            {
-                switch ((Sfo)sfoType)
-                {
-                    case Sfo.Triggerer: return One(context.Triggerer);
-                    case Sfo.Attachee: return One(context.Attachee);
-                    case Sfo.ExtraObject: return One(context.Extra);
-                    case Sfo.Player:
-                        return _session.PlayerState != null
-                            ? One(new WorldScriptObjectReference(_session.PlayerState.Identity))
-                            : Array.Empty<object>();
-                    default: throw Unsupported($"ResolveFocus({(Sfo)sfoType})");
-                }
-            }
-
-            public override ScriptFile GetScript(int num) => _resolveScript(num);
+                : base(session, resolveScript) { }
 
             public override void GetHitPoints(object obj, out int current, out int maximum)
             {
                 current = 0;
                 maximum = 0;
                 if (obj is not WorldScriptObjectReference reference
-                    || !_session.Vitality.TryGet(reference.Identity, out var vitality)) return;
+                    || !Session.Vitality.TryGet(reference.Identity, out var vitality)) return;
                 current = vitality.CurrentHitPoints;
                 maximum = vitality.MaximumHitPoints;
             }
@@ -153,8 +130,6 @@ namespace Arcanum.Runtime.World
             // Bed scripts float an authored reason before sleep_ui emits its standard refusal. The bounded
             // world dispatcher does not own transient bubbles, so presentation retains the standard refusal.
             public override void FloatLine(object obj, int scriptNum, int lineNum) { }
-
-            private static object[] One(object value) => value != null ? new[] { value } : Array.Empty<object>();
         }
     }
 }
