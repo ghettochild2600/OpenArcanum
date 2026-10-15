@@ -95,8 +95,15 @@ namespace Arcanum.Formats.Tests
                 Assert.That(_retail.TryResolve(new UiAssetKey(id), out _), Is.True, $"source id {id}");
             Assert.That(view.IsVisible, Is.True);
             Assert.That(view.WindowTransform.sizeDelta, Is.EqualTo(new Vector2(800f, 400f)));
+            RectTransform barterBackground = view.GetComponentsInChildren<RectTransform>(true)
+                .Single(value => value.name == "Shopkeeper Center Region Background");
+            Assert.That(barterBackground.anchorMin, Is.EqualTo(new Vector2(0f, 1f)));
+            Assert.That(barterBackground.anchorMax, Is.EqualTo(new Vector2(0f, 1f)));
+            Assert.That(barterBackground.pivot, Is.EqualTo(new Vector2(0f, 1f)));
+            Assert.That(barterBackground.anchoredPosition, Is.EqualTo(Vector2.zero));
+            Assert.That(barterBackground.sizeDelta, Is.EqualTo(new Vector2(360f, 400f)));
             Assert.That(view.GetComponentsInChildren<ScrollRect>(true), Is.Empty);
-            Assert.That(view.DynamicItemCount, Is.EqualTo(3),
+            Assert.That(view.DynamicItemCount, Is.EqualTo(4),
                 "merchant=" + string.Join(",", _controller.ProjectMerchantWares()
                     .Select(value => $"{value.Item.Type}:{value.Item.PrototypeNumber}"))
                 + "; player=" + string.Join(",", _controller.ProjectPlayerSaleItems()
@@ -105,6 +112,13 @@ namespace Arcanum.Formats.Tests
             Assert.That(Text(view, "Counter 0").Text, Is.EqualTo("400"));
             for (int index = 1; index < 5; index++)
                 Assert.That(Text(view, $"Counter {index}").Text, Is.EqualTo("0"));
+            for (int index = 0; index < 5; index++)
+            {
+                SourceUiBitmapText counter = Text(view, $"Counter {index}");
+                Rect bounds = RetailStartingEquipmentLayout.CounterRects[index];
+                Assert.That(((RectTransform)counter.transform).anchoredPosition.x,
+                    Is.EqualTo(bounds.x + (bounds.width - ((RectTransform)counter.transform).sizeDelta.x) * .5f));
+            }
             Assert.That(RetailStartingEquipmentLayout.MessageIcon, Is.EqualTo(new Rect(217, 69, 64, 64)));
             Assert.That(RetailStartingEquipmentLayout.MessageTitle, Is.EqualTo(new Rect(290, 63, 291, 19)));
             Assert.That(RetailStartingEquipmentLayout.MessageBody, Is.EqualTo(new Rect(290, 87, 291, 54)));
@@ -127,15 +141,26 @@ namespace Arcanum.Formats.Tests
             AssertTopLeft(view, "Player Paper Doll", RetailStartingEquipmentLayout.PlayerPaperDollToggle.position);
             AssertTopLeft(view, "Player Inventory", RetailStartingEquipmentLayout.PlayerInventoryToggle.position);
             AssertTopLeft(view, "Arrange Items", RetailStartingEquipmentLayout.ArrangeButton.position);
+            Assert.That(RetailStartingEquipmentLayout.GambleBox, Is.EqualTo(new Rect(703, 236, 89, 54)));
+            Assert.That(RetailStartingEquipmentLayout.UseBox, Is.EqualTo(new Rect(703, 290, 89, 54)));
+            Assert.That(RetailStartingEquipmentLayout.DropBox, Is.EqualTo(new Rect(703, 344, 89, 54)));
+            AssertTopLeft(view, "Gamble Drop Box", RetailStartingEquipmentLayout.GambleBox.position);
+            AssertTopLeft(view, "Use Drop Box", RetailStartingEquipmentLayout.UseBox.position);
+            AssertTopLeft(view, "Drop Drop Box", RetailStartingEquipmentLayout.DropBox.position);
+            Image merchantPortrait = view.GetComponentsInChildren<Image>(true)
+                .Single(value => value.name == "Human Shopkeeper Portrait");
+            Assert.That(merchantPortrait.sprite, Is.Not.Null);
+            Assert.That(((RectTransform)merchantPortrait.transform).sizeDelta,
+                Is.EqualTo(RetailStartingEquipmentLayout.MerchantPortrait.size));
             Assert.That(SourceButton(view, "Merchant Inventory").CurrentPresentationKey.Frame, Is.Zero,
                 "source toggle ARTs latch without an alternate bitmap frame");
             Invoke(view, "Merchant Paper Doll");
             Assert.That(view.transform.Find("Source-Faithful Starting Equipment/Shopkeeper Center Region/"
                                            + "Merchant Paper Doll Panel").gameObject.activeSelf, Is.True);
-            Assert.That(view.DynamicItemCount, Is.EqualTo(1),
-                "the merchant paper doll replaces merchant stock while the player's source clothing remains visible");
+            Assert.That(view.DynamicItemCount, Is.EqualTo(2),
+                "the merchant paper doll replaces merchant stock while the player's source clothing and Gold remain visible");
             Invoke(view, "Merchant Inventory");
-            Assert.That(view.DynamicItemCount, Is.EqualTo(3));
+            Assert.That(view.DynamicItemCount, Is.EqualTo(4));
 
             Hover(view, "Shopkeeper Continue", true);
             Assert.That(view.MessageTitleText, Is.EqualTo("Action:"));
@@ -161,7 +186,7 @@ namespace Arcanum.Formats.Tests
             Assert.That(view.MerchantQuoteText, Does.Contain(expensive.UnitPrice.ToString()));
             Assert.That(view.MerchantQuoteText, Does.Not.EndWith("%)"),
                 "untrained Haggle must not disclose the merchant's markup");
-            Assert.That(Text(view, "Shopkeeper Message Title").Text, Is.EqualTo("EXPENSIVE RATIONS"));
+            Assert.That(Text(view, "Shopkeeper Message Title").Text, Is.EqualTo("Expensive Rations"));
             Invoke(view, expensiveName);
             Assert.That(view.MerchantQuoteText, Is.EqualTo(EconomyFailure.InsufficientFunds.ToString()));
             Assert.That(_session.States[expensive.Item.Identity].ParentIdentity, Is.EqualTo(Merchant));
@@ -175,6 +200,37 @@ namespace Arcanum.Formats.Tests
             Assert.That(view.MerchantQuoteText, Is.Not.Empty);
             Assert.That(view.MerchantQuoteText, Does.Contain(resale.UnitPrice.ToString()));
             Assert.That(Text(view, "Counter 0").Text, Is.EqualTo((400 - armor.UnitPrice).ToString()));
+        }
+
+        [Test]
+        public void PhysicalGoldProjectsTheAuthoritativeStackAndTracksTransactions()
+        {
+            FinalizeCustomCharacter();
+            RetailStartingEquipmentView view = BuildView();
+            GameUiMerchantItemView gold = _controller.ProjectPlayerSaleItems()
+                .Single(value => value.Item.Type == ObjectType.Gold);
+            string goldName = $"{gold.Direction} {gold.Item.Identity.Key}";
+
+            Hover(view, goldName, true);
+            Assert.That(view.MessageTitleText, Is.EqualTo("Gold"));
+            Assert.That(Wrapped(view, "Shopkeeper Message Body"), Is.EqualTo("Quantity: 400 Weight: 0 stone"));
+            RectTransform goldRoot = view.GetComponentsInChildren<RectTransform>(true)
+                .Single(value => value.name == goldName);
+            Assert.That(goldRoot.GetComponent<Button>(), Is.Null,
+                "Gold is an authoritative special inventory view, not an independently tradable balance");
+
+            GameUiMerchantItemView armor = _controller.ProjectMerchantWares()
+                .Single(value => value.Item.PrototypeNumber == CheapArmorPrototype);
+            Invoke(view, $"{armor.Direction} {armor.Item.Identity.Key}");
+            int expected = 400 - armor.UnitPrice;
+            Assert.That(_controller.PlayerGold, Is.EqualTo(expected));
+            Assert.That(Text(view, "Counter 0").Text, Is.EqualTo(expected.ToString()));
+            GameUiMerchantItemView changedGold = _controller.ProjectPlayerSaleItems()
+                .Single(value => value.Item.Type == ObjectType.Gold);
+            Assert.That(changedGold.Item.Quantity, Is.EqualTo(expected));
+            Hover(view, $"{changedGold.Direction} {changedGold.Item.Identity.Key}", true);
+            Assert.That(Wrapped(view, "Shopkeeper Message Body"),
+                Is.EqualTo($"Quantity: {expected} Weight: 0 stone"));
         }
 
         [Test]

@@ -23,6 +23,14 @@ namespace Arcanum.Runtime.UI
         public const int PaperDollToggleSourceId = 338;
         public const int InventoryToggleSourceId = 339;
         public const int ArrangeSourceId = 340;
+        public const int DropBoxSourceId = 224;
+        public const int UseBoxSourceId = 342;
+        public const int GambleBoxSourceId = 345;
+        public const int ScrollUpSourceId = 317;
+        public const int ScrollDownSourceId = 318;
+        public const int ScrollThumbTopSourceId = 238;
+        public const int ScrollThumbMiddleSourceId = 787;
+        public const int ScrollThumbBottomSourceId = 240;
         public const int FeedbackIconSourceId = 444;
         public const int GridColumns = 10;
         public const float CellSize = 32f;
@@ -36,6 +44,12 @@ namespace Arcanum.Runtime.UI
         public static readonly Rect PlayerPaperDollToggle = new(713f, 37f, 38f, 32f);
         public static readonly Rect PlayerInventoryToggle = new(751f, 37f, 38f, 32f);
         public static readonly Rect ArrangeButton = new(763f, 197f, 32f, 32f);
+        // redraw_inven draws these at window-local y=236/290/344.  The companion frame rectangles in source
+        // include the intgame big-window's screen y=41 offset and are input coordinates, not blit coordinates.
+        public static readonly Rect GambleBox = new(703f, 236f, 89f, 54f);
+        public static readonly Rect UseBox = new(703f, 290f, 89f, 54f);
+        public static readonly Rect DropBox = new(703f, 344f, 89f, 54f);
+        public static readonly Rect MerchantPortrait = new(183f, 33f, 64f, 64f);
         public static readonly Rect MerchantName = new(89f, 102f, 253f, 20f);
         public static readonly Rect MerchantQuote = new(89f, 128f, 253f, 30f);
         public static readonly Rect MerchantGrid = new(8f, 168f, 320f, 224f);
@@ -85,7 +99,9 @@ namespace Arcanum.Runtime.UI
         {
             BarterBackgroundSourceId, PlayerInventorySourceId, MerchantPaperDollSourceId,
             PlayerPaperDollSourceId, PaperDollToggleSourceId, InventoryToggleSourceId, ArrangeSourceId,
-            FeedbackIconSourceId, 321, 323,
+            DropBoxSourceId, UseBoxSourceId, GambleBoxSourceId, ScrollUpSourceId, ScrollDownSourceId,
+            ScrollThumbTopSourceId, ScrollThumbMiddleSourceId, ScrollThumbBottomSourceId,
+            FeedbackIconSourceId, 375, 321, 323,
         };
 
         public static Rect ItemRect(Rect grid, int location, InventoryFootprint footprint)
@@ -153,6 +169,7 @@ namespace Arcanum.Runtime.UI
         private RectTransform _playerDropTarget;
         private SourceUiImage _merchantPaperDoll;
         private SourceUiImage _playerPaperDoll;
+        private Image _merchantPortrait;
         private SourceUiButton _merchantPaperDollToggle;
         private SourceUiButton _merchantInventoryToggle;
         private SourceUiButton _playerPaperDollToggle;
@@ -177,6 +194,7 @@ namespace Arcanum.Runtime.UI
         private bool _playerInventoryMode = true;
         private float _merchantScrollRow;
         private int _merchantMaximumScrollRow;
+        private bool _centeredShoppingWorld;
 
         public bool IsAvailable => _canvasRoot != null && _resolver != null;
         public bool IsVisible => IsAvailable && _canvasRoot.activeSelf;
@@ -206,12 +224,17 @@ namespace Arcanum.Runtime.UI
             bool visible = _controller.Screen == GameUiScreen.StartingEquipment
                            && _session.CharacterCreation.StartingEquipmentActive;
             if (_canvasRoot.activeSelf != visible) _canvasRoot.SetActive(visible);
-            if (!visible) return;
+            if (!visible)
+            {
+                _centeredShoppingWorld = false;
+                return;
+            }
+            CenterShoppingWorldOnPlayer();
 
             IReadOnlyList<GameUiMerchantItemView> wares = _controller.ProjectMerchantWares();
-            // Source barter presents Gold in its dedicated counter, never as a draggable inventory object.
-            IReadOnlyList<GameUiMerchantItemView> player = _controller.ProjectPlayerSaleItems()
-                .Where(value => value.Item.Type != Arcanum.Formats.Objects.ObjectType.Gold).ToArray();
+            // inven_ui.c temporarily clears OIF_NO_DISPLAY for Gold while drawing barter inventories. The same
+            // authoritative stack therefore drives both the physical inventory icon and the dedicated counter.
+            IReadOnlyList<GameUiMerchantItemView> player = _controller.ProjectPlayerSaleItems();
             int signature = ProjectionSignature(wares, player);
             if (_dirty || signature != _signature)
             {
@@ -222,13 +245,16 @@ namespace Arcanum.Runtime.UI
 
             string name = _session.TryGetObjectState(_controller.MerchantTarget, out PersistentObjectState merchant)
                 ? _session.ResolveDisplayName(merchant) : "Human Shopkeeper";
+            SetMerchantPortrait(merchant);
             SetCenteredText(_merchantName, string.IsNullOrWhiteSpace(name) ? "Human Shopkeeper" : name.ToUpperInvariant(),
                 RetailStartingEquipmentLayout.MerchantName);
             GameUiInventorySummaryView summary = _controller.ProjectInventorySummary();
             if (summary != null)
             {
-                SetText(_counters[0], summary.Gold.ToString());
-                for (int index = 0; index < 4; index++) SetText(_counters[index + 1], summary.Ammunition[index].ToString());
+                SetCenteredText(_counters[0], summary.Gold.ToString(), RetailStartingEquipmentLayout.CounterRects[0]);
+                for (int index = 0; index < 4; index++)
+                    SetCenteredText(_counters[index + 1], summary.Ammunition[index].ToString(),
+                        RetailStartingEquipmentLayout.CounterRects[index + 1]);
                 SetText(_playerAttack, summary.TotalAttack.ToString(), SourceWhite);
                 SetText(_playerDefense, summary.TotalDefense.ToString(), SourceWhite);
             }
@@ -242,6 +268,17 @@ namespace Arcanum.Runtime.UI
 
         public void HandleEscape() => _controller.ReturnToCharacterEditor();
 
+        private void CenterShoppingWorldOnPlayer()
+        {
+            if (_centeredShoppingWorld || Camera.main == null || _session.PlayerState == null
+                || !_session.TryGetLoadedObject(_session.PlayerState.Identity, out WorldObject player)) return;
+            Vector3 cameraPosition = Camera.main.transform.position;
+            cameraPosition.x = player.transform.position.x;
+            cameraPosition.y = player.transform.position.y;
+            Camera.main.transform.position = cameraPosition;
+            _centeredShoppingWorld = true;
+        }
+
         private void BuildPresentation()
         {
             _canvasRoot = new GameObject("Source-Faithful Starting Equipment",
@@ -253,6 +290,7 @@ namespace Arcanum.Runtime.UI
             RetailPartialMainMenuComposition.CreateTop(canvas, _resolver, "Shopkeeper Top Region");
             RetailPartialMainMenuRegion center = RetailPartialMainMenuComposition.CreateCenter(canvas, _resolver,
                 RetailStartingEquipmentLayout.BarterBackgroundSourceId, "Shopkeeper Center Region");
+            ApplySourceBarterBackgroundGeometry(center.Background);
             RetailPartialMainMenuRegion bottom = RetailPartialMainMenuComposition.CreateBottom(canvas, _resolver,
                 "Shopkeeper Bottom Region");
             _window = center.Root;
@@ -269,6 +307,11 @@ namespace Arcanum.Runtime.UI
                 RetailStartingEquipmentLayout.PlayerPaperDoll);
             _merchantPaperDoll.gameObject.SetActive(false);
             _playerPaperDoll.gameObject.SetActive(false);
+            RectTransform merchantPortrait = AddRect("Human Shopkeeper Portrait", _window,
+                RetailStartingEquipmentLayout.MerchantPortrait);
+            _merchantPortrait = merchantPortrait.gameObject.AddComponent<Image>();
+            _merchantPortrait.preserveAspect = true;
+            _merchantPortrait.raycastTarget = false;
             _merchantName = AddText("Human Shopkeeper Name", _window,
                 RetailStartingEquipmentLayout.MerchantName, 27, SourceWhite);
             _merchantQuote = AddText("Human Shopkeeper Quote", _window,
@@ -308,6 +351,12 @@ namespace Arcanum.Runtime.UI
                     _dirty = true;
                     Synchronize();
                 });
+            AddSourceImage("Gamble Drop Box", _window, RetailStartingEquipmentLayout.GambleBoxSourceId,
+                RetailStartingEquipmentLayout.GambleBox);
+            AddSourceImage("Use Drop Box", _window, RetailStartingEquipmentLayout.UseBoxSourceId,
+                RetailStartingEquipmentLayout.UseBox);
+            AddSourceImage("Drop Drop Box", _window, RetailStartingEquipmentLayout.DropBoxSourceId,
+                RetailStartingEquipmentLayout.DropBox);
             RefreshPanelControls();
 
             SourceUiButton continueButton = AddSourceButton("Shopkeeper Continue", _bottom, 321,
@@ -346,6 +395,44 @@ namespace Arcanum.Runtime.UI
                 typeof(RectTransform), typeof(Image), typeof(SourceUiImage), typeof(RetailMainMenuCursorView));
             cursor.transform.SetParent(_canvasRoot.transform, false);
             cursor.GetComponent<RetailMainMenuCursorView>().Bind((RectTransform)_canvasRoot.transform, _resolver);
+        }
+
+        private static void ApplySourceBarterBackgroundGeometry(SourceUiImage source)
+        {
+            if (source == null) return;
+            // redraw_inven blits the 360x400 barter ART at (0, 0), then blits the 442x400 player-inventory
+            // ART at x=358.  Treating ART 235 as a full-width centered region exposed the live SHOPPING_MAP
+            // through 220 pixels on the left and misplaced the merchant panel.
+            RectTransform rect = (RectTransform)source.transform;
+            rect.anchorMin = rect.anchorMax = new Vector2(0f, 1f);
+            rect.pivot = new Vector2(0f, 1f);
+            rect.anchoredPosition = Vector2.zero;
+            rect.sizeDelta = new Vector2(360f, 400f);
+        }
+
+        private void SetMerchantPortrait(PersistentObjectState merchant)
+        {
+            if (_merchantPortrait == null) return;
+            _merchantPortrait.sprite = null;
+            CharacterRace race = CharacterRace.Human;
+            if (merchant != null && _session.Characters.TryGet(merchant.Identity,
+                    out PersistentCharacterState character)) race = character.Race;
+            // intgame_examine_portrait only uses an NPC's authored portrait when that NPC follows the PC.
+            // Ordinary merchants therefore use intgame_race_icons; the starting merchant is Human (375).
+            int sourceId = race switch
+            {
+                CharacterRace.Human => 375,
+                CharacterRace.Dwarf => 378,
+                CharacterRace.Elf or CharacterRace.DarkElf => 376,
+                CharacterRace.HalfElf => 377,
+                CharacterRace.Gnome => 379,
+                CharacterRace.Halfling => 380,
+                CharacterRace.HalfOrc or CharacterRace.Orc => 381,
+                CharacterRace.HalfOgre or CharacterRace.Ogre => 382,
+                _ => 375,
+            };
+            if (_resolver.TryResolve(new UiAssetKey(sourceId), out UiResolvedAsset portrait))
+                _merchantPortrait.sprite = portrait.Sprite;
         }
 
         private void RebuildItems(IReadOnlyList<GameUiMerchantItemView> wares,
@@ -458,11 +545,22 @@ namespace Arcanum.Runtime.UI
         {
             RectTransform root = AddRect("Merchant Inventory Scrollbar", parent, rect);
             Image track = root.gameObject.AddComponent<Image>();
-            track.color = new Color32(35, 27, 18, 180);
+            track.color = Color.clear;
             Scrollbar scrollbar = root.gameObject.AddComponent<Scrollbar>();
-            RectTransform handle = AddRect("Handle", root, new Rect(2f, 2f, rect.width - 4f, 40f));
+            AddSourceImage("Scroll Up", root, RetailStartingEquipmentLayout.ScrollUpSourceId,
+                new Rect(0f, 0f, rect.width, 17f));
+            AddSourceImage("Scroll Down", root, RetailStartingEquipmentLayout.ScrollDownSourceId,
+                new Rect(0f, rect.height - 17f, rect.width, 17f));
+            RectTransform slide = AddRect("Slide", root, new Rect(0f, 17f, rect.width, rect.height - 34f));
+            RectTransform handle = AddRect("Handle", slide, new Rect(3f, 0f, 11f, 40f));
             Image handleImage = handle.gameObject.AddComponent<Image>();
-            handleImage.color = SourceText;
+            handleImage.color = Color.clear;
+            AddSourceImage("Thumb Top", handle, RetailStartingEquipmentLayout.ScrollThumbTopSourceId,
+                new Rect(0f, 0f, 11f, 5f));
+            AddSourceImage("Thumb Middle", handle, RetailStartingEquipmentLayout.ScrollThumbMiddleSourceId,
+                new Rect(0f, 5f, 11f, 28f));
+            AddSourceImage("Thumb Bottom", handle, RetailStartingEquipmentLayout.ScrollThumbBottomSourceId,
+                new Rect(0f, 33f, 11f, 7f));
             scrollbar.handleRect = handle;
             scrollbar.targetGraphic = handleImage;
             scrollbar.direction = Scrollbar.Direction.BottomToTop;
@@ -498,15 +596,20 @@ namespace Arcanum.Runtime.UI
             Image hit = root.gameObject.AddComponent<Image>();
             hit.color = Color.clear;
             hit.raycastTarget = true;
-            Button button = root.gameObject.AddComponent<Button>();
-            button.transition = Selectable.Transition.None;
-            // Source barter still accepts the gesture when a transaction will fail so that the merchant can
-            // present the authoritative reason (most notably insufficient Gold).
-            button.interactable = true;
-            button.onClick.AddListener(() => Execute(view));
-            RetailStartingEquipmentDragTarget drag = root.gameObject.AddComponent<RetailStartingEquipmentDragTarget>();
-            drag.Bind(view.Direction == EconomyTransactionDirection.BuyFromMerchant
-                ? _playerDropTarget : _merchantDropTarget, () => Execute(view));
+            bool physicalMoney = view.Item.Type == Arcanum.Formats.Objects.ObjectType.Gold;
+            if (!physicalMoney)
+            {
+                Button button = root.gameObject.AddComponent<Button>();
+                button.transition = Selectable.Transition.None;
+                // Source barter still accepts the gesture when a transaction will fail so that the merchant can
+                // present the authoritative reason (most notably insufficient Gold).
+                button.interactable = true;
+                button.onClick.AddListener(() => Execute(view));
+                RetailStartingEquipmentDragTarget drag =
+                    root.gameObject.AddComponent<RetailStartingEquipmentDragTarget>();
+                drag.Bind(view.Direction == EconomyTransactionDirection.BuyFromMerchant
+                    ? _playerDropTarget : _merchantDropTarget, () => Execute(view));
+            }
             SourceHoverHintTarget hint = root.gameObject.AddComponent<SourceHoverHintTarget>();
             hint.Bind(() => ShowItem(view), ClearMessage);
 
@@ -568,9 +671,10 @@ namespace Arcanum.Runtime.UI
             SetText(_merchantQuote, MerchantLine(view.Direction, view.UnitPrice, view.Item.Identity,
                 view.ReportedMarkupPercent));
             GameUiItemInspectionView inspection = _controller.ProjectItemInspection(view.Item.Identity);
-            SetText(_messageTitle, inspection?.Name?.ToUpperInvariant()
-                ?? view.Item.Name?.ToUpperInvariant() ?? string.Empty, SourceWhite);
-            string details = inspection?.Summary ?? $"Weight: {view.Item.Weight} stone";
+            SetText(_messageTitle, inspection?.Name ?? view.Item.Name ?? string.Empty, SourceWhite);
+            string details = view.Item.Type == Arcanum.Formats.Objects.ObjectType.Gold
+                ? $"Quantity: {view.Item.Quantity}\nWeight: {view.Item.Weight} stone"
+                : inspection?.Summary ?? $"Weight: {view.Item.Weight} stone";
             RebuildWrappedText(_messageBody, details, 42, 4);
             RetailItemArtAsset asset = null;
             bool itemArt = inspection?.InventoryArtId is uint artId
@@ -639,21 +743,24 @@ namespace Arcanum.Runtime.UI
                 child.SetActive(false);
                 if (Application.isPlaying) Object.Destroy(child); else Object.DestroyImmediate(child);
             }
-            var words = (value ?? string.Empty).Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
             var lines = new List<string>();
-            string current = string.Empty;
-            foreach (string word in words)
+            foreach (string paragraph in (value ?? string.Empty).Replace("\r", string.Empty).Split('\n'))
             {
-                string next = current.Length == 0 ? word : current + " " + word;
-                if (next.Length <= columns) current = next;
-                else
+                string current = string.Empty;
+                foreach (string word in paragraph.Split((char[])null, StringSplitOptions.RemoveEmptyEntries))
                 {
-                    if (current.Length > 0) lines.Add(current);
-                    current = word;
-                    if (lines.Count >= maxLines) break;
+                    string next = current.Length == 0 ? word : current + " " + word;
+                    if (next.Length <= columns) current = next;
+                    else
+                    {
+                        if (current.Length > 0) lines.Add(current);
+                        current = word;
+                        if (lines.Count >= maxLines) break;
+                    }
                 }
+                if (current.Length > 0 && lines.Count < maxLines) lines.Add(current);
+                if (lines.Count >= maxLines) break;
             }
-            if (current.Length > 0 && lines.Count < maxLines) lines.Add(current);
             for (int index = 0; index < lines.Count; index++)
                 AddText($"Line {index + 1}", parent, new Rect(0f, index * 15f, parent.rect.width, 15f),
                     229, SourceWhite).Bind(_resolver, lines[index], SourceWhite, 229);
@@ -793,6 +900,7 @@ namespace Arcanum.Runtime.UI
             _playerDropTarget = null;
             _merchantPaperDoll = null;
             _playerPaperDoll = null;
+            _merchantPortrait = null;
             _merchantPaperDollToggle = null;
             _merchantInventoryToggle = null;
             _playerPaperDollToggle = null;
