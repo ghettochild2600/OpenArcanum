@@ -12,6 +12,10 @@ internal sealed class M8ATestExecution : ScriptableObject, ICallbacks
     private string _label;
     private bool _active;
 
+    [MenuItem("OpenArcanum/Script Compatibility/Run Focused EditMode Tests", false, 2)]
+    private static void RunScriptCompatibilityFocused()
+        => Run(Category("ScriptCompatibility"), "script compatibility focused EditMode");
+
     [MenuItem("OpenArcanum/M13A/Run Focused EditMode Tests #&q", false, 1)]
     private static void RunM13AFocused()
         => Run(Category("M13AKeyboardInput"), "M13A keyboard/input focused EditMode");
