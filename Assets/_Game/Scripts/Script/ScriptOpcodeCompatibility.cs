@@ -193,6 +193,17 @@ namespace Arcanum.Script
                     return Partial("map transition authority", "medium", ActionSource,
                         "Teleport is authoritative; the source fade presentation is intentionally omitted.");
 
+                case Sat.PlaySound:
+                case Sat.PlaySoundOn:
+                case Sat.PlaySoundScheme:
+                case Sat.PlaySpellEyeCandy:
+                case Sat.StopSpellEyeCandy:
+                case Sat.PlayScriptEyeCandy:
+                case Sat.StopScriptEyeCandy:
+                case Sat.TouchArt:
+                    return Partial("presentation authority", "low", ActionSource,
+                        "Script control flow is preserved; source audio/visual presentation is not yet projected.");
+
                 default:
                     return Unsupported(Dependency(opcode), Risk(opcode), ActionSource);
             }

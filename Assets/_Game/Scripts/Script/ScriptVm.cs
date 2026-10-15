@@ -616,6 +616,18 @@ namespace Arcanum.Script
                         GetValue(a.OpType[5], a.OpValue[5], ctx), GetValue(a.OpType[6], a.OpValue[6], ctx));
                     return Next;
 
+                // Source presentation-only operations. Preserve script control flow without inventing an
+                // audio/FX authority in the VM; the compatibility audit records the omitted presentation.
+                case Sat.PlaySound:
+                case Sat.PlaySoundOn:
+                case Sat.PlaySoundScheme:
+                case Sat.PlaySpellEyeCandy:
+                case Sat.StopSpellEyeCandy:
+                case Sat.PlayScriptEyeCandy:
+                case Sat.StopScriptEyeCandy:
+                case Sat.TouchArt:
+                    return Next;
+
                 // ── source calendar queries ──
                 case Sat.GetDaySinceStartup:
                 case Sat.GetCurrentHour:

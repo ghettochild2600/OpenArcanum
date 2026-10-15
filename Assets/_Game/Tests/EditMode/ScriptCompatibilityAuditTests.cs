@@ -30,6 +30,10 @@ namespace Arcanum.Formats.Tests
                 Is.EqualTo(ScriptOpcodeSupportStatus.Implemented));
             Assert.That(ScriptOpcodeCompatibility.Action(Sat.FadeAndTeleport).Status,
                 Is.EqualTo(ScriptOpcodeSupportStatus.Partial));
+            Assert.That(ScriptOpcodeCompatibility.Action(Sat.PlaySound).Status,
+                Is.EqualTo(ScriptOpcodeSupportStatus.Partial));
+            Assert.That(ScriptOpcodeCompatibility.Action(Sat.PlayScriptEyeCandy).Status,
+                Is.EqualTo(ScriptOpcodeSupportStatus.Partial));
             Assert.That(ScriptOpcodeCompatibility.Action(Sat.SetPcQuestState).Status,
                 Is.EqualTo(ScriptOpcodeSupportStatus.Implemented));
         }

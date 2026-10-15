@@ -165,6 +165,26 @@ namespace Arcanum.Formats.Tests
                 Is.EqualTo(host.MagicResult));
         }
 
+        [TestCase(1059, Sat.PlaySound)]
+        [TestCase(1092, Sat.PlayScriptEyeCandy)]
+        [TestCase(1074, Sat.PlaySpellEyeCandy)]
+        [TestCase(2210, Sat.StopScriptEyeCandy)]
+        public void RealRetailPresentationInstructionPreservesStrictControlFlow(int scriptNumber, Sat opcode)
+        {
+            using DatVirtualFileSystem vfs = MountSourceData();
+            ScriptFile retail = ScriptDatabase.Load(vfs).Get(scriptNumber);
+            ScriptAction source = retail.Entries.SelectMany(entry => new[] { entry.Action, entry.Els })
+                .First(action => action != null && action.Type == (int)opcode);
+
+            var context = new ScriptContext { ScriptNum = scriptNumber };
+            ScriptExecutionResult result = new ScriptVm(new Host()).ExecuteStrict(
+                File(Entry(source), Entry(Act(Sat.AssignNum, Val(Svt.LcVar, 0), Val(Svt.Number, 1)))),
+                context);
+
+            Assert.That(result.Succeeded, Is.True, result.Detail);
+            Assert.That(context.LocalVars[0], Is.EqualTo(1));
+        }
+
         private static int ReadDestination(byte type, int value, ScriptContext context)
             => (Svt)type switch
             {
