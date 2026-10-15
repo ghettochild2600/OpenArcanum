@@ -104,6 +104,16 @@ namespace Arcanum.Formats.Tests
             Assert.That(_view.GetComponentsInChildren<RectTransform>(true)
                 .Single(value => value.name == "Fatigue Value").anchoredPosition,
                 Is.EqualTo(new Vector2(440, -213)));
+            SourceUiBitmapText strength = _view.GetComponentsInChildren<SourceUiBitmapText>(true)
+                .Single(value => value.name == "Strength Value");
+            SourceUiBitmapText intelligence = _view.GetComponentsInChildren<SourceUiBitmapText>(true)
+                .Single(value => value.name == "Intelligence Value");
+            Assert.That(((RectTransform)strength.transform).anchoredPosition.y, Is.EqualTo(-115));
+            Assert.That(((RectTransform)strength.transform).anchoredPosition.x + strength.LogicalSize.x * .5f,
+                Is.EqualTo(211).Within(.01f));
+            Assert.That(((RectTransform)intelligence.transform).anchoredPosition.y, Is.EqualTo(-115));
+            Assert.That(((RectTransform)intelligence.transform).anchoredPosition.x
+                        + intelligence.LogicalSize.x * .5f, Is.EqualTo(350).Within(.01f));
             Assert.That(_view.GetComponentsInChildren<ScrollRect>(true), Is.Empty);
             Assert.That(Object.FindObjectsByType<RetailCharacterSheetView>(FindObjectsSortMode.None), Has.Length.EqualTo(1));
         }
@@ -314,15 +324,25 @@ namespace Arcanum.Formats.Tests
             college.OnPointerExit(null);
             Assert.That(_controller.ContextualHelp, Is.Empty);
 
-            SourceHoverHintTarget spell = _view.GetComponentsInChildren<SourceHoverHintTarget>(true)
-                .Single(value => value.name == "Spell 15 Hover");
-            spell.OnPointerEnter(null);
-            Assert.That(_controller.ContextualHelpTitle, Is.EqualTo("Source Spell 15"));
-            Assert.That(_controller.ContextualHelp, Does.StartWith("Willpower: 6    Fatigue: 5"));
-            Assert.That(_controller.ContextualHelp, Does.Contain("Spell Description 15"));
-            Assert.That(_controller.ContextualHelpIconSourceId, Is.EqualTo(449));
-            spell.OnPointerExit(null);
-            Assert.That(_controller.ContextualHelp, Is.Empty);
+            int knownRank = _session.Magic.GetKnownCollegeRank(_pc, SpellCollege.Earth);
+            int characterPoints = _session.Progression.GetUnspentCharacterPoints(_pc);
+            for (int rank = 1; rank <= 5; rank++)
+            {
+                int spellId = (int)SpellCollege.Earth * 5 + rank - 1;
+                SourceHoverHintTarget spell = _view.GetComponentsInChildren<SourceHoverHintTarget>(true)
+                    .Single(value => value.name == $"Spell {spellId} Hover");
+                spell.OnPointerEnter(null);
+                Assert.That(_controller.ContextualHelpTitle, Is.EqualTo($"Source Spell {spellId}"));
+                Assert.That(_controller.ContextualHelp,
+                    Does.StartWith($"Minimum WP: {new[] { 6, 9, 12, 15, 18 }[rank - 1]}    Fatigue: {5 * rank}"));
+                Assert.That(_controller.ContextualHelp, Does.Contain($"Spell Description {spellId}"));
+                Assert.That(_controller.ContextualHelpIconSourceId, Is.EqualTo(449));
+                spell.OnPointerExit(null);
+                Assert.That(_controller.ContextualHelp, Is.Empty);
+            }
+
+            Assert.That(_session.Magic.GetKnownCollegeRank(_pc, SpellCollege.Earth), Is.EqualTo(knownRank));
+            Assert.That(_session.Progression.GetUnspentCharacterPoints(_pc), Is.EqualTo(characterPoints));
         }
 
         [Test]
@@ -517,7 +537,11 @@ namespace Arcanum.Formats.Tests
                     id == (int)SpellCollege.Earth ? "Earth Source" : $"College {id}"));
                 rows.Add(new KeyValuePair<int, string>(8000 + id, $"College Description {id}"));
             }
-            return SpellPresentationCatalog.FromMes(new MesFile(rows));
+            var rules = new List<KeyValuePair<int, string>>();
+            for (int id = 0; id < 80; id++)
+                rules.Add(new KeyValuePair<int, string>(1001 + 50 * id,
+                    $"IQ: 0, Cost: {5 * (id % 5 + 1)}, Maintain: 0@0"));
+            return SpellPresentationCatalog.FromMes(new MesFile(rows), new MesFile(rules));
         }
 
         private static SchematicCatalog CreateSchematicCatalog()

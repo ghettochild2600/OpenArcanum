@@ -87,10 +87,10 @@ namespace Arcanum.Runtime.UI
     [DisallowMultipleComponent]
     public sealed class RetailCharacterSheetView : MonoBehaviour
     {
-        private static readonly Color SourceWhite = new Color32(231, 217, 174, 255);
-        private static readonly Color SourceYellow = new Color32(245, 201, 65, 255);
-        private static readonly Color SourceBlue = new Color32(108, 155, 215, 255);
-        private static readonly Color SourceGray = new Color32(135, 135, 135, 255);
+        private static readonly Color SourceWhite = new Color32(255, 255, 255, 255);
+        private static readonly Color SourceYellow = new Color32(255, 210, 0, 255);
+        private static readonly Color SourceBlue = new Color32(0, 0, 255, 255);
+        private static readonly Color SourceGray = new Color32(128, 128, 128, 255);
 
         private GameUiController _controller;
         private WorldMapSessionCoordinator _session;
@@ -260,8 +260,8 @@ namespace Arcanum.Runtime.UI
                 SourceUiButton plus = AddSourceButtonTopLeft($"Increase {attribute}", _window, 24,
                     RetailCharacterSheetLayout.AttributePlus[index], () => AdjustAttribute(attribute, 1));
                 _attributeButtons.Add(attribute, (minus, plus));
-                float x = index < 4 ? 194f : 337f;
-                float y = RetailCharacterSheetLayout.AttributePlus[index].y + 1f;
+                float x = index < 4 ? 193f : 332f;
+                float y = RetailCharacterSheetLayout.AttributePlus[index].y - 2f;
                 _attributeValues.Add(attribute, AddText($"{attribute} Value", _window,
                     new Rect(x, y, 36f, 18f), 27, SourceWhite));
                 BindHint(minus.gameObject, AttributeHintId(attribute), () => 1);
@@ -472,9 +472,11 @@ namespace Arcanum.Runtime.UI
             SourceUiBitmapText technologyName = AddText("Technology Name", _skillsPanel,
                 new Rect(35f, 69f, 159f, 19f), 301, SourceWhite);
             SetCenteredText(technologyName, $"{Friendly(_selectedTechnology)} {Friendly(learned)}", SourceWhite);
-            AddText("Technology Expertise", _skillsPanel, new Rect(194f, 72f, 31f, 15f), 229, SourceBlue)
-                .Bind(_resolver, _session.Technology.GetEffectiveLevel(_controller.Player, _selectedTechnology)
-                    .ToString(), SourceBlue, 229);
+            SourceUiBitmapText expertise = AddText("Technology Expertise", _skillsPanel,
+                new Rect(194f, 72f, 31f, 15f), 229, SourceBlue);
+            SetCenteredText(expertise,
+                _session.Technology.GetEffectiveLevel(_controller.Player, _selectedTechnology).ToString(),
+                SourceBlue);
 
             IReadOnlyList<SchematicDefinition> schematics = _session.Crafting.ProjectBuiltIn(_selectedTechnology);
             for (int index = 0; index < schematics.Count; index++)
@@ -599,9 +601,10 @@ namespace Arcanum.Runtime.UI
             SourceHoverHintTarget hint = target.AddComponent<SourceHoverHintTarget>();
             string owner = "magic-spell:" + spellId;
             int rank = spellId % 5;
-            string requirements = $"Willpower: {new[] { 6, 9, 12, 15, 18 }[rank]}";
-            if (PhaseOneSpellCatalog.TryGet(spellId, out SpellDefinition runtime))
-                requirements += $"    Fatigue: {runtime.BaseFatigueCost}";
+            string minimumWillpower = ReadMessage("mes/intgame.mes", 73, "Minimum WP");
+            string fatigue = ReadMessage("mes/intgame.mes", 59, "Fatigue");
+            string requirements = $"{minimumWillpower}: {new[] { 6, 9, 12, 15, 18 }[rank]}"
+                                  + $"    {fatigue}: {_session.SpellPresentation?.FatigueCost(spellId) ?? 0}";
             string description = _session.SpellPresentation?.SpellDescription(spellId) ?? string.Empty;
             string body = string.IsNullOrWhiteSpace(description)
                 ? requirements : requirements + "\n" + description;

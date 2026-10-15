@@ -39,30 +39,37 @@ namespace Arcanum.Runtime.Magic
         private readonly string[] _collegeNames;
         private readonly string[] _spellDescriptions;
         private readonly string[] _collegeDescriptions;
+        private readonly int[] _fatigueCosts;
 
         private SpellPresentationCatalog(string[] spellNames, string[] collegeNames,
-            string[] spellDescriptions, string[] collegeDescriptions)
+            string[] spellDescriptions, string[] collegeDescriptions, int[] fatigueCosts)
         {
             _spellNames = spellNames;
             _collegeNames = collegeNames;
             _spellDescriptions = spellDescriptions;
             _collegeDescriptions = collegeDescriptions;
+            _fatigueCosts = fatigueCosts;
         }
 
-        public static SpellPresentationCatalog FromMes(MesFile spellText)
+        public static SpellPresentationCatalog FromMes(MesFile spellText, MesFile spellRules = null)
         {
             if (spellText == null) throw new ArgumentNullException(nameof(spellText));
             var spells = new string[80];
             var colleges = new string[16];
             var spellDescriptions = new string[80];
             var collegeDescriptions = new string[16];
+            var fatigueCosts = new int[80];
             for (int id = 0; id < spells.Length; id++) spells[id] = spellText.Get(id)?.Trim();
             for (int id = 0; id < colleges.Length; id++) colleges[id] = spellText.Get(500 + id)?.Trim();
             for (int id = 0; id < spellDescriptions.Length; id++)
                 spellDescriptions[id] = spellText.Get(700 + id)?.Trim();
             for (int id = 0; id < collegeDescriptions.Length; id++)
                 collegeDescriptions[id] = spellText.Get(8000 + id)?.Trim();
-            return new SpellPresentationCatalog(spells, colleges, spellDescriptions, collegeDescriptions);
+            for (int id = 0; id < fatigueCosts.Length; id++)
+                fatigueCosts[id] = ParseNamedInt(spellRules?.Get(1001 + 50 * id), "Cost:",
+                    5 * (id % 5 + 1));
+            return new SpellPresentationCatalog(spells, colleges, spellDescriptions, collegeDescriptions,
+                fatigueCosts);
         }
 
         public string SpellName(int id) => id >= 0 && id < _spellNames.Length ? _spellNames[id] : string.Empty;
@@ -72,10 +79,26 @@ namespace Arcanum.Runtime.Magic
             => id >= 0 && id < _spellDescriptions.Length ? _spellDescriptions[id] : string.Empty;
         public string CollegeDescription(SpellCollege college)
             => Enum.IsDefined(typeof(SpellCollege), college) ? _collegeDescriptions[(int)college] : string.Empty;
+        public int FatigueCost(int id)
+            => id >= 0 && id < _fatigueCosts.Length ? _fatigueCosts[id] : 0;
         public static int IconSourceId(int id)
             => id >= 0 && id < SourceIcons.Length ? SourceIcons[id] : 0;
         public static int MinimumLevel(int rank)
             => rank >= 1 && rank <= MinimumLevels.Length ? MinimumLevels[rank - 1] : 0;
+
+        private static int ParseNamedInt(string source, string name, int fallback)
+        {
+            if (string.IsNullOrEmpty(source)) return fallback;
+            int start = source.IndexOf(name, StringComparison.OrdinalIgnoreCase);
+            if (start < 0) return fallback;
+            start += name.Length;
+            while (start < source.Length && char.IsWhiteSpace(source[start])) start++;
+            int end = start;
+            if (end < source.Length && source[end] == '-') end++;
+            while (end < source.Length && char.IsDigit(source[end])) end++;
+            return end > start && int.TryParse(source.Substring(start, end - start), out int value)
+                ? value : fallback;
+        }
     }
 
     public sealed class SpellDefinition
