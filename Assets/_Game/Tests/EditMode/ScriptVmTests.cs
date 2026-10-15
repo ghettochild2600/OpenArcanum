@@ -745,6 +745,30 @@ namespace Arcanum.Formats.Tests
             Assert.That(ctx.ScriptNum, Is.EqualTo(1781));
         }
 
+        [Test]
+        public void StrictUnsupportedOpcode_ReportsScriptInstructionOperationAndObjects()
+        {
+            var ctx = new ScriptContext
+            {
+                ScriptNum = 1494,
+                AttachmentPoint = (int)Sap.Use,
+                Triggerer = "PC",
+                Attachee = "GESHTIANNA",
+            };
+
+            ScriptExecutionResult result = new ScriptVm(new StubHost()).ExecuteStrict(
+                File(Cond(Sct.True, Act(Sat.AddEffect), Nop())), ctx);
+
+            Assert.That(result.Status, Is.EqualTo(ScriptExecutionStatus.UnsupportedOpcode));
+            Assert.That(result.Detail, Does.Contain("script=1494.scr"));
+            Assert.That(result.Detail, Does.Contain("instruction=0"));
+            Assert.That(result.Detail, Does.Contain($"operation=action AddEffect (opcode {(int)Sat.AddEffect})"));
+            Assert.That(result.Detail, Does.Contain("attachment=Use"));
+            Assert.That(result.Detail, Does.Contain("triggerer=PC"));
+            Assert.That(result.Detail, Does.Contain("attachee=GESHTIANNA"));
+            Assert.That(result.Detail, Does.Contain("reason=action AddEffect"));
+        }
+
         // The pc_chooses gate: a heartbeat that kills the attachee unless GlobalFlag[N] is set.
         [Test]
         public void HeartbeatGate_KillsWhenFlagUnset()

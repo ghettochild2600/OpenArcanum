@@ -30,6 +30,8 @@ namespace Arcanum.Script
         // The file + line currently executing, so control-flow actions (LOOP_FOR) can scan for their LOOP_END.
         private ScriptFile _exFile;
         private int _exLine;
+        private ScriptContext _exContext;
+        private string _exOperation;
 
         private readonly IScriptHost _host;
         private readonly IScriptGlobals _globals;
@@ -113,7 +115,7 @@ namespace Arcanum.Script
             {
                 if (line < 0 || line >= file.Entries.Count) break;
 
-                _exFile = file; _exLine = line; // for control-flow actions that need to scan the file
+                _exFile = file; _exLine = line; _exContext = ctx; // for control flow and failure diagnostics
                 int next = ExecuteCondition(file.Entries[line], ctx);
                 if (next == Next)
                 {
@@ -143,6 +145,8 @@ namespace Arcanum.Script
 
         private bool EvaluateCondition(ScriptCondition c, ScriptContext ctx)
         {
+            _exContext = ctx;
+            _exOperation = $"condition {(Sct)c.Type} (opcode {c.Type})";
             switch ((Sct)c.Type)
             {
                 case Sct.True:
@@ -292,6 +296,8 @@ namespace Arcanum.Script
 
         private int ExecuteAction(ScriptAction a, ScriptContext ctx)
         {
+            _exContext = ctx;
+            _exOperation = $"action {(Sat)a.Type} (opcode {a.Type})";
             switch ((Sat)a.Type)
             {
                 case Sat.DoNothing: return Next;
@@ -663,7 +669,8 @@ namespace Arcanum.Script
                     int startLine = GetValue(a.OpType[1], a.OpValue[1], ctx);
                     object[] trigs = _host.ResolveFocus(a.OpType[2], a.OpValue[2], ctx);
                     object[] atts = _host.ResolveFocus(a.OpType[3], a.OpValue[3], ctx);
-                    ScriptFile sf = _exFile; int sl = _exLine; object[] lp = _loopSet; int li = _loopIndex, lf = _loopForLine;
+                    ScriptFile sf = _exFile; int sl = _exLine; ScriptContext sc = _exContext;
+                    string so = _exOperation; object[] lp = _loopSet; int li = _loopIndex, lf = _loopForLine;
                     _callDepth++;
                     try
                     {
@@ -682,7 +689,8 @@ namespace Arcanum.Script
                     finally
                     {
                         _callDepth--;
-                        _exFile = sf; _exLine = sl; _loopSet = lp; _loopIndex = li; _loopForLine = lf;
+                        _exFile = sf; _exLine = sl; _exContext = sc; _exOperation = so;
+                        _loopSet = lp; _loopIndex = li; _loopForLine = lf;
                     }
                     return Next;
                 }
@@ -832,10 +840,22 @@ namespace Arcanum.Script
 
         private void WarnOnce(string what)
         {
-            if (_strictExecution) throw new UnsupportedOpcodeException(what);
+            if (_strictExecution) throw new UnsupportedOpcodeException(UnsupportedDetail(what));
             if (_warned.Add(what))
                 Log?.Invoke($"[ScriptVm] unimplemented {what} — treated as default (see Docs/Scripting.md).");
         }
+
+        private string UnsupportedDetail(string reason)
+        {
+            ScriptContext context = _exContext;
+            string script = context != null && context.ScriptNum > 0 ? $"{context.ScriptNum}.scr" : "unknown";
+            string attachment = context != null ? ((Sap)context.AttachmentPoint).ToString() : "unknown";
+            return $"script={script}; instruction={_exLine}; operation={_exOperation ?? "unknown"}; "
+                   + $"attachment={attachment}; triggerer={DescribeObject(context?.Triggerer)}; "
+                   + $"attachee={DescribeObject(context?.Attachee)}; reason={reason}";
+        }
+
+        private static string DescribeObject(object value) => value?.ToString() ?? "null";
 
         private IScriptCampaignHost CampaignHost(Sat opcode)
         {
