@@ -175,6 +175,30 @@ namespace Arcanum.Formats.Tests
         }
 
         [Test]
+        public void ChangeScriptKeepsCurrentInvocationAndRoutesTheNextUseToReplacement()
+        {
+            WorldObject portal = Portal(41, 42);
+            ScriptFile original = File(
+                Cond(Sct.True, Act(Sat.ChangeScript,
+                    ((Svt)(int)Sfo.Attachee, 0), (Svt.Number, (int)Sap.Use), (Svt.Number, 43)),
+                    Act(Sat.DoNothing)),
+                Cond(Sct.True, Act(Sat.ReturnAndSkipDefault), Act(Sat.DoNothing)));
+            ScriptFile replacement = File(
+                Cond(Sct.True, Act(Sat.ReturnAndRunDefault), Act(Sat.DoNothing)));
+            _session.BindUseScriptSource(number => number switch { 42 => original, 43 => replacement, _ => null });
+
+            WorldInteractionResult first = Use(portal);
+            WorldInteractionResult second = Use(portal);
+
+            Assert.That(first.ScriptNum, Is.EqualTo(42));
+            Assert.That(first.ScriptRunDefault, Is.False);
+            Assert.That(_session.States[portal.Identity].UseScriptNum, Is.EqualTo(43));
+            Assert.That(_session.Campaign.GetScriptNumber(portal.Identity, (int)Sap.Use), Is.EqualTo(43));
+            Assert.That(second.ScriptNum, Is.EqualTo(43));
+            Assert.That(second.ScriptRunDefault, Is.True);
+        }
+
+        [Test]
         public void StrictVmDistinguishesMissingUnsupportedAndEmptyScripts()
         {
             var vm = new ScriptVm(new StrictHost());

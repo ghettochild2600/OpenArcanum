@@ -1219,6 +1219,7 @@ namespace Arcanum.Runtime.Save
                     || identity != plan.Player.Identity && !plan.Objects.ContainsKey(identity)
                        && !plan.Tombstones.Contains(identity)
                     || (uint)attachment.AttachmentPoint > (uint)Arcanum.Formats.Script.Sap.CriticalMiss
+                    || attachment.ScriptNumber < 0
                     || !attachments.Add(identity.Key + ":" + attachment.AttachmentPoint))
                     return Failure(SessionLoadFailure.InvalidCampaign, "A script attachment is invalid.");
             }

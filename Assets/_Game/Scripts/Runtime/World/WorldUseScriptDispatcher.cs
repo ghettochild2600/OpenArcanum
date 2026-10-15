@@ -61,6 +61,8 @@ namespace Arcanum.Runtime.World
                 || state.Off || !_session.TryGetLoadedObject(target, out _))
                 return new ScriptExecutionResult(ScriptExecutionStatus.InvalidContext);
 
+            scriptNum = _session.Campaign.GetScriptNumber(target, (int)Sap.Use, scriptNum);
+            if (scriptNum == 0) return new ScriptExecutionResult(ScriptExecutionStatus.MissingScript);
             ScriptFile file = _resolveScript(scriptNum);
             if (file == null) return new ScriptExecutionResult(ScriptExecutionStatus.MissingScript);
             if (!ProductionUseScriptPolicy.Supports(file, bedUse, out string unsupported))
@@ -78,7 +80,11 @@ namespace Arcanum.Runtime.World
             ScriptExecutionResult result = new ScriptVm(_host, Globals).ExecuteStrict(file, context);
             state.UseScriptLocalFlags = context.LocalFlags;
             state.UseScriptLocalCounters = context.LocalCounters;
-            if (context.ReplacementScriptNum.HasValue) state.UseScriptNum = context.ReplacementScriptNum.Value;
+            if (context.ReplacementScriptNum.HasValue)
+            {
+                _session.Campaign.SetScriptNumber(target, (int)Sap.Use, context.ReplacementScriptNum.Value);
+                state.UseScriptNum = context.ReplacementScriptNum.Value;
+            }
             return result;
         }
 
@@ -121,6 +127,7 @@ namespace Arcanum.Runtime.World
                 Sat type = (Sat)action.Type;
                 return type == Sat.DoNothing || type == Sat.ReturnAndSkipDefault
                        || type == Sat.ReturnAndRunDefault || type == Sat.Goto
+                       || type == Sat.ChangeScript
                        || bedUse && (type is Sat.SetLocalFlag or Sat.ClearLocalFlag or Sat.AssignNum
                            or Sat.FloatLine or Sat.GetHitPoints);
             }

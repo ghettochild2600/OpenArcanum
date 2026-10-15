@@ -1,5 +1,6 @@
 using Arcanum.Formats.Art;
 using Arcanum.Formats.Objects;
+using Arcanum.Formats.Script;
 using Arcanum.Script;
 using Arcanum.World;
 
@@ -76,7 +77,7 @@ namespace Arcanum.Runtime.World
                 return new BedUseResult(BedUseFailure.TargetUnavailable);
             if (!IsBed(bed)) return new BedUseResult(BedUseFailure.NotBed);
 
-            int scriptNum = bed.UseScriptNum;
+            int scriptNum = _world.Campaign.GetScriptNumber(bedIdentity, (int)Sap.Use, bed.UseScriptNum);
             if (scriptNum == 0 || _world.UseScripts == null)
                 return new BedUseResult(BedUseFailure.PermissionDenied, scriptNum);
             ScriptExecutionResult script = _world.UseScripts.DispatchBedUse(actor, bedIdentity, scriptNum);

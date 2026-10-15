@@ -30,11 +30,13 @@ namespace Arcanum.Runtime.Campaign
     {
         public uint Flags { get; }
         public uint Counters { get; }
+        public int? ScriptNumber { get; }
 
-        public ScriptAttachmentState(uint flags, uint counters)
+        public ScriptAttachmentState(uint flags, uint counters, int? scriptNumber = null)
         {
             Flags = flags;
             Counters = counters;
+            ScriptNumber = scriptNumber;
         }
     }
 
@@ -340,7 +342,23 @@ namespace Arcanum.Runtime.Campaign
         public void SetScriptAttachment(ArcanumObjectId identity, int attachmentPoint, uint flags, uint counters)
         {
             ValidateAttachment(identity, attachmentPoint);
-            _attachments[new ScriptAttachmentKey(identity, attachmentPoint)] = new ScriptAttachmentState(flags, counters);
+            ScriptAttachmentState current = GetScriptAttachment(identity, attachmentPoint);
+            _attachments[new ScriptAttachmentKey(identity, attachmentPoint)] =
+                new ScriptAttachmentState(flags, counters, current.ScriptNumber);
+        }
+
+        public int GetScriptNumber(ArcanumObjectId identity, int attachmentPoint, int sourceDefault = 0)
+        {
+            ScriptAttachmentState state = GetScriptAttachment(identity, attachmentPoint);
+            return state.ScriptNumber ?? sourceDefault;
+        }
+
+        public void SetScriptNumber(ArcanumObjectId identity, int attachmentPoint, int scriptNumber)
+        {
+            if (scriptNumber < 0) throw new ArgumentOutOfRangeException(nameof(scriptNumber));
+            ScriptAttachmentState current = GetScriptAttachment(identity, attachmentPoint);
+            _attachments[new ScriptAttachmentKey(identity, attachmentPoint)] =
+                new ScriptAttachmentState(current.Flags, current.Counters, scriptNumber);
         }
 
         public int GetLocalFlag(ArcanumObjectId identity, int attachmentPoint, int index)
@@ -420,6 +438,7 @@ namespace Arcanum.Runtime.Campaign
                     AttachmentPoint = pair.Key.AttachmentPoint,
                     Flags = pair.Value.Flags,
                     Counters = pair.Value.Counters,
+                    ScriptNumber = pair.Value.ScriptNumber,
                 });
             data.Attachments.Sort((left, right) =>
             {
@@ -450,7 +469,7 @@ namespace Arcanum.Runtime.Campaign
             {
                 ArcanumObjectId.TryParsePersistent(attachment.Identity, out ArcanumObjectId identity);
                 _attachments.Add(new ScriptAttachmentKey(identity, attachment.AttachmentPoint),
-                    new ScriptAttachmentState(attachment.Flags, attachment.Counters));
+                    new ScriptAttachmentState(attachment.Flags, attachment.Counters, attachment.ScriptNumber));
             }
         }
 

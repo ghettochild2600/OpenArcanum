@@ -41,6 +41,8 @@ namespace Arcanum.Formats.Tests
             public int AddedEffect;
             public int AddedEffectCause;
             public int RemovedEffect;
+            public int ChangedAttachment;
+            public int ChangedScript;
             public int FatigueCalls;
             public bool Reputation;
             public bool Identified = true;
@@ -95,6 +97,8 @@ namespace Arcanum.Formats.Tests
             public void AddEffect(object target, int effectId, int cause)
             { AddedEffect = effectId; AddedEffectCause = cause; }
             public void RemoveEffect(object target, int effectId) => RemovedEffect = effectId;
+            public void ChangeScript(object target, int attachmentPoint, int scriptNumber)
+            { ChangedAttachment = attachmentPoint; ChangedScript = scriptNumber; }
             public void GrantOneFatePoint(object obj) => FatePointCalls++;
         }
 
@@ -156,6 +160,29 @@ namespace Arcanum.Formats.Tests
             Assert.That(host.AddedEffect, Is.EqualTo(282));
             Assert.That(host.AddedEffectCause, Is.EqualTo(5));
             Assert.That(host.RemovedEffect, Is.EqualTo(282));
+        }
+
+        [Test]
+        public void ChangeScriptTargetsOneAttachmentWithoutChangingTheRunningInvocationIdentity()
+        {
+            var host = new Host();
+            var context = new ScriptContext
+            {
+                Triggerer = host.Triggerer,
+                Attachee = host.Attachee,
+                AttachmentPoint = (int)Sap.Heartbeat,
+                ScriptNum = 1046,
+            };
+            ScriptFile file = File(Entry(Act(Sat.ChangeScript, Obj(Sfo.Attachee),
+                Val(Svt.Number, (int)Sap.Heartbeat), Val(Svt.Number, 1179))));
+
+            ScriptExecutionResult result = new ScriptVm(host).ExecuteStrict(file, context);
+
+            Assert.That(result.Succeeded, Is.True, result.Detail);
+            Assert.That((host.ChangedAttachment, host.ChangedScript),
+                Is.EqualTo(((int)Sap.Heartbeat, 1179)));
+            Assert.That(context.ScriptNum, Is.EqualTo(1046));
+            Assert.That(context.ReplacementScriptNum, Is.EqualTo(1179));
         }
 
         [Test]

@@ -40,6 +40,7 @@ namespace Arcanum.Script
         void RemoveScriptCall(int scriptNumber, object attachee);
         void AddEffect(object target, int effectId, int cause);
         void RemoveEffect(object target, int effectId);
+        void ChangeScript(object target, int attachmentPoint, int scriptNumber);
         void GrantOneFatePoint(object obj);
     }
 }

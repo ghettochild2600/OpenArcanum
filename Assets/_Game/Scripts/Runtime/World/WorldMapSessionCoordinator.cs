@@ -1809,7 +1809,8 @@ namespace Arcanum.Runtime.World
                     || !InteractionRangeRules.IsWithin(PlayerState.MapPosition,
                         containerSector.ToGlobal(targetState.Placement.TilePosition), InteractionRangeRules.PortalUseRange))
                     return new WorldInteractionResult(command, WorldInteractionResultCode.OutOfRange);
-                int containerScript = targetState.UseScriptNum;
+                int containerScript = Campaign.GetScriptNumber(command.Target, (int)Sap.Use,
+                    targetState.UseScriptNum);
                 ScriptExecutionResult containerResult = default;
                 if (containerScript != 0)
                 {
@@ -1850,9 +1851,9 @@ namespace Arcanum.Runtime.World
             if (!InteractionRangeRules.IsWithin(PlayerState.MapPosition, targetPosition,
                     InteractionRangeRules.PortalUseRange))
                 return new WorldInteractionResult(command, WorldInteractionResultCode.OutOfRange);
-            int scriptNum = targetState.UseScriptNum;
+            int scriptNum = Campaign.GetScriptNumber(command.Target, (int)Sap.Use, targetState.UseScriptNum);
             ScriptExecutionResult scriptResult = default;
-            if (targetState.UseScriptNum != 0)
+            if (scriptNum != 0)
             {
                 if (UseScripts == null)
                     return new WorldInteractionResult(command, WorldInteractionResultCode.ScriptUnavailable,
@@ -1918,7 +1919,7 @@ namespace Arcanum.Runtime.World
                     => WorldInteractionResultCode.TargetNotFound,
                 _ => WorldInteractionResultCode.DialogueFailed,
             };
-            return new WorldInteractionResult(command, result, scriptNum: targetState.DialogNum);
+            return new WorldInteractionResult(command, result, scriptNum: Dialogue.DialogueNumber);
         }
 
         private WorldInteractionResult ExecuteLoot(WorldInteractionCommand command)

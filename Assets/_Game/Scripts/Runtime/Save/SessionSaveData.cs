@@ -432,6 +432,7 @@ namespace Arcanum.Runtime.Save
         public int AttachmentPoint { get; set; }
         public uint Flags { get; set; }
         public uint Counters { get; set; }
+        public int? ScriptNumber { get; set; }
     }
 
     public sealed class ReactionSaveData

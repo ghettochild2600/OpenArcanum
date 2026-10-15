@@ -192,6 +192,7 @@ namespace Arcanum.Script
                 case Sat.DestroyItemNamed:
                 case Sat.GetFatiguePoints:
                 case Sat.GrantOneFatePoint:
+                case Sat.ChangeScript:
                     return Implemented("IScriptCampaignHost production authority", "medium", ActionSource);
 
                 case Sat.AddEffect:

@@ -203,7 +203,7 @@ namespace Arcanum.Runtime.Dialogue
             if (_resolveScript == null || _resolveDialogue == null)
                 return FailStart(DialogueStartStatus.MissingScript, "Dialogue sources have not been bound.");
 
-            DialogueNumber = npcState.DialogNum;
+            DialogueNumber = _campaign.GetScriptNumber(npc, (int)Sap.Dialog, npcState.DialogNum);
             ScriptFile script = _resolveScript(DialogueNumber);
             if (script == null)
                 return FailStart(DialogueStartStatus.MissingScript, $"SAP_DIALOG script {DialogueNumber} is missing.");
@@ -252,7 +252,10 @@ namespace Arcanum.Runtime.Dialogue
             _campaign.SetScriptAttachment(npc, (int)Sap.Dialog, scriptContext.LocalFlags,
                 scriptContext.LocalCounters);
             if (scriptContext.ReplacementScriptNum.HasValue)
+            {
+                _campaign.SetScriptNumber(npc, (int)Sap.Dialog, scriptContext.ReplacementScriptNum.Value);
                 npcState.DialogNum = scriptContext.ReplacementScriptNum.Value;
+            }
             LastFailure = null;
             Changed?.Invoke();
             return DialogueStartStatus.Started;

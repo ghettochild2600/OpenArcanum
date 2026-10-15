@@ -711,6 +711,21 @@ namespace Arcanum.Script
                         GetObj(a.OpType[1], a.OpValue[1], ctx));
                     return Next;
                 }
+                case Sat.ChangeScript: // op0=obj, op1=attachment point, op2=replacement script (0 detaches)
+                {
+                    IScriptCampaignHost host = CampaignHost(Sat.ChangeScript);
+                    if (host == null) return Next;
+                    object target = GetObj(a.OpType[0], a.OpValue[0], ctx);
+                    int attachmentPoint = GetValue(a.OpType[1], a.OpValue[1], ctx);
+                    int scriptNumber = GetValue(a.OpType[2], a.OpValue[2], ctx);
+                    host.ChangeScript(target, attachmentPoint, scriptNumber);
+                    if (Equals(target, ctx.Attachee) && attachmentPoint == ctx.AttachmentPoint)
+                    {
+                        ctx.ReplacementScriptNum = scriptNumber;
+                        ctx.RemoveScript = scriptNumber == 0;
+                    }
+                    return Next;
+                }
 
                 // FOR-loops iterate a focus-object SET (engine script_resolve_focus_obj — nearby critters,
                 // party members, …). We don't resolve that set yet (it needs world spatial queries), so we treat

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Arcanum.Formats.Objects;
+using Arcanum.Formats.Script;
 using UnityEngine;
 
 namespace Arcanum.Runtime.World
@@ -125,7 +126,8 @@ namespace Arcanum.Runtime.World
             if (!session.TryGetObjectState(npc, out PersistentObjectState npcState)
                 || !session.TryGetLoadedObject(npc, out WorldObject runtime))
                 return Complete(command, WorldInteractionResultCode.TargetNotFound);
-            if (npcState.Type != ObjectType.Npc || runtime.Type != ObjectType.Npc || npcState.DialogNum <= 0)
+            if (npcState.Type != ObjectType.Npc || runtime.Type != ObjectType.Npc
+                || session.Campaign.GetScriptNumber(npc, (int)Sap.Dialog, npcState.DialogNum) <= 0)
                 return Complete(command, WorldInteractionResultCode.InvalidTarget);
             return TryApproachOrExecute(command, npcState, InteractionRangeRules.TalkStartRange,
                 InteractionRangeRules.TalkApproachRange);

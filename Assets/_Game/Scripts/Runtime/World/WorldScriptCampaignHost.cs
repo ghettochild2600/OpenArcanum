@@ -177,6 +177,17 @@ namespace Arcanum.Runtime.World
         public void RemoveEffect(object target, int effectId)
             => Session.ScriptEffects.RemoveFirst(Identity(target), effectId);
 
+        public void ChangeScript(object target, int attachmentPoint, int scriptNumber)
+        {
+            ArcanumObjectId identity = Identity(target);
+            if (!Session.IsScriptObjectAlive(identity))
+                throw new InvalidOperationException($"Script attachment target '{identity}' is not alive.");
+            Session.Campaign.SetScriptNumber(identity, attachmentPoint, scriptNumber);
+            if (!Session.TryGetObjectState(identity, out PersistentObjectState state)) return;
+            if (attachmentPoint == (int)Sap.Use) state.UseScriptNum = scriptNumber;
+            else if (attachmentPoint == (int)Sap.Dialog) state.DialogNum = scriptNumber;
+        }
+
         public void GrantOneFatePoint(object obj)
         {
             if (Session.PlayerState?.Identity == Identity(obj)) Session.GameplayHud.GrantFatePoint();
