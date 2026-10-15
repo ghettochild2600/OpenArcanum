@@ -34,6 +34,12 @@ namespace Arcanum.Formats.Tests
                 Is.EqualTo(ScriptOpcodeSupportStatus.Partial));
             Assert.That(ScriptOpcodeCompatibility.Action(Sat.PlayScriptEyeCandy).Status,
                 Is.EqualTo(ScriptOpcodeSupportStatus.Partial));
+            Assert.That(ScriptOpcodeCompatibility.Action(Sat.Fade).Status,
+                Is.EqualTo(ScriptOpcodeSupportStatus.Partial));
+            Assert.That(ScriptOpcodeCompatibility.Action(Sat.GetFatiguePoints).Status,
+                Is.EqualTo(ScriptOpcodeSupportStatus.Implemented));
+            Assert.That(ScriptOpcodeCompatibility.Action(Sat.GrantOneFatePoint).Status,
+                Is.EqualTo(ScriptOpcodeSupportStatus.Implemented));
             Assert.That(ScriptOpcodeCompatibility.Action(Sat.SetPcQuestState).Status,
                 Is.EqualTo(ScriptOpcodeSupportStatus.Implemented));
         }

@@ -28,6 +28,12 @@ namespace Arcanum.Formats.Tests
             public int CreatedItem;
             public int DestroyCalls;
             public int DestroyedNamedItem;
+            public int CurrentFatigue = 37;
+            public int MaximumFatigue = 62;
+            public int AdvancedSeconds;
+            public int AdvanceCalls;
+            public int FatePointCalls;
+            public int FatigueCalls;
             public bool Reputation;
             public int MagicCalls;
             public int Day = 3, Hour = 17, Minute = 42, Hours = 89;
@@ -56,6 +62,8 @@ namespace Arcanum.Formats.Tests
             public void GetLocation(object obj, out int x, out int y) { x = 12; y = 34; }
             public int DistanceBetween(object left, object right) => 6;
             public int GetArea(object obj) => 9;
+            public void GetFatiguePoints(object obj, out int current, out int maximum)
+            { FatigueCalls++; current = CurrentFatigue; maximum = MaximumFatigue; }
             public void TransferItem(int name, object from, object to) => TransferredItem = name;
             public void CreateItem(int prototype, object parent) => CreatedItem = prototype;
             public void Destroy(object obj) => DestroyCalls++;
@@ -64,6 +72,8 @@ namespace Arcanum.Formats.Tests
             public int GetCurrentHour() => Hour;
             public int GetCurrentMinute() => Minute;
             public int GetHoursSinceStartup() => Hours;
+            public void AdvanceTimeSeconds(int seconds) { AdvanceCalls++; AdvancedSeconds += seconds; }
+            public void GrantOneFatePoint(object obj) => FatePointCalls++;
         }
 
         [Test]
@@ -146,6 +156,23 @@ namespace Arcanum.Formats.Tests
             Assert.That(host.DestroyedNamedItem, Is.EqualTo(4002));
         }
 
+        [Test]
+        public void FatigueFadeAndFateOperationsUseAuthoritativeCampaignState()
+        {
+            var host = new Host();
+            var context = new ScriptContext { Triggerer = host.Player };
+            ScriptExecutionResult result = new ScriptVm(host).ExecuteStrict(File(
+                Entry(Act(Sat.GetFatiguePoints, Obj(Sfo.Triggerer), Val(Svt.LcVar, 0), Val(Svt.LcVar, 1))),
+                Entry(Act(Sat.Fade, Val(Svt.Number, 45), Val(Svt.Number, 0), Val(Svt.Number, 0))),
+                Entry(Act(Sat.GrantOneFatePoint, Obj(Sfo.Triggerer)))), context);
+
+            Assert.That(result.Succeeded, Is.True, result.Detail);
+            Assert.That(context.LocalVars.Take(2), Is.EqualTo(new[] { 37, 62 }));
+            Assert.That(host.AdvanceCalls, Is.EqualTo(1));
+            Assert.That(host.AdvancedSeconds, Is.EqualTo(45));
+            Assert.That(host.FatePointCalls, Is.EqualTo(1));
+        }
+
         [TestCase(28000, Sat.GetMagictechAdjustment)]
         [TestCase(2664, Sat.GetMagictechAdjustmentEx)]
         public void RealRetailMagicTechInstructionExecutesWithSourceOperandLayout(int scriptNumber, Sat opcode)
@@ -183,6 +210,31 @@ namespace Arcanum.Formats.Tests
 
             Assert.That(result.Succeeded, Is.True, result.Detail);
             Assert.That(context.LocalVars[0], Is.EqualTo(1));
+        }
+
+        [TestCase(1291, Sat.GetFatiguePoints)]
+        [TestCase(1087, Sat.Fade)]
+        [TestCase(1037, Sat.GrantOneFatePoint)]
+        public void RealRetailCampaignStateInstructionUsesSourceOperandLayout(int scriptNumber, Sat opcode)
+        {
+            using DatVirtualFileSystem vfs = MountSourceData();
+            ScriptFile retail = ScriptDatabase.Load(vfs).Get(scriptNumber);
+            ScriptAction source = retail.Entries.SelectMany(entry => new[] { entry.Action, entry.Els })
+                .First(action => action != null && action.Type == (int)opcode);
+            var host = new Host();
+            var context = new ScriptContext
+            {
+                ScriptNum = scriptNumber,
+                Triggerer = host.Triggerer,
+                Attachee = host.Attachee,
+            };
+
+            ScriptExecutionResult result = new ScriptVm(host).ExecuteStrict(File(Entry(source)), context);
+
+            Assert.That(result.Succeeded, Is.True, result.Detail);
+            if (opcode == Sat.GetFatiguePoints) Assert.That(host.FatigueCalls, Is.EqualTo(1));
+            if (opcode == Sat.Fade) Assert.That(host.AdvanceCalls, Is.EqualTo(1));
+            if (opcode == Sat.GrantOneFatePoint) Assert.That(host.FatePointCalls, Is.EqualTo(1));
         }
 
         private static int ReadDestination(byte type, int value, ScriptContext context)

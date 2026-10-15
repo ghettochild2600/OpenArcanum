@@ -22,6 +22,7 @@ namespace Arcanum.Script
         void GetLocation(object obj, out int x, out int y);
         int DistanceBetween(object left, object right);
         int GetArea(object obj);
+        void GetFatiguePoints(object obj, out int current, out int maximum);
 
         void TransferItem(int name, object from, object to);
         void CreateItem(int prototype, object parent);
@@ -32,5 +33,7 @@ namespace Arcanum.Script
         int GetCurrentHour();
         int GetCurrentMinute();
         int GetHoursSinceStartup();
+        void AdvanceTimeSeconds(int seconds);
+        void GrantOneFatePoint(object obj);
     }
 }

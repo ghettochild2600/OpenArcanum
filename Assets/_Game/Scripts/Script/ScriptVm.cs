@@ -352,6 +352,18 @@ namespace Arcanum.Script
                     SetValue(a.OpType[1], a.OpValue[1], ctx, currentHp);
                     SetValue(a.OpType[2], a.OpValue[2], ctx, maximumHp);
                     return Next;
+                case Sat.GetFatiguePoints: // op0=obj, op1=current dest, op2=maximum dest
+                {
+                    IScriptCampaignHost host = CampaignHost(Sat.GetFatiguePoints);
+                    if (host != null)
+                    {
+                        host.GetFatiguePoints(GetObj(a.OpType[0], a.OpValue[0], ctx),
+                            out int currentFatigue, out int maximumFatigue);
+                        SetValue(a.OpType[1], a.OpValue[1], ctx, currentFatigue);
+                        SetValue(a.OpType[2], a.OpValue[2], ctx, maximumFatigue);
+                    }
+                    return Next;
+                }
                 case Sat.GetObjectType: // op0=obj, op1=destination
                 {
                     IScriptCampaignHost host = CampaignHost(Sat.GetObjectType);
@@ -615,6 +627,19 @@ namespace Arcanum.Script
                     DoTeleport(GetValue(a.OpType[4], a.OpValue[4], ctx),
                         GetValue(a.OpType[5], a.OpValue[5], ctx), GetValue(a.OpType[6], a.OpValue[6], ctx));
                     return Next;
+                case Sat.Fade:
+                {
+                    // Source advances campaign time by op[0] seconds; fade, sound, and movie are presentation.
+                    IScriptCampaignHost host = CampaignHost(Sat.Fade);
+                    host?.AdvanceTimeSeconds(GetValue(a.OpType[0], a.OpValue[0], ctx));
+                    return Next;
+                }
+                case Sat.GrantOneFatePoint:
+                {
+                    IScriptCampaignHost host = CampaignHost(Sat.GrantOneFatePoint);
+                    host?.GrantOneFatePoint(GetObj(a.OpType[0], a.OpValue[0], ctx));
+                    return Next;
+                }
 
                 // Source presentation-only operations. Preserve script control flow without inventing an
                 // audio/FX authority in the VM; the compatibility audit records the omitted presentation.

@@ -113,6 +113,13 @@ namespace Arcanum.Runtime.World
 
         public int GetArea(object obj) => Session.ResolveScriptArea(Identity(obj));
 
+        public void GetFatiguePoints(object obj, out int current, out int maximum)
+        {
+            ArcanumObjectId identity = Identity(obj);
+            current = Session.Vitality.GetCurrentFatigue(identity);
+            maximum = Session.Vitality.GetMaximumFatigue(identity);
+        }
+
         public void TransferItem(int name, object from, object to)
         {
             ArcanumObjectId source = Identity(from);
@@ -145,6 +152,12 @@ namespace Arcanum.Runtime.World
         public int GetCurrentHour() => (int)(CampaignMilliseconds / HourMilliseconds % 24);
         public int GetCurrentMinute() => (int)(CampaignMilliseconds / MinuteMilliseconds % 60);
         public int GetHoursSinceStartup() => checked((int)(CampaignMilliseconds / HourMilliseconds));
+        public void AdvanceTimeSeconds(int seconds) => Session.SourceTime.Advance(checked(seconds * 1_000));
+
+        public void GrantOneFatePoint(object obj)
+        {
+            if (Session.PlayerState?.Identity == Identity(obj)) Session.GameplayHud.GrantFatePoint();
+        }
 
         protected static object[] One(object value) => value == null ? Array.Empty<object>() : new[] { value };
 

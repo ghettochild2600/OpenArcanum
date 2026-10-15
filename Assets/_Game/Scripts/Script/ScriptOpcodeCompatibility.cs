@@ -187,11 +187,16 @@ namespace Arcanum.Script
                 case Sat.CreateItem:
                 case Sat.Destroy:
                 case Sat.DestroyItemNamed:
+                case Sat.GetFatiguePoints:
+                case Sat.GrantOneFatePoint:
                     return Implemented("IScriptCampaignHost production authority", "medium", ActionSource);
 
                 case Sat.FadeAndTeleport:
                     return Partial("map transition authority", "medium", ActionSource,
                         "Teleport is authoritative; the source fade presentation is intentionally omitted.");
+                case Sat.Fade:
+                    return Partial("source time authority", "medium", ActionSource,
+                        "Campaign time advancement is authoritative; fade, sound, and movie presentation is omitted.");
 
                 case Sat.PlaySound:
                 case Sat.PlaySoundOn:
