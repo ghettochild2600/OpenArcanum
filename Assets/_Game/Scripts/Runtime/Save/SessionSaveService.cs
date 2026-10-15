@@ -107,6 +107,7 @@ namespace Arcanum.Runtime.Save
         internal LocalMapSaveData LocalMap;
         internal LogbookSaveData Logbook;
         internal ScriptTimerSaveData ScriptTimers;
+        internal ScriptEffectSaveData ScriptEffects;
     }
 
     /// <summary>Versioned, presentation-independent persistence for the bounded M1-M5 session state.</summary>
@@ -313,6 +314,7 @@ namespace Arcanum.Runtime.Save
                 },
             };
             data.Campaign.ScriptTimers = _session.ScriptTimers.ExportSaveData();
+            data.Campaign.ScriptEffects = _session.ScriptEffects.ExportSaveData();
             data.Campaign.Reactions = _session.DerivedStats.ExportReactionAdjustments()
                 .Select(value => new ReactionSaveData
                 {
@@ -502,6 +504,8 @@ namespace Arcanum.Runtime.Save
             if (!result.Succeeded) { plan = null; return result; }
             result = BuildScriptTimers(data.Campaign.ScriptTimers, plan);
             if (!result.Succeeded) { plan = null; return result; }
+            result = BuildScriptEffects(data.Campaign.ScriptEffects, plan);
+            if (!result.Succeeded) { plan = null; return result; }
             result = BuildParty(data.Party, plan);
             if (!result.Succeeded) { plan = null; return result; }
             result = BuildGameplayHud(data.GameplayHud, plan);
@@ -530,6 +534,24 @@ namespace Arcanum.Runtime.Save
                     return Failure(SessionLoadFailure.InvalidCampaign, "A scheduled script callback is invalid.");
             }
             plan.ScriptTimers = data;
+            return new SessionLoadResult(SessionLoadFailure.None);
+        }
+
+        private static SessionLoadResult BuildScriptEffects(ScriptEffectSaveData data, SessionRestorePlan plan)
+        {
+            data ??= new ScriptEffectSaveData();
+            if (data.NextSequence < 1 || data.Effects == null)
+                return Failure(SessionLoadFailure.InvalidCampaign, "The script effect state is incomplete.");
+            var sequences = new HashSet<long>();
+            foreach (ScriptEffectInstanceSaveData value in data.Effects)
+            {
+                if (value == null || value.Sequence < 1 || value.Sequence >= data.NextSequence
+                    || !sequences.Add(value.Sequence) || value.EffectId is < 0 or >= 400
+                    || !TryIdentity(value.TargetIdentity, out ArcanumObjectId target)
+                    || !plan.Characters.States.ContainsKey(target))
+                    return Failure(SessionLoadFailure.InvalidCampaign, "A persistent script effect is invalid.");
+            }
+            plan.ScriptEffects = data;
             return new SessionLoadResult(SessionLoadFailure.None);
         }
 

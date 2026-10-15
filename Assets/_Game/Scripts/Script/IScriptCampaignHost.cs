@@ -38,6 +38,8 @@ namespace Arcanum.Script
         void ScheduleScriptCall(int scriptNumber, int startLine, object triggerer, object attachee,
             int seconds, bool atTimeOfDay);
         void RemoveScriptCall(int scriptNumber, object attachee);
+        void AddEffect(object target, int effectId, int cause);
+        void RemoveEffect(object target, int effectId);
         void GrantOneFatePoint(object obj);
     }
 }

@@ -24,12 +24,14 @@ internal sealed class M8ATestExecution : ScriptableObject, ICallbacks
             {
                 Test("Arcanum.Formats.Tests.ScriptVmTests"), Category("M2BUseScript"),
                 Category("M3B"), Category("M3D"), Category("M10BTechnologyRuntime"),
-                Category("M11BSocialSystems"),
+                Category("M11BSocialSystems"), Category("M4BCharacterVitality"),
+                Category("M4CCharacterProgression"), Category("M4DDerivedCharacterStats"), Category("M6A"),
             },
             new[]
             {
                 "script VM", "use-script dispatch", "inventory commands", "stack state",
                 "technology runtime", "social systems",
+                "character vitality", "character progression", "derived character stats", "session save/load",
             });
     }
 

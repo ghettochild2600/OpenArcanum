@@ -496,6 +496,22 @@ namespace Arcanum.Script
                         GetObj(a.OpType[1], a.OpValue[1], ctx), GetValue(a.OpType[2], a.OpValue[2], ctx));
                     return Next;
                 }
+                case Sat.AddEffect: // op0=set, op1=effect id, op2=cause
+                case Sat.RemoveEffect: // op0=set, op1=effect id
+                {
+                    IScriptCampaignHost host = CampaignHost((Sat)a.Type);
+                    if (host == null) return Next;
+                    int effectId = GetValue(a.OpType[1], a.OpValue[1], ctx);
+                    int cause = (Sat)a.Type == Sat.AddEffect
+                        ? GetValue(a.OpType[2], a.OpValue[2], ctx) : 0;
+                    foreach (object obj in ResolveSet(a.OpType[0], a.OpValue[0], ctx))
+                        if (obj != null)
+                        {
+                            if ((Sat)a.Type == Sat.AddEffect) host.AddEffect(obj, effectId, cause);
+                            else host.RemoveEffect(obj, effectId);
+                        }
+                    return Next;
+                }
                 case Sat.AddReputation: // op0=set, op1=reputation id
                 case Sat.RemoveReputation:
                 {

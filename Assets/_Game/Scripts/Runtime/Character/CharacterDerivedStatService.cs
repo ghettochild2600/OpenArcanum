@@ -145,7 +145,10 @@ namespace Arcanum.Runtime.Character
             return state.ObjectType == ObjectType.Npc && state.Source.IsMonstrous ? value : Clamp(value, 0, 95);
         }
 
-        public int GetAlignment(ArcanumObjectId identity) => Get(identity).Alignment;
+        public int GetAlignment(ArcanumObjectId identity)
+            => Clamp(_characters.Contributors.Evaluate(identity, CharacterContributorTarget.Alignment,
+                    Get(identity).Alignment),
+                CharacterDerivedStatRules.MinimumAlignment, CharacterDerivedStatRules.MaximumAlignment);
 
         public int SetAlignment(ArcanumObjectId identity, int alignment)
         {
@@ -197,13 +200,15 @@ namespace Arcanum.Runtime.Character
             PersistentCharacterDerivedState pc = Get(pcIdentity);
             if (npc.ObjectType != ObjectType.Npc) throw new ArgumentException("Reaction source must be an NPC.", nameof(npcIdentity));
             if (pc.ObjectType != ObjectType.Pc) throw new ArgumentException("Reaction target must be a PC.", nameof(pcIdentity));
+            int sourceBase = _characters.Contributors.Evaluate(npcIdentity,
+                CharacterContributorTarget.Reaction, npc.Source.ReactionBase);
             bool apply = !npc.Source.IsAloof && !npc.Source.IsMonstrous;
-            if (!apply) return new CharacterReactionInputs(npc.Source.ReactionBase, 0, 0, false);
+            if (!apply) return new CharacterReactionInputs(sourceBase, 0, 0, false);
             CharacterRace npcRace = _characters.Get(npcIdentity).Race;
             CharacterRace pcRace = _characters.Get(pcIdentity).Race;
             if (pcRace > CharacterRace.HalfOgre)
                 throw new InvalidOperationException($"{pcRace} is not a playable source reaction-matrix column.");
-            return new CharacterReactionInputs(npc.Source.ReactionBase,
+            return new CharacterReactionInputs(sourceBase,
                 GetDerivedStat(pcIdentity, CharacterDerivedStat.BeautyReactionModifier),
                 RaceReactionModifiers[(int)npcRace, (int)pcRace], true);
         }

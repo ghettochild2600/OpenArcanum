@@ -171,6 +171,12 @@ namespace Arcanum.Runtime.World
         public void RemoveScriptCall(int scriptNumber, object attachee)
             => Session.ScriptTimers.RemoveFirst(scriptNumber, Identity(attachee));
 
+        public void AddEffect(object target, int effectId, int cause)
+            => Session.ScriptEffects.Add(Identity(target), effectId, cause);
+
+        public void RemoveEffect(object target, int effectId)
+            => Session.ScriptEffects.RemoveFirst(Identity(target), effectId);
+
         public void GrantOneFatePoint(object obj)
         {
             if (Session.PlayerState?.Identity == Identity(obj)) Session.GameplayHud.GrantFatePoint();

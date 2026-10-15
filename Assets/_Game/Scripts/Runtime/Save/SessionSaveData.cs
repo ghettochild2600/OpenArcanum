@@ -378,6 +378,7 @@ namespace Arcanum.Runtime.Save
         public List<ReactionSaveData> Reactions { get; set; }
         public List<int> KnownAreas { get; set; } = new List<int>();
         public ScriptTimerSaveData ScriptTimers { get; set; }
+        public ScriptEffectSaveData ScriptEffects { get; set; }
     }
 
     public sealed class ScriptTimerSaveData
@@ -394,6 +395,20 @@ namespace Arcanum.Runtime.Save
         public int StartLine { get; set; }
         public string TriggererIdentity { get; set; }
         public string AttacheeIdentity { get; set; }
+    }
+
+    public sealed class ScriptEffectSaveData
+    {
+        public long NextSequence { get; set; } = 1;
+        public List<ScriptEffectInstanceSaveData> Effects { get; set; } = new List<ScriptEffectInstanceSaveData>();
+    }
+
+    public sealed class ScriptEffectInstanceSaveData
+    {
+        public long Sequence { get; set; }
+        public string TargetIdentity { get; set; }
+        public int EffectId { get; set; }
+        public int Cause { get; set; }
     }
 
     public sealed class IndexedIntSaveData

@@ -1168,10 +1168,14 @@ namespace Arcanum.Runtime.World
                     _vfs.Exists("rules/gameai.mes")
                         ? MesReader.Read(_vfs.ReadAllBytes("rules/gameai.mes")) : null));
             MapList maps = MapList.Read(_vfs.ReadAllBytes("rules/maplist.mes"));
+            MesFile effectRules = MesReader.Read(_vfs.ReadAllBytes("rules/effect.mes"));
+            Session.BindScriptEffectSource(RetailScriptEffectCatalog.FromMes(effectRules,
+                _vfs.Exists("rules/gameeffect.mes")
+                    ? MesReader.Read(_vfs.ReadAllBytes("rules/gameeffect.mes")) : null));
             Session.BindCharacterCreationSource(CharacterCreationCatalog.FromMes(
                 MesReader.Read(_vfs.ReadAllBytes("rules/backgrnd.mes")),
                 MesReader.Read(_vfs.ReadAllBytes("mes/gameback.mes")),
-                MesReader.Read(_vfs.ReadAllBytes("rules/effect.mes")),
+                effectRules,
                 MesReader.Read(_vfs.ReadAllBytes("portrait/gameport.mes")), maps,
                 MesReader.Read(_vfs.ReadAllBytes("mes/gamelevelname.mes")),
                 MesReader.Read(_vfs.ReadAllBytes("mes/mainmenu.mes")),

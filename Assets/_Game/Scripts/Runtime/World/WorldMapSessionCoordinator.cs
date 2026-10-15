@@ -82,6 +82,8 @@ namespace Arcanum.Runtime.World
         private SchematicCatalog _schematicSource;
         private SourceTimeService _sourceTime;
         private ScriptTimerAuthority _scriptTimers;
+        private ScriptEffectAuthority _scriptEffects;
+        private RetailScriptEffectCatalog _scriptEffectSource;
         private EconomyStateService _economy;
         private InventorySourceCatalog _economySource;
         private SocialStateService _social;
@@ -133,6 +135,8 @@ namespace Arcanum.Runtime.World
         public GameplayHudStateService GameplayHud => _gameplayHud ??= new GameplayHudStateService(this);
         public SourceTimeService SourceTime => _sourceTime ??= new SourceTimeService();
         public ScriptTimerAuthority ScriptTimers => _scriptTimers ??= new ScriptTimerAuthority(this, SourceTime);
+        public ScriptEffectAuthority ScriptEffects
+            => _scriptEffects ??= new ScriptEffectAuthority(this, _scriptEffectSource);
         public ISleepLocationSource SleepLocations => _sleepLocations;
         public BedSleepAuthority Beds => _beds ??= new BedSleepAuthority(this);
         public MagicStateService Magic => _magic ??= new MagicStateService(this);
@@ -394,6 +398,12 @@ namespace Arcanum.Runtime.World
         {
             _characterCreationSource = source ?? throw new ArgumentNullException(nameof(source));
             CharacterCreation.BindCatalog(source);
+        }
+
+        public void BindScriptEffectSource(RetailScriptEffectCatalog source)
+        {
+            _scriptEffectSource = source ?? throw new ArgumentNullException(nameof(source));
+            ScriptEffects.BindCatalog(source);
         }
 
         public void BindInventoryFootprintSource(Func<uint?, InventoryFootprint> resolveInventoryFootprint)
@@ -2353,6 +2363,8 @@ namespace Arcanum.Runtime.World
             _sourceTime = null;
             _scriptTimers?.Dispose();
             _scriptTimers = null;
+            _scriptEffects?.Dispose();
+            _scriptEffects = null;
             _portals = null;
             _dialogue = null;
             _journal = null;
@@ -2400,6 +2412,9 @@ namespace Arcanum.Runtime.World
             _scriptTimers?.Dispose();
             _scriptTimers = new ScriptTimerAuthority(this, _sourceTime);
             _scriptTimers.RestoreSaveData(plan.ScriptTimers);
+            _scriptEffects?.Dispose();
+            _scriptEffects = new ScriptEffectAuthority(this, _scriptEffectSource);
+            _scriptEffects.RestoreSaveData(plan.ScriptEffects);
             _poison = new CharacterPoisonService(_characters, _derivedStats, _vitality, _sourceTime);
             _poison.RestoreSaveData(plan.Poison);
             _campaign.BindTimeSource(() => SourceTime.CampaignMilliseconds);
@@ -2446,6 +2461,7 @@ namespace Arcanum.Runtime.World
         private void OnDestroy()
         {
             _scriptTimers?.Dispose();
+            _scriptEffects?.Dispose();
             _gameplayHud?.Dispose();
             _poison?.Dispose();
             foreach (string sector in new List<string>(_loaded.Keys)) UnloadSector(sector);

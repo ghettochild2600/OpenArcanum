@@ -38,6 +38,9 @@ namespace Arcanum.Formats.Tests
             public int ScheduledSeconds;
             public bool ScheduledAt;
             public int RemovedScript;
+            public int AddedEffect;
+            public int AddedEffectCause;
+            public int RemovedEffect;
             public int FatigueCalls;
             public bool Reputation;
             public bool Identified = true;
@@ -89,6 +92,9 @@ namespace Arcanum.Formats.Tests
                 ScheduledAt = atTimeOfDay;
             }
             public void RemoveScriptCall(int scriptNumber, object attachee) => RemovedScript = scriptNumber;
+            public void AddEffect(object target, int effectId, int cause)
+            { AddedEffect = effectId; AddedEffectCause = cause; }
+            public void RemoveEffect(object target, int effectId) => RemovedEffect = effectId;
             public void GrantOneFatePoint(object obj) => FatePointCalls++;
         }
 
@@ -133,6 +139,23 @@ namespace Arcanum.Formats.Tests
             Assert.That(host.AddedReputation, Is.EqualTo(1007));
             Assert.That(host.RemovedReputation, Is.EqualTo(1007));
             Assert.That(context.LocalVars[0], Is.EqualTo(1));
+        }
+
+        [Test]
+        public void EffectActionsResolveTheEntireSourceSetAndPreserveCause()
+        {
+            var host = new Host();
+            var context = new ScriptContext { Triggerer = host.Triggerer, Attachee = host.Attachee };
+            ScriptFile file = File(
+                Entry(Act(Sat.AddEffect, Obj(Sfo.Triggerer), Val(Svt.Number, 282), Val(Svt.Number, 5))),
+                Entry(Act(Sat.RemoveEffect, Obj(Sfo.Triggerer), Val(Svt.Number, 282))));
+
+            ScriptExecutionResult result = new ScriptVm(host).ExecuteStrict(file, context);
+
+            Assert.That(result.Succeeded, Is.True, result.Detail);
+            Assert.That(host.AddedEffect, Is.EqualTo(282));
+            Assert.That(host.AddedEffectCause, Is.EqualTo(5));
+            Assert.That(host.RemovedEffect, Is.EqualTo(282));
         }
 
         [Test]

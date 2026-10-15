@@ -29,6 +29,10 @@ namespace Arcanum.Runtime.Character
         Resistance,
         MagickPoints,
         TechnologyPoints,
+        Alignment,
+        MaximumHitPoints,
+        MaximumFatigue,
+        Reaction,
     }
 
     /// <summary>Source effect operators in the order used by <c>effect_adjust_func</c>.</summary>
@@ -82,6 +86,18 @@ namespace Arcanum.Runtime.Character
 
         public static CharacterContributorTarget TechnologyPoints { get; } =
             new(CharacterContributorTargetKind.TechnologyPoints, CharacterDerivedStatRules.TechPointsSourceSlot);
+
+        public static CharacterContributorTarget Alignment { get; } =
+            new(CharacterContributorTargetKind.Alignment, CharacterDerivedStatRules.AlignmentSourceSlot);
+
+        public static CharacterContributorTarget MaximumHitPoints { get; } =
+            new(CharacterContributorTargetKind.MaximumHitPoints, 0);
+
+        public static CharacterContributorTarget MaximumFatigue { get; } =
+            new(CharacterContributorTargetKind.MaximumFatigue, 1);
+
+        public static CharacterContributorTarget Reaction { get; } =
+            new(CharacterContributorTargetKind.Reaction, 2);
 
         public bool Equals(CharacterContributorTarget other) => Kind == other.Kind && SourceId == other.SourceId;
         public override bool Equals(object obj) => obj is CharacterContributorTarget other && Equals(other);

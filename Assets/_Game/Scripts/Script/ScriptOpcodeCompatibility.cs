@@ -194,6 +194,11 @@ namespace Arcanum.Script
                 case Sat.GrantOneFatePoint:
                     return Implemented("IScriptCampaignHost production authority", "medium", ActionSource);
 
+                case Sat.AddEffect:
+                case Sat.RemoveEffect:
+                    return Partial("retail script effect authority", "medium", ActionSource,
+                        "Effect instances, persistence, stacking, removal, and supported stat changes are authoritative; uncommon unsupported retail effect symbols remain inventoried.");
+
                 case Sat.FadeAndTeleport:
                     return Partial("map transition authority", "medium", ActionSource,
                         "Teleport is authoritative; the source fade presentation is intentionally omitted.");
