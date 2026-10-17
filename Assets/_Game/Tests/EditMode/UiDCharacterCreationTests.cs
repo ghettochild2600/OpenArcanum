@@ -785,22 +785,66 @@ namespace Arcanum.Formats.Tests
         [TestCase(10)]
         [TestCase(11)]
         [TestCase(20)]
-        public void AttributeValueUsesImmutableMeasuredCenterForOneAndTwoDigitValues(int value)
+        public void AttributeValueUsesSourceIntegerCenterForOneAndTwoDigitValues(int value)
         {
             _view.ContinueToEditor();
             _controller.CreationDraft.SetAttribute(CharacterAttribute.Strength, value);
+            _controller.CreationDraft.SetAttribute(CharacterAttribute.Intelligence, value);
             Invoke("Magic");
             Invoke("Skills");
 
-            RectTransform text = _view.GetComponentsInChildren<RectTransform>(true)
-                .Single(candidate => candidate.name == "Strength Value");
-            const float sourceX = 194f;
-            const float sourceWidth = 25f;
-            Assert.That(text.anchoredPosition.x, Is.GreaterThanOrEqualTo(sourceX));
-            Assert.That(text.anchoredPosition.x + text.sizeDelta.x,
-                Is.LessThanOrEqualTo(sourceX + sourceWidth + .001f));
-            Assert.That(text.anchoredPosition.x + text.sizeDelta.x * .5f,
-                Is.EqualTo(sourceX + sourceWidth * .5f).Within(.501f));
+            SourceUiBitmapText leftText = Text("Strength Value");
+            SourceUiBitmapText rightText = Text("Intelligence Value");
+            AssertSourceIntegerCenter(leftText, RetailCharacterCreationLayout.AttributeValueCenterX[0], $" {value} ");
+            AssertSourceIntegerCenter(rightText, RetailCharacterCreationLayout.AttributeValueCenterX[4], $" {value} ");
+            Assert.That(((RectTransform)leftText.transform).anchoredPosition.y,
+                Is.EqualTo(-(RetailCharacterCreationLayout.AttributePlus[0].y
+                             + RetailCharacterCreationLayout.AttributeValueTopOffsetFromPlus)));
+            Assert.That(((RectTransform)rightText.transform).anchoredPosition.y,
+                Is.EqualTo(-(RetailCharacterCreationLayout.AttributePlus[4].y
+                             + RetailCharacterCreationLayout.AttributeValueTopOffsetFromPlus)));
+            Assert.That(RetailCharacterCreationLayout.AttributeValueCenterX[0],
+                Is.Not.EqualTo(RetailCharacterCreationLayout.AttributeValueCenterX[4]),
+                "left and right attribute columns have independently measured visible-oval centers");
+        }
+
+        [Test]
+        public void EditorUsesSourceFontsAndMeasuredCentersForAlignmentAndSecondaryStats()
+        {
+            _view.ContinueToEditor();
+
+            SourceUiBitmapText alignment = Text("Alignment Value");
+            Assert.That(alignment.FontSourceId, Is.EqualTo(SourceUiBitmapText.Cloister18FontSourceId));
+            AssertSourceIntegerCenter(alignment, RetailCharacterCreationLayout.AlignmentValueCenterX, "0");
+            AssertSourceIntegerCenter(Text("Hit Point Value"),
+                RetailCharacterCreationLayout.VitalityValueCenterX, " 30 ");
+            AssertSourceIntegerCenter(Text("Fatigue Value"),
+                RetailCharacterCreationLayout.VitalityValueCenterX, " 30 ");
+            Assert.That(Text("Editor Derived 0").FontSourceId,
+                Is.EqualTo(SourceUiBitmapText.Flare12FontSourceId));
+            Assert.That(Text("Editor Resistance 0").FontSourceId,
+                Is.EqualTo(SourceUiBitmapText.Flare12FontSourceId));
+            SourceUiBitmapText derivedHeading = Text("Derived Stats Heading");
+            Assert.That(derivedHeading.FontSourceId, Is.EqualTo(SourceUiBitmapText.Morph15FontSourceId));
+            AssertSourceIntegerCenter(derivedHeading, 178f, "Derived Stats");
+            SourceUiBitmapText resistanceHeading = Text("Resistance Heading");
+            Assert.That(resistanceHeading.FontSourceId, Is.EqualTo(SourceUiBitmapText.Morph15FontSourceId));
+            AssertSourceIntegerCenter(resistanceHeading, 383f, "Resistance");
+        }
+
+        private static void AssertSourceIntegerCenter(SourceUiBitmapText text, float sourceCenterX,
+            string expectedText)
+        {
+            RectTransform rect = (RectTransform)text.transform;
+            Assert.That(text.Text, Is.EqualTo(expectedText));
+            Assert.That(text.SourceMeasuredWidth, Is.GreaterThan(0));
+            Assert.That(rect.anchoredPosition.x,
+                Is.EqualTo((int)sourceCenterX - text.SourceMeasuredWidth / 2));
+            Assert.That(rect.anchoredPosition.x, Is.EqualTo(Mathf.Round(rect.anchoredPosition.x)),
+                "source bitmap glyph origins must remain on integer framebuffer pixels");
+            foreach (RectTransform glyph in text.GetComponentsInChildren<RectTransform>(true).Skip(1))
+                Assert.That(glyph.anchoredPosition.x, Is.EqualTo(Mathf.Round(glyph.anchoredPosition.x)),
+                    "each source bitmap glyph must begin on an integer framebuffer pixel");
         }
 
         [Test]
@@ -908,10 +952,8 @@ namespace Arcanum.Formats.Tests
         {
             Invoke("Next Background");
             _view.ContinueToEditor();
-            Assert.That(Text("Beauty Value").Text, Is.EqualTo("7"));
+            Assert.That(Text("Beauty Value").Text, Is.EqualTo(" 7 "));
             Assert.That(Text("Beauty Value").Text, Does.Not.Contain("/"));
-            Assert.That(Text("Derived Stats Heading").Text, Is.EqualTo("Derived Stats"));
-            Assert.That(Text("Resistance Heading").Text, Is.EqualTo("Resistance"));
             Assert.That(((RectTransform)_view.EditorPortraitImage.transform).sizeDelta,
                 Is.EqualTo(new Vector2(66, 66)));
         }

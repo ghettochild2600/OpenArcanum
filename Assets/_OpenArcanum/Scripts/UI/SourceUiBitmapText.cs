@@ -18,6 +18,7 @@ namespace OpenArcanum.UI
         public const string TigBitmapFontShaderName = "OpenArcanum/UI/TIG Bitmap Font";
         public const int Morph15FontSourceId = 27;
         public const int Flare12FontSourceId = 229;
+        public const int Cloister18FontSourceId = 171;
         public const int DefaultFontSourceId = 327;
 
         private static Material _tigBitmapFontMaterial;
@@ -27,10 +28,12 @@ namespace OpenArcanum.UI
         private int _fontSourceId = DefaultFontSourceId;
         private Color _tint = Color.white;
         private bool _subscribed;
+        private int _sourceMeasuredWidth;
 
         public string Text => _text;
         public int FontSourceId => _fontSourceId;
         public Vector2 LogicalSize => ((RectTransform)transform).sizeDelta;
+        public int SourceMeasuredWidth => _sourceMeasuredWidth;
 
         public void Bind(UiSkinResolver resolver, string text, Color tint, int fontSourceId = DefaultFontSourceId)
         {
@@ -66,8 +69,10 @@ namespace OpenArcanum.UI
 
             float advance = 0f;
             float height = 0f;
-            foreach (char character in _text)
+            _sourceMeasuredWidth = 0;
+            for (int index = 0; index < _text.Length; index++)
             {
+                char character = _text[index];
                 if (character == '\n' || character == '\r') continue;
                 int frame = (byte)character - 31;
                 if (frame < 0 || !_resolver.TryResolve(new UiAssetKey(_fontSourceId, frame: frame),
@@ -93,6 +98,9 @@ namespace OpenArcanum.UI
 
                 float glyphAdvance = asset.Hotspot.x > 0 ? asset.Hotspot.x : asset.LogicalSize.x;
                 advance += glyphAdvance;
+                _sourceMeasuredWidth += index + 1 < _text.Length
+                    ? Mathf.RoundToInt(glyphAdvance)
+                    : asset.LogicalSize.x;
                 height = Mathf.Max(height, asset.LogicalSize.y);
             }
 

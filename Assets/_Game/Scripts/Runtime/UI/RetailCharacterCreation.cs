@@ -99,6 +99,15 @@ namespace Arcanum.Runtime.UI
             new(313f, 117f), new(313f, 197f), new(313f, 157f), new(313f, 237f),
         };
 
+        // charedit_refresh_stat formats " %d ". Native 800x600 pixel capture shows that the
+        // left oval's visible interior needs its own optical center; the right column already
+        // matches the source horizontally; both columns share the source-rendered baseline.
+        public static readonly float[] AttributeValueCenterX =
+            { 206f, 206f, 206f, 206f, 350f, 350f, 350f, 350f };
+        public const float AttributeValueTopOffsetFromPlus = -3f;
+        public const float VitalityValueCenterX = 447f;
+        public const float AlignmentValueCenterX = 57f;
+
         public static readonly int[] RequiredSourceIds =
         {
             336, 335, 765, 321, 323, 283, 284, 757, 758,
@@ -531,10 +540,11 @@ namespace Arcanum.Runtime.UI
                     RetailCharacterCreationLayout.AttributePlus[index],
                     () => AdjustAttribute(attribute, 1));
                 _attributeButtons[attribute] = (minus, plus);
-                float x = index < 4 ? 194f : 337f;
-                float y = RetailCharacterCreationLayout.AttributePlus[index].y + 1f;
+                float x = RetailCharacterCreationLayout.AttributeValueCenterX[index];
+                float y = RetailCharacterCreationLayout.AttributePlus[index].y
+                          + RetailCharacterCreationLayout.AttributeValueTopOffsetFromPlus;
                 _attributeValues[attribute] = AddText($"{attribute} Value", _editor,
-                    new Rect(x, y, 25f, 18f), string.Empty, 27, SourceWhite);
+                    new Rect(x, y, 0f, 18f), string.Empty, 27, SourceWhite);
                 BindHint(minus.gameObject, AttributeHintId(attribute), () => 1);
                 BindHint(plus.gameObject, AttributeHintId(attribute), () => 1);
                 BindHint(_attributeValues[attribute].gameObject, AttributeHintId(attribute), () => 1);
@@ -550,9 +560,9 @@ namespace Arcanum.Runtime.UI
                 new Vector2(465f, 214f), () => AdjustVitality(false, 1));
             _hitPointButtons = (hpMinus, hpPlus);
             _fatigueButtons = (fatigueMinus, fatiguePlus);
-            _hitPointValue = AddText("Hit Point Value", _editor, new Rect(429f, 143f, 36f, 18f),
+            _hitPointValue = AddText("Hit Point Value", _editor, new Rect(RetailCharacterCreationLayout.VitalityValueCenterX, 143f, 0f, 18f),
                 string.Empty, 27, SourceWhite);
-            _fatigueValue = AddText("Fatigue Value", _editor, new Rect(429f, 213f, 36f, 18f),
+            _fatigueValue = AddText("Fatigue Value", _editor, new Rect(RetailCharacterCreationLayout.VitalityValueCenterX, 213f, 0f, 18f),
                 string.Empty, 27, SourceWhite);
             foreach (GameObject target in new[] { hpMinus.gameObject, hpPlus.gameObject, _hitPointValue.gameObject })
                 BindHint(target, 106, () => 1);
@@ -593,10 +603,14 @@ namespace Arcanum.Runtime.UI
             _editorAgeText = AddText("Editor Age", _editor, RetailCharacterCreationLayout.EditorAge,
                 string.Empty, 27, SourceWhite);
 
-            AddText("Derived Stats Heading", _editor, new Rect(51f, 282f, 253f, 18f),
-                "Derived Stats", 27, SourceWhite);
-            AddText("Resistance Heading", _editor, new Rect(315f, 282f, 136f, 18f),
-                "Resistance", 27, SourceWhite);
+            SourceUiBitmapText derivedStatsHeading = AddText("Derived Stats Heading", _editor,
+                new Rect(178f, 282f, 0f, 18f), string.Empty,
+                SourceUiBitmapText.Morph15FontSourceId, SourceWhite);
+            SetSourceIntegerCenteredText(derivedStatsHeading, "Derived Stats", 178f, SourceWhite);
+            SourceUiBitmapText resistanceHeading = AddText("Resistance Heading", _editor,
+                new Rect(383f, 282f, 0f, 18f), string.Empty,
+                SourceUiBitmapText.Morph15FontSourceId, SourceWhite);
+            SetSourceIntegerCenteredText(resistanceHeading, "Resistance", 383f, SourceWhite);
 
             Rect[] derivedStats =
             {
@@ -607,7 +621,7 @@ namespace Arcanum.Runtime.UI
             };
             for (int index = 0; index < derivedStats.Length; index++)
                 _editorDerivedStats.Add(AddText($"Editor Derived {index}", _editor, derivedStats[index],
-                    string.Empty, 26, SourceWhite));
+                    string.Empty, SourceUiBitmapText.Flare12FontSourceId, SourceWhite));
             Rect[] resistances =
             {
                 new(322f, 301f, 105f, 15f), new(322f, 317f, 105f, 15f),
@@ -616,13 +630,17 @@ namespace Arcanum.Runtime.UI
             };
             for (int index = 0; index < resistances.Length; index++)
                 _editorResistances.Add(AddText($"Editor Resistance {index}", _editor, resistances[index],
-                    string.Empty, 26, SourceWhite));
+                    string.Empty, SourceUiBitmapText.Flare12FontSourceId, SourceWhite));
 
             AddSourceImageTopLeft("Alignment Marker", _editor,
                 RetailCharacterCreationLayout.AlignmentMarkerSourceId, new Vector2(78f, 236f));
             _aptitudeMarker = AddSourceImageTopLeft("Aptitude Marker", _editor,
                 RetailCharacterCreationLayout.AptitudeMarkerSourceId, new Vector2(754f, 221f));
-            AddText("Alignment Value", _editor, new Rect(50f, 198f, 30f, 18f), "0", 27, SourceWhite);
+            SourceUiBitmapText alignmentValue = AddText("Alignment Value", _editor,
+                new Rect(RetailCharacterCreationLayout.AlignmentValueCenterX, 198f, 0f, 18f),
+                string.Empty, SourceUiBitmapText.Cloister18FontSourceId, SourceWhite);
+            SetSourceIntegerCenteredText(alignmentValue, "0",
+                RetailCharacterCreationLayout.AlignmentValueCenterX, SourceWhite);
             _magickAptitudeText = AddText("Magick Aptitude Value", _editor,
                 new Rect(752f, 66f, 35f, 18f), string.Empty, 27, SourceWhite);
             _technologyAptitudeText = AddText("Technology Aptitude Value", _editor,
@@ -689,16 +707,20 @@ namespace Arcanum.Runtime.UI
             SetText(_editorRaceText, $"RACE: {Friendly(draft.Race).ToUpperInvariant()}");
             SetText(_editorGenderText, $"GENDER: {Friendly(draft.Gender).ToUpperInvariant()}");
             SetText(_editorAgeText, $"AGE: {draft.Age}");
-            foreach (CharacterAttribute attribute in Attributes)
+            for (int index = 0; index < Attributes.Length; index++)
             {
+                CharacterAttribute attribute = Attributes[index];
                 int effective = _session.CharacterCreation.GetEffectiveAttribute(draft, attribute);
-                SetCenteredText(_attributeValues[attribute], effective.ToString(), SourceWhite);
+                SetSourceIntegerCenteredText(_attributeValues[attribute], $" {effective} ",
+                    RetailCharacterCreationLayout.AttributeValueCenterX[index], SourceWhite);
                 (SourceUiButton minus, SourceUiButton plus) = _attributeButtons[attribute];
                 minus.SetInteractable(CanAdjustAttribute(draft, attribute, -1));
                 plus.SetInteractable(CanAdjustAttribute(draft, attribute, 1));
             }
-            SetCenteredText(_hitPointValue, ProjectMaximumHitPoints(draft).ToString(), SourceWhite);
-            SetCenteredText(_fatigueValue, ProjectMaximumFatigue(draft).ToString(), SourceWhite);
+            SetSourceIntegerCenteredText(_hitPointValue, $" {ProjectMaximumHitPoints(draft)} ",
+                RetailCharacterCreationLayout.VitalityValueCenterX, SourceWhite);
+            SetSourceIntegerCenteredText(_fatigueValue, $" {ProjectMaximumFatigue(draft)} ",
+                RetailCharacterCreationLayout.VitalityValueCenterX, SourceWhite);
             _hitPointButtons.Minus.SetInteractable(CanAdjustVitality(draft, true, -1));
             _hitPointButtons.Plus.SetInteractable(CanAdjustVitality(draft, true, 1));
             _fatigueButtons.Minus.SetInteractable(CanAdjustVitality(draft, false, -1));
@@ -1361,6 +1383,19 @@ namespace Arcanum.Runtime.UI
             Vector2 size = text.LogicalSize;
             rect.anchoredPosition = new Vector2(bounds.x + Mathf.Max(0f, (bounds.width - size.x) * .5f),
                 -bounds.y);
+        }
+
+        private void SetSourceIntegerCenteredText(SourceUiBitmapText text, string value, float centerX, Color tint)
+        {
+            RectTransform rect = (RectTransform)text.transform;
+            Rect bounds = _textBounds.TryGetValue(text, out Rect immutable)
+                ? immutable : new Rect(rect.anchoredPosition.x, -rect.anchoredPosition.y,
+                    rect.sizeDelta.x, rect.sizeDelta.y);
+            text.Bind(_resolver, value ?? string.Empty, tint, text.FontSourceId);
+            // sub_55B880 uses x = -authoredX - tig_font_measure(...).width / 2.
+            // Both operands are integers, so odd widths truncate toward zero and every glyph begins on a pixel.
+            int measuredWidth = text.SourceMeasuredWidth;
+            rect.anchoredPosition = new Vector2(Mathf.RoundToInt(centerX) - measuredWidth / 2, -bounds.y);
         }
 
         private void SetNamePresentation(string value)

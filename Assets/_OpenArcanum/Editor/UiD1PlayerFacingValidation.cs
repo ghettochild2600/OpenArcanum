@@ -122,15 +122,17 @@ namespace OpenArcanum.Editor
 
             FindButton(creation, "Identity Continue").onClick.Invoke();
             creation.Synchronize();
-            RectTransform strength = creation.GetComponentsInChildren<RectTransform>(true)
+            SourceUiBitmapText strengthText = creation.GetComponentsInChildren<SourceUiBitmapText>(true)
                 .First(value => value.name == "Strength Value" && value.gameObject.activeInHierarchy);
-            Check(CenteredHorizontally(strength, 194f, 25f),
-                "one-digit attribute value is bitmap-measured inside its source oval");
+            Check(SourceIntegerCenteredHorizontally(strengthText,
+                    RetailCharacterCreationLayout.AttributeValueCenterX[0]),
+                "one-digit attribute value uses the source integer-measured center");
             FindButton(creation, "Increase Strength").onClick.Invoke();
             FindButton(creation, "Increase Strength").onClick.Invoke();
             creation.Synchronize();
-            Check(CenteredHorizontally(strength, 194f, 25f),
-                "two-digit attribute value remains centered without moving control geometry");
+            Check(SourceIntegerCenteredHorizontally(strengthText,
+                    RetailCharacterCreationLayout.AttributeValueCenterX[0]),
+                "two-digit attribute value uses the same source integer-measured center");
             FindButton(creation, "Decrease Strength").onClick.Invoke();
             FindButton(creation, "Decrease Strength").onClick.Invoke();
             Image bowGauge = creation.SkillGauges[CharacterSkill.Bow];
@@ -339,8 +341,13 @@ namespace OpenArcanum.Editor
         private static bool CenteredWithin(RectTransform value, Rect bounds)
             => Mathf.Abs(Center(value).x - bounds.center.x) <= .501f;
 
-        private static bool CenteredHorizontally(RectTransform value, float x, float width)
-            => Mathf.Abs(value.anchoredPosition.x + value.sizeDelta.x * .5f - (x + width * .5f)) <= .501f;
+        private static bool SourceIntegerCenteredHorizontally(SourceUiBitmapText value, float centerX)
+        {
+            RectTransform rect = (RectTransform)value.transform;
+            return rect.anchoredPosition.x == Mathf.Round(rect.anchoredPosition.x)
+                   && Mathf.Approximately(rect.anchoredPosition.x,
+                       Mathf.RoundToInt(centerX) - value.SourceMeasuredWidth / 2);
+        }
 
         private static T Require<T>(T value, string description) where T : class
             => value ?? throw new InvalidOperationException("Missing " + description + ".");
