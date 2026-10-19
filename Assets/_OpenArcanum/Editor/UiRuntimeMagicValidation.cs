@@ -94,6 +94,19 @@ namespace OpenArcanum.Editor
             Check(view.GetComponentsInChildren<SourceUiBitmapText>(true).Count(value =>
                     value.name.StartsWith("Spell Level ", StringComparison.Ordinal)) == 5,
                 "selected college projects five source minimum-level rows");
+            Check(view.GetComponentsInChildren<SourceUiBitmapText>(true).All(value =>
+                    value.name != "College Name"),
+                "source spell rows are not obscured by a non-source college-name label");
+
+            SourceHoverHintTarget collegeHint = view.GetComponentsInChildren<SourceHoverHintTarget>(true)
+                .Single(value => value.name == nameof(SpellCollege.Earth));
+            collegeHint.OnPointerEnter(null);
+            hud.Synchronize(true);
+            Check(controller.ContextualHelpTitle == session.SpellPresentation.CollegeName(SpellCollege.Earth)
+                  && controller.ContextualHelp == session.SpellPresentation.CollegeDescription(SpellCollege.Earth)
+                  && controller.ContextualHelpIconSourceId == 446 + (int)SpellCollege.Earth,
+                "college hover projects source title, description, and large college icon into the HUD panel");
+            collegeHint.OnPointerExit(null);
 
             int points = session.Progression.GetUnspentCharacterPoints(controller.Player);
             FindButton(view, "Increase Spell").onClick.Invoke();
@@ -116,20 +129,50 @@ namespace OpenArcanum.Editor
             FindButton(view, nameof(SpellCollege.Nature)).onClick.Invoke();
             yield return null;
             view.Synchronize();
-            Check(view.SelectedCollege == SpellCollege.Nature
-                  && view.GetComponentsInChildren<SourceUiBitmapText>(true)
-                      .Single(value => value.name == "College Name").Text
-                  == session.SpellPresentation.CollegeName(SpellCollege.Nature),
+            Check(view.SelectedCollege == SpellCollege.Nature,
                 "clicking a college changes only the selected source presentation");
+
+            session.Magic.SetKnownCollegeRank(controller.Player, SpellCollege.Earth, 2);
+            view.SelectCollege(SpellCollege.Earth);
+            view.Synchronize();
+            SourceUiImage[] earthIcons = SpellIcons(view);
+            Check(earthIcons.Take(2).All(value =>
+                    value.PaletteTransform == SourceUiPaletteTransform.None),
+                "learned Earth spell icons retain their original palette");
+            Check(earthIcons.Skip(2).All(value =>
+                    value.PaletteTransform == SourceUiPaletteTransform.TigGrayscale
+                    && value.Image.color == Color.white),
+                "selected and disabled Earth spell icons use TIG grayscale without Unity tint");
+
+            session.Magic.SetKnownCollegeRank(controller.Player, SpellCollege.Conveyance, 1);
+            view.SelectCollege(SpellCollege.Conveyance);
+            view.Synchronize();
+            SourceUiImage[] conveyanceIcons = SpellIcons(view);
+            Check(conveyanceIcons.First().PaletteTransform == SourceUiPaletteTransform.None
+                  && conveyanceIcons.Skip(1).All(value =>
+                      value.PaletteTransform == SourceUiPaletteTransform.TigGrayscale
+                      && value.Image.color == Color.white),
+                "a second college uses the same source palette-state rule");
+
+            view.SelectCollege(SpellCollege.Earth);
+            view.Synchronize();
 
             Debug.Log("RUNTIME MAGIC PHYSICAL VALIDATION: PASS; viewport=800x600; shell=ART22; "
                       + "subwindow=ART31@(503,104 desktop); colleges=16; selected rows=5; "
                       + "spell plus=sequential Magic/Progression transaction; source hover title/body/icon=PASS; "
-                      + "college click=PASS. Play Mode remains open on the Magic screen for visual proof.");
+                      + "college click=PASS; TIG grayscale Earth/Conveyance=PASS. "
+                      + "Play Mode remains open on the Magic screen for visual proof.");
         }
 
         private static Button FindButton(Component root, string name)
             => root.GetComponentsInChildren<SourceUiButton>(true).Single(value => value.name == name).Button;
+
+        private static SourceUiImage[] SpellIcons(RetailCharacterSheetView view)
+            => view.GetComponentsInChildren<SourceUiImage>(true)
+                .Where(value => value.name.StartsWith("Spell ", StringComparison.Ordinal)
+                                && value.name.EndsWith(" Icon", StringComparison.Ordinal))
+                .OrderBy(value => value.name)
+                .ToArray();
 
         private static T Require<T>(T value, string description) where T : class
             => value ?? throw new InvalidOperationException("Missing " + description + ".");

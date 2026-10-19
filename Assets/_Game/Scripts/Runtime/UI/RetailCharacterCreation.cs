@@ -909,21 +909,24 @@ namespace Arcanum.Runtime.UI
                     SpellCollegeIcons[index], SpellCollegePositions[index],
                     () => { _selectedCollege = college; _editorSignature = int.MinValue; Synchronize(); }, true);
                 button.SetSelected(college == _selectedCollege);
+                BindSpellCollegeHint(button.gameObject, college);
             }
             int rank = draft.GetSpellRank(_selectedCollege);
-            AddText("College Name", _editorPanel, new Rect(18f, 69f, 205f, 19f),
-                _session.SpellPresentation?.CollegeName(_selectedCollege) ?? string.Empty, 27, SourceBlue);
             for (int level = 0; level < 5; level++)
             {
                 int spellId = (int)_selectedCollege * 5 + level;
-                Color tint = level < rank ? SourceWhite : level == rank ? SourceYellow : SourceGray;
-                AddSourceImageTopLeft($"Spell {spellId} Icon", _editorPanel,
+                Color tint = level < rank ? MagicWhite : level == rank ? SourceYellow : MagicGray;
+                SourceUiImage icon = AddSourceImageTopLeft($"Spell {spellId} Icon", _editorPanel,
                     SpellPresentationCatalog.IconSourceId(spellId), new Vector2(18f, 82f + 48f * level));
+                if (level >= rank)
+                    icon.SetPaletteTransform(SourceUiPaletteTransform.TigGrayscale);
                 AddText($"Spell {level + 1}", _editorPanel, new Rect(59f, 76f + 48f * level, 160f, 18f),
-                    _session.SpellPresentation?.SpellName(spellId) ?? string.Empty, 27, tint);
+                    _session.SpellPresentation?.SpellName(spellId) ?? string.Empty,
+                    SourceUiBitmapText.Morph15FontSourceId, tint);
                 AddText($"Spell Level {level + 1}", _editorPanel,
                     new Rect(59f, 97f + 48f * level, 160f, 14f),
-                    $"Minimum Level: {SpellPresentationCatalog.MinimumLevel(level + 1)}", 28, tint);
+                    $"Minimum Level: {SpellPresentationCatalog.MinimumLevel(level + 1)}",
+                    SourceUiBitmapText.Pork12FontSourceId, tint);
             }
             if (rank < 5)
                 AddSourceButtonTopLeft("Increase Spell", _editorPanel, 647,

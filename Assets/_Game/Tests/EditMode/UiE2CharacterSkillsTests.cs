@@ -292,7 +292,7 @@ namespace Arcanum.Formats.Tests
             }
 
             SourceUiBitmapText[] text = _view.GetComponentsInChildren<SourceUiBitmapText>(true);
-            Assert.That(text.Single(value => value.name == "College Name").Text, Is.EqualTo("Earth Source"));
+            Assert.That(text.Any(value => value.name == "College Name"), Is.False);
             for (int rank = 1; rank <= 5; rank++)
             {
                 int spellId = (int)SpellCollege.Earth * 5 + rank - 1;
@@ -301,11 +301,40 @@ namespace Arcanum.Formats.Tests
                 Assert.That(text.Single(value => value.name == $"Spell {rank}").FontSourceId, Is.EqualTo(27));
                 Assert.That(text.Single(value => value.name == $"Spell Level {rank}").Text,
                     Is.EqualTo($"Minimum Level: {SpellPresentationCatalog.MinimumLevel(rank)}"));
-                Assert.That(text.Single(value => value.name == $"Spell Level {rank}").FontSourceId, Is.EqualTo(28));
+                Assert.That(text.Single(value => value.name == $"Spell Level {rank}").FontSourceId,
+                    Is.EqualTo(SourceUiBitmapText.Pork12FontSourceId));
                 Assert.That(_view.GetComponentsInChildren<SourceUiImage>(true)
                     .Single(value => value.name == $"Spell {spellId} Icon").Key.SourceId,
                     Is.EqualTo(SpellPresentationCatalog.IconSourceId(spellId)));
             }
+        }
+
+        [Test]
+        public void RuntimeMagicUsesExactTigGrayscalePaletteForUnavailableSpellIconsAcrossColleges()
+        {
+            _session.Magic.SetKnownCollegeRank(_pc, SpellCollege.Earth, 2);
+            Assert.That(_controller.Open(GameUiScreen.Magic), Is.True);
+            _view.SelectCollege(SpellCollege.Earth);
+            _view.Synchronize();
+
+            SourceUiImage[] earth = _view.GetComponentsInChildren<SourceUiImage>(true);
+            for (int level = 0; level < 2; level++)
+            {
+                int spellId = (int)SpellCollege.Earth * 5 + level;
+                Assert.That(earth.Single(value => value.name == $"Spell {spellId} Icon").PaletteTransform,
+                    Is.EqualTo(SourceUiPaletteTransform.None));
+            }
+            for (int level = 2; level < 5; level++)
+            {
+                int spellId = (int)SpellCollege.Earth * 5 + level;
+                AssertTigGrayscale(earth.Single(value => value.name == $"Spell {spellId} Icon"));
+            }
+
+            _view.SelectCollege(SpellCollege.Conveyance);
+            _view.Synchronize();
+            SourceUiImage[] conveyance = _view.GetComponentsInChildren<SourceUiImage>(true);
+            for (int level = 0; level < 5; level++)
+                AssertTigGrayscale(conveyance.Single(value => value.name == $"Spell {level} Icon"));
         }
 
         [Test]
@@ -343,6 +372,27 @@ namespace Arcanum.Formats.Tests
 
             Assert.That(_session.Magic.GetKnownCollegeRank(_pc, SpellCollege.Earth), Is.EqualTo(knownRank));
             Assert.That(_session.Progression.GetUnspentCharacterPoints(_pc), Is.EqualTo(characterPoints));
+        }
+
+        private static void AssertTigGrayscale(SourceUiImage icon)
+        {
+            Assert.That(icon.PaletteTransform, Is.EqualTo(SourceUiPaletteTransform.TigGrayscale), icon.name);
+            Assert.That(icon.Image.color, Is.EqualTo(Color.white), icon.name);
+            Color32[] source = icon.CurrentAsset.Texture.GetPixels32();
+            Color32[] presented = icon.Image.sprite.texture.GetPixels32();
+            Assert.That(presented, Has.Length.EqualTo(source.Length), icon.name);
+            bool foundChromaticSourcePixel = false;
+            for (int index = 0; index < source.Length; index++)
+            {
+                Color32 input = source[index];
+                Color32 output = presented[index];
+                if (input.a != 0 && (input.r != input.g || input.g != input.b))
+                    foundChromaticSourcePixel = true;
+                byte expected = (byte)((input.r * 77u + input.g * 150u + input.b * 28u) / 255u);
+                Assert.That(output, Is.EqualTo(new Color32(expected, expected, expected, input.a)),
+                    $"{icon.name} pixel {index}");
+            }
+            Assert.That(foundChromaticSourcePixel, Is.True, icon.name);
         }
 
         [Test]

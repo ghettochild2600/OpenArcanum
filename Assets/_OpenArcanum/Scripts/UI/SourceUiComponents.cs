@@ -5,6 +5,13 @@ using UnityEngine.UI;
 
 namespace OpenArcanum.UI
 {
+    /// <summary>Source palette operations applied before a UI frame is presented.</summary>
+    public enum SourceUiPaletteTransform
+    {
+        None,
+        TigGrayscale,
+    }
+
     /// <summary>Scene lifetime owner for a production skin resolver. It carries presentation resources only.</summary>
     [DisallowMultipleComponent]
     public sealed class SourceUiRuntime : MonoBehaviour
@@ -52,9 +59,13 @@ namespace OpenArcanum.UI
         private Image _image;
         private UiSkinResolver _resolver;
         private bool _subscribed;
+        private SourceUiPaletteTransform _paletteTransform;
+        private Texture2D _paletteTexture;
+        private Sprite _paletteSprite;
 
         public UiAssetKey Key => asset.Key;
         public UiResolvedAsset CurrentAsset { get; private set; }
+        public SourceUiPaletteTransform PaletteTransform => _paletteTransform;
         public Image Image => _image != null ? _image : (_image = GetComponent<Image>());
 
         private void OnEnable()
@@ -72,7 +83,11 @@ namespace OpenArcanum.UI
         }
 
         private void OnDisable() => Unsubscribe();
-        private void OnDestroy() => Unsubscribe();
+        private void OnDestroy()
+        {
+            Unsubscribe();
+            ReleasePaletteResources();
+        }
 
         public void Bind(UiSkinResolver resolver, UiAssetKey key, bool useNativeLogicalSize = false)
         {
@@ -91,8 +106,16 @@ namespace OpenArcanum.UI
             Refresh();
         }
 
+        public void SetPaletteTransform(SourceUiPaletteTransform transform)
+        {
+            if (_paletteTransform == transform) return;
+            _paletteTransform = transform;
+            Refresh();
+        }
+
         public bool Refresh()
         {
+            ReleasePaletteResources();
             if (_resolver == null || !_resolver.TryResolve(asset.Key, out UiResolvedAsset resolved))
             {
                 CurrentAsset = null;
@@ -101,13 +124,60 @@ namespace OpenArcanum.UI
             }
 
             CurrentAsset = resolved;
-            Image.sprite = resolved.Sprite;
+            Image.sprite = _paletteTransform == SourceUiPaletteTransform.TigGrayscale
+                ? CreateTigGrayscaleSprite(resolved)
+                : resolved.Sprite;
             // Tint belongs to the presenter (bitmap glyph coverage, disabled icons, status overlays).
             // Refreshing or re-enabling the source asset must not silently erase that presentation state.
             ApplyScalePolicy(SourceUiScaleMetadataCatalog.Get(resolved.Key.SourceId));
             if (applyNativeLogicalSize)
                 ((RectTransform)transform).sizeDelta = resolved.LogicalSize;
             return true;
+        }
+
+        private Sprite CreateTigGrayscaleSprite(UiResolvedAsset resolved)
+        {
+            Color32[] pixels = resolved.Texture.GetPixels32();
+            for (int index = 0; index < pixels.Length; index++)
+            {
+                Color32 pixel = pixels[index];
+                byte gray = (byte)((pixel.r * 77u + pixel.g * 150u + pixel.b * 28u) / 255u);
+                pixels[index] = new Color32(gray, gray, gray, pixel.a);
+            }
+
+            _paletteTexture = new Texture2D(
+                resolved.Texture.width,
+                resolved.Texture.height,
+                TextureFormat.RGBA32,
+                mipChain: false,
+                linear: false)
+            {
+                name = $"{resolved.Texture.name}_TigGrayscale",
+                filterMode = resolved.Texture.filterMode,
+                wrapMode = resolved.Texture.wrapMode,
+                anisoLevel = resolved.Texture.anisoLevel,
+            };
+            _paletteTexture.SetPixels32(pixels);
+            _paletteTexture.Apply(updateMipmaps: false, makeNoLongerReadable: false);
+
+            _paletteSprite = Sprite.Create(
+                _paletteTexture,
+                new Rect(0f, 0f, _paletteTexture.width, _paletteTexture.height),
+                resolved.Pivot,
+                resolved.Sprite.pixelsPerUnit,
+                extrude: 0,
+                meshType: SpriteMeshType.FullRect,
+                border: resolved.Sprite.border);
+            _paletteSprite.name = $"{resolved.Sprite.name}_TigGrayscale";
+            return _paletteSprite;
+        }
+
+        private void ReleasePaletteResources()
+        {
+            RetailUiAssetResolver.Destroy(_paletteSprite);
+            RetailUiAssetResolver.Destroy(_paletteTexture);
+            _paletteSprite = null;
+            _paletteTexture = null;
         }
 
         private void ApplyScalePolicy(SourceUiScaleMetadata metadata)

@@ -919,11 +919,56 @@ namespace Arcanum.Formats.Tests
             Assert.That(_view.EditorPage, Is.EqualTo(RetailCreationEditorPage.Magic));
             Invoke("Increase Spell");
             Assert.That(_controller.CreationDraft.GetSpellRank(SpellCollege.Conveyance), Is.EqualTo(1));
-            Assert.That(Text("College Name").Text, Is.EqualTo("Conveyance Source"));
+            Assert.That(_view.GetComponentsInChildren<SourceUiBitmapText>(true)
+                .Any(value => value.name == "College Name"), Is.False);
             Assert.That(Text("Spell 1").Text, Is.EqualTo("Source Spell 0"));
+            Assert.That(Text("Spell 1").FontSourceId, Is.EqualTo(SourceUiBitmapText.Morph15FontSourceId));
             Assert.That(Text("Spell Level 1").Text, Is.EqualTo("Minimum Level: 1"));
+            Assert.That(Text("Spell Level 1").FontSourceId, Is.EqualTo(SourceUiBitmapText.Pork12FontSourceId));
             Assert.That(_view.GetComponentsInChildren<SourceUiImage>(true)
                 .Single(value => value.name == "Spell 0 Icon").Key.SourceId, Is.EqualTo(12));
+
+            for (int index = 0; index < 16; index++)
+            {
+                string control = ((SpellCollege)index).ToString();
+                Hover(control, true);
+                Assert.That(_retail.TryReadMessage("mes/spell.mes", 500 + index,
+                    out string collegeName), Is.True, control);
+                Assert.That(_retail.TryReadMessage("mes/spell.mes", 8000 + index,
+                    out string collegeDescription), Is.True, control);
+                Assert.That(Text("Editor Message Title").Text, Is.EqualTo(collegeName.Trim()), control);
+                string projectedBody = Wrapped("Editor Message Body");
+                Assert.That(projectedBody, Is.Not.Empty, control);
+                Assert.That(NormalizeWhitespace(collegeDescription), Does.StartWith(projectedBody), control);
+                Assert.That(_view.GetComponentsInChildren<SourceUiImage>(true)
+                    .Single(value => value.name == "Editor Message Icon").Key.SourceId,
+                    Is.EqualTo(446 + index), control);
+                Assert.That(_view.SelectedCollege, Is.EqualTo(SpellCollege.Conveyance), control);
+                Hover(control, false);
+                Assert.That(Text("Editor Message Title").Text, Is.Empty, control);
+            }
+        }
+
+        [Test]
+        public void MagicPanelUsesExactTigGrayscalePaletteForUnavailableSpellIconsAcrossColleges()
+        {
+            _view.ContinueToEditor();
+            Invoke("Magic");
+            Invoke("Increase Spell");
+
+            SourceUiImage[] conveyance = _view.GetComponentsInChildren<SourceUiImage>(true);
+            Assert.That(conveyance.Single(value => value.name == "Spell 0 Icon").PaletteTransform,
+                Is.EqualTo(SourceUiPaletteTransform.None));
+            for (int level = 1; level < 5; level++)
+                AssertTigGrayscale(conveyance.Single(value => value.name == $"Spell {level} Icon"));
+
+            Invoke(nameof(SpellCollege.Earth));
+            SourceUiImage[] earth = _view.GetComponentsInChildren<SourceUiImage>(true);
+            for (int level = 0; level < 5; level++)
+            {
+                int spellId = (int)SpellCollege.Earth * 5 + level;
+                AssertTigGrayscale(earth.Single(value => value.name == $"Spell {spellId} Icon"));
+            }
         }
 
         [Test]
@@ -961,6 +1006,22 @@ namespace Arcanum.Formats.Tests
             Assert.That(Text("Schematic Components 1").Text,
                 Is.EqualTo("[Source Component 6001]+[Source Component 6101]"));
             Assert.That(Text("Schematic Components 1").Text, Does.Not.Match(@"\[\d+\]"));
+            for (int discipline = 0; discipline < 8; discipline++)
+            {
+                string control = ((TechnologyDiscipline)discipline).ToString();
+                Hover(control, true);
+                Assert.That(_retail.TryReadMessage("mes/tech.mes", discipline,
+                    out string disciplineName), Is.True, control);
+                Assert.That(_retail.TryReadMessage("mes/tech.mes", 16 + discipline,
+                    out string disciplineDescription), Is.True, control);
+                Assert.That(Text("Editor Message Title").Text, Is.EqualTo(disciplineName.Trim()), control);
+                string projectedBody = Wrapped("Editor Message Body");
+                Assert.That(projectedBody, Is.Not.Empty, control);
+                Assert.That(NormalizeWhitespace(disciplineDescription), Does.StartWith(projectedBody), control);
+                Assert.That(Text("Editor Message Requirement").Text, Is.Empty, control);
+                Hover(control, false);
+                Assert.That(Text("Editor Message Title").Text, Is.Empty, control);
+            }
             Hover("Schematic 1", true);
             Assert.That(Text("Editor Message Title").Text, Is.Not.Empty);
             Assert.That(Text("Editor Message Requirement").Text, Is.EqualTo("Minimum IN: 5"));
@@ -1089,6 +1150,31 @@ namespace Arcanum.Formats.Tests
                                 && value.gameObject.activeInHierarchy);
             Assert.That((Color32)glyph.color, Is.EqualTo(expected), text.name);
         }
+
+        private static void AssertTigGrayscale(SourceUiImage icon)
+        {
+            Assert.That(icon.PaletteTransform, Is.EqualTo(SourceUiPaletteTransform.TigGrayscale), icon.name);
+            Assert.That(icon.Image.color, Is.EqualTo(Color.white), icon.name);
+            Color32[] source = icon.CurrentAsset.Texture.GetPixels32();
+            Color32[] presented = icon.Image.sprite.texture.GetPixels32();
+            Assert.That(presented, Has.Length.EqualTo(source.Length), icon.name);
+            bool foundChromaticSourcePixel = false;
+            for (int index = 0; index < source.Length; index++)
+            {
+                Color32 input = source[index];
+                Color32 output = presented[index];
+                if (input.a != 0 && (input.r != input.g || input.g != input.b))
+                    foundChromaticSourcePixel = true;
+                byte expected = (byte)((input.r * 77u + input.g * 150u + input.b * 28u) / 255u);
+                Assert.That(output, Is.EqualTo(new Color32(expected, expected, expected, input.a)),
+                    $"{icon.name} pixel {index}");
+            }
+            Assert.That(foundChromaticSourcePixel, Is.True, icon.name);
+        }
+
+        private static string NormalizeWhitespace(string value)
+            => string.Join(" ", (value ?? string.Empty)
+                .Split((char[])null, System.StringSplitOptions.RemoveEmptyEntries));
 
         private static int TigBlendOverBlack(int tint, int coverage)
             => tint * coverage >> 8;

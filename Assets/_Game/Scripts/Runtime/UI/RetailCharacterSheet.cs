@@ -416,10 +416,6 @@ namespace Arcanum.Runtime.UI
             }
 
             int rank = _session.Magic.GetKnownCollegeRank(_controller.Player, _selectedCollege);
-            string collegeName = _session.SpellPresentation?.CollegeName(_selectedCollege) ?? string.Empty;
-            SourceUiBitmapText collegeTitle = AddText("College Name", _skillsPanel,
-                new Rect(18f, 69f, 205f, 19f), 27, SourceBlue);
-            SetCenteredText(collegeTitle, collegeName, SourceBlue);
             for (int level = 0; level < 5; level++)
             {
                 int spellId = (int)_selectedCollege * 5 + level;
@@ -427,13 +423,18 @@ namespace Arcanum.Runtime.UI
                 Color tint = learned ? SourceWhite : level == rank ? SourceYellow : SourceGray;
                 SourceUiImage icon = AddSourceImage($"Spell {spellId} Icon", _skillsPanel,
                     SpellPresentationCatalog.IconSourceId(spellId), new Rect(18f, 82f + 48f * level, 32f, 32f));
-                if (!learned) icon.Image.color = SourceGray;
+                if (!learned)
+                    icon.SetPaletteTransform(SourceUiPaletteTransform.TigGrayscale);
                 AddText($"Spell {level + 1}", _skillsPanel,
-                    new Rect(59f, 76f + 48f * level, 160f, 18f), 27, tint)
-                    .Bind(_resolver, _session.SpellPresentation?.SpellName(spellId) ?? string.Empty, tint, 27);
+                    new Rect(59f, 76f + 48f * level, 160f, 18f),
+                    SourceUiBitmapText.Morph15FontSourceId, tint)
+                    .Bind(_resolver, _session.SpellPresentation?.SpellName(spellId) ?? string.Empty,
+                        tint, SourceUiBitmapText.Morph15FontSourceId);
                 AddText($"Spell Level {level + 1}", _skillsPanel,
-                    new Rect(59f, 97f + 48f * level, 160f, 14f), 28, tint)
-                    .Bind(_resolver, $"Minimum Level: {SpellPresentationCatalog.MinimumLevel(level + 1)}", tint, 28);
+                    new Rect(59f, 97f + 48f * level, 160f, 14f),
+                    SourceUiBitmapText.Pork12FontSourceId, tint)
+                    .Bind(_resolver, $"Minimum Level: {SpellPresentationCatalog.MinimumLevel(level + 1)}",
+                        tint, SourceUiBitmapText.Pork12FontSourceId);
                 BindMagicSpellHint(AddHintArea($"Spell {spellId} Hover", _skillsPanel,
                     new Rect(18f, 73f + 48f * level, 199f, 39f)), spellId);
             }
