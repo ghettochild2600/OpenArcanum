@@ -148,6 +148,12 @@ namespace Arcanum.Runtime.UI
         private static readonly Color SourceYellow = new Color32(255, 210, 0, 255);
         private static readonly Color SourceBlue = new Color32(108, 155, 215, 255);
         private static readonly Color SourceGray = new Color32(135, 135, 135, 255);
+        private static readonly Color TechnologyWhite = new Color32(255, 255, 255, 255);
+        private static readonly Color TechnologyYellow = new Color32(255, 255, 0, 255);
+        private static readonly Color TechnologyBlue = new Color32(0, 0, 255, 255);
+        private static readonly Color TechnologyGray = new Color32(128, 128, 128, 255);
+        private static readonly Color MagicWhite = new Color32(255, 255, 255, 255);
+        private static readonly Color MagicGray = new Color32(128, 128, 128, 255);
         private static readonly CharacterAttribute[] Attributes =
         {
             CharacterAttribute.Strength, CharacterAttribute.Dexterity, CharacterAttribute.Constitution,
@@ -849,34 +855,37 @@ namespace Arcanum.Runtime.UI
                     TechnologyPositions[index],
                     () => { _selectedTechnology = discipline; _editorSignature = int.MinValue; Synchronize(); }, true);
                 button.SetSelected(discipline == _selectedTechnology);
+                BindTechnologyDisciplineHint(button.gameObject, discipline);
             }
             int rank = draft.GetTechnologyRank(_selectedTechnology);
             TechnologyDegree learnedDegree = (TechnologyDegree)rank;
             AddText("Technology Discipline Icon", _editorPanel, new Rect(17f, 69f, 18f, 19f),
-                ((char)('1' + (int)_selectedTechnology)).ToString(), 300, SourceWhite);
+                ((char)('1' + (int)_selectedTechnology)).ToString(), 300, TechnologyWhite);
             SourceUiBitmapText technologyName = AddText("Technology Name", _editorPanel,
-                new Rect(35f, 69f, 159f, 19f),
-                $"{Friendly(_selectedTechnology)} {Friendly(learnedDegree)}", 301, SourceWhite);
-            SetCenteredText(technologyName, technologyName.Text);
-            AddText("Technology Expertise", _editorPanel, new Rect(194f, 72f, 31f, 15f),
+                new Rect(35f, 69f, 166f, 19f),
+                $"{Friendly(_selectedTechnology)} {Friendly(learnedDegree)}", 301, TechnologyWhite);
+            SetSourceIntegerCenteredText(technologyName, technologyName.Text, 118f, TechnologyWhite);
+            AddText("Technology Expertise", _editorPanel, new Rect(204f, 72f, 31f, 15f),
                 _session.CharacterCreation.GetEffectiveTechnologyLevel(draft, _selectedTechnology).ToString(),
-                229, SourceBlue);
+                229, TechnologyBlue);
             IReadOnlyList<SchematicDefinition> schematics = _session.Crafting.ProjectBuiltIn(_selectedTechnology);
             for (int index = 0; index < schematics.Count; index++)
             {
                 SchematicDefinition schematic = schematics[index];
                 int degree = (int)schematic.BuiltInDegree.Value;
-                Color tint = degree <= rank ? SourceWhite : degree == rank + 1 ? SourceYellow : SourceGray;
+                Color tint = degree <= rank
+                    ? TechnologyWhite : degree == rank + 1 ? TechnologyYellow : TechnologyGray;
                 if (degree <= rank)
                     AddSourceImageTopLeft($"Degree {degree} Icon", _editorPanel,
                         TechnologyDegreeIcons[(int)_selectedTechnology], new Vector2(8f, 96f + 33f * index));
                 SourceUiBitmapText name = AddText($"Schematic {degree}", _editorPanel,
                     new Rect(46f, 94f + 33f * index, 175f, 16f),
-                    schematic.Name, 301, tint);
+                    schematic.Name, SourceUiBitmapText.Nick16FontSourceId, tint);
                 string first = _session.ResolvePrototypeDisplayName(schematic.ComponentOneAliases[0]);
                 string second = _session.ResolvePrototypeDisplayName(schematic.ComponentTwoAliases[0]);
                 SourceUiBitmapText components = AddText($"Schematic Components {degree}", _editorPanel,
-                    new Rect(46f, 109f + 33f * index, 175f, 14f), $"[{first}]+[{second}]", 483, tint);
+                    new Rect(46f, 109f + 33f * index, 175f, 14f), $"[{first}]+[{second}]",
+                    SourceUiBitmapText.Garmond9FontSourceId, tint);
                 BindTechnologyHint(name.gameObject, _selectedTechnology, (TechnologyDegree)degree);
                 BindTechnologyHint(components.gameObject, _selectedTechnology, (TechnologyDegree)degree);
             }
@@ -1111,6 +1120,40 @@ namespace Arcanum.Runtime.UI
             SourceHoverHintTarget hint = target.GetComponent<SourceHoverHintTarget>()
                                          ?? target.AddComponent<SourceHoverHintTarget>();
             hint.Bind(() => ShowTechnologyHint(discipline, degree), ClearHint);
+        }
+
+        private void BindTechnologyDisciplineHint(GameObject target, TechnologyDiscipline discipline)
+        {
+            SourceHoverHintTarget hint = target.GetComponent<SourceHoverHintTarget>()
+                                         ?? target.AddComponent<SourceHoverHintTarget>();
+            hint.Bind(() => ShowTechnologyDisciplineHint(discipline), ClearHint);
+        }
+
+        private void ShowTechnologyDisciplineHint(TechnologyDiscipline discipline)
+        {
+            int sourceIndex = (int)discipline;
+            string title = _resolver.Original.TryReadMessage("mes/tech.mes", sourceIndex,
+                out string sourceName) ? sourceName.Trim() : Friendly(discipline);
+            string body = _resolver.Original.TryReadMessage("mes/tech.mes", 16 + sourceIndex,
+                out string sourceDescription) ? sourceDescription.Trim() : string.Empty;
+            RebuildEditorMessage(title, body, string.Empty, true);
+        }
+
+        private void BindSpellCollegeHint(GameObject target, SpellCollege college)
+        {
+            SourceHoverHintTarget hint = target.GetComponent<SourceHoverHintTarget>()
+                                         ?? target.AddComponent<SourceHoverHintTarget>();
+            hint.Bind(() => ShowSpellCollegeHint(college), ClearHint);
+        }
+
+        private void ShowSpellCollegeHint(SpellCollege college)
+        {
+            int sourceIndex = (int)college;
+            string title = _resolver.Original.TryReadMessage("mes/spell.mes", 500 + sourceIndex,
+                out string sourceName) ? sourceName.Trim() : Friendly(college);
+            string body = _resolver.Original.TryReadMessage("mes/spell.mes", 8000 + sourceIndex,
+                out string sourceDescription) ? sourceDescription.Trim() : string.Empty;
+            RebuildEditorMessage(title, body, string.Empty, true, 446 + sourceIndex);
         }
 
         private void ShowTechnologyHint(TechnologyDiscipline discipline, TechnologyDegree degree)
@@ -1507,9 +1550,14 @@ namespace Arcanum.Runtime.UI
             RebuildEditorMessage(message.Title, message.Body, string.Empty, false);
         }
 
-        private void RebuildEditorMessage(string title, string body, string requirement, bool showIcon)
+        private void RebuildEditorMessage(string title, string body, string requirement, bool showIcon,
+            int iconSourceId = RetailCharacterCreationLayout.FeedbackIconSourceId)
         {
-            if (_editorMessageIcon != null) _editorMessageIcon.gameObject.SetActive(showIcon);
+            if (_editorMessageIcon != null)
+            {
+                if (showIcon) _editorMessageIcon.SetKey(new UiAssetKey(iconSourceId));
+                _editorMessageIcon.gameObject.SetActive(showIcon);
+            }
             SetText(_editorMessageTitle, title ?? string.Empty);
             SetRightAlignedText(_editorMessageRequirement, requirement ?? string.Empty,
                 RetailCharacterCreationLayout.EditorMessageTitle,

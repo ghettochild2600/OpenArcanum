@@ -933,7 +933,26 @@ namespace Arcanum.Formats.Tests
             Invoke("Technology");
             Assert.That(_view.EditorPage, Is.EqualTo(RetailCreationEditorPage.Technology));
             Assert.That(Text("Technology Discipline Icon").FontSourceId, Is.EqualTo(300));
-            Assert.That(Text("Technology Name").FontSourceId, Is.EqualTo(301));
+            SourceUiBitmapText technologyName = Text("Technology Name");
+            Assert.That(technologyName.FontSourceId, Is.EqualTo(SourceUiBitmapText.Nick16FontSourceId));
+            Assert.That(((RectTransform)technologyName.transform).anchoredPosition,
+                Is.EqualTo(new Vector2(118 - technologyName.SourceMeasuredWidth / 2, -69)));
+            AssertGlyphTint(technologyName, new Color32(255, 255, 255, 255));
+            SourceUiBitmapText expertise = Text("Technology Expertise");
+            Assert.That(((RectTransform)expertise.transform).anchoredPosition, Is.EqualTo(new Vector2(204, -72)));
+            AssertGlyphTint(expertise, new Color32(0, 0, 255, 255));
+            SourceUiBitmapText nextName = Text("Schematic 1");
+            SourceUiBitmapText nextComponents = Text("Schematic Components 1");
+            SourceUiBitmapText unavailableName = Text("Schematic 2");
+            SourceUiBitmapText unavailableComponents = Text("Schematic Components 2");
+            Assert.That(nextName.FontSourceId, Is.EqualTo(SourceUiBitmapText.Nick16FontSourceId));
+            Assert.That(nextComponents.FontSourceId, Is.EqualTo(SourceUiBitmapText.Garmond9FontSourceId));
+            Assert.That(((RectTransform)nextName.transform).anchoredPosition, Is.EqualTo(new Vector2(46, -94)));
+            Assert.That(((RectTransform)nextComponents.transform).anchoredPosition, Is.EqualTo(new Vector2(46, -109)));
+            AssertGlyphTint(nextName, new Color32(255, 255, 0, 255));
+            AssertGlyphTint(nextComponents, new Color32(255, 255, 0, 255));
+            AssertGlyphTint(unavailableName, new Color32(128, 128, 128, 255));
+            AssertGlyphTint(unavailableComponents, new Color32(128, 128, 128, 255));
             Invoke("Increase Technology");
             Assert.That(_controller.CreationDraft.GetTechnologyRank(TechnologyDiscipline.Herbology), Is.EqualTo(1));
             Assert.That(Text("Technology Name").Text, Is.EqualTo("Herbology Novice"));
@@ -1065,7 +1084,9 @@ namespace Arcanum.Formats.Tests
 
         private static void AssertGlyphTint(SourceUiBitmapText text, Color32 expected)
         {
-            Image glyph = text.GetComponentsInChildren<Image>(true).First();
+            Image glyph = text.GetComponentsInChildren<Image>(true)
+                .First(value => value.GetComponent<SourceUiImage>() != null
+                                && value.gameObject.activeInHierarchy);
             Assert.That((Color32)glyph.color, Is.EqualTo(expected), text.name);
         }
 
@@ -1131,9 +1152,9 @@ namespace Arcanum.Formats.Tests
                 rules.Add(new(id, name.ToString()));
                 rules.Add(new(id + 1, description.ToString()));
                 rules.Add(new(id + 2, (300 + degree).ToString()));
-                rules.Add(new(id + 3, (6000 + degree).ToString()));
-                rules.Add(new(id + 4, (6100 + degree).ToString()));
-                rules.Add(new(id + 5, (6200 + degree).ToString()));
+                rules.Add(new(id + 3, (5980 + degree).ToString()));
+                rules.Add(new(id + 4, (6080 + degree).ToString()));
+                rules.Add(new(id + 5, (6180 + degree).ToString()));
                 rules.Add(new(id + 6, "1"));
                 text.Add(new(name, $"Herbology Schematic {degree}"));
                 text.Add(new(description, $"Description {degree}"));

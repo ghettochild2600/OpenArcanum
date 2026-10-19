@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Arcanum.Formats.Database;
 using Arcanum.Formats.Objects;
 using Arcanum.Formats.Text;
 using Arcanum.Formats.World;
@@ -52,9 +53,48 @@ namespace Arcanum.Formats.Tests
             Assert.That(catalog.TryGet(new SchematicId(4450), out SchematicDefinition value), Is.True);
             Assert.That((value.Name, value.Description, value.ArtNumber, value.ProductQuantity, value.Acquisition),
                 Is.EqualTo(("Electro-Armor", "Armor description", 99, 1, SchematicAcquisition.Found)));
-            Assert.That(value.ComponentOneAliases, Is.EqualTo(new[] { 15108, 15108, 15108 }));
-            Assert.That(value.ComponentTwoAliases, Is.EqualTo(new[] { 8075, 8083, 8088 }));
-            Assert.That(value.ProductAliases, Is.EqualTo(new[] { 8229, 8230, 8231 }));
+            Assert.That(value.ComponentOneAliases, Is.EqualTo(new[] { 15128, 15128, 15128 }));
+            Assert.That(value.ComponentTwoAliases, Is.EqualTo(new[] { 8095, 8103, 8108 }));
+            Assert.That(value.ProductAliases, Is.EqualTo(new[] { 8249, 8250, 8251 }));
+        }
+
+        [Test]
+        public void RetailBuiltInCatalogTranslatesEverySourceBasicPrototypeReference()
+        {
+            using var vfs = new DatVirtualFileSystem();
+            foreach (string file in new[]
+                     {
+                         "modules/Arcanum.dat", "arcanum1.dat", "arcanum2.dat", "arcanum3.dat", "arcanum4.dat",
+                     })
+            {
+                string archive = GameDataLocator.Find(file);
+                if (!string.IsNullOrEmpty(archive)) vfs.MountFile(archive);
+            }
+            Assert.That(vfs.Exists("rules/schematic.mes"), Is.True,
+                "the clean retail schematic source is required for this compatibility regression");
+            MesFile rules = MesReader.Read(vfs.ReadAllBytes("rules/schematic.mes"));
+            SchematicCatalog catalog = SchematicCatalog.FromMes(rules,
+                MesReader.Read(vfs.ReadAllBytes("mes/schematic_text.mes")));
+
+            for (int discipline = 0; discipline < 8; discipline++)
+            for (int degree = 1; degree <= 7; degree++)
+            {
+                int id = PhaseOneTechnologyCatalog.BuiltInSchematicId(
+                    (TechnologyDiscipline)discipline, (TechnologyDegree)degree);
+                Assert.That(catalog.TryGet(new SchematicId(id), out SchematicDefinition schematic), Is.True,
+                    $"missing source schematic {id}");
+                Assert.That(schematic.ComponentOneAliases,
+                    Is.EqualTo(ParseSourcePrototypeAliases(rules.Get(id + 3))), $"schematic {id} component one");
+                Assert.That(schematic.ComponentTwoAliases,
+                    Is.EqualTo(ParseSourcePrototypeAliases(rules.Get(id + 4))), $"schematic {id} component two");
+                Assert.That(schematic.ProductAliases,
+                    Is.EqualTo(ParseSourcePrototypeAliases(rules.Get(id + 5))), $"schematic {id} product");
+            }
+
+            Assert.That(catalog.TryGet(new SchematicId(3200), out SchematicDefinition pureOre), Is.True);
+            Assert.That(pureOre.ComponentOneAliases[0], Is.EqualTo(15106), "Iron Ore");
+            Assert.That(pureOre.ComponentTwoAliases[0], Is.EqualTo(15107), "Steel");
+            Assert.That(pureOre.ProductAliases[0], Is.EqualTo(15105), "Pure Ore");
         }
 
         [Test]
@@ -338,11 +378,28 @@ namespace Arcanum.Formats.Tests
         private void BindRecipe(int id, int first, int second, int product, string secondAliases = null,
             string productAliases = null, int quantity = 1)
         {
-            _session.BindCraftingSource(Catalog(id, "1", "2", "3", first.ToString(),
-                secondAliases ?? second.ToString(), productAliases ?? product.ToString(), quantity.ToString()));
+            _session.BindCraftingSource(Catalog(id, "1", "2", "3", SourceBasic(first).ToString(),
+                secondAliases == null ? SourceBasic(second).ToString() : SourceBasics(secondAliases),
+                productAliases == null ? SourceBasic(product).ToString() : SourceBasics(productAliases),
+                quantity.ToString()));
             AddProto(first); AddProto(second); AddProto(product);
             if (secondAliases != null) foreach (int value in secondAliases.Split(' ').Select(int.Parse)) AddProto(value);
             if (productAliases != null) foreach (int value in productAliases.Split(' ').Select(int.Parse)) AddProto(value);
+        }
+
+        private static int SourceBasic(int prototype)
+            => checked(prototype - SchematicCatalog.BasicPrototypeNumberOffset);
+
+        private static string SourceBasics(string prototypes)
+            => string.Join(" ", prototypes.Split(' ').Select(int.Parse).Select(SourceBasic));
+
+        private static int[] ParseSourcePrototypeAliases(string value)
+        {
+            int[] source = value.Split((char[])null, StringSplitOptions.RemoveEmptyEntries)
+                .Select(int.Parse)
+                .Select(number => checked(number + SchematicCatalog.BasicPrototypeNumberOffset))
+                .ToArray();
+            return Enumerable.Range(0, 3).Select(index => source[Math.Min(index, source.Length - 1)]).ToArray();
         }
 
         private static SchematicCatalog Catalog(int id, params string[] values)

@@ -557,9 +557,9 @@ namespace Arcanum.Formats.Tests
                 rules.Add(new KeyValuePair<int, string>(id, name.ToString()));
                 rules.Add(new KeyValuePair<int, string>(id + 1, description.ToString()));
                 rules.Add(new KeyValuePair<int, string>(id + 2, (700 + degree).ToString()));
-                rules.Add(new KeyValuePair<int, string>(id + 3, (6000 + degree).ToString()));
-                rules.Add(new KeyValuePair<int, string>(id + 4, (6100 + degree).ToString()));
-                rules.Add(new KeyValuePair<int, string>(id + 5, (6200 + degree).ToString()));
+                rules.Add(new KeyValuePair<int, string>(id + 3, (5980 + degree).ToString()));
+                rules.Add(new KeyValuePair<int, string>(id + 4, (6080 + degree).ToString()));
+                rules.Add(new KeyValuePair<int, string>(id + 5, (6180 + degree).ToString()));
                 rules.Add(new KeyValuePair<int, string>(id + 6, "1"));
                 text.Add(new KeyValuePair<int, string>(name,
                     $"{FriendlyDiscipline((TechnologyDiscipline)discipline)} Schematic {degree}"));
