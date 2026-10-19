@@ -17,8 +17,11 @@ namespace OpenArcanum.UI
     {
         public const string TigBitmapFontShaderName = "OpenArcanum/UI/TIG Bitmap Font";
         public const int Morph15FontSourceId = 27;
+        public const int Pork12FontSourceId = 28;
         public const int Flare12FontSourceId = 229;
         public const int Cloister18FontSourceId = 171;
+        public const int Nick16FontSourceId = 301;
+        public const int Garmond9FontSourceId = 483;
         public const int DefaultFontSourceId = 327;
 
         private static Material _tigBitmapFontMaterial;

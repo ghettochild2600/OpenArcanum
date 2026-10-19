@@ -352,8 +352,11 @@ namespace OpenArcanum.UI
 
         private static bool UsesSourceFontAlpha(int sourceId)
             => sourceId == SourceUiBitmapText.Morph15FontSourceId
+               || sourceId == SourceUiBitmapText.Pork12FontSourceId
                || sourceId == SourceUiBitmapText.Flare12FontSourceId
                || sourceId == SourceUiBitmapText.Cloister18FontSourceId
+               || sourceId == SourceUiBitmapText.Nick16FontSourceId
+               || sourceId == SourceUiBitmapText.Garmond9FontSourceId
                || sourceId == SourceUiBitmapText.DefaultFontSourceId;
 
         private static void ApplySourceFontAlpha(Texture2D texture)

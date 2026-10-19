@@ -190,7 +190,10 @@ namespace Arcanum.Formats.Tests
         }
 
         [TestCase(SourceUiBitmapText.Morph15FontSourceId)]
+        [TestCase(SourceUiBitmapText.Pork12FontSourceId)]
         [TestCase(SourceUiBitmapText.Flare12FontSourceId)]
+        [TestCase(SourceUiBitmapText.Nick16FontSourceId)]
+        [TestCase(SourceUiBitmapText.Garmond9FontSourceId)]
         public void SourceCharacterCreationFontsPreservePaletteCoverageAsAlpha(int sourceId)
         {
             Assert.That(_retail.TryResolve(new UiAssetKey(sourceId, frame: 'A' - 31),
