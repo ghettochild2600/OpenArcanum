@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Arcanum.Formats.Quest;
+using Arcanum.Formats.Text;
 
 namespace Arcanum.Runtime.Campaign
 {
@@ -23,6 +24,20 @@ namespace Arcanum.Runtime.Campaign
         }
     }
 
+    public readonly struct RumorJournalEntry
+    {
+        public int RumorId { get; }
+        public string Description { get; }
+        public QuestTimestamp Timestamp { get; }
+
+        internal RumorJournalEntry(int rumorId, string description, QuestTimestamp timestamp)
+        {
+            RumorId = rumorId;
+            Description = description ?? string.Empty;
+            Timestamp = timestamp;
+        }
+    }
+
     /// <summary>
     /// Presentation-independent logbook projection. Quest state and timestamps remain owned only by
     /// <see cref="CampaignStateService"/>; source prose remains owned only by <see cref="QuestLog"/>.
@@ -31,6 +46,8 @@ namespace Arcanum.Runtime.Campaign
     {
         private readonly CampaignStateService _campaign;
         private QuestLog _source;
+        private MesFile _rumors;
+        private MesFile _dumbRumors;
 
         public bool HasSource => _source != null;
 
@@ -38,6 +55,26 @@ namespace Arcanum.Runtime.Campaign
             => _campaign = campaign ?? throw new ArgumentNullException(nameof(campaign));
 
         public void BindSource(QuestLog source) => _source = source ?? throw new ArgumentNullException(nameof(source));
+
+        public void BindRumorSource(MesFile normal, MesFile dumb)
+        {
+            _rumors = normal ?? throw new ArgumentNullException(nameof(normal));
+            _dumbRumors = dumb;
+        }
+
+        public IReadOnlyList<RumorJournalEntry> ProjectRumors(bool lowIntelligence)
+        {
+            var result = new List<RumorJournalEntry>();
+            MesFile source = lowIntelligence && _dumbRumors != null ? _dumbRumors : _rumors;
+            if (source == null) return result;
+            foreach (int rumor in _campaign.KnownRumors)
+            {
+                string text = source.Get(20 * rumor);
+                if (!string.IsNullOrWhiteSpace(text))
+                    result.Add(new RumorJournalEntry(rumor, text, _campaign.GetRumorTimestamp(rumor)));
+            }
+            return result;
+        }
 
         public bool TryProject(int questId, bool lowIntelligence, out QuestJournalEntry entry)
         {

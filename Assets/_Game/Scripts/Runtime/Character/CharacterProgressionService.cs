@@ -48,19 +48,6 @@ namespace Arcanum.Runtime.Character
 
         private readonly CharacterStatService _characters;
         private readonly Dictionary<ArcanumObjectId, PersistentCharacterProgressionState> _states = new();
-        private readonly Dictionary<ArcanumObjectId, Dictionary<string, SkillModifier>> _skillModifiers = new();
-
-        private readonly struct SkillModifier
-        {
-            public CharacterSkill Skill { get; }
-            public int Amount { get; }
-
-            public SkillModifier(CharacterSkill skill, int amount)
-            {
-                Skill = skill;
-                Amount = amount;
-            }
-        }
 
         public IReadOnlyDictionary<ArcanumObjectId, PersistentCharacterProgressionState> States => _states;
         public event Action<ArcanumObjectId> LevelChanged;
@@ -91,6 +78,7 @@ namespace Arcanum.Runtime.Character
         {
             if (state == null) throw new ArgumentNullException(nameof(state));
             _states.Add(state.Identity, state);
+            SyncTrainingContributors(state);
         }
 
         public bool TryGetLevel(ArcanumObjectId identity, out int level)
@@ -109,6 +97,7 @@ namespace Arcanum.Runtime.Character
         public int GetUnspentCharacterPoints(ArcanumObjectId identity) => Get(identity).UnspentCharacterPoints;
 
         internal void SpendCharacterPoint(ArcanumObjectId identity) => Get(identity).SpendCharacterPoint();
+        internal void RefundCharacterPoint(ArcanumObjectId identity) => Get(identity).RefundCharacterPoint();
 
         public static int GetExperienceForLevel(int level)
         {
@@ -139,27 +128,22 @@ namespace Arcanum.Runtime.Character
 
         /// <summary>Registers one inspectable non-base skill modifier owned by another runtime system.</summary>
         public void SetEffectModifier(ArcanumObjectId identity, string effectIdentity,
-            CharacterSkill skill, int amount)
+            CharacterSkill skill, int amount, CharacterContributorDomain domain = CharacterContributorDomain.Other,
+            int sourceId = 0)
         {
             _ = Get(identity);
             CharacterSkillRules.ValidateSkill(skill);
             if (string.IsNullOrWhiteSpace(effectIdentity))
                 throw new ArgumentException("Effect identity is required.", nameof(effectIdentity));
-            if (!_skillModifiers.TryGetValue(identity, out Dictionary<string, SkillModifier> modifiers))
-                _skillModifiers.Add(identity,
-                    modifiers = new Dictionary<string, SkillModifier>(StringComparer.Ordinal));
-            if (modifiers.ContainsKey(effectIdentity))
-                throw new InvalidOperationException($"Character skill effect {effectIdentity} is already applied to {identity}.");
-            modifiers.Add(effectIdentity, new SkillModifier(skill, amount));
+            _characters.Contributors.SetOwnerContributors(identity, effectIdentity, new[]
+            {
+                new CharacterContributor(effectIdentity, domain, sourceId, effectIdentity,
+                    CharacterContributorTarget.Skill(skill), CharacterContributorOperation.Add, amount),
+            });
         }
 
         public bool RemoveEffectModifier(ArcanumObjectId identity, string effectIdentity)
-        {
-            if (!_skillModifiers.TryGetValue(identity, out Dictionary<string, SkillModifier> modifiers)
-                || !modifiers.Remove(effectIdentity)) return false;
-            if (modifiers.Count == 0) _skillModifiers.Remove(identity);
-            return true;
-        }
+            => _characters.Contributors.RemoveOwner(identity, effectIdentity);
 
         public SkillTrainingLevel GetTrainingLevel(ArcanumObjectId identity, CharacterSkill skill)
         {
@@ -218,6 +202,58 @@ namespace Arcanum.Runtime.Character
             return SkillIncreaseResult.Success;
         }
 
+        /// <summary>
+        /// Applies the source active-character-editor primary-stat transaction. Runtime accepted baselines are
+        /// supplied by the UI session that opened the editor; this authority owns point spending and prerequisite
+        /// validation, so presentation cannot partially mutate either domain.
+        /// </summary>
+        public RuntimeCharacterAdjustmentResult AdjustAttribute(ArcanumObjectId identity,
+            CharacterAttribute attribute, int delta, int acceptedBase)
+        {
+            CharacterAttributeRules.ValidateAttribute(attribute);
+            if (delta is not (-1 or 1)) throw new ArgumentOutOfRangeException(nameof(delta));
+            PersistentCharacterProgressionState progression = Get(identity);
+            PersistentCharacterState character = _characters.Get(identity);
+            if (character.ObjectType != ObjectType.Pc) return RuntimeCharacterAdjustmentResult.ReadOnly;
+            int current = character.GetBase(attribute);
+            if (delta > 0)
+            {
+                if (current >= CharacterAttributeSet.SourceMaximumFor(character.Race, attribute))
+                    return RuntimeCharacterAdjustmentResult.MaximumValue;
+                if (progression.UnspentCharacterPoints < 1)
+                    return RuntimeCharacterAdjustmentResult.InsufficientCharacterPoints;
+                _characters.SetBaseAttribute(identity, attribute, current + 1);
+                progression.SpendCharacterPoint();
+                return RuntimeCharacterAdjustmentResult.Success;
+            }
+
+            if (current <= acceptedBase) return RuntimeCharacterAdjustmentResult.AcceptedBaseline;
+            int prospectiveEffective = _characters.GetEffectiveAttributeForBase(identity, attribute, current - 1);
+            foreach (CharacterSkill skill in CharacterSkillRules.AllSkills)
+            {
+                if (CharacterSkillRules.GoverningAttribute(skill) != attribute) continue;
+                int rawRank = checked(GetBaseSkillRank(identity, skill) + GetSkillModifier(identity, skill));
+                if (rawRank > CharacterSkillRules.MaximumRankForAttribute(prospectiveEffective))
+                    return RuntimeCharacterAdjustmentResult.DependentSkillPrerequisite;
+            }
+            _characters.SetBaseAttribute(identity, attribute, current - 1);
+            progression.RefundCharacterPoint();
+            return RuntimeCharacterAdjustmentResult.Success;
+        }
+
+        /// <summary>Refunds only points purchased after the current source editor session was accepted.</summary>
+        public RuntimeCharacterAdjustmentResult DecreaseSkill(ArcanumObjectId identity, CharacterSkill skill,
+            int acceptedPurchasedPoints)
+        {
+            CharacterSkillRules.ValidateSkill(skill);
+            PersistentCharacterProgressionState state = Get(identity);
+            if (state.ObjectType != ObjectType.Pc) return RuntimeCharacterAdjustmentResult.ReadOnly;
+            if (state.GetPurchasedPoints(skill) <= acceptedPurchasedPoints)
+                return RuntimeCharacterAdjustmentResult.AcceptedBaseline;
+            state.DecreaseSkill(skill);
+            return RuntimeCharacterAdjustmentResult.Success;
+        }
+
         public TrainingAssignmentResult SetTrainingLevel(ArcanumObjectId identity, CharacterSkill skill,
             SkillTrainingLevel training)
         {
@@ -225,6 +261,7 @@ namespace Arcanum.Runtime.Character
             if (result != TrainingAssignmentResult.Success) return result;
             PersistentCharacterProgressionState state = Get(identity);
             state.SetTraining(skill, training);
+            SyncTrainingContributor(state, skill);
             return TrainingAssignmentResult.Success;
         }
 
@@ -267,18 +304,13 @@ namespace Arcanum.Runtime.Character
                     {
                         state.SetProgression(pair.Value.Experience, pair.Value.Level, pair.Value.Unspent);
                         state.RestoreSkills(pair.Value.PurchasedPoints, pair.Value.Training);
+                        service.SyncTrainingContributors(state);
                     }
             }
         }
 
         private int GetSkillModifier(ArcanumObjectId identity, CharacterSkill skill)
-        {
-            int amount = 0;
-            if (_skillModifiers.TryGetValue(identity, out Dictionary<string, SkillModifier> modifiers))
-                foreach (SkillModifier modifier in modifiers.Values)
-                    if (modifier.Skill == skill) amount = checked(amount + modifier.Amount);
-            return amount;
-        }
+            => _characters.Contributors.Evaluate(identity, CharacterContributorTarget.Skill(skill), 0);
 
         private readonly struct ProgressionValues
         {
@@ -313,7 +345,32 @@ namespace Arcanum.Runtime.Character
             }
             var state = new PersistentCharacterProgressionState(identity, objectType, prototypeNumber, source);
             _states.Add(identity, state);
+            SyncTrainingContributors(state);
             return state;
+        }
+
+        private void SyncTrainingContributors(PersistentCharacterProgressionState state)
+        {
+            foreach (CharacterSkill skill in CharacterSkillRules.AllSkills)
+                SyncTrainingContributor(state, skill);
+        }
+
+        private void SyncTrainingContributor(PersistentCharacterProgressionState state, CharacterSkill skill)
+        {
+            string owner = $"training:{(int)skill}";
+            if (skill != CharacterSkill.Persuasion
+                || state.GetStoredTraining(skill) < SkillTrainingLevel.Expert)
+            {
+                _characters.Contributors.SetOwnerContributors(state.Identity, owner,
+                    Array.Empty<CharacterContributor>());
+                return;
+            }
+            _characters.Contributors.SetOwnerContributors(state.Identity, owner, new[]
+            {
+                new CharacterContributor(owner, CharacterContributorDomain.Training, (int)skill,
+                    "training:persuasion:maximum-followers", CharacterContributorTarget.DerivedStat(
+                        CharacterDerivedStat.MaximumFollowers), CharacterContributorOperation.Add, 1),
+            });
         }
     }
 }

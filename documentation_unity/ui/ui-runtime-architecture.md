@@ -66,6 +66,22 @@ hit geometry.
 `SourceUiPresentationRoot` creates separate World, HUD, Modal, Dialogue, Tooltip, and Cursor layers. It owns no
 screen/modal state. Later views choose layers while their existing controllers remain authoritative.
 
+### Partial Main Menu window composition
+
+Character Creation proves a distinct source-window composition that must not be flattened into the uniform logical
+surface above. Retail partial Main Menu screens create an independent 800 x 41 top cover (ID 336), an 800 x 400
+center content window, and an independent 800 x 159 bottom cover (ID 335). `MainMenuButtonInfo.flags & 0x1` means the
+button is owned by one of the bottom-cover windows; a clear flag means it is owned by the center window and its y is
+converted from the partial window's source y 41.
+
+The shared native-pixel placement policy horizontally centers all three regions, top-anchors the top cover,
+positions the center at `41 + (height - 600) / 2`, and bottom-anchors the bottom cover. This is the proven
+retail/High Resolution Patch target used by New Character, Character Editor, and Pick Character. At 800 x 600 the
+regions join; taller displays intentionally leave world/black gaps. Source IDs and native dimensions stay separate,
+and controls must be direct children of their source owner so visual rebuilds cannot change hit ownership. The
+read-only source audit identifies Load Game, Save Game, New Character, Pregenerated Character, Character Editor, and
+Shopping as `flags & 0x1` consumers; only the Character Creation/Pick Character family is reconstructed here.
+
 ## Common presentation components
 
 - `SourceUiImage` binds one key, applies native logical sizing/aspect, and refreshes on skin invalidation.
@@ -101,7 +117,8 @@ art and is deleted after validation. No fixture or production replacement was ad
 Physical Play Mode used the production M12C placeholder presenter and real mounted retail data. It resolved:
 
 - ID 137 `lilgrnbut`, 23 x 23 button;
-- ID 3 `intrface`, 800 x 600 HUD frame;
+- IDs 184/185 `intbotom`/`inttop`, the source gameplay HUD windows (ID 3 was only a resolvable legacy candidate in
+  this early UI-A smoke proof and is not runtime HUD authority);
 - ID 11, 24 x 24 icon and independent frames;
 - ID 238, 11 x 5 scrollbar cap;
 - ID 1, 16 x 22 cursor with source hotspot.
@@ -129,23 +146,24 @@ See [`ui-b-main-menu-reconstruction.md`](ui-b-main-menu-reconstruction.md).
 
 ## UI-C production consumer
 
-`RetailGameplayHudView` is attached once to the existing `ProductionGameUiPresenter`. It resolves retail ID 3 as the
-complete alpha-backed 800 x 600 composition, IDs 20/18/19 for the two source vials, ID 354 for the message lens, ID 27
-for dynamic bitmap text, the source management/combat button families, and the ten source quick-slot backgrounds. It
-projects the same M12C/M8I state and sends commands through the same controller; it owns no vitality, equipment,
-combat, shortcut, modal, or screen state.
+`RetailGameplayHudView` is attached once to the existing `ProductionGameUiPresenter`. UI-C.2 resolves retail ID 185
+as the native 800 x 41 centered/top window and ID 184 as the native 800 x 159 centered/bottom window. IDs 20/18/19
+supply the two source vials, ID 354 supplies the message lens, ID 27 supplies dynamic bitmap text, and the existing
+source management/combat and quick-slot families remain registered to their owning window. It projects the same
+M12C/M8I state and sends commands through the same controller; it owns no vitality, equipment, combat, shortcut,
+modal, or screen state. ID 3 is not active production authority.
 
-The camera remains full-screen behind the transparent source composition. Only the real top and bottom interface
-bands block world input, so the middle aperture and widescreen side world remain interactive. The persistent
+The camera remains full-screen behind the two source windows. Only their native physical rectangles block world
+input, so the world between and around them remains interactive. The persistent
 EventSystem is parented outside the transient Main Menu canvas. Source-view availability suppresses the old generic
 HUD only; every management modal remains on its existing authority and presentation path.
 
-UI-C passed 33/33 focused tests. Directly affected UI-A, M12C, M8I, Player Navigation, keyboard, and UI-B regressions
-passed 23/23, 18/18, 17/17, 21/21, 23/23, and 22/22. The complete EditMode suite passed 1169/1169. Physical Play Mode
-proved fresh crash-site New Game, source-vial/projection state, the authentic Inventory route, keyboard quick-slot
-activation, live combat state, world click-to-move through the aperture, generated exact-4x Enhanced selection,
-Original fallback/return, 800 x 600/1080p/1440p/4K mapping, and unique presenter/EventSystem lifetime. Compilation
-was clean and final Console was 0/0/0. See
+UI-C.2 passed 42/42 focused tests. Directly affected M12C, Player Navigation, and keyboard regressions passed 18/18,
+21/21, and 23/23; UI-A, UI-B, and M8I were not rerun because their shared mapping, Main Menu runtime, and combat HUD
+routing did not change. The complete EditMode suite passed 1178/1178. Physical Play Mode proved fresh crash-site New
+Game, native source windows, source-vial/projection state, the authentic Inventory route, world pointer routing,
+generated exact-4x strip selection, Original fallback/return, 800 x 600/1024 x 768/1080p/1440p/4K positioning, and
+unique presenter/EventSystem lifetime. Compilation was clean and final Console was 0/0/0. See
 [`ui-c-gameplay-hud-reconstruction.md`](ui-c-gameplay-hud-reconstruction.md).
 
 ## Exact UI-D boundary

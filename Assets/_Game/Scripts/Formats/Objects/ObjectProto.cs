@@ -234,6 +234,109 @@ namespace Arcanum.Formats.Objects
             LightAid = lightAid;
             LightColor = lightColor;
         }
+
+        /// <summary>
+        /// Reconstructs one engine-owned PC basic prototype. Retail creates these entries in <c>proto.c</c>, so
+        /// unlike authored overrides they have no required loose <c>data/proto/*.pro</c> file.
+        /// </summary>
+        public static ObjectProtoInfo CreateEngineOwnedPc(int protoNumber, uint currentArtId, int portrait,
+            int gender, int race, int age = 20)
+        {
+            const int sourceStatCount = 28;
+            const int levelSlot = 17;
+            const int experienceSlot = 18;
+            const int unspentPointsSlot = 21;
+            const int ageSlot = 25;
+            const int genderSlot = 26;
+            const int raceSlot = 27;
+            var stats = new int[sourceStatCount];
+            for (int index = 0; index < 8; index++) stats[index] = 8;
+            stats[levelSlot] = 1;
+            stats[experienceSlot] = 0;
+            stats[unspentPointsSlot] = 0;
+            stats[ageSlot] = age;
+            stats[genderSlot] = gender;
+            stats[raceSlot] = race;
+            return new ObjectProtoInfo(protoNumber, ObjectType.Pc, currentArtId, description: protoNumber)
+            {
+                StatBase = stats,
+                BasicSkills = new int[12],
+                TechSkills = new int[4],
+                SpellTech = new int[25],
+                Resistances = new int[5],
+                Portrait = portrait,
+            };
+        }
+
+        /// <summary>
+        /// Reconstructs the source base prototypes used by new-character inventory generation. Retail creates
+        /// these records in <c>proto.c</c>; consequently a clean install has no loose <c>data/proto/*.pro</c>
+        /// override for the resolver to read.
+        /// </summary>
+        public static ObjectProtoInfo CreateEngineOwnedStartingItem(int protoNumber)
+        {
+            switch (protoNumber)
+            {
+                case 8049: return CreateStartingClothing(protoNumber, 0);   // Nice Suit
+                case 8065: return CreateStartingClothing(protoNumber, 1);   // Small Nice Suit
+                case 8069: return CreateStartingClothing(protoNumber, 2);   // Large Nice Suit
+                case 8133:
+                case 8134:
+                case 8135:
+                    return CreateStartingClothing(protoNumber, 5);           // source women's city clothes
+                case 15178:
+                    return new ObjectProtoInfo(protoNumber, ObjectType.Generic,
+                        ItemArtId(10, 0, 0, 9), description: protoNumber,
+                        invAid: ItemArtId(10, 1, 0, 9), weight: 10, worth: 10)
+                    {
+                        HpPoints = 10,
+                        Material = 5,
+                        ItemDiscipline = 5,
+                        ItemComplexity = -20,
+                        GenericFlags = 0x2,
+                        ItemFlags = 0x180,
+                    };
+                case 15179:
+                    return new ObjectProtoInfo(protoNumber, ObjectType.Generic,
+                        ItemArtId(176, 0, 0, 9), description: protoNumber,
+                        invAid: ItemArtId(176, 1, 0, 9), weight: 10, worth: 20)
+                    {
+                        HpPoints = 5,
+                        Material = 7,
+                        GenericFlags = 0x8,
+                        ItemFlags = 0x180,
+                    };
+                default:
+                    return null;
+            }
+        }
+
+        private static ObjectProtoInfo CreateStartingClothing(int protoNumber, int artNumber)
+            => new ObjectProtoInfo(protoNumber, ObjectType.Armor,
+                ItemArtId(artNumber, 0, 8, 2), description: protoNumber,
+                invAid: ItemArtId(artNumber, 1, 8, 2), weight: 40, worth: 50)
+            {
+                HpPoints = 30,
+                Material = 7,
+                ArmorAc = 2,
+                ArmorResist = new[] { 1, 0, 0, 0, 0 },
+            };
+
+        /// <summary>
+        /// Source <c>proto.c</c> owns the generic base-prototype range. Those records have no loose
+        /// <c>data/proto</c> file, but their description ids are still authoritative and are used by
+        /// schematic component examination.
+        /// </summary>
+        public static ObjectProtoInfo CreateEngineOwnedBasePrototype(int protoNumber)
+            => protoNumber is >= 15065 and <= 15213
+                ? new ObjectProtoInfo(protoNumber, ObjectType.Generic, 0, description: protoNumber)
+                : null;
+
+        private static uint ItemArtId(int number, int disposition, int subtype, int type, int armorCoverage = 0,
+            int palette = 0)
+            => 0x60000000u | ((uint)(number & 0x7FF) << 17) | ((uint)(armorCoverage & 0x7) << 14)
+                           | ((uint)(disposition & 0x3) << 12) | ((uint)(subtype & 0xF) << 6)
+                           | ((uint)(palette & 0x3) << 4) | (uint)(type & 0xF);
     }
 
     /// <summary>
@@ -366,17 +469,22 @@ namespace Arcanum.Formats.Objects
         public ObjectProtoInfo Get(int protoNumber)
         {
             if (_cache.TryGetValue(protoNumber, out var cached)) return cached;
-            ObjectProtoInfo info = null;
+            // proto.c creates these base prototypes before the serialized prototype deltas are applied.
+            // Reading the shipped .pro delta as a complete object can otherwise leak values from the
+            // template it was authored from (for example, Plain Dress presents as Guard Plate).
+            ObjectProtoInfo info = ObjectProtoInfo.CreateEngineOwnedStartingItem(protoNumber);
             if (_pathByNumber.TryGetValue(protoNumber, out string path))
-                ObjectProtoReader.TryReadInfo(File.ReadAllBytes(path), out info);
-            // The original engine constructs its base prototypes in proto.c; they need not have loose .pro
-            // overrides. BP_GOLD is the one such source prototype needed by the bounded dialogue reward path.
+            {
+                if (info == null) ObjectProtoReader.TryReadInfo(File.ReadAllBytes(path), out info);
+            }
+            // The original engine constructs base prototypes in proto.c; they need not have loose .pro overrides.
             if (info == null && protoNumber == 9056)
                 info = new ObjectProtoInfo(9056, ObjectType.Gold, 0x60000003u,
                     description: 9056, invAid: 0x60001003u, worth: 1)
                 {
                     GoldQuantity = 1,
                 };
+            if (info == null) info = ObjectProtoInfo.CreateEngineOwnedBasePrototype(protoNumber);
             _cache[protoNumber] = info;
             return info;
         }

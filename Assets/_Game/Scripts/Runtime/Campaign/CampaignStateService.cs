@@ -30,11 +30,13 @@ namespace Arcanum.Runtime.Campaign
     {
         public uint Flags { get; }
         public uint Counters { get; }
+        public int? ScriptNumber { get; }
 
-        public ScriptAttachmentState(uint flags, uint counters)
+        public ScriptAttachmentState(uint flags, uint counters, int? scriptNumber = null)
         {
             Flags = flags;
             Counters = counters;
+            ScriptNumber = scriptNumber;
         }
     }
 
@@ -87,6 +89,8 @@ namespace Arcanum.Runtime.Campaign
         private readonly Dictionary<ScriptAttachmentKey, ScriptAttachmentState> _attachments = new();
         private readonly HashSet<AreaId> _knownAreas = new();
         private readonly HashSet<int> _knownRumors = new();
+        private readonly Dictionary<int, QuestTimestamp> _rumorTimestamps = new();
+        private Func<long> _sourceTime;
         private AreaList _areaSource;
         private int _storyState;
         private ulong _questClock;
@@ -200,10 +204,26 @@ namespace Arcanum.Runtime.Campaign
             return _knownRumors.Contains(id);
         }
 
+        public IReadOnlyList<int> KnownRumors
+        {
+            get
+            {
+                var result = new List<int>(_knownRumors);
+                result.Sort((left, right) => GetRumorTimestamp(left).CompareTo(GetRumorTimestamp(right)));
+                return result;
+            }
+        }
+
+        public QuestTimestamp GetRumorTimestamp(int id)
+            => _rumorTimestamps.TryGetValue(id, out QuestTimestamp value) ? value : default;
+
+        public void BindTimeSource(Func<long> sourceTime)
+            => _sourceTime = sourceTime ?? throw new ArgumentNullException(nameof(sourceTime));
+
         public void SetRumorKnown(int id)
         {
             if (id <= 0) throw new ArgumentOutOfRangeException(nameof(id));
-            _knownRumors.Add(id);
+            if (_knownRumors.Add(id)) _rumorTimestamps[id] = NextTimestamp();
         }
 
         public int GetGlobalQuestState(int quest)
@@ -322,7 +342,23 @@ namespace Arcanum.Runtime.Campaign
         public void SetScriptAttachment(ArcanumObjectId identity, int attachmentPoint, uint flags, uint counters)
         {
             ValidateAttachment(identity, attachmentPoint);
-            _attachments[new ScriptAttachmentKey(identity, attachmentPoint)] = new ScriptAttachmentState(flags, counters);
+            ScriptAttachmentState current = GetScriptAttachment(identity, attachmentPoint);
+            _attachments[new ScriptAttachmentKey(identity, attachmentPoint)] =
+                new ScriptAttachmentState(flags, counters, current.ScriptNumber);
+        }
+
+        public int GetScriptNumber(ArcanumObjectId identity, int attachmentPoint, int sourceDefault = 0)
+        {
+            ScriptAttachmentState state = GetScriptAttachment(identity, attachmentPoint);
+            return state.ScriptNumber ?? sourceDefault;
+        }
+
+        public void SetScriptNumber(ArcanumObjectId identity, int attachmentPoint, int scriptNumber)
+        {
+            if (scriptNumber < 0) throw new ArgumentOutOfRangeException(nameof(scriptNumber));
+            ScriptAttachmentState current = GetScriptAttachment(identity, attachmentPoint);
+            _attachments[new ScriptAttachmentKey(identity, attachmentPoint)] =
+                new ScriptAttachmentState(current.Flags, current.Counters, scriptNumber);
         }
 
         public int GetLocalFlag(ArcanumObjectId identity, int attachmentPoint, int index)
@@ -402,6 +438,7 @@ namespace Arcanum.Runtime.Campaign
                     AttachmentPoint = pair.Key.AttachmentPoint,
                     Flags = pair.Value.Flags,
                     Counters = pair.Value.Counters,
+                    ScriptNumber = pair.Value.ScriptNumber,
                 });
             data.Attachments.Sort((left, right) =>
             {
@@ -432,7 +469,7 @@ namespace Arcanum.Runtime.Campaign
             {
                 ArcanumObjectId.TryParsePersistent(attachment.Identity, out ArcanumObjectId identity);
                 _attachments.Add(new ScriptAttachmentKey(identity, attachment.AttachmentPoint),
-                    new ScriptAttachmentState(attachment.Flags, attachment.Counters));
+                    new ScriptAttachmentState(attachment.Flags, attachment.Counters, attachment.ScriptNumber));
             }
         }
 
@@ -451,6 +488,7 @@ namespace Arcanum.Runtime.Campaign
             private readonly Dictionary<ScriptAttachmentKey, ScriptAttachmentState> _attachments;
             private readonly HashSet<AreaId> _knownAreas;
             private readonly HashSet<int> _knownRumors;
+            private readonly Dictionary<int, QuestTimestamp> _rumorTimestamps;
             private readonly int _storyState;
             private readonly ulong _questClock;
 
@@ -466,6 +504,7 @@ namespace Arcanum.Runtime.Campaign
                 _attachments = new Dictionary<ScriptAttachmentKey, ScriptAttachmentState>(state._attachments);
                 _knownAreas = new HashSet<AreaId>(state._knownAreas);
                 _knownRumors = new HashSet<int>(state._knownRumors);
+                _rumorTimestamps = new Dictionary<int, QuestTimestamp>(state._rumorTimestamps);
                 _storyState = state._storyState;
                 _questClock = state._questClock;
             }
@@ -485,6 +524,8 @@ namespace Arcanum.Runtime.Campaign
                 foreach (AreaId id in _knownAreas) state._knownAreas.Add(id);
                 state._knownRumors.Clear();
                 foreach (int id in _knownRumors) state._knownRumors.Add(id);
+                state._rumorTimestamps.Clear();
+                foreach (var pair in _rumorTimestamps) state._rumorTimestamps.Add(pair.Key, pair.Value);
                 state._storyState = _storyState;
                 state._questClock = _questClock;
             }
@@ -492,7 +533,15 @@ namespace Arcanum.Runtime.Campaign
 
         private QuestTimestamp NextQuestTimestamp()
         {
-            _questClock++;
+            ulong source = (ulong)Math.Max(0L, _sourceTime?.Invoke() ?? 0L);
+            _questClock = Math.Max(_questClock + 1UL, source);
+            return new QuestTimestamp((uint)(_questClock / 86400000UL), (uint)(_questClock % 86400000UL));
+        }
+
+        private QuestTimestamp NextTimestamp()
+        {
+            ulong source = (ulong)Math.Max(0L, _sourceTime?.Invoke() ?? 0L);
+            _questClock = Math.Max(_questClock + 1UL, source);
             return new QuestTimestamp((uint)(_questClock / 86400000UL), (uint)(_questClock % 86400000UL));
         }
 

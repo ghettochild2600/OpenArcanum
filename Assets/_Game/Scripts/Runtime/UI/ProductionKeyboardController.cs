@@ -15,15 +15,17 @@ namespace Arcanum.Runtime.UI
         public bool TextEntryFocused { get; }
         public bool CombatActive { get; }
         public CombatMode CombatMode { get; }
+        public bool HudPanelOpen { get; }
 
         public ProductionKeyboardContext(GameUiScreen screen, bool hasPlayer, bool textEntryFocused,
-            bool combatActive, CombatMode combatMode)
+            bool combatActive, CombatMode combatMode, bool hudPanelOpen = false)
         {
             Screen = screen;
             HasPlayer = hasPlayer;
             TextEntryFocused = textEntryFocused;
             CombatActive = combatActive;
             CombatMode = combatMode;
+            HudPanelOpen = hudPanelOpen;
         }
     }
 
@@ -37,6 +39,9 @@ namespace Arcanum.Runtime.UI
         void ToggleAttackTalkMode();
         void ActivateQuickSlot(int index);
         void ActivateRecentAction();
+        void ToggleSleep();
+        void ToggleFate();
+        void ToggleSkills();
         void SetCalledLocation(CombatCalledLocation location);
         void IssuePartyOrder(int sourceIndex);
         void AutoSave();
@@ -58,7 +63,12 @@ namespace Arcanum.Runtime.UI
         public bool ControlHeld { get; private set; }
         public bool ShiftHeld { get; private set; }
         public bool AltHeld { get; private set; }
-        public bool EffectiveRun => AlwaysRun ^ ControlHeld;
+        // intgame.c gives Ctrl explicit precedence in every single-player ground-click branch: it calls
+        // turn_on_running before consulting the persistent Always Run setting.  Ctrl therefore requests a run
+        // whether Always Run is off or already on; it is not an inversion modifier for pointer locomotion.
+        public bool EffectiveRun => AlwaysRun || ControlHeld;
+
+        public void SetAlwaysRun(bool value) => AlwaysRun = value;
 
         public void SetModifiers(bool control, bool shift, bool alt)
         {
@@ -84,7 +94,7 @@ namespace Arcanum.Runtime.UI
 
             if (key == KeyCode.Space && phase == ProductionKeyPhase.Down)
             {
-                if (context.Screen != GameUiScreen.None) commands.CloseInterface();
+                if (context.Screen != GameUiScreen.None || context.HudPanelOpen) commands.CloseInterface();
                 else commands.ToggleCombatMode();
                 return true;
             }
@@ -140,15 +150,15 @@ namespace Arcanum.Runtime.UI
                 case KeyCode.I: commands.ToggleScreen(GameUiScreen.Inventory); return true;
                 case KeyCode.C: commands.ToggleScreen(GameUiScreen.Character); return true;
                 case KeyCode.M: commands.ToggleScreen(GameUiScreen.Magic); return true;
-                case KeyCode.T: commands.ToggleScreen(GameUiScreen.Technology); return true;
-                case KeyCode.K: commands.ToggleScreen(GameUiScreen.Skills); return true;
+                case KeyCode.T: commands.ToggleScreen(GameUiScreen.Crafting); return true;
+                case KeyCode.K: commands.ToggleSkills(); return true;
                 case KeyCode.L: commands.ToggleScreen(GameUiScreen.Journal); return true;
                 case KeyCode.W: commands.ToggleScreen(GameUiScreen.Map); return true;
                 case KeyCode.O: commands.ToggleScreen(GameUiScreen.Options); return true;
-                case KeyCode.R: commands.ToggleAttackTalkMode(); return true;
+                case KeyCode.R: commands.ToggleCombatMode(); return true;
                 case KeyCode.A: commands.ActivateRecentAction(); return true;
-                case KeyCode.S: commands.Unsupported("Sleep"); return true;
-                case KeyCode.F: commands.Unsupported("Fate points"); return true;
+                case KeyCode.S: commands.ToggleSleep(); return true;
+                case KeyCode.F: commands.ToggleFate(); return true;
                 case KeyCode.V: commands.ShowVersion(); return true;
                 case KeyCode.Return:
                 case KeyCode.KeypadEnter: commands.Unsupported("Broadcast/chat"); return true;

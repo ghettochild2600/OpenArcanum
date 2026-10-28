@@ -15,6 +15,7 @@ using Arcanum.Runtime.Dialogue;
 using Arcanum.Runtime.Economy;
 using Arcanum.Runtime.Save;
 using Arcanum.Runtime.Social;
+using Arcanum.Runtime.UI;
 using Arcanum.Runtime.World;
 using Arcanum.Script;
 using Arcanum.World;
@@ -223,6 +224,25 @@ namespace Arcanum.Formats.Tests
             Assert.That(_session.Dialogue.SelectResponse(0), Is.EqualTo(DialogueChoiceStatus.Completed));
             Assert.That(_session.Social.HasReputation(_pc.Identity, new ReputationId(1000)), Is.True);
             Assert.That(_session.Social.GetReaction(_npc, _pc.Identity), Is.EqualTo(before + 15));
+        }
+
+        [Test]
+        public void ForceGoodReactionResolvesAtDialogueStartAndConsumesExactlyOnce()
+        {
+            DialogScript dialogue = new(new SortedDictionary<int, DialogLine>
+            {
+                [1] = new(1, "Hello.", "", 0, "", 0, ""),
+                [2] = new(2, "Goodbye.", "", 1, "", 0, ""),
+            });
+            _session.BindDialogueSource(_ => StartAt(1), _ => dialogue);
+            _session.Social.SetReaction(_npc, _pc.Identity, 40);
+            _session.GameplayHud.GrantFatePoint();
+            Assert.That(_session.GameplayHud.ActivateFate(FateChoice.ForceGoodReaction).Succeeded, Is.True);
+
+            Assert.That(_session.Dialogue.Start(_pc.Identity, _npc), Is.EqualTo(DialogueStartStatus.Started));
+
+            Assert.That(_session.Social.GetReaction(_npc, _pc.Identity), Is.EqualTo(100));
+            Assert.That(_session.GameplayHud.IsFateActive(FateChoice.ForceGoodReaction), Is.False);
         }
 
         [Test]

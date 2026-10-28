@@ -90,7 +90,8 @@ namespace Arcanum.Runtime.World
         private string moduleArchive = "modules/Arcanum.dat";
 
         [SerializeField]
-        private string[] artArchives = { "arcanum1.dat", "arcanum2.dat", "arcanum3.dat", "arcanum4.dat" };
+        // DatVirtualFileSystem is first-match wins; later retail patch archives must be mounted first.
+        private string[] artArchives = { "arcanum4.dat", "arcanum3.dat", "arcanum2.dat", "arcanum1.dat" };
 
         [SerializeField]
         private string sectorPath = "maps/arcanum1-024-fixed/101602821844.sec";
@@ -497,7 +498,9 @@ namespace Arcanum.Runtime.World
                     instance.Origin ?? proto?.Origin ?? 0,
                     instance.Faction ?? proto?.Faction ?? 0,
                     instance.WrittenSubtype ?? proto?.WrittenSubtype ?? -1,
-                    instance.TextStartLine ?? proto?.TextStartLine ?? 0);
+                    instance.TextStartLine ?? proto?.TextStartLine ?? 0,
+                    instance.Description ?? proto?.Description,
+                    instance.KeyId ?? proto?.KeyId);
                 if (state == null && Session.IsObjectRemoved(identity))
                 {
                     suppressed++;
@@ -1145,6 +1148,11 @@ namespace Arcanum.Runtime.World
             _prototypes = new ProtoLibrary(protoDirectory ?? string.Empty);
             _art = new ObjectArtResolvers(_vfs);
             Session.BindPrototypeSource(_prototypes.Get);
+            MesFile descriptions = MesReader.Read(_vfs.ReadAllBytes("mes/description.mes"));
+            Session.BindDescriptionSource(id => descriptions.Get(id));
+            Session.BindSpellPresentationSource(SpellPresentationCatalog.FromMes(
+                MesReader.Read(_vfs.ReadAllBytes("mes/spell.mes")),
+                MesReader.Read(_vfs.ReadAllBytes("rules/spelllist.mes"))));
             Session.BindInventoryFootprintSource(ResolveInventoryFootprint);
             Session.BindCraftingSource(SchematicCatalog.FromMes(
                 MesReader.Read(_vfs.ReadAllBytes("rules/schematic.mes")),
@@ -1160,11 +1168,18 @@ namespace Arcanum.Runtime.World
                     _vfs.Exists("rules/gameai.mes")
                         ? MesReader.Read(_vfs.ReadAllBytes("rules/gameai.mes")) : null));
             MapList maps = MapList.Read(_vfs.ReadAllBytes("rules/maplist.mes"));
+            MesFile effectRules = MesReader.Read(_vfs.ReadAllBytes("rules/effect.mes"));
+            Session.BindScriptEffectSource(RetailScriptEffectCatalog.FromMes(effectRules,
+                _vfs.Exists("rules/gameeffect.mes")
+                    ? MesReader.Read(_vfs.ReadAllBytes("rules/gameeffect.mes")) : null));
             Session.BindCharacterCreationSource(CharacterCreationCatalog.FromMes(
                 MesReader.Read(_vfs.ReadAllBytes("rules/backgrnd.mes")),
                 MesReader.Read(_vfs.ReadAllBytes("mes/gameback.mes")),
-                MesReader.Read(_vfs.ReadAllBytes("rules/effect.mes")),
-                MesReader.Read(_vfs.ReadAllBytes("portrait/gameport.mes")), maps));
+                effectRules,
+                MesReader.Read(_vfs.ReadAllBytes("portrait/gameport.mes")), maps,
+                MesReader.Read(_vfs.ReadAllBytes("mes/gamelevelname.mes")),
+                MesReader.Read(_vfs.ReadAllBytes("mes/mainmenu.mes")),
+                MesReader.Read(_vfs.ReadAllBytes("rules/gamelevel.mes"))));
             var transitions = new MapTransitionResolver(
                 maps,
                 _vfs.Exists,
@@ -1177,6 +1192,17 @@ namespace Arcanum.Runtime.World
                 _vfs.ReadAllBytes("mes/gamearea.mes")));
             Session.BindAreaSource(areas);
             Session.BindMapAreaSource(new MapAreaResolver(maps, areas, _vfs.Exists, _vfs.ReadAllBytes));
+            MesFile townMaps = _vfs.Exists("rules/townmap.mes")
+                ? MesReader.Read(_vfs.ReadAllBytes("rules/townmap.mes"))
+                : new MesFile(new List<KeyValuePair<int, string>>());
+            Session.BindSleepLocationSource(new SleepLocationSource(
+                townMaps,
+                _vfs.Exists, _vfs.ReadAllBytes));
+            MesFile worldMaps = _vfs.Exists("WorldMap/WorldMap.mes")
+                ? MesReader.Read(_vfs.ReadAllBytes("WorldMap/WorldMap.mes"))
+                : new MesFile(new List<KeyValuePair<int, string>>());
+            Session.BindLocalMapSource(new LocalMapSource(
+                townMaps, maps, worldMaps, _vfs.Exists, _vfs.ReadAllBytes));
             Session.BindAreaEntranceSource(new AreaEntranceResolver(maps, areas, transitions, _scripts.Get));
             Session.BindUseScriptSource(_scripts);
             Session.BindDialogueSource(_scripts.Get, dialogNum => DialogLocator.Load(_vfs, dialogNum));
@@ -1195,6 +1221,10 @@ namespace Arcanum.Runtime.World
                 MesReader.Read(_vfs.ReadAllBytes("rules/xp_quest.mes")),
                 MesReader.Read(_vfs.ReadAllBytes("rules/gamequest.mes")),
                 MesReader.Read(_vfs.ReadAllBytes("mes/gamequestlogdumb.mes"))));
+            Session.BindRumorSource(
+                MesReader.Read(_vfs.ReadAllBytes("mes/game_rd_npc_m2m.mes")),
+                _vfs.Exists("mes/game_rd_npc_m2m_dumb.mes")
+                    ? MesReader.Read(_vfs.ReadAllBytes("mes/game_rd_npc_m2m_dumb.mes")) : null);
             return true;
         }
 

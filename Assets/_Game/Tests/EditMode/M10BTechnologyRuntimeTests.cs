@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Arcanum.Formats.Objects;
 using Arcanum.Formats.Text;
 using Arcanum.Formats.Tiles;
@@ -25,10 +26,12 @@ namespace Arcanum.Formats.Tests
         private WorldMapSessionCoordinator _session;
         private PersistentPlayerState _pc;
         private ArcanumObjectId _target;
+        private readonly Dictionary<int, ObjectProtoInfo> _prototypes = new();
 
         [SetUp]
         public void SetUp()
         {
+            _prototypes.Clear();
             _root = new GameObject(nameof(M10BTechnologyRuntimeTests));
             _session = _root.AddComponent<WorldMapSessionCoordinator>();
             _session.RegisterObjectOwner(new Owner(_session));
@@ -46,8 +49,10 @@ namespace Arcanum.Formats.Tests
                 ItemSpell = 150, SpellMana = 1, ItemFlags = 0x180 };
             var axe = new ObjectProtoInfo(PhaseOneTechnologyCatalog.PowerAxePrototype,
                 ObjectType.Weapon, 0x50000000u) { ItemComplexity = -40, ItemDiscipline = 6 };
-            _session.BindPrototypeSource(number => number == salve.ProtoNumber ? salve
-                : number == axe.ProtoNumber ? axe : null);
+            _prototypes.Add(salve.ProtoNumber, salve);
+            _prototypes.Add(axe.ProtoNumber, axe);
+            _session.BindPrototypeSource(number => _prototypes.TryGetValue(number, out ObjectProtoInfo value)
+                ? value : null);
         }
 
         [TearDown] public void TearDown() => Object.DestroyImmediate(_root);
@@ -61,6 +66,73 @@ namespace Arcanum.Formats.Tests
                 Is.EqualTo(("Healing Salve", TechnologyDiscipline.Herbology, 150, 2, 4, 20, 1, true)));
             Assert.That(PhaseOneTechnologyCatalog.BuiltInSchematicId(TechnologyDiscipline.Herbology,
                 TechnologyDegree.Novice), Is.EqualTo(2000));
+        }
+
+        [Test]
+        public void TechnicalManualCatalogMatchesRetailPrototypeDisciplineAndEffectMapping()
+        {
+            Assert.That(TechnologyManualCatalog.All.Select(value =>
+                    (value.PrototypeNumber, value.Discipline, value.EffectId)),
+                Is.EqualTo(new[]
+                {
+                    (15190, TechnologyDiscipline.Herbology, 168),
+                    (15188, TechnologyDiscipline.Chemistry, 169),
+                    (15191, TechnologyDiscipline.Electrical, 170),
+                    (15189, TechnologyDiscipline.Explosives, 171),
+                    (15195, TechnologyDiscipline.GunSmithy, 172),
+                    (15193, TechnologyDiscipline.Mechanical, 173),
+                    (15194, TechnologyDiscipline.Smithy, 174),
+                    (15192, TechnologyDiscipline.Therapeutics, 175),
+                }));
+        }
+
+        [Test]
+        public void DirectTechnicalManualsAddInsertionIntelligenceStackAndIgnoreNestedCopies()
+        {
+            int intelligence = _session.Characters.GetEffectiveAttribute(_pc.Identity,
+                CharacterAttribute.Intelligence);
+            Assert.That(_session.Technology.GetEffectiveLevel(_pc.Identity,
+                TechnologyDiscipline.Herbology), Is.Zero);
+
+            PersistentObjectState herbology = Manual(1, 15190, TechnologyDiscipline.Herbology);
+            Manual(2, 15188, TechnologyDiscipline.Chemistry);
+            PersistentObjectState container = Container(3);
+            Manual(4, 15190, TechnologyDiscipline.Herbology, container.Identity);
+            Assert.That(_session.Technology.GetEffectiveLevel(_pc.Identity,
+                TechnologyDiscipline.Herbology), Is.EqualTo(intelligence));
+            Assert.That(_session.Technology.GetEffectiveLevel(_pc.Identity,
+                TechnologyDiscipline.Chemistry), Is.EqualTo(intelligence));
+
+            Manual(5, 15190, TechnologyDiscipline.Herbology);
+            Assert.That(_session.Technology.GetEffectiveLevel(_pc.Identity,
+                TechnologyDiscipline.Herbology), Is.EqualTo(intelligence * 2));
+            Assert.That(_session.TransferItem(herbology.Identity, herbology.Placement,
+                ObjectPlacement.ContainedBy(container.Identity)).Succeeded, Is.True);
+            Assert.That(_session.Technology.GetEffectiveLevel(_pc.Identity,
+                TechnologyDiscipline.Herbology), Is.EqualTo(intelligence));
+        }
+
+        [Test]
+        public void ManualInsertionSnapshotPersistsAndRemovalImmediatelyRevokesExpertise()
+        {
+            PersistentObjectState manual = Manual(6, 15190, TechnologyDiscipline.Herbology);
+            Assert.That(_session.Technology.GetEffectiveLevel(_pc.Identity,
+                TechnologyDiscipline.Herbology), Is.EqualTo(8));
+            _session.Characters.SetRace(_pc.Identity, CharacterRace.HalfOgre);
+            Assert.That(_session.Characters.GetEffectiveAttribute(_pc.Identity,
+                CharacterAttribute.Intelligence), Is.EqualTo(4));
+            Assert.That(_session.Technology.GetEffectiveLevel(_pc.Identity,
+                TechnologyDiscipline.Herbology), Is.EqualTo(8));
+
+            string json = _session.SaveGames.SerializeCurrentSession();
+            Assert.That(_session.SaveGames.LoadJson(json).Succeeded, Is.True);
+            Assert.That(_session.Technology.GetEffectiveLevel(_pc.Identity,
+                TechnologyDiscipline.Herbology), Is.EqualTo(8));
+            Assert.That(_session.TryGetObjectState(manual.Identity, out PersistentObjectState restored), Is.True);
+            Assert.That(_session.TransferItem(restored.Identity, restored.Placement,
+                ObjectPlacement.InWorld(Sector, new Vector2(1, 1))).Succeeded, Is.True);
+            Assert.That(_session.Technology.GetEffectiveLevel(_pc.Identity,
+                TechnologyDiscipline.Herbology), Is.Zero);
         }
 
         [Test]
@@ -225,12 +297,31 @@ namespace Arcanum.Formats.Tests
             Assert.That(_session.Vitality.GetCurrentHitPoints(_target), Is.EqualTo(_session.Vitality.GetMaximumHitPoints(_target) - 25));
         }
 
-        private PersistentObjectState Item(string key, ObjectType type, int prototype)
+        private PersistentObjectState Item(string key, ObjectType type, int prototype,
+            ArcanumObjectId owner = default)
         {
+            ArcanumObjectId parent = owner.IsPersistent ? owner : _pc.Identity;
             var source = new ObjectInstance(type, prototype, null, 0x50000000u, 0, 0,
-                oid: GuidBytes(key), parentOid: PlayerBytes());
+                oid: GuidBytes(key), parentOid: Bytes(parent));
             return _session.GetOrCreate(source, Sector, source.CurrentArtId.Value, false, false,
                 itemFlags: prototype == 10079 ? 0x180 : 0);
+        }
+
+        private PersistentObjectState Manual(int sequence, int prototype,
+            TechnologyDiscipline discipline, ArcanumObjectId owner = default)
+        {
+            _prototypes[prototype] = new ObjectProtoInfo(prototype, ObjectType.Generic, 0x50000000u)
+                { ItemDiscipline = (int)discipline };
+            return Item($"G_{sequence:X8}_0000_0000_0000_000000000000", ObjectType.Generic,
+                prototype, owner);
+        }
+
+        private PersistentObjectState Container(int sequence)
+        {
+            int prototype = 19000 + sequence;
+            _prototypes[prototype] = new ObjectProtoInfo(prototype, ObjectType.Container, 0x50000000u);
+            return Item($"G_{sequence:X8}_1000_0000_0000_000000000000", ObjectType.Container,
+                prototype);
         }
 
         private PersistentObjectState WeaponItem(string key)
@@ -276,6 +367,13 @@ namespace Arcanum.Formats.Tests
         private static ArcanumObjectId Parse(string key) { ArcanumObjectId.TryParsePersistent(key, out ArcanumObjectId id); return id; }
         private static byte[] GuidBytes(string key) { string c = key.Substring(2).Replace("_", ""); var b = new byte[24]; b[0] = (byte)ArcanumObjectIdType.Guid; for (int i = 0; i < 16; i++) b[8 + i] = Convert.ToByte(c.Substring(i * 2, 2), 16); return b; }
         private static byte[] PlayerBytes() { var b = new byte[24]; b[0] = (byte)ArcanumObjectIdType.Guid; Array.Copy(new Guid("25e7b7c9-1ae7-4af5-b1e4-0a62fa6bca01").ToByteArray(), 0, b, 8, 16); return b; }
+        private static byte[] Bytes(ArcanumObjectId identity)
+        {
+            string compact = identity.Key.Substring(2).Replace("_", "");
+            var bytes = new byte[24]; bytes[0] = (byte)ArcanumObjectIdType.Guid;
+            for (int i = 0; i < 16; i++) bytes[8 + i] = Convert.ToByte(compact.Substring(i * 2, 2), 16);
+            return bytes;
+        }
 
         private sealed class SequenceRandom : ICombatRandom
         { private readonly Queue<int> _v; public SequenceRandom(params int[] v) => _v = new Queue<int>(v); public int NextInclusive(int min, int max) { Assert.That(_v, Is.Not.Empty); int v = _v.Dequeue(); Assert.That(v, Is.InRange(min, max)); return v; } }

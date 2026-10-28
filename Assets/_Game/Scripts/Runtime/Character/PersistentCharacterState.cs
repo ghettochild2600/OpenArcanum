@@ -62,6 +62,9 @@ namespace Arcanum.Runtime.Character
             Gender = gender;
         }
 
+        internal void SetBase(CharacterAttribute attribute, int value)
+            => BaseAttributes.Set(attribute, value, Race);
+
         internal bool MatchesSource(ObjectType objectType, int? prototypeNumber, CharacterAttributeSet attributes,
             CharacterRace race, CharacterGender gender, bool hasInstanceStatOverride)
         {

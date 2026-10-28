@@ -32,8 +32,8 @@ The game only enables finalization when the character is valid and all five star
 - Hold either `Shift` while clicking a target to stand and attack without approaching.
 - Hold either `Alt` while clicking to force a legal attack against a neutral target; hold `Alt` while dragging a
   corpse to move it through world-state authority.
-- Press `Num Lock` to toggle the default walk/run mode. Holding either `Ctrl` temporarily inverts that choice for
-  the next ground move.
+- Press `Num Lock` to toggle persistent Always Run. Holding either `Ctrl` requests running for the next ground move;
+  it does not cancel an already-enabled Always Run setting.
 - Hold the arrow keys to pan the camera. Press `Home` to recenter on the player/current turn-based participant.
 - Press `F1` through `F6` for the source follower orders Walk, Attack, Stay Close, Spread Out, Back Off, and Follow.
 - Press `F7` to auto-save and `F8` to auto-load. Press `F12` to save a screenshot.

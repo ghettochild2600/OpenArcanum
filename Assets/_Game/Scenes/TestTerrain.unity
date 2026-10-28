@@ -154,10 +154,10 @@ MonoBehaviour:
   m_EditorClassIdentifier:
   moduleArchive: modules/Arcanum.dat
   artArchives:
-  - arcanum1.dat
-  - arcanum2.dat
-  - arcanum3.dat
   - arcanum4.dat
+  - arcanum3.dat
+  - arcanum2.dat
+  - arcanum1.dat
   sectorPath: maps/arcanum1-024-fixed/101602821844.sec
   pixelsPerUnit: 100
   loadOnStart: 1

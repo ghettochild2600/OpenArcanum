@@ -19,6 +19,14 @@ using UnityEngine;
 
 namespace Arcanum.Runtime.UI
 {
+    /// <summary>dialog.c sub_412FD0 centers the participant with the greater source location Y.</summary>
+    public static class RetailDialogueCameraRule
+    {
+        public static ArcanumObjectId CenterTarget(ArcanumObjectId pc, Vector2 pcTile,
+            ArcanumObjectId npc, Vector2 npcTile)
+            => npcTile.y > pcTile.y ? npc : pc;
+    }
+
     /// <summary>
     /// Source-shaped M12C production presentation. This component owns drawing, hotkeys, scrolling and pointer
     /// selection only; <see cref="GameUiController"/> delegates every gameplay command to established services.
@@ -36,12 +44,27 @@ namespace Arcanum.Runtime.UI
         private PlayerInteractionController _interaction;
         private ProductionCombatPresenter _legacyCombat;
         private RetailMainMenuView _retailMainMenu;
+        private RetailCharacterCreationView _retailCharacterCreation;
+        private RetailPregeneratedCharacterView _retailPregeneratedCharacter;
+        private RetailStartingEquipmentView _retailStartingEquipment;
         private RetailGameplayHudView _retailGameplayHud;
+        private RetailInventoryEquipmentView _retailInventory;
+        private RetailInventoryInteractionView _retailInventoryInteraction;
+        private RetailCharacterSheetView _retailCharacterSheet;
+        private RetailSchematicView _retailSchematic;
+        private RetailSaveLoadView _retailSaveLoad;
+        private RetailOptionsView _retailOptions;
+        private RetailDialogueView _retailDialogue;
+        private RetailLogbookView _retailLogbook;
+        private RetailLocalMapView _retailLocalMap;
         private Vector2 _scroll;
         private Rect _panelRect;
         private bool _showHud = true;
         private bool _interactionSubscribed;
+        private WorldObject _hoveredWorldObject;
+        private Color _hoveredOriginalColor;
         private int _quickSlotAssignment;
+        private ArcanumObjectId _centeredDialogueNpc;
         private readonly ProductionKeyboardController _keyboard = new();
         private static readonly KeyCode[] DownKeys =
         {
@@ -71,7 +94,7 @@ namespace Arcanum.Runtime.UI
         }
         public float PresentationScale => Mathf.Clamp(Mathf.Min(Screen.width / ReferenceWidth,
             Screen.height / ReferenceHeight), .75f, 1.5f);
-        public bool IsInputBlocked => Controller?.IsModalOpen == true;
+        public bool IsInputBlocked => Controller?.BlocksWorldInput == true;
         public ProductionKeyboardController Keyboard => _keyboard;
 
         private void Awake()
@@ -91,18 +114,52 @@ namespace Arcanum.Runtime.UI
             _retailMainMenu.Bind(_controller, Application.Quit);
             _retailGameplayHud = GetComponent<RetailGameplayHudView>()
                                  ?? gameObject.AddComponent<RetailGameplayHudView>();
-            _retailGameplayHud.Bind(_controller, _session, Open);
+            _retailGameplayHud.Bind(_controller, _session, Open, null, InteractWithFollower,
+                PresentFollowerOrder);
+            _retailCharacterCreation = GetComponent<RetailCharacterCreationView>()
+                                       ?? gameObject.AddComponent<RetailCharacterCreationView>();
+            _retailCharacterCreation.Bind(_controller, _session, _retailGameplayHud.Resolver);
+            _retailPregeneratedCharacter = GetComponent<RetailPregeneratedCharacterView>()
+                                           ?? gameObject.AddComponent<RetailPregeneratedCharacterView>();
+            _retailPregeneratedCharacter.Bind(_controller, _session, _retailGameplayHud.Resolver);
+            _retailStartingEquipment = GetComponent<RetailStartingEquipmentView>()
+                                       ?? gameObject.AddComponent<RetailStartingEquipmentView>();
+            _retailStartingEquipment.Bind(_controller, _session, _retailGameplayHud.Resolver);
+            _retailInventory = GetComponent<RetailInventoryEquipmentView>()
+                               ?? gameObject.AddComponent<RetailInventoryEquipmentView>();
+            _retailInventory.Bind(_controller, _session, _retailGameplayHud.Resolver);
+            _retailInventoryInteraction = GetComponent<RetailInventoryInteractionView>()
+                                          ?? gameObject.AddComponent<RetailInventoryInteractionView>();
+            _retailInventoryInteraction.Bind(_controller, _retailGameplayHud.Resolver);
+            _retailCharacterSheet = GetComponent<RetailCharacterSheetView>()
+                                    ?? gameObject.AddComponent<RetailCharacterSheetView>();
+            _retailCharacterSheet.Bind(_controller, _session, _retailGameplayHud.Resolver);
+            _retailSchematic = GetComponent<RetailSchematicView>() ?? gameObject.AddComponent<RetailSchematicView>();
+            _retailSchematic.Bind(_controller, _session, _retailGameplayHud.Resolver);
+            _retailSaveLoad = GetComponent<RetailSaveLoadView>() ?? gameObject.AddComponent<RetailSaveLoadView>();
+            _retailSaveLoad.Bind(_controller, _session, _retailGameplayHud.Resolver);
+            _retailOptions = GetComponent<RetailOptionsView>() ?? gameObject.AddComponent<RetailOptionsView>();
+            _retailOptions.Bind(_controller, _session, _retailGameplayHud.Resolver, _keyboard,
+                GetComponent<Arcanum.Runtime.Audio.ProductionAudioPresenter>());
+            _retailDialogue = GetComponent<RetailDialogueView>() ?? gameObject.AddComponent<RetailDialogueView>();
+            _retailDialogue.Bind(_controller, _session, _retailGameplayHud.Resolver);
+            _retailLogbook = GetComponent<RetailLogbookView>() ?? gameObject.AddComponent<RetailLogbookView>();
+            _retailLogbook.Bind(_controller, _session, _retailGameplayHud.Resolver);
+            _retailLocalMap = GetComponent<RetailLocalMapView>() ?? gameObject.AddComponent<RetailLocalMapView>();
+            _retailLocalMap.Bind(_controller, _session, _retailGameplayHud.Resolver);
             DisableLegacyPresenters();
         }
 
         private void OnDisable()
         {
+            ClearWorldHover();
             Controller?.Close();
             _inputGate?.SetBlocked(false);
         }
 
         private void OnDestroy()
         {
+            ClearWorldHover();
             if (_interaction != null && _interactionSubscribed)
                 _interaction.Resolved -= OnInteractionResolved;
             _interactionSubscribed = false;
@@ -110,8 +167,20 @@ namespace Arcanum.Runtime.UI
 
         private void OnInteractionResolved(WorldInteractionResult result)
         {
-            if (!result.IsSuccess || result.Command.Type != WorldInteractionCommandType.Loot) return;
-            if (Controller.BeginCorpseLoot(result.Command.Target))
+            if (result.Command.Type == WorldInteractionCommandType.Use && result.BedFailure.HasValue)
+            {
+                Controller.PresentBedUse(result);
+                SyncInputGate();
+                return;
+            }
+            if (!result.IsSuccess || result.ScriptRunDefault == false) return;
+            bool opened = result.Command.Type == WorldInteractionCommandType.Loot
+                ? Controller.BeginCorpseLoot(result.Command.Target)
+                : result.Command.Type == WorldInteractionCommandType.Use
+                  && _session.TryGetObjectState(result.Command.Target, out PersistentObjectState target)
+                  && target.Type == Arcanum.Formats.Objects.ObjectType.Container
+                  && Controller.BeginContainerLoot(result.Command.Target);
+            if (opened)
             {
                 _scroll = Vector2.zero;
                 SyncInputGate();
@@ -123,11 +192,27 @@ namespace Arcanum.Runtime.UI
             EnsureInteractionSubscription();
             EnsureController();
             Controller.Refresh();
+            SynchronizeDialogueCamera();
             SyncInputGate();
 
             _retailMainMenu?.Synchronize();
+            _retailPregeneratedCharacter?.Synchronize();
+            _retailCharacterCreation?.Synchronize();
+            _retailStartingEquipment?.Synchronize();
+            RefreshWorldHover();
             _retailGameplayHud?.Synchronize(_showHud);
+            _retailInventory?.Synchronize();
+            _retailInventoryInteraction?.Synchronize();
+            _retailCharacterSheet?.Synchronize();
+            _retailSchematic?.Synchronize();
+            _retailSaveLoad?.Synchronize();
+            _retailOptions?.Synchronize();
+            _retailDialogue?.Synchronize();
+            _retailLogbook?.Synchronize();
+            _retailLocalMap?.Synchronize();
             if (Controller.Screen == GameUiScreen.MainMenu && _retailMainMenu?.IsAvailable == true)
+                return;
+            if (Controller.Screen == GameUiScreen.SaveLoad && _retailSaveLoad?.IsAvailable == true)
                 return;
 
             if (Input.GetKeyDown(KeyCode.F10)) _showHud = !_showHud; // OpenArcanum-only HUD diagnostic
@@ -136,7 +221,8 @@ namespace Arcanum.Runtime.UI
                 Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift),
                 Input.GetKey(KeyCode.LeftAlt) || Input.GetKey(KeyCode.RightAlt));
             var context = new ProductionKeyboardContext(Controller.Screen, Controller.HasPlayer,
-                Controller.Screen == GameUiScreen.CharacterCreation, _session.Combat.IsActive, _session.Combat.Mode);
+                Controller.Screen == GameUiScreen.CharacterCreation, _session.Combat.IsActive, _session.Combat.Mode,
+                Controller.IsHudPanelOpen);
             foreach (KeyCode key in UpKeys)
                 if (Input.GetKeyUp(key)) _keyboard.Dispatch(key, ProductionKeyPhase.Up, context, this);
             foreach (KeyCode key in DownKeys)
@@ -150,17 +236,51 @@ namespace Arcanum.Runtime.UI
                 Open(GameUiScreen.Merchant);
                 Controller.BeginMerchantTargeting();
             }
-            if (Controller.Screen == GameUiScreen.Dialogue)
-                for (int index = 0; index < Controller.Dialogue.AvailableResponses.Count && index < 9; index++)
-                    if (Input.GetKeyDown((KeyCode)((int)KeyCode.Alpha1 + index)))
-                        Controller.SelectDialogueResponse(index);
-
             HandleWorldPointer();
             SyncInputGate();
         }
 
+        private void SynchronizeDialogueCamera()
+        {
+            ProductionDialogueSession dialogue = _session?.Dialogue;
+            if (dialogue == null || dialogue.Phase != DialogueSessionPhase.AwaitingPlayerChoice)
+            {
+                _centeredDialogueNpc = default;
+                return;
+            }
+            if (_centeredDialogueNpc == dialogue.NpcIdentity || Camera.main == null
+                || !_session.TryGetObjectState(dialogue.PcIdentity, out PersistentObjectState pc)
+                || !_session.TryGetObjectState(dialogue.NpcIdentity, out PersistentObjectState npc)) return;
+            ArcanumObjectId target = RetailDialogueCameraRule.CenterTarget(
+                dialogue.PcIdentity, pc.TilePosition, dialogue.NpcIdentity, npc.TilePosition);
+            if (!_session.TryGetLoadedObject(target, out WorldObject runtime)) return;
+            Vector3 position = Camera.main.transform.position;
+            position.x = runtime.transform.position.x;
+            position.y = runtime.transform.position.y;
+            Camera.main.transform.position = position;
+            _centeredDialogueNpc = dialogue.NpcIdentity;
+        }
+
         void IProductionKeyboardCommands.Escape()
         {
+            if (Controller.Screen == GameUiScreen.CharacterCreation
+                && _retailCharacterCreation?.IsVisible == true)
+            {
+                _retailCharacterCreation.HandleEscape();
+                return;
+            }
+            if (Controller.Screen == GameUiScreen.PregeneratedCharacter
+                && _retailPregeneratedCharacter?.IsVisible == true)
+            {
+                _retailPregeneratedCharacter.HandleEscape();
+                return;
+            }
+            if (Controller.Screen == GameUiScreen.StartingEquipment
+                && _retailStartingEquipment?.IsVisible == true)
+            {
+                _retailStartingEquipment.HandleEscape();
+                return;
+            }
             if (Controller.Screen == GameUiScreen.Dialogue) Controller.CancelDialogue();
             else if (Controller.SaveLoad.Confirmation != SaveLoadConfirmation.None)
                 Controller.SaveLoad.CancelConfirmation();
@@ -179,6 +299,9 @@ namespace Arcanum.Runtime.UI
         void IProductionKeyboardCommands.ToggleAttackTalkMode() => Controller.ToggleAttackTalkMode();
         void IProductionKeyboardCommands.ActivateQuickSlot(int index) => Controller.ActivateQuickSlot(index);
         void IProductionKeyboardCommands.ActivateRecentAction() => Controller.ActivateRecentAction();
+        void IProductionKeyboardCommands.ToggleSleep() => Controller.ToggleSleepPanel();
+        void IProductionKeyboardCommands.ToggleFate() => Controller.ToggleFatePanel();
+        void IProductionKeyboardCommands.ToggleSkills() => Controller.ToggleSkillsPanel();
         void IProductionKeyboardCommands.SetCalledLocation(CombatCalledLocation location)
             => Controller.Combat.SetCalledLocation(location);
         void IProductionKeyboardCommands.AutoSave() => Controller.AutoSave();
@@ -209,10 +332,9 @@ namespace Arcanum.Runtime.UI
                 WorldObjectTargetSelector.TrySelectCombatTarget(_loader.SpriteOwners, world, out target);
             bool accepted = _session.Party.IssueOrder(order, location, target);
             if (accepted && order == PartyOrder.Attack) Controller.StartAttack(target, true);
-            if (accepted && order == PartyOrder.BackOff && _session.Combat.IsActive)
-                foreach (PartyMember member in _session.Party.Members.ToArray())
-                    if (_session.Combat.IsParticipantEngaged(member.Identity))
-                        _session.Combat.RemoveParticipant(member.Identity);
+            if (accepted && order == PartyOrder.BackOff)
+                foreach (PartyMember member in _session.Party.Members)
+                    GetComponent<ProductionCombatAiDriver>()?.Controller.CommandBackOff(member.Identity);
             Controller.ShowFeedback(accepted ? $"Followers: {order}." : $"Followers cannot {order} here.");
         }
 
@@ -285,18 +407,66 @@ namespace Arcanum.Runtime.UI
             SyncInputGate();
         }
 
+        private void InteractWithFollower(ArcanumObjectId follower)
+        {
+            EnsureInteractionSubscription();
+            if (_interaction == null)
+            {
+                Controller.ShowFeedback("Follower interaction is unavailable.");
+                return;
+            }
+            WorldInteractionResult result = _interaction.TryTalk(follower);
+            if (!result.IsSuccess)
+                Controller.ShowFeedback(result.Code.ToString());
+        }
+
+        private void PresentFollowerOrder(ArcanumObjectId follower, PartyOrder order)
+        {
+            if (order == PartyOrder.BackOff)
+                GetComponent<ProductionCombatAiDriver>()?.Controller.CommandBackOff(follower);
+        }
+
         private void HandleWorldPointer()
         {
             if (!Input.GetMouseButtonUp(0)) return;
             GameUiCursorMode cursor = Controller.CursorMode;
             bool targeting = cursor is GameUiCursorMode.SpellTarget or GameUiCursorMode.TechnologyTarget
-                or GameUiCursorMode.MerchantTarget;
+                or GameUiCursorMode.MerchantTarget or GameUiCursorMode.FollowerWalkTarget
+                or GameUiCursorMode.FollowerAttackTarget;
             if (!targeting || PointerOverInterface(Input.mousePosition)) return;
             Camera camera = Camera.main;
             if (camera == null || _loader == null) return;
             Vector3 screen = Input.mousePosition;
             screen.z = Mathf.Abs(camera.transform.position.z - _loader.transform.position.z);
             Vector3 world = camera.ScreenToWorldPoint(screen);
+            if (cursor == GameUiCursorMode.FollowerWalkTarget)
+            {
+                Controller.SubmitFollowerOrderTarget(WorldToGlobalTile(world));
+                return;
+            }
+            if (cursor == GameUiCursorMode.FollowerAttackTarget)
+            {
+                if (!WorldObjectTargetSelector.TrySelectCombatTarget(_loader.SpriteOwners, world,
+                        out ArcanumObjectId followerTarget))
+                {
+                    Controller.SubmitFollowerOrderTarget(null);
+                    return;
+                }
+                ArcanumObjectId follower = Controller.PendingFollower;
+                if (!Controller.SubmitFollowerOrderTarget(null, followerTarget)) return;
+                CombatResult combat = _session.Combat.IsActive
+                    ? _session.Combat.EngageParticipant(follower)
+                    : _session.Combat.StartCombat(follower, followerTarget, CombatMode.RealTime, true);
+                if (_session.Combat.IsActive)
+                {
+                    _session.Combat.EngageParticipant(followerTarget);
+                    GetComponent<ProductionCombatAiDriver>()?.Controller.CommandAttack(follower, followerTarget);
+                }
+                if (!combat.Succeeded && combat.Failure is not (CombatFailure.AlreadyActive
+                        or CombatFailure.AlreadyRegistered))
+                    Controller.ShowFeedback(combat.Failure.ToString());
+                return;
+            }
             if (WorldObjectTargetSelector.TrySelectCombatTarget(_loader.SpriteOwners, world,
                     out ArcanumObjectId target)) Controller.SubmitWorldTarget(target);
             else Controller.SubmitWorldTarget(default);
@@ -304,6 +474,18 @@ namespace Arcanum.Runtime.UI
 
         internal bool PointerOverInterface(Vector3 mouse)
         {
+            if (_retailCharacterCreation?.IsVisible == true) return true;
+            if (_retailPregeneratedCharacter?.IsVisible == true) return true;
+            if (_retailStartingEquipment?.IsVisible == true) return true;
+            if (_retailCharacterSheet?.ContainsScreenPoint(mouse) == true) return true;
+            if (_retailSchematic?.ContainsScreenPoint(mouse) == true) return true;
+            if (_retailSaveLoad?.ContainsScreenPoint(mouse) == true) return true;
+            if (_retailOptions?.ContainsScreenPoint(mouse) == true) return true;
+            if (_retailInventory?.ContainsScreenPoint(mouse) == true) return true;
+            if (_retailInventoryInteraction?.ContainsScreenPoint(mouse) == true) return true;
+            if (_retailDialogue?.ContainsScreenPoint(mouse) == true) return true;
+            if (_retailLogbook?.ContainsScreenPoint(mouse) == true) return true;
+            if (_retailLocalMap?.ContainsScreenPoint(mouse) == true) return true;
             if (_retailGameplayHud?.ContainsScreenPoint(mouse) == true) return true;
             Vector2 guiPoint = new(mouse.x, Screen.height - mouse.y);
             if (_retailGameplayHud?.IsAvailable == true) return _panelRect.Contains(guiPoint);
@@ -316,12 +498,56 @@ namespace Arcanum.Runtime.UI
             EnsureController();
             Controller.Refresh();
             _retailMainMenu?.Synchronize();
+            _retailCharacterCreation?.Synchronize();
+            _retailPregeneratedCharacter?.Synchronize();
+            _retailStartingEquipment?.Synchronize();
             _retailGameplayHud?.Synchronize(_showHud);
+            _retailInventory?.Synchronize();
+            _retailInventoryInteraction?.Synchronize();
+            _retailCharacterSheet?.Synchronize();
+            _retailSchematic?.Synchronize();
+            _retailSaveLoad?.Synchronize();
+            _retailOptions?.Synchronize();
+            _retailDialogue?.Synchronize();
+            _retailLogbook?.Synchronize();
+            _retailLocalMap?.Synchronize();
             bool sourceMainMenu = Controller.Screen == GameUiScreen.MainMenu
                                   && _retailMainMenu?.IsAvailable == true;
+            bool sourceCharacterCreation = Controller.Screen == GameUiScreen.CharacterCreation
+                                           && _retailCharacterCreation?.IsAvailable == true;
+            bool sourcePregeneratedCharacter = Controller.Screen == GameUiScreen.PregeneratedCharacter
+                                               && _retailPregeneratedCharacter?.IsAvailable == true;
+            bool sourceStartingEquipment = Controller.Screen == GameUiScreen.StartingEquipment
+                                           && _retailStartingEquipment?.IsAvailable == true;
+            bool sourceInventory = Controller.Screen == GameUiScreen.Inventory
+                                   && _retailInventory?.IsAvailable == true;
+            bool sourceInventoryInteraction = (Controller.Screen is GameUiScreen.Container
+                    or GameUiScreen.Corpse or GameUiScreen.Merchant or GameUiScreen.FollowerInventory)
+                                               && _retailInventoryInteraction?.IsAvailable == true;
+            bool sourceCharacter = (Controller.Screen == GameUiScreen.Character
+                                    || Controller.Screen == GameUiScreen.Magic
+                                    || Controller.Screen == GameUiScreen.Technology)
+                                   && _retailCharacterSheet?.IsAvailable == true;
+            bool sourceSchematic = Controller.Screen == GameUiScreen.Crafting
+                                   && _retailSchematic?.IsAvailable == true;
+            bool sourceDialogue = Controller.Screen == GameUiScreen.Dialogue
+                                  && _retailDialogue?.IsAvailable == true;
+            bool sourceLogbook = Controller.Screen == GameUiScreen.Journal
+                                 && _retailLogbook?.IsAvailable == true;
+            bool sourceSaveLoad = Controller.Screen == GameUiScreen.SaveLoad
+                                  && _retailSaveLoad?.IsAvailable == true;
+            bool sourceOptions = Controller.Screen == GameUiScreen.Options
+                                 && _retailOptions?.IsAvailable == true;
+            bool sourceLocalMap = Controller.Screen == GameUiScreen.Map
+                                  && _retailLocalMap?.IsVisible == true;
             GUI.depth = -120;
             if (_showHud && _retailGameplayHud?.IsAvailable != true) DrawHud();
-            if (Controller.IsModalOpen && !sourceMainMenu) DrawScreen();
+            if (Controller.IsModalOpen && !sourceMainMenu && !sourceCharacterCreation && !sourcePregeneratedCharacter
+                && !sourceStartingEquipment && !sourceInventory
+                && !sourceInventoryInteraction
+                && !sourceCharacter && !sourceSchematic && !sourceDialogue && !sourceLogbook && !sourceSaveLoad
+                && !sourceLocalMap && !sourceOptions)
+                DrawScreen();
             DrawCursorLabel();
         }
 
@@ -437,6 +663,7 @@ namespace Arcanum.Runtime.UI
             {
                 case GameUiScreen.MainMenu: DrawMainMenu(); break;
                 case GameUiScreen.CharacterCreation: DrawCharacterCreation(); break;
+                case GameUiScreen.StartingEquipment: DrawMerchant(); break;
                 case GameUiScreen.Inventory: DrawInventory(); break;
                 case GameUiScreen.Character: DrawCharacter(); break;
                 case GameUiScreen.Skills: DrawSkills(); break;
@@ -451,6 +678,8 @@ namespace Arcanum.Runtime.UI
                 case GameUiScreen.SaveLoad: DrawSaveLoad(); break;
                 case GameUiScreen.Dialogue: DrawDialogue(); break;
                 case GameUiScreen.Corpse: DrawCorpse(); break;
+                case GameUiScreen.Container: DrawCorpse(); break;
+                case GameUiScreen.FollowerInventory: DrawCorpse(); break;
             }
             GUILayout.EndScrollView();
             if (!string.IsNullOrEmpty(Controller.Feedback)) GUILayout.Label(Controller.Feedback, GUI.skin.box);
@@ -519,9 +748,11 @@ namespace Arcanum.Runtime.UI
             GUILayout.EndHorizontal();
 
             GUILayout.Label("Background");
+            IReadOnlyList<BackgroundDefinition> selectableBackgrounds = catalog.FindSelectableBackgrounds(
+                draft.Race, draft.Gender);
             foreach (BackgroundDefinition background in catalog.Backgrounds.Values.OrderBy(value => value.Id))
             {
-                bool legal = background.IsLegal(draft.Race, draft.Gender) && !background.HasUnsupportedEffects;
+                bool legal = selectableBackgrounds.Contains(background);
                 GUI.enabled = legal;
                 if (GUILayout.Button($"{(draft.BackgroundId == background.Id ? "● " : string.Empty)}"
                                      + $"{background.Name} — {background.Description}"))
@@ -925,47 +1156,78 @@ namespace Arcanum.Runtime.UI
         private void DrawCursorLabel()
         {
             Vector3 mouse = Event.current.mousePosition;
-            if (Controller.CursorMode == GameUiCursorMode.Default)
-            {
-                if (!TryGetCorpseHoverLabel(out string corpseLabel)) return;
-                GUI.Box(new Rect(mouse.x + 16f, mouse.y + 16f, 82f, 24f), corpseLabel);
-                return;
-            }
+            if (Controller.CursorMode == GameUiCursorMode.Default) return;
             string label = Controller.CursorMode switch
             {
                 GameUiCursorMode.SpellTarget => "SPELL",
                 GameUiCursorMode.TechnologyTarget => "TECH",
                 GameUiCursorMode.MerchantTarget => "BARTER",
-                GameUiCursorMode.Invalid => "INVALID",
+                // The retail runtime communicates illegal placement through its cursor art and
+                // invalid-action sound; it never paints a synthetic status word beside the pointer.
+                GameUiCursorMode.Invalid => null,
                 GameUiCursorMode.Attack => "ATTACK",
                 GameUiCursorMode.Use => "USE",
                 GameUiCursorMode.Item => "ITEM",
                 _ => Controller.CursorMode.ToString().ToUpperInvariant(),
             };
+            if (string.IsNullOrEmpty(label)) return;
             GUI.Box(new Rect(mouse.x + 16f, mouse.y + 16f, 82f, 24f), label);
         }
 
-        private bool TryGetCorpseHoverLabel(out string label)
+        private void RefreshWorldHover()
         {
-            label = null;
-            if (Controller.IsModalOpen || _loader == null || PointerOverInterface(Input.mousePosition)) return false;
+            if (Controller.IsModalOpen || _loader == null || PointerOverInterface(Input.mousePosition))
+            {
+                ClearWorldHover();
+                _retailGameplayHud?.SetWorldTarget(null);
+                return;
+            }
             Camera camera = Camera.main;
-            if (camera == null) return false;
+            if (camera == null)
+            {
+                ClearWorldHover();
+                _retailGameplayHud?.SetWorldTarget(null);
+                return;
+            }
             Vector3 screen = Input.mousePosition;
             screen.z = Mathf.Abs(camera.transform.position.z - _loader.transform.position.z);
             Vector3 world = camera.ScreenToWorldPoint(screen);
             if (!WorldObjectTargetSelector.TrySelectInteractionTarget(_loader.SpriteOwners, world,
-                    out ArcanumObjectId target, out ObjectType type)
-                || type != ObjectType.Npc || !_session.Vitality.TryGet(target, out _)
-                || !_session.Vitality.IsDead(target)) return false;
-            label = "LOOT";
-            return true;
+                    out ArcanumObjectId target, out _)
+                || Controller.ProjectWorldTarget(target) == null)
+            {
+                ClearWorldHover();
+                _retailGameplayHud?.SetWorldTarget(null);
+                return;
+            }
+            WorldObject selected = _loader.SpriteOwners.Select(value => value?.WorldObject)
+                .FirstOrDefault(value => value != null && value.Identity == target);
+            if (!ReferenceEquals(selected, _hoveredWorldObject))
+            {
+                ClearWorldHover();
+                _hoveredWorldObject = selected;
+                if (_hoveredWorldObject?.View != null)
+                {
+                    _hoveredOriginalColor = _hoveredWorldObject.View.color;
+                    _hoveredWorldObject.View.color = new Color(1f, .82f, .38f,
+                        _hoveredOriginalColor.a);
+                }
+            }
+            _retailGameplayHud?.SetWorldTarget(Controller.ProjectWorldTarget(target));
+        }
+
+        private void ClearWorldHover()
+        {
+            if (_hoveredWorldObject?.View != null)
+                _hoveredWorldObject.View.color = _hoveredOriginalColor;
+            _hoveredWorldObject = null;
+            _retailGameplayHud?.SetWorldTarget(null);
         }
 
         private void SyncInputGate()
         {
             _inputGate ??= GetComponent<PlayerInputGate>();
-            _inputGate?.SetBlocked(Controller?.IsModalOpen == true);
+            _inputGate?.SetBlocked(Controller?.BlocksWorldInput == true);
         }
 
         private void EnsureController()
@@ -995,6 +1257,7 @@ namespace Arcanum.Runtime.UI
         {
             GameUiScreen.MainMenu => "MAIN MENU",
             GameUiScreen.CharacterCreation => "CHARACTER CREATION",
+            GameUiScreen.StartingEquipment => "HUMAN SHOPKEEPER",
             GameUiScreen.Inventory => "INVENTORY",
             GameUiScreen.Character => "CHARACTER",
             GameUiScreen.Skills => "SKILLS",
@@ -1009,6 +1272,8 @@ namespace Arcanum.Runtime.UI
             GameUiScreen.SaveLoad => "SAVE / LOAD",
             GameUiScreen.Dialogue => "DIALOGUE",
             GameUiScreen.Corpse => "CORPSE",
+            GameUiScreen.Container => "CONTAINER",
+            GameUiScreen.FollowerInventory => "FOLLOWER INVENTORY",
             _ => "OPENARCANUM",
         };
     }

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Arcanum.Formats.Database;
 using Arcanum.Formats.Objects;
 using Arcanum.Formats.Text;
 using Arcanum.Formats.World;
@@ -9,6 +10,7 @@ using Arcanum.Runtime.Character;
 using Arcanum.Runtime.Crafting;
 using Arcanum.Runtime.Save;
 using Arcanum.Runtime.Technology;
+using Arcanum.Runtime.UI;
 using Arcanum.Runtime.World;
 using Arcanum.World;
 using NUnit.Framework;
@@ -51,9 +53,48 @@ namespace Arcanum.Formats.Tests
             Assert.That(catalog.TryGet(new SchematicId(4450), out SchematicDefinition value), Is.True);
             Assert.That((value.Name, value.Description, value.ArtNumber, value.ProductQuantity, value.Acquisition),
                 Is.EqualTo(("Electro-Armor", "Armor description", 99, 1, SchematicAcquisition.Found)));
-            Assert.That(value.ComponentOneAliases, Is.EqualTo(new[] { 15108, 15108, 15108 }));
-            Assert.That(value.ComponentTwoAliases, Is.EqualTo(new[] { 8075, 8083, 8088 }));
-            Assert.That(value.ProductAliases, Is.EqualTo(new[] { 8229, 8230, 8231 }));
+            Assert.That(value.ComponentOneAliases, Is.EqualTo(new[] { 15128, 15128, 15128 }));
+            Assert.That(value.ComponentTwoAliases, Is.EqualTo(new[] { 8095, 8103, 8108 }));
+            Assert.That(value.ProductAliases, Is.EqualTo(new[] { 8249, 8250, 8251 }));
+        }
+
+        [Test]
+        public void RetailBuiltInCatalogTranslatesEverySourceBasicPrototypeReference()
+        {
+            using var vfs = new DatVirtualFileSystem();
+            foreach (string file in new[]
+                     {
+                         "modules/Arcanum.dat", "arcanum1.dat", "arcanum2.dat", "arcanum3.dat", "arcanum4.dat",
+                     })
+            {
+                string archive = GameDataLocator.Find(file);
+                if (!string.IsNullOrEmpty(archive)) vfs.MountFile(archive);
+            }
+            Assert.That(vfs.Exists("rules/schematic.mes"), Is.True,
+                "the clean retail schematic source is required for this compatibility regression");
+            MesFile rules = MesReader.Read(vfs.ReadAllBytes("rules/schematic.mes"));
+            SchematicCatalog catalog = SchematicCatalog.FromMes(rules,
+                MesReader.Read(vfs.ReadAllBytes("mes/schematic_text.mes")));
+
+            for (int discipline = 0; discipline < 8; discipline++)
+            for (int degree = 1; degree <= 7; degree++)
+            {
+                int id = PhaseOneTechnologyCatalog.BuiltInSchematicId(
+                    (TechnologyDiscipline)discipline, (TechnologyDegree)degree);
+                Assert.That(catalog.TryGet(new SchematicId(id), out SchematicDefinition schematic), Is.True,
+                    $"missing source schematic {id}");
+                Assert.That(schematic.ComponentOneAliases,
+                    Is.EqualTo(ParseSourcePrototypeAliases(rules.Get(id + 3))), $"schematic {id} component one");
+                Assert.That(schematic.ComponentTwoAliases,
+                    Is.EqualTo(ParseSourcePrototypeAliases(rules.Get(id + 4))), $"schematic {id} component two");
+                Assert.That(schematic.ProductAliases,
+                    Is.EqualTo(ParseSourcePrototypeAliases(rules.Get(id + 5))), $"schematic {id} product");
+            }
+
+            Assert.That(catalog.TryGet(new SchematicId(3200), out SchematicDefinition pureOre), Is.True);
+            Assert.That(pureOre.ComponentOneAliases[0], Is.EqualTo(15106), "Iron Ore");
+            Assert.That(pureOre.ComponentTwoAliases[0], Is.EqualTo(15107), "Steel");
+            Assert.That(pureOre.ProductAliases[0], Is.EqualTo(15105), "Pure Ore");
         }
 
         [Test]
@@ -175,6 +216,26 @@ namespace Arcanum.Formats.Tests
         }
 
         [Test]
+        public void HeldTechnicalManualChangesFoundSchematicEligibilityWithoutGrantingKnowledge()
+        {
+            _prototypes[10084].ItemComplexity = -8;
+            _prototypes[10084].ItemDiscipline = (int)TechnologyDiscipline.Herbology;
+            Item(41, 10084);
+            Item(42, 15116);
+            var schematic = new SchematicId(4020);
+            Assert.That(_session.Crafting.Knows(_pc.Identity, schematic), Is.False);
+
+            _prototypes[15190] = new ObjectProtoInfo(15190, ObjectType.Generic, 0x50000000u)
+                { ItemDiscipline = (int)TechnologyDiscipline.Herbology };
+            Item(43, 15190, ObjectType.Generic);
+            Assert.That(_session.Crafting.Knows(_pc.Identity, schematic), Is.False);
+
+            Learn(44, 4020);
+            Assert.That(_session.Crafting.Preview(new CraftingRequest(_pc.Identity, schematic)).Succeeded,
+                Is.True);
+        }
+
+        [Test]
         public void AlternativeComponentSelectsCorrespondingProductVariant()
         {
             BindRecipe(4450, 15108, 8075, 8229, "8075 8083 8088", "8229 8230 8231");
@@ -219,6 +280,52 @@ namespace Arcanum.Formats.Tests
             Assert.That(_session.TryGetObjectState(second.Identity, out _), Is.True);
             Assert.That(_session.NextDynamicIdentity, Is.EqualTo(allocator));
             Assert.That(_session.States.Values.Any(value => value.PrototypeNumber == 15169), Is.False);
+        }
+
+        [Test, Category("UIE2CharacterSkills")]
+        public void SourceSchematicProjectionTracksDisciplineComponentsAndReadinessWithoutOwningCraftState()
+        {
+            _prototypes[15169].ItemDiscipline = (int)TechnologyDiscipline.Chemistry;
+            _prototypes[10084].ItemDiscipline = (int)TechnologyDiscipline.Herbology;
+            _prototypes[10084].ItemComplexity = 0;
+            _prototypes[15116].ItemDiscipline = (int)TechnologyDiscipline.Chemistry;
+            _prototypes[15116].ItemComplexity = 0;
+            Learn4020();
+            var ui = new GameUiController(_session);
+
+            GameUiSchematicView missing = ui.ProjectSchematics().Single();
+            Assert.That(missing.Discipline, Is.EqualTo(TechnologyDiscipline.Chemistry));
+            Assert.That((missing.ComponentOne.PrototypeNumber, missing.ComponentTwo.PrototypeNumber),
+                Is.EqualTo((10084, 15116)));
+            Assert.That((missing.ComponentOne.IsOwned, missing.ComponentTwo.IsOwned), Is.EqualTo((false, false)));
+            Assert.That(RetailSchematicLayout.ReadinessSourceId(missing), Is.EqualTo(359));
+
+            Item(61, 10084); Item(62, 15116);
+            GameUiSchematicView ready = ui.ProjectSchematics().Single();
+            Assert.That((ready.ComponentOne.IsOwned, ready.ComponentTwo.IsOwned), Is.EqualTo((true, true)));
+            Assert.That(RetailSchematicLayout.ReadinessSourceId(ready), Is.EqualTo(360));
+            Assert.That(ui.Craft(ready.Definition.Id), Is.True);
+            Assert.That(_session.States.Values.Count(value => value.PrototypeNumber == 15169), Is.EqualTo(1));
+        }
+
+        [Test, Category("UIE2CharacterSkills")]
+        public void SourceSchematicLayoutFiltersFoundPagesAndUsesExactNativeGeometry()
+        {
+            _prototypes[15169].ItemDiscipline = (int)TechnologyDiscipline.Mechanical;
+            Learn4020();
+            var ui = new GameUiController(_session);
+            IReadOnlyList<GameUiSchematicView> projected = ui.ProjectSchematics();
+
+            Assert.That(RetailSchematicLayout.Filter(projected, RetailSchematicMode.Learned,
+                TechnologyDiscipline.Mechanical), Is.Empty);
+            Assert.That(RetailSchematicLayout.Filter(projected, RetailSchematicMode.Found,
+                TechnologyDiscipline.Mechanical).Select(value => value.Definition.Id.Value), Is.EqualTo(new[] { 4020 }));
+            Assert.That(RetailSchematicLayout.Window, Is.EqualTo(new Rect(0, 41, 800, 400)));
+            Assert.That(RetailSchematicLayout.PcLens, Is.EqualTo(new Rect(50, 26, 89, 89)));
+            Assert.That(RetailSchematicLayout.Components,
+                Is.EqualTo(new[] { new Rect(579, 181, 99, 67), new Rect(579, 277, 99, 67) }));
+            Assert.That(RetailSchematicLayout.TabSourceIds,
+                Is.EqualTo(new[] { 355, 356, 361, 362, 363, 364, 368, 369 }));
         }
 
         [Test]
@@ -271,11 +378,28 @@ namespace Arcanum.Formats.Tests
         private void BindRecipe(int id, int first, int second, int product, string secondAliases = null,
             string productAliases = null, int quantity = 1)
         {
-            _session.BindCraftingSource(Catalog(id, "1", "2", "3", first.ToString(),
-                secondAliases ?? second.ToString(), productAliases ?? product.ToString(), quantity.ToString()));
+            _session.BindCraftingSource(Catalog(id, "1", "2", "3", SourceBasic(first).ToString(),
+                secondAliases == null ? SourceBasic(second).ToString() : SourceBasics(secondAliases),
+                productAliases == null ? SourceBasic(product).ToString() : SourceBasics(productAliases),
+                quantity.ToString()));
             AddProto(first); AddProto(second); AddProto(product);
             if (secondAliases != null) foreach (int value in secondAliases.Split(' ').Select(int.Parse)) AddProto(value);
             if (productAliases != null) foreach (int value in productAliases.Split(' ').Select(int.Parse)) AddProto(value);
+        }
+
+        private static int SourceBasic(int prototype)
+            => checked(prototype - SchematicCatalog.BasicPrototypeNumberOffset);
+
+        private static string SourceBasics(string prototypes)
+            => string.Join(" ", prototypes.Split(' ').Select(int.Parse).Select(SourceBasic));
+
+        private static int[] ParseSourcePrototypeAliases(string value)
+        {
+            int[] source = value.Split((char[])null, StringSplitOptions.RemoveEmptyEntries)
+                .Select(int.Parse)
+                .Select(number => checked(number + SchematicCatalog.BasicPrototypeNumberOffset))
+                .ToArray();
+            return Enumerable.Range(0, 3).Select(index => source[Math.Min(index, source.Length - 1)]).ToArray();
         }
 
         private static SchematicCatalog Catalog(int id, params string[] values)

@@ -8,6 +8,7 @@ using Arcanum.Formats.Tiles;
 using Arcanum.Formats.World;
 using Arcanum.Runtime.Character;
 using Arcanum.Runtime.Combat;
+using Arcanum.Runtime.UI;
 using Arcanum.Runtime.World;
 using Arcanum.World;
 using NUnit.Framework;
@@ -289,6 +290,29 @@ namespace Arcanum.Formats.Tests
             Assert.That(presenter, Is.Not.Null);
             Assert.That(_root.GetComponents<ProductionCombatPresenter>(), Has.Length.EqualTo(1));
             Assert.That(_session.Combat.IsActive, Is.False);
+        }
+
+        [Test]
+        public void ReadyControlProjectsEquippedBowIntoAuthoritativeCritterArt()
+        {
+            _map.Unregister(_targetRuntime);
+            _targetRuntime.Tile = new Vector2Int(30, 30);
+            _targetRuntime.TilePosition = _targetRuntime.Tile;
+            _session.SetMovementState(_target, _targetRuntime.Tile, _targetRuntime.ArtId, false);
+            _map.Register(_targetRuntime, 0);
+            var gameUi = new GameUiController(_session);
+            uint original = _pc.ArtId;
+
+            Assert.That(gameUi.ToggleCombatMode(), Is.True);
+            Assert.That(_session.Combat.IsCombatModeActive, Is.True);
+            Assert.That(_pc.ArtId & 0xFu, Is.EqualTo(8u));
+            Assert.That(_pcRuntime.ArtId, Is.EqualTo(_pc.ArtId));
+
+            Assert.That(gameUi.ToggleCombatMode(), Is.True);
+            Assert.That(_session.Combat.IsCombatModeActive, Is.False);
+            Assert.That(_pc.ArtId & 0xFu, Is.Zero);
+            Assert.That(CritterArtResolver.RotationOf(_pc.ArtId),
+                Is.EqualTo(CritterArtResolver.RotationOf(original)));
         }
 
         private void Start(CombatMode mode)

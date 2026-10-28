@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using Arcanum.Runtime.World;
 
 namespace Arcanum.Runtime.Save
 {
@@ -18,6 +19,11 @@ namespace Arcanum.Runtime.Save
         public string Level { get; }
         public string Version { get; }
         public string Error { get; }
+        public string DisplayName { get; }
+        public string PcName { get; }
+        public string GameDate { get; }
+        public string GameTime { get; }
+        public string ThumbnailPngBase64 { get; }
 
         internal SaveLoadSlotView(SessionSaveSlotInfo info)
         {
@@ -25,14 +31,32 @@ namespace Arcanum.Runtime.Save
             IsValid = info?.IsValid == true;
             SessionSaveSlotMetadata metadata = info?.Metadata;
             Timestamp = FormatTimestamp(metadata?.SavedAtUtc);
-            Location = !string.IsNullOrWhiteSpace(metadata?.SelectedSector)
-                ? metadata.SelectedSector
-                : metadata?.CurrentMap ?? "Unknown location";
+            DisplayName = string.IsNullOrWhiteSpace(metadata?.DisplayName) ? SlotId : metadata.DisplayName;
+            PcName = metadata?.PcName ?? string.Empty;
+            long gameTime = metadata?.GameTimeMilliseconds > 0
+                ? metadata.GameTimeMilliseconds : SourceTimeService.InitialMilliseconds;
+            var sourceTimestamp = SourceCalendar.Timestamp(gameTime);
+            GameDate = SourceCalendar.FormatHudDate(sourceTimestamp);
+            GameTime = SourceCalendar.FormatLogbook(sourceTimestamp).Split(new[] { "  " },
+                StringSplitOptions.None).LastOrDefault() ?? string.Empty;
+            Location = !string.IsNullOrWhiteSpace(metadata?.AreaName)
+                ? metadata.AreaName
+                : !string.IsNullOrWhiteSpace(metadata?.CurrentMap)
+                    ? HumanizeMap(metadata.CurrentMap) : "Unknown location.";
             Level = metadata == null ? "—" : metadata.PcLevel.ToString(CultureInfo.InvariantCulture);
             Version = metadata == null
                 ? "—"
                 : $"slot 1 / session {metadata.SessionVersion}";
             Error = IsValid ? null : info?.Error ?? "This slot is not readable.";
+            ThumbnailPngBase64 = metadata?.ThumbnailPngBase64;
+        }
+
+        private static string HumanizeMap(string value)
+        {
+            string normalized = (value ?? string.Empty).Replace('\\', '/').TrimEnd('/');
+            int slash = normalized.LastIndexOf('/');
+            string leaf = slash >= 0 ? normalized.Substring(slash + 1) : normalized;
+            return string.IsNullOrWhiteSpace(leaf) ? "Unknown location." : leaf.Replace('_', ' ');
         }
 
         private static string FormatTimestamp(string value)
@@ -59,6 +83,7 @@ namespace Arcanum.Runtime.Save
         public string StatusMessage { get; private set; }
         public string ErrorMessage { get; private set; }
         public string SuggestedSlotId { get; private set; } = "manual01";
+        public string DraftSaveName { get; private set; } = "New Save";
         public string ConfirmationMessage => Confirmation switch
         {
             SaveLoadConfirmation.Overwrite => $"Overwrite '{_pendingSlotId}'?",
@@ -80,6 +105,7 @@ namespace Arcanum.Runtime.Save
             SelectedSlotId = null;
             Refresh();
             if (mode == SaveLoadPanelMode.Load) SelectDefaultLoadSlot();
+            else DraftSaveName = "New Save";
         }
 
         public void Close()
@@ -103,8 +129,11 @@ namespace Arcanum.Runtime.Save
 
         public bool SelectSlot(string slotId)
         {
-            if (_slots.All(slot => !string.Equals(slot.SlotId, slotId, StringComparison.Ordinal))) return false;
+            SaveLoadSlotView selected = _slots.FirstOrDefault(slot =>
+                string.Equals(slot.SlotId, slotId, StringComparison.Ordinal));
+            if (selected == null) return false;
             SelectedSlotId = slotId;
+            if (Mode == SaveLoadPanelMode.Save) DraftSaveName = selected.DisplayName;
             Confirmation = SaveLoadConfirmation.None;
             _pendingSlotId = null;
             StatusMessage = null;
@@ -119,7 +148,11 @@ namespace Arcanum.Runtime.Save
             _pendingSlotId = null;
             StatusMessage = null;
             ErrorMessage = null;
+            DraftSaveName = "New Save";
         }
+
+        public void SetDraftSaveName(string value)
+            => DraftSaveName = (value ?? string.Empty).Length <= 32 ? value ?? string.Empty : value.Substring(0, 32);
 
         public void Refresh()
         {
@@ -204,7 +237,9 @@ namespace Arcanum.Runtime.Save
 
         private void ExecuteSave(string slotId)
         {
-            SessionSaveSlotResult result = _operations.SaveSlot(slotId);
+            string displayName = string.IsNullOrWhiteSpace(DraftSaveName) ? slotId : DraftSaveName.Trim();
+            SessionSaveSlotResult result = _operations is ISessionSaveSlotPresentationOperations presentation
+                ? presentation.SaveSlot(slotId, displayName) : _operations.SaveSlot(slotId);
             if (!result.Succeeded)
             {
                 ErrorMessage = Describe(result);

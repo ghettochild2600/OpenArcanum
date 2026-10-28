@@ -2,9 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Arcanum.Formats.Objects;
+using Arcanum.Formats.Text;
 using Arcanum.Runtime.Character;
 using Arcanum.Runtime.Combat;
 using Arcanum.Runtime.Save;
+using Arcanum.Runtime.UI;
 using Arcanum.Runtime.World;
 using UnityEngine;
 
@@ -20,9 +22,89 @@ namespace Arcanum.Runtime.Magic
     public enum SpellEffectFamily { AttributeModifier, DirectDamage, Healing, CritterFlag }
     public enum SpellDisposition { Friendly, Aggressive }
 
+    /// <summary>Source-backed Character Editor labels and artwork for all eighty retail spells.</summary>
+    public sealed class SpellPresentationCatalog
+    {
+        private static readonly int[] SourceIcons =
+        {
+            12, 13, 14, 15, 16, 45, 46, 47, 48, 49, 39, 40, 41, 42, 43,
+            93, 94, 95, 96, 97, 51, 52, 53, 54, 55, 87, 88, 89, 90, 91,
+            57, 58, 59, 60, 61, 99, 100, 101, 102, 103, 63, 64, 65, 66, 67,
+            69, 70, 71, 72, 73, 75, 76, 77, 78, 79, 105, 106, 107, 108, 109,
+            111, 112, 113, 114, 115, 81, 82, 83, 84, 85, 117, 118, 119, 120, 121,
+            123, 124, 125, 126, 127,
+        };
+        private static readonly int[] MinimumLevels = { 1, 1, 5, 10, 15 };
+        private readonly string[] _spellNames;
+        private readonly string[] _collegeNames;
+        private readonly string[] _spellDescriptions;
+        private readonly string[] _collegeDescriptions;
+        private readonly int[] _fatigueCosts;
+
+        private SpellPresentationCatalog(string[] spellNames, string[] collegeNames,
+            string[] spellDescriptions, string[] collegeDescriptions, int[] fatigueCosts)
+        {
+            _spellNames = spellNames;
+            _collegeNames = collegeNames;
+            _spellDescriptions = spellDescriptions;
+            _collegeDescriptions = collegeDescriptions;
+            _fatigueCosts = fatigueCosts;
+        }
+
+        public static SpellPresentationCatalog FromMes(MesFile spellText, MesFile spellRules = null)
+        {
+            if (spellText == null) throw new ArgumentNullException(nameof(spellText));
+            var spells = new string[80];
+            var colleges = new string[16];
+            var spellDescriptions = new string[80];
+            var collegeDescriptions = new string[16];
+            var fatigueCosts = new int[80];
+            for (int id = 0; id < spells.Length; id++) spells[id] = spellText.Get(id)?.Trim();
+            for (int id = 0; id < colleges.Length; id++) colleges[id] = spellText.Get(500 + id)?.Trim();
+            for (int id = 0; id < spellDescriptions.Length; id++)
+                spellDescriptions[id] = spellText.Get(700 + id)?.Trim();
+            for (int id = 0; id < collegeDescriptions.Length; id++)
+                collegeDescriptions[id] = spellText.Get(8000 + id)?.Trim();
+            for (int id = 0; id < fatigueCosts.Length; id++)
+                fatigueCosts[id] = ParseNamedInt(spellRules?.Get(1001 + 50 * id), "Cost:",
+                    5 * (id % 5 + 1));
+            return new SpellPresentationCatalog(spells, colleges, spellDescriptions, collegeDescriptions,
+                fatigueCosts);
+        }
+
+        public string SpellName(int id) => id >= 0 && id < _spellNames.Length ? _spellNames[id] : string.Empty;
+        public string CollegeName(SpellCollege college)
+            => Enum.IsDefined(typeof(SpellCollege), college) ? _collegeNames[(int)college] : string.Empty;
+        public string SpellDescription(int id)
+            => id >= 0 && id < _spellDescriptions.Length ? _spellDescriptions[id] : string.Empty;
+        public string CollegeDescription(SpellCollege college)
+            => Enum.IsDefined(typeof(SpellCollege), college) ? _collegeDescriptions[(int)college] : string.Empty;
+        public int FatigueCost(int id)
+            => id >= 0 && id < _fatigueCosts.Length ? _fatigueCosts[id] : 0;
+        public static int IconSourceId(int id)
+            => id >= 0 && id < SourceIcons.Length ? SourceIcons[id] : 0;
+        public static int MinimumLevel(int rank)
+            => rank >= 1 && rank <= MinimumLevels.Length ? MinimumLevels[rank - 1] : 0;
+
+        private static int ParseNamedInt(string source, string name, int fallback)
+        {
+            if (string.IsNullOrEmpty(source)) return fallback;
+            int start = source.IndexOf(name, StringComparison.OrdinalIgnoreCase);
+            if (start < 0) return fallback;
+            start += name.Length;
+            while (start < source.Length && char.IsWhiteSpace(source[start])) start++;
+            int end = start;
+            if (end < source.Length && source[end] == '-') end++;
+            while (end < source.Length && char.IsDigit(source[end])) end++;
+            return end > start && int.TryParse(source.Substring(start, end - start), out int value)
+                ? value : fallback;
+        }
+    }
+
     public sealed class SpellDefinition
     {
         public int Id { get; }
+        public int IconSourceId { get; }
         public string Name { get; }
         public SpellCollege College { get; }
         public int Rank { get; }
@@ -48,7 +130,7 @@ namespace Arcanum.Runtime.Magic
         public CharacterAttribute? ResistanceAttribute { get; }
         public int ResistanceModifier { get; }
 
-        public SpellDefinition(int id, string name, SpellTargetClass targetClass,
+        public SpellDefinition(int id, int iconSourceId, string name, SpellTargetClass targetClass,
             SpellEffectFamily effectFamily, SpellDisposition disposition, int baseFatigueCost,
             int actionPointCost, int range, bool allowsSelf, int minimumMagnitude = 0,
             int maximumMagnitude = 0, bool maintained = false, int upkeepFatigueCost = 0,
@@ -59,6 +141,7 @@ namespace Arcanum.Runtime.Magic
         {
             if (id < 0 || id >= 80) throw new ArgumentOutOfRangeException(nameof(id));
             Id = id;
+            IconSourceId = iconSourceId;
             Name = name ?? throw new ArgumentNullException(nameof(name));
             College = (SpellCollege)(id / 5);
             Rank = id % 5 + 1;
@@ -99,19 +182,19 @@ namespace Arcanum.Runtime.Magic
         private static readonly IReadOnlyDictionary<int, SpellDefinition> Definitions =
             new Dictionary<int, SpellDefinition>
             {
-                [StrengthOfEarth] = new(StrengthOfEarth, "Strength of Earth",
+                [StrengthOfEarth] = new(StrengthOfEarth, 93, "Strength of Earth",
                     SpellTargetClass.LivingCritter, SpellEffectFamily.AttributeModifier,
                     SpellDisposition.Friendly, 5, SourceSpellActionPointCost, SourceDefaultRange, true,
                     maintained: true, upkeepFatigueCost: 1, upkeepPeriodMilliseconds: 80_000,
                     modifiedAttribute: CharacterAttribute.Strength, attributeMagnitude: 4),
-                [Harm] = new(Harm, "Harm", SpellTargetClass.LivingCritter,
+                [Harm] = new(Harm, 105, "Harm", SpellTargetClass.LivingCritter,
                     SpellEffectFamily.DirectDamage, SpellDisposition.Aggressive, 5,
                     SourceSpellActionPointCost, SourceDefaultRange, false, 3, 40),
-                [MinorHealing] = new(MinorHealing, "Minor Healing",
+                [MinorHealing] = new(MinorHealing, 111, "Minor Healing",
                     SpellTargetClass.DamagedLivingCritter, SpellEffectFamily.Healing,
                     SpellDisposition.Friendly, 5, SourceSpellActionPointCost,
                     SourceDefaultRange, true, 5, 30),
-                [Flash] = new(Flash, "Flash", SpellTargetClass.LivingCritter,
+                [Flash] = new(Flash, 82, "Flash", SpellTargetClass.LivingCritter,
                     SpellEffectFamily.CritterFlag, SpellDisposition.Aggressive, 10,
                     SourceSpellActionPointCost, SourceDefaultRange, true,
                     runtimeCritterFlag: 0x00000080, durationSourceMilliseconds: 80_000,
@@ -329,6 +412,9 @@ namespace Arcanum.Runtime.Magic
             ranks[(int)college] = rank;
         }
 
+        public int GetKnownCollegeRank(ArcanumObjectId identity, SpellCollege college)
+            => _collegeRanks.TryGetValue(identity, out int[] ranks) ? ranks[(int)college] : 0;
+
         public void SetMastery(ArcanumObjectId identity, SpellCollege? college)
             => _masteries[identity] = college.HasValue ? (int)college.Value : -1;
 
@@ -348,14 +434,24 @@ namespace Arcanum.Runtime.Magic
             SpellCastResult preview = PreviewInternal(request, scheduledRealTime);
             if (!preview.Succeeded) return preview;
             PhaseOneSpellCatalog.TryGet(request.SpellId, out SpellDefinition spell);
+            bool forceMaximum = _world.PlayerState != null
+                                && request.Caster == _world.PlayerState.Identity
+                                && _world.GameplayHud.IsFateActive(FateChoice.SpellAtMaximum);
+            bool forceSave = _world.PlayerState != null
+                             && request.Target == _world.PlayerState.Identity
+                             && request.Caster != request.Target
+                             && spell.ResistanceAttribute.HasValue
+                             && _world.GameplayHud.IsFateActive(FateChoice.SaveAgainstMagick);
             int resistance = spell.Disposition == SpellDisposition.Aggressive
                 ? ResolveResistance(request.Caster, request.Target) : 0;
-            int magnitude = ScaledMagnitude(spell, request.Caster);
+            int magnitude = forceMaximum ? spell.MaximumMagnitude : ScaledMagnitude(spell, request.Caster);
             if (spell.EffectFamily == SpellEffectFamily.DirectDamage && resistance > 0)
                 magnitude = Math.Max(1, magnitude * (100 - resistance) / 100);
-            bool resisted = spell.ResistanceAttribute.HasValue
+            bool resisted = forceSave || spell.ResistanceAttribute.HasValue
                             && ResolveSavingThrow(spell, request.Caster, request.Target, resistance);
 
+            if (forceMaximum) _world.GameplayHud.TryResolveFate(FateChoice.SpellAtMaximum);
+            if (forceSave) _world.GameplayHud.TryResolveFate(FateChoice.SaveAgainstMagick);
             _world.Vitality.ApplyFatigueDamage(request.Caster, preview.FatigueCost);
             if (_world.Combat.IsActive && _world.Combat.Mode == CombatMode.TurnBased)
                 _world.Combat.CommitTurnBasedSpellAction(request.Caster, spell.ActionPointCost);
@@ -514,7 +610,8 @@ namespace Arcanum.Runtime.Magic
         {
             if (spell.EffectFamily == SpellEffectFamily.AttributeModifier)
                 _world.Characters.SetEffectModifier(effect.Target, effect.ModifierIdentity,
-                    spell.ModifiedAttribute.Value, effect.Magnitude);
+                    spell.ModifiedAttribute.Value, effect.Magnitude,
+                    CharacterContributorDomain.Spell, spell.Id);
         }
 
         private void RemoveEffect(ActiveSpellEffect effect, SpellDefinition spell)

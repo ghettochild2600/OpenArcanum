@@ -218,6 +218,30 @@ namespace Arcanum.Runtime.Combat
             return false;
         }
 
+        /// <summary>Source follower Attack command: replace this follower's autonomous combat focus.</summary>
+        public bool CommandAttack(PersistentObjectId actor, PersistentObjectId target)
+        {
+            Refresh();
+            if (!IsValidTarget(actor, target)) return false;
+            ActorState state = GetOrCreate(actor);
+            PersistentObjectId previous = state.Target;
+            state.Target = target;
+            state.WeaponSelectionRequired = true;
+            state.WeaponSelectionBlocked = false;
+            LastTargetSelection = new CombatAiTargetSelection(previous, target, target,
+                previous.IsNull ? CombatAiTargetSelectionReason.NewDangerSource
+                    : CombatAiTargetSelectionReason.RetainedFocus);
+            return true;
+        }
+
+        public bool CommandBackOff(PersistentObjectId actor)
+        {
+            if (!_actors.TryGetValue(actor, out ActorState state)) return false;
+            state.Target = default;
+            state.WeaponSelectionBlocked = false;
+            return true;
+        }
+
         public void ResetTransient()
         {
             _actors.Clear();

@@ -28,9 +28,18 @@ namespace Arcanum.Runtime.Economy
         public ArcanumObjectId Customer { get; }
         public ArcanumObjectId Item { get; }
         public int Quantity { get; }
+        /// <summary>
+        /// Optional source inventory-grid origin selected by the barter drop. A negative value preserves the
+        /// ordinary first-fit transaction used by dialogue and non-grid callers.
+        /// </summary>
+        public int DestinationInventoryLocation { get; }
         public EconomyTransactionRequest(EconomyTransactionDirection direction, ArcanumObjectId merchant,
-            ArcanumObjectId customer, ArcanumObjectId item, int quantity = 1)
-        { Direction = direction; Merchant = merchant; Customer = customer; Item = item; Quantity = quantity; }
+            ArcanumObjectId customer, ArcanumObjectId item, int quantity = 1,
+            int destinationInventoryLocation = -1)
+        {
+            Direction = direction; Merchant = merchant; Customer = customer; Item = item; Quantity = quantity;
+            DestinationInventoryLocation = destinationInventoryLocation;
+        }
     }
 
     public readonly struct EconomyPriceBreakdown
@@ -48,15 +57,17 @@ namespace Arcanum.Runtime.Economy
         public int CurrentHitPoints { get; }
         public int MaximumHitPoints { get; }
         public int UnitPrice { get; }
+        public int? ReportedMarkupPercent { get; }
         internal EconomyPriceBreakdown(EconomyTransactionDirection direction, int rawWorth, bool identified,
             int effectiveWorth, int retailMultiplier, int haggleRank, int haggleEffectiveness,
             SkillTrainingLevel haggleTraining, int reaction, int reactionPercent,
-            int currentHitPoints, int maximumHitPoints, int unitPrice)
+            int currentHitPoints, int maximumHitPoints, int unitPrice, int? reportedMarkupPercent)
         {
             Direction = direction; RawWorth = rawWorth; Identified = identified; EffectiveWorth = effectiveWorth;
             RetailMultiplier = retailMultiplier; HaggleRank = haggleRank; HaggleEffectiveness = haggleEffectiveness;
             HaggleTraining = haggleTraining; Reaction = reaction; ReactionPercent = reactionPercent;
             CurrentHitPoints = currentHitPoints; MaximumHitPoints = maximumHitPoints; UnitPrice = unitPrice;
+            ReportedMarkupPercent = reportedMarkupPercent;
         }
     }
 
@@ -193,6 +204,7 @@ namespace Arcanum.Runtime.Economy
         }
         public void BindInventorySources(InventorySourceCatalog catalog)
             => _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
+        public bool HasInventorySource(int sourceId) => _catalog?.TryGet(sourceId, out _) == true;
         public void BindDifficultyProvider(Func<EconomyGameDifficulty> provider)
             => _difficulty = provider ?? throw new ArgumentNullException(nameof(provider));
         public void BindBuyObjectAcceptance(Func<ArcanumObjectId, ArcanumObjectId, ArcanumObjectId, bool> evaluator)
@@ -261,7 +273,8 @@ namespace Arcanum.Runtime.Economy
             ArcanumObjectId destination = request.Direction == EconomyTransactionDirection.BuyFromMerchant
                 ? request.Customer : merchantInventory;
             WorldMapSessionCoordinator.DialogueInventorySnapshot snapshot = _world.CaptureDialogueInventorySnapshot();
-            InventoryTransferResult transfer = TransferQuantity(item, request.Quantity, destination);
+            InventoryTransferResult transfer = TransferQuantity(item, request.Quantity, destination,
+                request.DestinationInventoryLocation);
             _world.RestoreDialogueInventorySnapshot(snapshot);
             if (!transfer.Succeeded)
                 return Fail(transfer.Code is InventoryResultCode.NoRoom or InventoryResultCode.TooHeavy
@@ -282,7 +295,8 @@ namespace Arcanum.Runtime.Economy
                 NormalizeStoreGold(merchantInventory, request.Merchant);
                 ArcanumObjectId destination = request.Direction == EconomyTransactionDirection.BuyFromMerchant
                     ? request.Customer : merchantInventory;
-                InventoryTransferResult transfer = TransferQuantity(item, request.Quantity, destination);
+                InventoryTransferResult transfer = TransferQuantity(item, request.Quantity, destination,
+                    request.DestinationInventoryLocation);
                 if (!transfer.Succeeded) throw new InvalidOperationException(transfer.Code.ToString());
                 int payment = request.Direction == EconomyTransactionDirection.BuyFromMerchant
                     ? preview.QuotedTotal : Math.Min(preview.QuotedTotal, _world.GetGold(request.Merchant));
@@ -362,6 +376,41 @@ namespace Arcanum.Runtime.Economy
             { _world.RestoreDialogueInventorySnapshot(snapshot); failure = ex.Message; return false; }
         }
 
+        /// <summary>
+        /// Creates the retail inventory-source contents used by a newly-created pregenerated PC. This deliberately
+        /// uses the same source percentages and random authority as merchant source generation, but creates no
+        /// merchant runtime or restock deadline.
+        /// </summary>
+        internal bool PopulateStartingInventory(ArcanumObjectId owner, int sourceId, out string failure)
+        {
+            failure = null;
+            if (!owner.IsPersistent || _catalog == null || !_catalog.TryGet(sourceId, out InventorySourceDefinition source))
+            { failure = "Starting inventory source is unavailable."; return false; }
+            WorldMapSessionCoordinator.DialogueInventorySnapshot snapshot = _world.CaptureDialogueInventorySnapshot();
+            try
+            {
+                if (source.MaximumGold > 0)
+                {
+                    int amount = _random.NextInclusive(source.MinimumGold, source.MaximumGold);
+                    if (amount > 0) _world.AddGold(owner, amount);
+                }
+                foreach (InventorySourceEntry entry in source.Entries)
+                {
+                    if (_random.NextInclusive(1, 100) > entry.ChancePercent) continue;
+                    ItemCreationResult created = _world.CreateItem(entry.PrototypeNumber,
+                        ObjectPlacement.ContainedBy(owner));
+                    if (!created.Succeeded) throw new InvalidOperationException(created.Code.ToString());
+                }
+                return true;
+            }
+            catch (Exception exception)
+            {
+                _world.RestoreDialogueInventorySnapshot(snapshot);
+                failure = exception.Message;
+                return false;
+            }
+        }
+
         public EconomySaveData ExportSaveData()
             => new()
             {
@@ -428,8 +477,15 @@ namespace Arcanum.Runtime.Economy
                 if (price is 1 or 2) price = 3;
             }
             int unitPrice = checked((int)price);
+            int? reportedMarkupPercent = null;
+            if (direction == EconomyTransactionDirection.BuyFromMerchant
+                && training >= SkillTrainingLevel.Apprentice)
+            {
+                int markup = checked((int)(100L * (unitPrice - worth) / worth));
+                reportedMarkupPercent = markup == 0 ? 1 : markup;
+            }
             return new EconomyPriceBreakdown(direction, rawWorth, identified, worth, multiplier, rank, haggle,
-                training, reaction, reactionPercent, currentHp, maximumHp, unitPrice);
+                training, reaction, reactionPercent, currentHp, maximumHp, unitPrice, reportedMarkupPercent);
         }
 
         private EconomyFailure ValidateBuy(PersistentObjectState item, ArcanumObjectId owner,
@@ -465,18 +521,29 @@ namespace Arcanum.Runtime.Economy
         }
 
         private InventoryTransferResult TransferQuantity(PersistentObjectState item, int quantity,
-            ArcanumObjectId destination)
+            ArcanumObjectId destination, int destinationInventoryLocation)
         {
-            if (!item.StackQuantity.HasValue || quantity == item.StackQuantity.Value)
-                return _world.TransferItem(item.Identity, item.Placement, ObjectPlacement.ContainedBy(destination));
-            StackSplitResult split = _world.SplitStack(item.Identity, quantity);
-            if (!split.Succeeded)
-                return new InventoryTransferResult(split.Code is StackResultCode.NoRoom ? InventoryResultCode.NoRoom
-                    : split.Code is StackResultCode.TooHeavy ? InventoryResultCode.TooHeavy
-                    : InventoryResultCode.InvalidDestination, item.Identity, item.Placement,
-                    ObjectPlacement.ContainedBy(destination));
-            return _world.TransferItem(split.CreatedState.Identity, split.CreatedState.Placement,
-                ObjectPlacement.ContainedBy(destination));
+            PersistentObjectState transferring = item;
+            if (item.StackQuantity.HasValue && quantity != item.StackQuantity.Value)
+            {
+                StackSplitResult split = _world.SplitStack(item.Identity, quantity);
+                if (!split.Succeeded)
+                    return new InventoryTransferResult(split.Code is StackResultCode.NoRoom
+                            ? InventoryResultCode.NoRoom
+                            : split.Code is StackResultCode.TooHeavy ? InventoryResultCode.TooHeavy
+                            : InventoryResultCode.InvalidDestination, item.Identity, item.Placement,
+                        ObjectPlacement.ContainedBy(destination));
+                transferring = split.CreatedState;
+            }
+
+            InventoryTransferResult transfer = _world.TransferItem(transferring.Identity,
+                transferring.Placement, ObjectPlacement.ContainedBy(destination));
+            if (!transfer.Succeeded || destinationInventoryLocation < 0 || transfer.SourceConsumed)
+                return transfer;
+            if (_world.TryMoveItemToInventory(destination, transfer.ItemIdentity, destinationInventoryLocation))
+                return transfer;
+            return new InventoryTransferResult(InventoryResultCode.NoRoom, transfer.ItemIdentity,
+                transfer.Previous, transfer.Destination);
         }
 
         private void NormalizeStoreGold(ArcanumObjectId inventoryOwner, ArcanumObjectId merchant)

@@ -62,16 +62,15 @@ for thin rules and bitmap-font Original mode, but it must not produce different 
 
 ### Gameplay and combat HUD
 
-Retain the authentic 800-wide center composition and 41/400/159 vertical division. Where `intrface.art` is a single
-800 x 600 image, reconstruction should separate only source-proven HUD pieces/masks so that the world aperture can
-grow horizontally. Center-bound groups such as the lens/message/quick slots stay registered to the center; vial and
-edge groups anchor to their corresponding safe edges. Additional width displays world, not duplicated buttons,
-stretched ornament, or hidden pillars.
+Retain the authentic two-window gameplay composition proven by `iso_interface_create`. ID 185 is a native 800 x 41
+window with center-horizontal/top gravity; ID 184 is a native 800 x 159 window with center-horizontal/bottom gravity.
+Neither strip scales with resolution. The world camera occupies the full display behind and between them, so added
+width and height are useful world space rather than duplicated buttons, stretched ornament, or hidden pillars.
 
-UI-C now applies the source-compatible form of this rule in production. Retail ID 3 is preserved as one centered,
-un-stretched alpha composition, with the full-screen world camera visible through its authentic middle aperture and
-the extra widescreen side area. Dynamic vials, counters, lens text, controls, and slots remain registered in the
-source 800 x 600 coordinate space. Only the actual source top and bottom bands consume pointer input.
+UI-C.2 applies that source rule in production. Dynamic top controls remain local to ID 185. Vials, counters,
+lens/text, bottom controls, and quick slots remain local to ID 184 after the source y=441 origin conversion. Only the
+two native physical windows consume pointer input. ID 3 `intrface` remains resolvable but has no proven source
+creation path and is not production authority.
 
 Combat reuses the same root. AP/readiness/called-shot/target state appears in its source regions. Entering combat or
 switching graphics mode cannot rebuild authority or alter current turn/AP.
@@ -158,8 +157,8 @@ Development proof objects are transient and never part of production presentatio
 UI-B applies that architecture to the first production screen. The retail Main Menu remains one centered, un-stretched
 4:3 composition at those same resolutions; no resolution-specific hierarchy or production Enhanced asset exists.
 
-UI-C applies the same transform to the production gameplay HUD. At 800 x 600, 1920 x 1080, 2560 x 1440, and
-3840 x 2160 the source art remains respectively 800 x 600, 1440 x 1080, 1920 x 1440, and 2880 x 2160. The camera
-continues across the full display behind source alpha, so extra width is useful world space rather than ornament
-stretching. A generated 3200 x 2400 ID 3 fixture changed only pixel density and retained every logical rectangle and
-hit target; missing Enhanced frames fell back to Original independently.
+The production gameplay HUD intentionally does not use the Main Menu transform. At 800 x 600, 1024 x 768,
+1920 x 1080, 2560 x 1440, and 3840 x 2160, both HUD strips remain exactly 800 physical pixels wide: x origins are
+0, 112, 560, 880, and 1520; the top stays at y=0 and the bottom stays at `displayHeight - 159`. The camera continues
+across the full display. Generated 3200 x 164 ID 185 and 3200 x 636 ID 184 fixtures changed only texture density and
+retained the native 800 x 41 / 800 x 159 logical windows; missing Enhanced frames fell back independently.

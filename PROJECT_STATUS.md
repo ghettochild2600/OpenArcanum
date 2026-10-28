@@ -17,6 +17,17 @@ ordering, day/night tint, placed lights/blends/nocturnal scenery, source shadow 
 appearance. README-only claims were not treated as authority. See
 [`documentation_unity/external/unity-arcanum-comparison-audit.md`](documentation_unity/external/unity-arcanum-comparison-audit.md).
 
+## User Physical Review Corrections (2026-10-09)
+
+The bounded screenshot-driven correction pass is complete. Character Editor help now follows the source title/body
+split and exact bounded message rectangles; production HUD item/readiness text resolves description names instead of
+prototype numbers; successful dialogue choices no longer inject `Response selected.`; and ordinary NPC speech uses
+the transparent, speaker-relative source bitmap-bubble path instead of a modern dark panel. Production Play Mode
+proofs are green at 800x600, the affected dialogue presentation was physically rebuilt at 1920x1080, and the
+integrated M12C path is green with zero warnings/errors. The final EditMode gate passed 1323/1323. Corpse `LOOT`
+hover styling remains explicitly source ambiguous and unchanged pending a reliable retail side-by-side capture. See
+[`documentation_unity/player-facing-visual-message-correction-audit.md`](documentation_unity/player-facing-visual-message-correction-audit.md).
+
 ## Current Objective
 
 M1 traversal, the bounded M2 interaction/SAP_USE kernel, M3A-M3E inventory/command/equipment/stack/capacity state,
@@ -64,11 +75,31 @@ player-facing manual save/load presentation, M7A bounded passive local map trans
   save/load strictly as projections and commands over M1-M12B authority. **DONE M12D — Audio:** one central
   presentation bridge now resolves retail WAV/MP3 resources and source sound/scheme/dialogue rules for UI, world,
   combat, magic, technology, voice, music, and ambience without owning gameplay or changing Save V1.
-  **UI-C IMPLEMENTED / VISUAL-FIDELITY PENDING — Source-Faithful Gameplay HUD:** the production gameplay path now
-  renders the retail ID 3 alpha HUD,
-  source vials/lens/controls/quick slots, and existing M12C/M8I projections over the unchanged controller/session
-  authority; the generic HUD grid is suppressed, the world remains interactive behind the authentic aperture, and
-  Original/Enhanced fallback uses the shared UI-A skin runtime.
+  **OPEN UI-C / DONE bounded UI-C.5 — Fate + Sleep/Wait Runtime Authority:** the production gameplay path renders the source-proven
+  native ID 185 top window and ID 184 bottom window, source vials/lens/controls/quick slots, source Cloister 18
+  three-digit counters, maintained-spell aperture art, and existing M12C/M8I projections over unchanged authority.
+  The world remains full-screen and interactive between/around the centered strips; ordinary Inventory coexists with
+  them. UI-C.4 added saved primary notifications/highlights, the Fate counter, maintained effect icons/cancellation,
+  sleep presentation, SourceTime clock, contextual counter, two recent actions, and the source XP gauge. UI-C.5 now
+  supports Full Heal plus five source-proven deferred Fate call sites, selected-sector wilderness sleep, and exact
+  `[w:1]` town waiting. The corrective UI-C.5 follow-up now gives Combat/Skills/Spells/Schematics shared pointer and
+  keyboard routes and maps two-frame action IDs 279/280/282/278 without invalid frame 2 requests. UI-C remains open
+  on the four displayed skill-action kernels, the six skill-action Fate checks, and occupied/rented-bed authority;
+  those branches fail closed before transaction mutation. **DONE UI-E.1 — Inventory/Equipment Foundation:** the ordinary source ID 223 + ID 221 800 x 400 composition,
+  exact grid/slot geometry, retained item art/footprints, selection, quick-slot binding, and M3C equip/unequip routes
+  replace the generic Inventory overlay without owning item state. Original/Enhanced fallback uses UI-A. Distinct
+  paper-doll composite layers and gesture parity remain later presentation boundaries. **DONE UI-D.2 / UI-B.1 —
+  Player-Facing Character Creation / Pick Character:** source ID 765 identity flows into the active ID 22 editor with
+  child IDs 29/30/31 and atomic M12B finalization; 128 x 128 portraits, immutable centered text, authentic gender
+  restrictions, and ID 623 gauges are corrected. New Character, Character Editor, and Pick Character now compose
+  independent native ID 336 top, ID 765/22/766 center, and ID 335 bottom windows; IDs 321/323 are bottom-owned while
+  portrait IDs 283/284 remain center-owned. Pick Character uses the twelve retail engine-owned PC prototypes
+  16067–16078 through the authentic inventory/equip/campaign/Save V1 path. The 2026-10-09 source-runtime pass closes
+  navigation help, empty-name validation, gender/race context, the full editor stat/skill/aptitude projection, dynamic
+  skill requirements, and the custom-PC Human Shopkeeper lifecycle through SHOPPING_MAP to START_MAP; pregenerated PCs
+  retain their authored direct-start branch. **DONE UI-E.2 — Character / Skills:** the active ID 22 Character sheet and ID 29 Skills child panel
+  project M4 authority, legal same-open-session point adjustments are transactional, and `K` uses the source ID 472
+  to ID 274 non-modal Skills route. The four unsupported source skill-action targets fail closed without mutation.
   **DONE M13A opening crash-site compatibility pass and bounded user follow-ups:** authentic Virgil dialogue 1324
   now includes generic source `mm`, `ss`, `ia`, `ce`, and `wa` semantics; source heartbeat initialization reconstructs
   the additional crash-site casualties without replaying death rewards/consequences; the production PC and generic
@@ -158,10 +189,10 @@ the exact 0/10/50/100 training table and reclassifies the cleared hit through th
 unsupported secondary effects remain fail-closed. Save V1 remains unchanged and impact/Dodge diagnostics are
 transient.
 Travel time, encounters, advanced follower catch-up/formation, mid-route cancellation, route animation,
-clock/day-night behavior,
+world day/night lighting behavior,
 autosave, quicksave, cloud sync, original Arcanum save compatibility, unsupported critical-table effects, broader death
 scripts/consequences, broader NPC AI beyond the bounded M9A kernel, follower loyalty/leveling/campaign behavior,
-additional spell/technology content, retail UI bitmap/paperdoll/rotating-window polish, recent-action/quick-use slots,
+additional spell/technology content, retail UI bitmap/paperdoll/rotating-window polish, broader quick-use content,
 local-map fog artwork, intro movies/audio, and broader campaign-specific social systems remain deferred.
 
 ## Current Branch
@@ -2495,7 +2526,8 @@ logical typography roles. It owns no controller, screen, modal, input, command, 
 Main Menu/HUD/screens remain available and no production Enhanced artwork was generated.
 
 Focused UI-A validation passed **23/23**. Physical Play Mode retained the production placeholder Main Menu and one
-controller/presenter, resolved real retail ID 137 button, ID 3 HUD, ID 11 icon, ID 238 scrollbar cap, and ID 1 cursor,
+controller/presenter, resolved real retail ID 137 button, then-unclassified ID 3 composite candidate, ID 11 icon,
+ID 238 scrollbar cap, and ID 1 cursor,
 loaded a temporary generated exact-4x checker only in Enhanced mode, proved missing-frame fallback, and completed
 Original -> Enhanced -> Original without geometry, gameplay, modal, or screen mutation. The 1920 x 1080,
 2560 x 1440, and 3840 x 2160 logical mappings passed. The physical proof emitted **0 warnings and 0 errors**.
@@ -2537,44 +2569,364 @@ diff --check` was clean.
 
 See [`documentation_unity/ui/ui-b-main-menu-reconstruction.md`](documentation_unity/ui/ui-b-main-menu-reconstruction.md).
 
-## UI-C Source-Faithful Gameplay HUD Implementation Baseline / Visual-Fidelity Pending (2026-10-05)
+## UI-C.3 HUD Fidelity / UI-E.1 Inventory-Equipment Foundation (2026-10-06)
 
-UI-C implementation and automated validation are complete, but visual-fidelity acceptance is reopened and pending.
-The current production source HUD must be physically reviewed at 800×600, 1920×1080, 2560×1440, and 3840×2160 and
-must show no clipping or misalignment before UI-C is closed again. One production `RetailGameplayHudView` now resolves
-the authentic retail ID 3 800 x 600 alpha composition, IDs 20/18/19 for empty/health/fatigue vials, ID 354 for the
-message lens, ID 27 for dynamic bitmap text,
-the source management/combat button families, and ten source quick-slot backgrounds. Health, fatigue, equipment,
-ammunition, AP, readiness, combat state, messages, and shortcut bindings remain read-only projections of completed
-M3/M4/M8/M12C authority. Source controls send commands through the same `GameUiController`; no gameplay or modal
-authority was duplicated.
+UI-C.3 closes the fidelity follow-up that reopened UI-C after the valid UI-C.2 two-window correction. The source
+health/fatigue counters now use ID 171 Cloister 18 digits, zero-padded to three places and centered over black source
+apertures. Five maintained-spell apertures use open IDs 188–192 and plugged IDs 628–632 with source geometry and the
+bounded Intelligence/4 capacity. Ordinary Inventory keeps the HUD visible, its button toggles the route, and a
+selected retained item can be assigned through the existing quick-slot authority.
 
-The authentic top/world/bottom regions are `(0,0,800,41)`, `(0,41,800,400)`, and `(0,441,800,159)`. The camera
-renders full-screen behind the source alpha, so widescreen displays expose additional world without stretching the
-fixed ornament. Only actual top/bottom interface bands block pointer-to-world input. Character, Logbook, Map,
-Inventory, Combat, Skills, Spells, and Schematics use their source controls; the generic Party, Barter, Save/Load,
-Technology, and duplicate Craft convenience buttons are absent while their existing source-correct/controller and
-keyboard access paths remain available.
+UI-E.1 replaces the generic Inventory overlay with the ordinary source composition proven in `inven_ui.c`: ID 223
+at `(0,0,358,400)`, ID 221 at `(358,0,442,400)`, the 10 x 12 grid beginning at `(368,8)`, and the nine exact source
+equipment silhouettes and rectangles. The middle window follows source HRP centering at
+`(width-800)/2, 41+(height-600)/2`. It projects retained identity, inventory ART, footprint, grid location, quantity,
+and worn location. Selection, quick-slot assignment, equip, and unequip call existing controller/M3 authority; no
+item ownership or placement moved into presentation. Earlier ID 341 ordinary-mode speculation is rejected.
 
-Focused UI-C validation passed **33/33**. Directly affected UI-A, M12C, M8I, Player Navigation, keyboard, and UI-B
-regressions passed **23/23**, **18/18**, **17/17**, **21/21**, **23/23**, and **22/22**. The complete EditMode suite
-passed **1169/1169**, with **0 failed, 0 skipped, and 0 inconclusive**. The recorded physical Play Mode pass proved
-fresh crash-site New
-Game, source HUD/vitals/equipment/message projection, world click-to-move through the aperture, the authentic
-Inventory route, real number-key quick-slot activation, live turn-based combat projection, one presenter/controller/
-EventSystem, generated exact-4x Enhanced selection with fallback, Original return, and 800 x 600/1080p/1440p/4K
-mapping through the validator. Unity compilation was clean; the final Console was 0 logs/warnings/errors and `git
-diff --check` was clean. Those results do not replace the newly required direct visual review of the current HUD at
-each target resolution.
+Physical Play Mode used the existing Editor, production scene, and fresh crash-site New Game. At exact 800 x 600,
+1024 x 768, 1920 x 1080, 2560 x 1440, and 3840 x 2160 the HUD and Inventory remained aligned, unclipped, and
+unscaled. Source counters and all five maintained apertures were filled; authentic starting items rendered in the
+retained grid/slots and were selected, bound, equipped, and unequipped exactly once. Temporary exact-4x HUD and
+Inventory panel fixtures selected in Enhanced mode and Original returned without authority or geometry changes. One
+HUD view, one Inventory view, one presenter/controller, and one EventSystem remained. Retail ART and temporary
+fixtures remained local-only and were not committed.
 
-See [`documentation_unity/ui/ui-c-gameplay-hud-reconstruction.md`](documentation_unity/ui/ui-c-gameplay-hud-reconstruction.md).
+Combined UI-C/UI-E focused validation passed **63/63**. M3C, M3E, M12C, UI-A, UI-B, M8I, Player Navigation,
+Keyboard, and Player Startup regressions passed **13/13**, **21/21**, **18/18**, **23/23**, **22/22**, **17/17**,
+**21/21**, **23/23**, and **3/3**. Complete EditMode passed **1199/1199**, with 0 failed, 0 skipped, and 0
+inconclusive. Compilation was clean; the final Console had 0 errors and 0 unexpected warnings; and `git diff --check`
+was clean. UI-C.3 and UI-E.1 are complete. Broader inspection/transfer variants, source-proven drag/right-click
+gestures, and distinct paper-doll composite/animation ART remain later presentation boundaries.
+
+See [`documentation_unity/ui/ui-c-gameplay-hud-reconstruction.md`](documentation_unity/ui/ui-c-gameplay-hud-reconstruction.md)
+and [`documentation_unity/ui/ui-screen-inventory.md`](documentation_unity/ui/ui-screen-inventory.md).
+
+## UI-C.5 Fate + Sleep/Wait Runtime Authority (2026-10-07)
+
+UI-C.5 preserves the source-proven UI-C.1–UI-C.4 HUD while closing every currently representable Fate and no-bed
+Sleep/Wait authority path. The Fate catalog now explicitly records all 12 retail choices and their one-point cost.
+Full Heal remains immediate. Force Good Reaction resolves transactionally at M11B dialogue start; Critical Hit and
+Critical Miss resolve at the M8 attack commit boundary; Save Against Magick and Spell At Maximum resolve after a valid
+M10A cast preview. Armed flags and points use the optional Save V1 HUD domain, can be refunded before resolution, and
+remain intact when an action fails before commit.
+
+The remaining six retail Fate choices—critical success for Gambling, Heal, Pick Pocket, Repair, Pick Locks, and
+Disarm Traps—have no authoritative action-check transaction in the current runtime. They are fully enumerated but
+fail before point or flag mutation rather than creating a parallel skill-resolution system.
+
+Selected-sector `TownMapInfo` and retail `rules/townmap.mes` now classify sleep locations exactly. Zero means
+wilderness sleep; nonzero permits town wait only with `[w:1]`; every malformed or unsupported context fails closed.
+Wilderness sleep advances SourceTime hourly, cancels maintained effects once, and applies exact M4 recovery to the PC
+and eligible followers. Town wait exposes seven source choices, excludes Until Healed, advances the same clock, and
+applies no recovery. Bed use remains unavailable because exact SAP_USE, occupant, enter/leave, and rental authority is
+not yet represented; no ART or map heuristic substitutes for it.
+
+The production UI-C.5 physical validator passed in the existing Editor. It proved the 12-choice Fate panel and
+Fate 00 -> 01 -> Full Heal -> 00, F/S routes, authentic crash-site town-wait classification and seven-option panel,
+one-hour town wait with SourceTime advancement/no recovery/demaintain, authentic wilderness sector selection and
+one-hour recovery/demaintain, clock refresh, and return to the crash-site sector. The existing UI-C.4 geometry,
+notification, maintained-icon, recent-action, combat, and graphics-rebuild proofs remain valid.
+
+The final complete EditMode suite passed **1229/1229**, with 0 failed, 0 skipped, and 0 inconclusive after 22 justified
+UI-C.5 cases. Compilation is clean; the final cleared Console has 0 errors and 0 warnings; and `git diff --check` is
+clean. Dedicated source and follow-up boundaries are recorded in
+[`documentation_unity/gameplay/fate-runtime.md`](documentation_unity/gameplay/fate-runtime.md) and
+[`documentation_unity/gameplay/sleep-wait-runtime.md`](documentation_unity/gameplay/sleep-wait-runtime.md).
+
+UI-C remains **OPEN** with two isolated exact blockers: authoritative action-resolution paths for the six named skill
+checks, and source-backed occupied/rented-bed state. These do not alter the validated shared UI/runtime authority used
+by Character Creation, but they must not be called complete or approximated.
+
+## UI-D Source-Faithful Character Creation (2026-10-07)
+
+UI-D is complete. The production New Character route no longer uses the generic whole-screen scrolling form. It now
+follows the two actual source runtime compositions: Main Menu identity ID 765 (`createcharacterbase.art`, 800 x 400),
+then `charedit_open(..., CHAREDIT_MODE_CREATE)` with editor ID 22 (`char_maint.art`, 800 x 400) and the active ID
+29/30/31 Skills/Technology/Magic child panel. Both partial compositions begin at source y 41; Main Menu IDs 323/321
+own Back/Continue in the separate bottom bar at absolute y 496. Source IDs 23/24 provide attribute controls,
+34/35/36 provide category controls, ID 568 selects the auto-level-scheme child window, 302–305 select skill groups,
+624/625 change skills, 306–313 select technology disciplines, and 647/648 change technology or
+spell-rank changes. Mounted `portrait/<name>_b.bmp` pixels use the retail ordinary-BMP fallback.
+
+The view projects the existing M12B draft and submits only controller intent. Race/gender/portrait/background
+legality, attribute/skill/spell/technology costs, Character Points, validation, and atomic finalization remain M12B
+authority. Back from Editor preserves the draft and returns to Identity; invalid identity/finalization cannot create
+a partial player; successful bottom-bar Continue creates exactly one PC, enters authentic `START_MAP` 1, and reveals
+the existing source HUD. ID 568 is not finalization: because OpenArcanum has no M12B auto-level-scheme authority,
+that exact control fails closed without draft, point, player, or navigation mutation. Pick Character/pregenerated
+characters were deferred by this original UI-D slice and are closed by the UI-D.1/UI-B.1 follow-up below; intro
+playback and shopping remain deferred rather than approximated.
+
+Corrected focused UI-D validation passed **20/20**. The directly affected regressions again passed **217/217**:
+UI-A 23, UI-B 22, M12B 13, M4A 13, M4B 20, M4C 29, M4D 25, M10A 34, M10B 12, Player Startup 3, and production
+keyboard/input 23. The corrected physical proof passed in the existing Editor and exercised source y=41 placement,
+top-left identity controls, separate bottom-bar Back/Continue, fail-closed ID 568 auto-level schemes without
+transaction mutation, all four supported point-spend categories, graphics rebuild, target resolution mappings, and
+atomic ID 321 finalization. Compilation is clean, the proof ended with 0 warnings and 0 errors, and `git diff --check`
+is clean. The complete suite remains deferred to the UI-E.2 gate because the correction does not add core gameplay
+authority.
+
+See [`documentation_unity/ui/ui-d-character-creation-reconstruction.md`](documentation_unity/ui/ui-d-character-creation-reconstruction.md).
+
+## UI-D.1 / UI-B.1 / UI-C.5 Player-Facing UI Correctness Closure (2026-10-07)
+
+The bounded correction pass is complete except for the explicitly unsupported skill-action gameplay kernels below.
+The New Character portrait now follows the actual `portrait_draw_128x128` call at source origin `(95,28)`; the
+separate 64 x 64 source rectangle is refresh invalidation/fill evidence, not the rendered portrait size. Human, Elf,
+Half-Elf, and Half-Orc permit Female, while Dwarf, Gnome, Halfling, and Half-Ogre remain source-authentic male-only.
+Female race cycling skips unsupported races, selecting a male-only race restores Male, and identity changes clear and
+re-evaluate Background and select the first legal portrait through M12B.
+
+The Race/Gender/Background drift was an accumulated presentation transform: each refresh centered from the prior
+already-centered x position. Production now stores immutable source rectangles and measures bitmap glyphs from those
+bounds on every redraw. The same path centers one- and two-digit attributes and skill values without moving the
+source controls. Character Creation and active Character Skills now render ID 623 as a 120 x 27 left-to-right fill
+of `clamp(authoritative source skill level, 0, 20) / 20`; zero restores the panel and spend/refund refreshes the gauge,
+points, value, prerequisites, and disabled state in place.
+
+Main Menu -> Single Player -> Pick Character now opens source ID 766 and cycles the actual twelve-entry retail
+corpus. The basic PC prototypes 16067–16078 are created by retail `proto.c`, so they legitimately have no required
+loose `.pro` override. OpenArcanum reconstructs those engine-owned defaults, preserves source prototype identity,
+race/gender/portrait/background/auto-level metadata, populates each inventory source with existing economy RNG,
+auto-equips natural worn locations, sets the source selection globals, and enters the ordinary atomic New Game path.
+Save V1 adds only optional `PregeneratedSourceIndex` metadata; older V1 saves default it to zero, and committed
+character, inventory, equipment, campaign, and world consequences remain their existing authorities.
+
+The bottom source controls now have command parity: Combat ID 470 / `R`, Skills ID 472 / `K`, Spells ID 473 / `M`,
+and Schematics ID 471 / `T`. Skills and Spells preserve the source rotating/message-window mutual-release behavior.
+Action IDs 279/280/282/278 are a two-frame family—frame 0 normal and frame 1 hover/pressed—so the previous frame 2
+warnings are fixed at the family mapping rather than globally clamped.
+
+Source tracing did not reveal bounded existing authority for the four visible skill actions. Prowling needs
+stealth/concealment plus world-perception state; Pick Pocket needs transactional theft/detection/reaction; Disarm
+Traps needs trap state/difficulty/failure consequences; Repair needs durability/damage/failure effects. Implementing
+any would begin a major gameplay subsystem, so they remain visible but fail closed before time/AP, inventory,
+vitality, combat, world, or recent-action mutation. `INVALID` remains correct for unsupported/invalid targets, and
+item/spell recent-action history is preserved. UI-C therefore remains open on those exact kernels; the pass does not
+pretend they are implemented.
+
+Physical Play Mode validation passed in the existing Unity 6000.0.71f1 Editor: 128 x 128 portrait refresh; all
+gender/race rules; 100 selector cycles without drift; one-/two-digit centering; ID 623 zero/partial/full/refund;
+all twelve pregenerated entries; two distinct source-prototype campaign starts; inventory/equipment; Save V1 round
+trip; HUD pointer/keyboard authority; two-frame skill icons; fail-closed unsupported actions; Original -> Enhanced ->
+Original; one presenter/EventSystem; and exact 800 x 600, 1024 x 768, 1920 x 1080, 2560 x 1440, and 3840 x 2160
+placement.
+
+Focused validation passed UI-D.1 **28/28**, UI-B.1 **22/22**, UI-C.5 **69/69**, UI-E.2 **20/20**, M12B **15/15**,
+and production keyboard/input **23/23**. Targeted UI/gameplay regressions passed **418/418**. The complete EditMode
+suite passed **1280/1280**, with 0 failed, 0 skipped, and 0 inconclusive. Compilation is clean; the final cleared
+Console has 0 logs, 0 warnings, and 0 errors; and `git diff --check` is clean.
+
+## UI-E.2 Source Character / Skills Reconstruction (2026-10-07)
+
+UI-E.2 is complete. The production `C` route now follows `charedit_open(..., CHAREDIT_MODE_ACTIVE)`: source ID 22
+owns the fixed 800 x 400 active Character editor at source y 41 while the source HUD remains visible, and source ID
+29 owns the replaceable Skills child panel at local `(503,4)`. The view projects finalized identity, level/XP,
+Character Points, M4A attributes, M4B vitality, M4D derived values and resistances, carried weight/capacity,
+alignment/aptitude, and all M4C ranks and training states. It does not recalculate those facts.
+
+Source plus/minus controls 24/23 and skill row controls 624/625 submit transactional adjustments to M4. A successful
+increase spends one Character Point. A decrease may refund only a change made since the current sheet was opened;
+closing/reopening accepts the authoritative values as the new floor. Prospective attribute reductions reject before
+mutation when dependent skill prerequisites would become illegal. Read-only/invalid/insufficient-point operations do
+not partially change attributes, skills, points, vitality, inventory, or world state.
+
+The source Skills HUD route is also corrected: `K` and control ID 472 toggle rotating window ID 274 at `(196,492)`
+without opening a generic modal. Its four controls use source IDs 279, 280, 282, and 278 for Prowling, Pick Pocket,
+Disarm Traps, and Repair. OpenArcanum does not yet have their target/action authorities, so those exact controls fail
+closed with explicit feedback. Training remains the existing M4C authority; Magic, Technology, trainers,
+auto-level schemes, paper-doll compositing, and the four target/action kernels are outside UI-E.2.
+
+Focused UI-E.2 validation passed **20/20**. Directly affected regressions passed **169/169**: UI-D 20, UI-E.1 18,
+M4A 13, M4B 20, M4C 29, M4D 25, M12C 18, production keyboard/input 23, and Player Startup 3. The complete EditMode
+suite passed **1269/1269**, with 0 failed, 0 skipped, and 0 inconclusive. The production Play Mode proof passed through
+authentic New Game/Player Startup at the crash site and covered source IDs 22/29, authoritative projection,
+attribute spend/refund, skill spend/training, `K`/ID 274 and fail-closed source actions, Inventory -> Character
+ownership, Original -> Enhanced -> Original rebuilding, five target resolutions, and unique production presenters.
+Compilation is clean, the final cleared Console has 0 logs, 0 warnings, and 0 errors, and `git diff --check` is clean.
+
+See [`documentation_unity/ui/ui-e2-character-skills-reconstruction.md`](documentation_unity/ui/ui-e2-character-skills-reconstruction.md).
+
+## Player-Facing Correctness Pass II (2026-10-07)
+
+The bounded correction pass is complete. It did not begin UI-F or introduce new gameplay systems.
+
+- Character Creation preserves source Back/Continue and portrait-arrow layering, projects background-adjusted stats,
+  restores transactional HP/Fatigue point controls and source hover help, and correctly decodes retail portrait
+  prefixes (`HA` Halfling, `HE` Half-Elf). A fresh Female Half-Elf selection now chooses the matching retail portrait.
+- Player locomotion uses retail WALK action 1 and RUN action 6 with action-specific timing. Ordinary click, Ctrl-run,
+  and NumLock Always Run retain a single navigation authority. The later retail/source certification corrected the
+  old XOR claim: Ctrl remains a run request when Always Run is already enabled.
+- Combat ID 470 and `R` share the coordinator-owned combat-readiness transaction; the HUD owns no combat state.
+- Sleep/Wait source rows now execute the established SourceTime transaction. Authentic crash-site `[w:1]` town wait,
+  One Hour, Two Hours, and Until Evening were physically proven. IDs 137/293 use only frame 0 normal and frame 1
+  hover/pressed, eliminating invalid frame-2 warnings.
+- Ordinary Inventory now includes the live PC lens, source summaries and counters, attack/defense, inspected item
+  feedback, transactional grid drag, Arrange, and stable close/reopen behavior while M3/session services retain
+  inventory and equipment authority.
+
+Production Play Mode passed in the existing Unity 6000.0.71f1 Editor. Character Creation and the centered fixed
+composition were reviewed at 800 x 600, 1024 x 768, 1920 x 1080, 2560 x 1440, and 3840 x 2160; detailed Inventory
+proofs passed at 800 x 600 and 1920 x 1080. The pass also covered background projection, HP/Fatigue spend/refund,
+hover help, combat pointer/keyboard parity, Sleep/Wait time and lighting changes, Always Run, and Inventory rebuild
+stability.
+
+The final complete EditMode suite passed **1301/1301**, with 0 failed, 0 skipped, and 0 inconclusive. Compilation is
+clean; the final cleared Console has 0 logs, 0 warnings, and 0 errors; and `git diff --check` is clean. UI-C remains
+open only on its previously documented skill/Fate action and occupied/rented-bed authority boundaries. Distinct
+layered paper-doll composite ART remains a later presentation boundary; the ordinary player-facing Inventory screen
+is closed.
+
+## UI-D.2 Character Creation Multi-Window Layout Correction (2026-10-07)
+
+UI-D.2 corrects the source-window hierarchy without changing gameplay authority. The previous reconstruction read
+New Character Back/Continue positions `(69,55)` / `(675,55)` as center-window coordinates. In source those records
+have `flags = 1`; `main_menu_button_create_ex()` routes `flags & 0x1` controls to
+`mainmenu_ui_bottom_bar_cover_window_handles`, using `y + 441` only to choose the owning cover. IDs 323/321 are now
+direct children of the independent ID 335 bottom region. Portrait IDs 283/284 have clear flags and remain direct
+children of the center region at center-local `(43,77)` / `(244,77)`.
+
+New Character, its Character Editor stage, and Pick Character share three native source regions: top ID 336
+800 x 41, center ID 765/22/766 800 x 400, and bottom ID 335 800 x 159. All are horizontally centered; top is at y 0,
+center is at `41 + (height - 600) / 2`, and bottom is at `height - 159`. Physical production validation passed both
+New Character and Pick Character at 800 x 600, 1024 x 768, 1920 x 1080, 2560 x 1440, and 3840 x 2160. The 1080p
+result matches the supplied high-resolution target, including the intentional unused space, bottom-owned large
+navigation controls, center-owned portrait arrows, and responding hit regions. Captures remained local and were not
+committed.
+
+Focused UI-D.2 passed **7/7**; existing UI-D **44/44**; UI-B/Pick Character **23/23**; Player Startup **3/3**; and
+M12B **16/16**. The complete EditMode suite passed **1304/1304**, with 0 failed, 0 skipped, and 0 inconclusive.
+Compilation is clean; the final cleared Console has 0 logs, 0 warnings, and 0 errors; and `git diff --check` is clean.
+The read-only source audit also found bottom-cover ownership in Load Game, Save Game, Pregenerated Character,
+Character Editor, and Shopping. Those unrelated screens were not reconstructed by this correction.
+
+## UI-D Character Creation Source-Runtime Closure (2026-10-09)
+
+All seven supplied Character Creation screenshot discrepancies are closed against controlling source, the automated
+800 x 600 arcanum-ce source runtime, and the windowed retail-derived visual references. New Character now supplies
+source navigation help, exact missing-name feedback, gender/race descriptions, and non-accumulating effective race
+stats. Character Editor now presents identity, Health, Fatigue, all eight attributes, complete derived and resistance
+blocks, all skill families and numeric gauges, source category navigation, Magick/Technology aptitude, and dynamic
+governing-attribute requirements over existing M4/M10/M12B authority.
+
+Custom finalization now creates one authoritative PC in SHOPPING_MAP, restocks the authentic Human Shopkeeper once,
+and presents source IDs 235/221/337-341/321/323/444 over existing M3/M11A transactions. A purchase changes real Gold
+and inventory; Continue auto-equips compatible best items and moves the same PC to START_MAP. Back and Save V1 do not
+duplicate the transaction. Pregenerated PCs bypass shopping and retain authored equipment, matching the source-runtime
+branch. The production walkthrough passed twice after the final toggle-art correction at all five target resolutions
+and through Save V1. Focused UI-D passed **64/64** and directly affected regressions passed **231/231**. See
+[`documentation_unity/ui/ui-d-source-runtime-certification.md`](documentation_unity/ui/ui-d-source-runtime-certification.md).
+
+The single final complete EditMode gate passed **1342/1342**, with 0 failed, 0 skipped, and 0 inconclusive (1323
+baseline plus 19 justified Character Creation/starting-equipment cases). Unity compilation is clean.
+
+The evidence classes remain explicit: `C:\Arcanum - Modded` is the windowed retail-derived physical reference;
+arcanum-ce is the source-runtime automation reference; and `D:\OpenArcanum\Source\Steam-Clean` is the pristine retail
+control. No arcanum-ce observation is called retail-physically-certified.
+
+## Character / Technology / Magic / Shopkeeper / World-Hover Source-Runtime Parity Correction (2026-10-10)
+
+This bounded correction closes the player-visible parity defects exposed by the supplied retail screenshots and the
+arcanum-ce source runtime. Character Editor now uses the source bitmap typography and panel geometry, reports whole
+effective attributes under the source Derived Stats and Resistance headings, and renders actual spell and technology
+rows from authoritative catalogs. Technology expertise now affects schematic availability, and degree-granted source
+schematics are projected through the existing crafting authority rather than presentation-owned placeholders.
+
+Custom-character starting inventory now follows `item_generate_inventory` and `background_generate_inventory`:
+background gold/items are created first; missing torso armor receives race/sex-sized default clothing; invested Pick
+Locks and Heal add prototype 15178 Crude Lockpicks and 15179 Bandages. These engine-owned `proto.c` base prototypes
+are represented with source art, material, weight, worth, durability, armor, and complexity fields without creating
+or committing proprietary loose `.pro` data. Inventory source 0 remains the source sentinel, and items remain
+contained until the explicit Shopping purchase/equip flow.
+
+Shopping now presents the source 800 x 400 composition with merchant stock, player inventory, scroll state, paper
+doll, Attack/AC, chatter variants, and real purchase/equip/save-load transactions. World hover uses the shared source
+highlight and bottom target readout for living and dead critters; it no longer invents floating LOOT labels. Clicking
+a corpse remains a distinct action that opens the authoritative corpse inventory.
+
+Production validation passed in the existing Unity Editor: the corrected UI-D New Character -> Character Editor ->
+Shopping -> START_MAP flow survived Save V1, and an authentic dead Human Noble was physically highlighted with the
+source icon, name, and localized `Dead` state before a separate corpse click opened loot. The source runtime was
+compared at 800 x 600 for Character Editor, Herbology, Conveyance, and Shopping. Pre-gate focused EditMode results
+are M11A **21/21**, UI-D **66/66**, UI-C **71/71**, and M12B **44/44**, all with zero failed, skipped, or
+inconclusive.
+
+Evidence classification remains unchanged: `C:\Arcanum - Modded` is the **WINDOWED RETAIL-DERIVED PHYSICAL
+REFERENCE**; arcanum-ce is the **SOURCE-RUNTIME AUTOMATION REFERENCE** and its observations are
+**SOURCE-RUNTIME-PHYSICALLY-CERTIFIED**; `D:\OpenArcanum\Source\Steam-Clean` is the **PRISTINE RETAIL CONTROL**.
+The supplied screenshots from the modded retail executable remain the player-visible control.
 
 ## Next Recommended Milestone
 
+### Retail runtime certification — M0/M1 complete (2026-10-08)
+
+Retail startup and the keyboard-accessible Main Menu/New Game paths were observed from an isolated byte-identical
+copy of retail 1.0.7.4 at native 800 x 600. The no-argument process reaches the movie surface but faults in the host
+retail `mss32.dll`; the source-supported `-nosound` switch permits visual certification. Sierra -> Troika -> intro
+movie ID 8 -> Main Menu ordering is confirmed, Escape skips the active logo, and movie ID 8 maps to
+`modules/Arcanum/movies/50000.bik`. The clean read-only Steam reference remained unchanged. See
+[`documentation_unity/ui/ui-startup-sequence-audit.md`](documentation_unity/ui/ui-startup-sequence-audit.md).
+
+The native pointer/retail DirectInput mismatch is no longer a certification blocker. A safe local-only helper outside
+Git uses relative Win32 `SendInput` packets after exact RetailSandbox PID/HWND/title/class/foreground validation.
+Native 800 x 600 calibration was 1:1, and more than twenty visually closed-looped moves/clicks completed without an
+unintended desktop or Unity click. The helper, sandbox, and comparison captures remain outside the repository.
+
+M1 physically exhausted New Character, Character Editor, and Pick Character controls and recorded all twelve retail
+pregenerated characters. This exposed one bounded OpenArcanum defect: Pick Character displayed raw prototype defaults
+in the wrong attribute order and omitted the seven derived Initial Stats. New Character also omitted those derived
+values. The correction now projects effective M12B inputs through shared M4-derived rules and renders retail
+`ST/CN/DX/BE/IN/WP/PE/CH` plus Carry/Damage/AC/Speed/Heal/Poison/Reaction; the presenter owns no gameplay table.
+Retail Continue's Shopkeeper transition was closed by the 2026-10-09 source-runtime certification pass. See
+[`documentation_unity/ui/ui-retail-runtime-certification.md`](documentation_unity/ui/ui-retail-runtime-certification.md).
+
+OpenArcanum-side validation is green: UI-D.1 **44/44**, UI-B.1 **24/24**, UI-C.5 **70/70**, UI-E.2 **20/20**,
+M12B **17/17**, UI-D.2 **8/8**, M4D **25/25**, and production input **23/23**, all with zero failed, skipped, or
+inconclusive. The production UI-D.1 Play Mode proof passed the exact twelve-entry retail initial/derived matrix, two
+prototype-backed campaign starts, V1 round-trip, HUD authority, Original/Enhanced rebuild independence, and all five
+target resolutions. The complete-suite baseline remains **1304/1304** until the single final authorized batch gate.
+The next bounded step is the user's physical acceptance inspection of this Character Creation/Shopkeeper pass. After
+that approval, resume one independently scoped open certification boundary; do not infer authorization for Followers,
+later Spells UI, Schematics, Maps, or world-renderer work from this closure.
+
+Future presentation compatibility includes the complete retail startup sequence loaded from the user's legitimate
+local installation: rotating splash, Sierra and Troika logos, intro movie ID 8, source transitions/audio/skip
+semantics, Main Menu handoff, and an optional already-certified-media skip preference. OpenArcanum must not bundle
+or publish the retail movies, logos, or audio.
+
 M9A, M9B, M10A, M10B, M11A, M11B, M11C, M12B, M12C, M12D, and the bounded M13A opening pass are formally closed.
-The source-authentic keyboard compatibility follow-up, UI-A common runtime, and UI-B source-faithful Main Menu are
-closed. UI-C implementation is complete but visual-fidelity acceptance is reopened. The next bounded work is a direct
-physical review of the current production HUD at 800×600, 1920×1080, 2560×1440, and 3840×2160, with fixes limited to
-proven clipping or misalignment. **UI-D — Character Creation presentation** has not started and should not begin until
-UI-C is visually closed again. Continue M13A only from concrete user-discovered campaign defects; do not start an
-autonomous campaign playthrough.
+The source-authentic keyboard compatibility follow-up, UI-A common runtime, UI-B source-faithful Main Menu, bounded
+UI-C.5 implementation, UI-D.2/UI-B.1 player-facing correction, and UI-E.1 Inventory/Equipment foundation are
+complete. UI-C overall remains open on the four displayed skill-action kernels, the six skill-action Fate checks,
+and bed-authority blockers above. UI-D.2 source-faithful three-window Character Creation and ID 766 Pick Character are complete
+with M12B authority preserved. UI-E.2 Character/Skills reconstruction is complete with M4 authority unchanged.
+
+The UI-F Dialogue/Journal/Party source audit is complete, and UI-F.1 ordinary Dialogue presentation is now
+implemented and physically validated. Authentic Virgil dialogue 1324 uses an NPC world bubble plus the exact
+five-line 400 x 100 live-world response strip above the persistent source HUD rather than an ornate portrait modal.
+Pointer selection advances the existing M5 transaction; source dialogue world movement stays open; number keys do
+not invent a response shortcut; and more than five eligible options fail closed. Focused UI-F.1/M5/keyboard
+validation passed **84/84**. The production 800 x 600 proof passed with pointer advancement, one presenter, one
+EventSystem, and a cleared 0-warning/0-error Console; deterministic native-geometry checks cover 768p, 1080p, 1440p,
+and 4K. UI-F.2a now implements the exact fixed Logbook book/tabs/page composition over the authoritative Quests
+projection. Focused UI-F.2 plus affected regressions passed **76/76**. Production 800 x 600 Play Mode passed exact
+source-art composition, pointer page 1-2 -> 3-4 navigation, fail-closed unsupported tabs, persistent HUD, one
+presenter/EventSystem, target-resolution geometry, and Original -> Enhanced -> Original rebuilding; the corrected
+rerun ended at 0 warnings and 0 errors. Retail Logbook/audio certification remains blocked because RetailSandbox
+currently exits before creating a window, and the current campaign-relative quest timestamps are explicitly shown
+as `Day N` rather than an invented source-calendar conversion. Followers use a persistent six-slot left HUD stack
+rather than a modal Party screen and still need portrait/poison projection and selected-follower command authority. See
+[`documentation_unity/ui/ui-f-dialogue-journal-party-audit.md`](documentation_unity/ui/ui-f-dialogue-journal-party-audit.md).
+
+The final complete EditMode suite passed **1322/1322**, with 0 failed, 0 skipped, and 0 inconclusive. The first full
+run exposed one stale Journal-HUD assertion; the repaired regression now proves the source Logbook keeps the HUD
+visible while an unrelated modal still hides it. Compilation and `git diff --check` are clean.
+
+The next independent UI-F implementation boundary would be **UI-F.2b — Remaining Logbook Data Authority**, one
+source-traced domain at a time, followed by UI-F.3 follower authority/presentation. Neither starts in this batch:
+retail Logbook certification is blocked and M3 Sleep execution remains partial. M4's authored post-creation
+Shopping lifecycle is now closed, but that does not authorize the later milestones. Do not infer a green sequential gate from the
+source/production UI-F.2a result, fabricate empty non-quest data, use unproven dialogue ID 822, or invent unsupported
+dialogue transitions. Continue M13A only from concrete user-discovered campaign defects; do not start an autonomous
+campaign playthrough.

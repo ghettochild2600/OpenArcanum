@@ -13,6 +13,7 @@ using OpenArcanum.Rendering;
 using OpenArcanum.UI;
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.UI;
 using Object = UnityEngine.Object;
 
 namespace Arcanum.Formats.Tests
@@ -145,7 +146,6 @@ namespace Arcanum.Formats.Tests
         [TestCase(RetailMainMenuCommand.Multiplayer, "MULTIPLAYER")]
         [TestCase(RetailMainMenuCommand.Credits, "CREDITS")]
         [TestCase(RetailMainMenuCommand.ViewIntro, "VIEW INTRO")]
-        [TestCase(RetailMainMenuCommand.PickCharacter, "PICK CHARACTER")]
         public void UnsupportedRetailBranchesFailClosedAsBoundedNotices(
             RetailMainMenuCommand command, string title)
         {
@@ -161,6 +161,82 @@ namespace Arcanum.Formats.Tests
         }
 
         [Test]
+        public void PickCharacterEntersSourcePregeneratedSelectionInsteadOfNotice()
+        {
+            RetailMainMenuModel model = Model();
+            model.Submit(RetailMainMenuCommand.SinglePlayer);
+            model.Submit(RetailMainMenuCommand.NewGame);
+            model.Submit(RetailMainMenuCommand.PickCharacter);
+            Assert.That(_controller.Screen, Is.EqualTo(GameUiScreen.PregeneratedCharacter));
+            Assert.That(_controller.PregeneratedCharacterIndex, Is.EqualTo(1));
+            Assert.That(_session.PlayerState, Is.Null);
+            Assert.That(_session.CharacterCreation.Catalog.PregeneratedCharacters, Has.Count.EqualTo(12));
+        }
+
+        [Test]
+        [Category("UID2CharacterCreation")]
+        public void PickCharacterUsesTheSharedThreeRegionWindowOwnership()
+        {
+            RetailMainMenuModel model = Model();
+            model.Submit(RetailMainMenuCommand.SinglePlayer);
+            model.Submit(RetailMainMenuCommand.NewGame);
+            model.Submit(RetailMainMenuCommand.PickCharacter);
+            RetailPregeneratedCharacterView view = _root.AddComponent<RetailPregeneratedCharacterView>();
+            view.Bind(_controller, _session, _skin);
+            view.Synchronize();
+
+            Assert.That(view.TopBackgroundAsset.Key.SourceId, Is.EqualTo(336));
+            Assert.That(view.BackgroundAsset.Key.SourceId, Is.EqualTo(766));
+            Assert.That(view.BottomBackgroundAsset.Key.SourceId, Is.EqualTo(335));
+            Assert.That(view.TopRegionRoot, Is.Not.SameAs(view.CenterRegionRoot));
+            Assert.That(view.CenterRegionRoot, Is.Not.SameAs(view.BottomRegionRoot));
+
+            SourceUiButton start = view.GetComponentsInChildren<SourceUiButton>(true)
+                .Single(value => value.name == "Start");
+            SourceUiButton back = view.GetComponentsInChildren<SourceUiButton>(true)
+                .Single(value => value.name == "Back");
+            SourceUiButton previous = view.GetComponentsInChildren<SourceUiButton>(true)
+                .Single(value => value.name == "Previous Portrait");
+            SourceUiButton next = view.GetComponentsInChildren<SourceUiButton>(true)
+                .Single(value => value.name == "Next Portrait");
+            Assert.That(start.CurrentPresentationKey.SourceId, Is.EqualTo(321));
+            Assert.That(back.CurrentPresentationKey.SourceId, Is.EqualTo(323));
+            Assert.That(previous.CurrentPresentationKey.SourceId, Is.EqualTo(283));
+            Assert.That(next.CurrentPresentationKey.SourceId, Is.EqualTo(284));
+            Assert.That(start.transform.parent, Is.SameAs(view.BottomRegionRoot));
+            Assert.That(back.transform.parent, Is.SameAs(view.BottomRegionRoot));
+            Assert.That(previous.transform.parent, Is.SameAs(view.CenterRegionRoot));
+            Assert.That(next.transform.parent, Is.SameAs(view.CenterRegionRoot));
+            Assert.That(((RectTransform)start.transform).anchoredPosition, Is.EqualTo(new Vector2(675f, -55f)));
+            Assert.That(((RectTransform)back.transform).anchoredPosition, Is.EqualTo(new Vector2(69f, -55f)));
+            Assert.That(((RectTransform)previous.transform).anchoredPosition, Is.EqualTo(new Vector2(43f, -77f)));
+            Assert.That(((RectTransform)next.transform).anchoredPosition, Is.EqualTo(new Vector2(244f, -77f)));
+        }
+
+        [Test]
+        [Category("UID2CharacterCreation")]
+        public void PickCharacterProjectsTheRetailMerwinInitialStatsInsteadOfRawPrototypeDefaults()
+        {
+            RetailMainMenuModel model = Model();
+            model.Submit(RetailMainMenuCommand.SinglePlayer);
+            model.Submit(RetailMainMenuCommand.NewGame);
+            model.Submit(RetailMainMenuCommand.PickCharacter);
+            RetailPregeneratedCharacterView view = _root.AddComponent<RetailPregeneratedCharacterView>();
+            view.Bind(_controller, _session, _skin);
+            view.Synchronize();
+
+            Dictionary<string, string> text = view.GetComponentsInChildren<SourceUiBitmapText>(true)
+                .ToDictionary(value => value.name, value => value.Text);
+            Assert.That(Enumerable.Range(0, 8).Select(index => text[$"Stat {index}"]), Is.EqualTo(new[]
+                { "ST:5", "CN:8", "DX:10", "BE:8", "IN:8", "WP:8", "PE:8", "CH:8" }));
+            Assert.That(Enumerable.Range(0, 7).Select(index => text[$"Derived Stat {index}"]), Is.EqualTo(new[]
+            {
+                "Carry Weight:2500", "Damage Bonus:-2", "AC Adjustment:0", "Speed:10",
+                "Heal Rate:3", "Poison Recovery:8", "Reaction Modifier:-7",
+            }));
+        }
+
+        [Test]
         public void ExitRequiresConfirmationAndInvokesBoundQuitExactlyOnce()
         {
             int quits = 0;
@@ -173,6 +249,23 @@ namespace Arcanum.Formats.Tests
             model.Submit(RetailMainMenuCommand.ExitGame);
             model.Submit(RetailMainMenuCommand.ConfirmQuit);
             Assert.That(quits, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void QuitConfirmationUsesSmallOwnedSourceModalWithExactPrompt()
+        {
+            RetailMainMenuView view = _root.AddComponent<RetailMainMenuView>();
+            view.Bind(_controller, () => { }, _skin);
+            view.Model.Submit(RetailMainMenuCommand.ExitGame);
+
+            Assert.That(view.Model.NoticeTitle, Is.EqualTo("Are you sure you want to quit?"));
+            Assert.That(view.QuitModalTransform, Is.Not.Null);
+            Assert.That(view.QuitModalTransform.anchoredPosition, Is.EqualTo(new Vector2(237f, -232f)));
+            Assert.That(view.QuitModalTransform.sizeDelta, Is.EqualTo(new Vector2(325f, 136f)));
+            Assert.That(view.QuitModalTransform.GetComponent<SourceUiImage>().Key.SourceId, Is.EqualTo(822));
+            Assert.That(view.QuitModalTransform.GetComponentsInChildren<SourceUiButton>()
+                .Select(value => value.CurrentPresentationKey.SourceId), Is.EquivalentTo(new[] { 823, 824 }));
+            Assert.That(view.Buttons, Is.Empty, "the full-size main-menu command renderer must not own the modal");
         }
 
         [Test]
@@ -201,6 +294,64 @@ namespace Arcanum.Formats.Tests
                 Is.EqualTo(new[] { 143f, 193f, 243f, 293f, 343f }));
             Assert.That(Object.FindObjectsByType<RetailMainMenuView>(FindObjectsSortMode.None), Has.Length.EqualTo(1));
             Assert.That(Object.FindObjectsByType<EventSystem>(FindObjectsSortMode.None), Has.Length.EqualTo(1));
+        }
+
+        [Test]
+        public void MainMenuGlyphPassesPreserveSourceMessageCasingAndFont()
+        {
+            RetailMainMenuView view = _root.AddComponent<RetailMainMenuView>();
+            view.Bind(_controller, () => { }, _skin);
+
+            foreach (RetailMainMenuButtonView button in view.Buttons)
+            {
+                SourceUiBitmapText[] passes = button.GetComponentsInChildren<SourceUiBitmapText>(true);
+                Assert.That(passes, Has.Length.EqualTo(3));
+                Assert.That(passes.Select(value => value.Text),
+                    Has.All.EqualTo(button.Entry.Label));
+                Assert.That(passes.Select(value => value.FontSourceId),
+                    Has.All.EqualTo(SourceUiBitmapText.DefaultFontSourceId));
+            }
+        }
+
+        [Test]
+        public void MainMenuBitmapFontKeepsNativeMetricsAndSourceAlphaCoverage()
+        {
+            var expected = new Dictionary<string, (Vector2 Size, long AlphaCoverage)>
+            {
+                ["Options"] = (new Vector2(92f, 33f), 156207L),
+                ["Credits"] = (new Vector2(90f, 33f), 146444L),
+                ["Exit Game"] = (new Vector2(132f, 33f), 187067L),
+            };
+
+            foreach ((string label, (Vector2 size, long alphaCoverage)) in expected)
+            {
+                var target = new GameObject(label, typeof(RectTransform), typeof(SourceUiBitmapText));
+                target.transform.SetParent(_root.transform, worldPositionStays: false);
+                SourceUiBitmapText bitmap = target.GetComponent<SourceUiBitmapText>();
+                bitmap.Bind(_skin, label, Color.white);
+
+                Assert.That(bitmap.LogicalSize, Is.EqualTo(size), label);
+                Assert.That(bitmap.transform.localScale, Is.EqualTo(Vector3.one), label);
+                Assert.That(bitmap.GetComponentsInChildren<RectTransform>(true)
+                    .Skip(1).Select(rect => rect.localScale), Has.All.EqualTo(Vector3.one), label);
+
+                long renderedCoverage = bitmap.GetComponentsInChildren<UnityEngine.UI.Image>(true)
+                    .SelectMany(image => image.sprite.texture.GetPixels32())
+                    .Sum(pixel => (long)pixel.a);
+                Assert.That(renderedCoverage, Is.EqualTo(alphaCoverage), label);
+                Assert.That(bitmap.GetComponentsInChildren<UnityEngine.UI.Image>(true)
+                    .SelectMany(image => image.sprite.texture.GetPixels32())
+                    .Any(pixel => pixel.a > 0 && pixel.a < byte.MaxValue), Is.True, label);
+            }
+
+            var presentation = new GameObject("Presentation", typeof(RectTransform), typeof(Canvas),
+                typeof(CanvasScaler), typeof(SourceUiPresentationRoot));
+            presentation.transform.SetParent(_root.transform, worldPositionStays: false);
+            SourceUiPresentationRoot root = presentation.GetComponent<SourceUiPresentationRoot>();
+            root.ApplyResolution(new Vector2Int(800, 600));
+            Assert.That(root.Mapping.Scale, Is.EqualTo(1f));
+            Assert.That(root.ReferenceSurface.localScale, Is.EqualTo(Vector3.one));
+            Assert.That(presentation.GetComponent<CanvasScaler>().scaleFactor, Is.EqualTo(1f));
         }
 
         [Test]

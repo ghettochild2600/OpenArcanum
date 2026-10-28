@@ -11,6 +11,12 @@ namespace Arcanum.Runtime.Save
         SessionSaveSlotResult DeleteSlot(string slotId);
     }
 
+    /// <summary>Optional source-facing metadata accepted without changing gameplay Save V1.</summary>
+    public interface ISessionSaveSlotPresentationOperations
+    {
+        SessionSaveSlotResult SaveSlot(string slotId, string displayName);
+    }
+
     public sealed class SessionSaveSlotData
     {
         public string SlotFormat { get; set; }
@@ -29,6 +35,11 @@ namespace Arcanum.Runtime.Save
         public string SelectedSector { get; set; }
         public string PcIdentity { get; set; }
         public int PcLevel { get; set; }
+        public string DisplayName { get; set; }
+        public string PcName { get; set; }
+        public string AreaName { get; set; }
+        public long GameTimeMilliseconds { get; set; }
+        public string ThumbnailPngBase64 { get; set; }
     }
 
     public sealed class SessionSaveSlotInfo

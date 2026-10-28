@@ -12,11 +12,89 @@ namespace Arcanum.Runtime.Save
         public CampaignSaveData Campaign { get; set; }
         public PartySaveData Party { get; set; }
         public MagicSaveData Magic { get; set; }
+        public PoisonSaveData Poison { get; set; }
         public TechnologySaveData Technology { get; set; }
         public CraftingSaveData Crafting { get; set; }
         public EconomySaveData Economy { get; set; }
         public SocialSaveData Social { get; set; }
         public CharacterCreationSaveData CharacterCreation { get; set; }
+        public GameplayHudSaveData GameplayHud { get; set; }
+        public LocalMapSaveData LocalMap { get; set; }
+        public LogbookSaveData Logbook { get; set; }
+    }
+
+    public sealed class LogbookSaveData { public List<LogbookCharacterSaveData> Characters { get; set; } }
+    public sealed class LogbookCharacterSaveData
+    {
+        public string Identity { get; set; }
+        public List<LogbookEffectSaveData> Effects { get; set; }
+        public List<LogbookInjurySaveData> Injuries { get; set; }
+        public List<int> Keys { get; set; }
+        public LogbookKillSaveData Kills { get; set; }
+    }
+    public sealed class LogbookEffectSaveData
+    { public int Id { get; set; } public long Timestamp { get; set; } public bool IsBlessing { get; set; } }
+    public sealed class LogbookInjurySaveData
+    { public int SourceDescriptionId { get; set; } public int Type { get; set; } public bool Active { get; set; } }
+    public sealed class LogbookKillSaveData
+    {
+        public int TotalKills { get; set; }
+        public int MostPowerfulDescriptionId { get; set; }
+        public int MostPowerfulLevel { get; set; }
+        public int LeastPowerfulDescriptionId { get; set; }
+        public int LeastPowerfulLevel { get; set; }
+        public int MostGoodDescriptionId { get; set; }
+        public int MostGoodValue { get; set; }
+        public int MostEvilDescriptionId { get; set; }
+        public int MostEvilValue { get; set; }
+        public int MostMagicalDescriptionId { get; set; }
+        public int MostMagicalValue { get; set; }
+        public int MostTechnicalDescriptionId { get; set; }
+        public int MostTechnicalValue { get; set; }
+    }
+
+    /// <summary>Optional source town-map discovered-tile state inside the compatible V1 envelope.</summary>
+    public sealed class LocalMapSaveData
+    {
+        public List<LocalMapKnownTilesSaveData> Maps { get; set; }
+    }
+
+    public sealed class LocalMapKnownTilesSaveData
+    {
+        public int TownMapId { get; set; }
+        public List<int> TileIndices { get; set; }
+    }
+
+    /// <summary>Optional authoritative poison state inside the compatible V1 envelope.</summary>
+    public sealed class PoisonSaveData
+    {
+        public List<PoisonCharacterSaveData> Characters { get; set; }
+    }
+
+    public sealed class PoisonCharacterSaveData
+    {
+        public string Identity { get; set; }
+        public int Level { get; set; }
+        public long NextDamageAtMilliseconds { get; set; }
+        public long NextRecoveryAtMilliseconds { get; set; }
+        public int CurrentHitPoints { get; set; }
+    }
+
+    /// <summary>Optional UI-C.4 authority added inside the compatible V1 envelope.</summary>
+    public sealed class GameplayHudSaveData
+    {
+        public int FatePoints { get; set; }
+        public int ActiveFateFlags { get; set; }
+        public int PrimaryNotifications { get; set; }
+        public List<RecentActionSaveData> RecentActions { get; set; }
+    }
+
+    public sealed class RecentActionSaveData
+    {
+        public int Kind { get; set; }
+        public int SourceId { get; set; }
+        public int IconSourceId { get; set; }
+        public string PreferredItemIdentity { get; set; }
     }
 
     /// <summary>Optional M12B identity metadata added without changing the compatible V1 envelope.</summary>
@@ -29,6 +107,9 @@ namespace Arcanum.Runtime.Save
         public int PortraitId { get; set; }
         public int Age { get; set; }
         public int SpentCharacterPoints { get; set; }
+        public int PregeneratedSourceIndex { get; set; }
+        public int AutoLevelScheme { get; set; }
+        public bool OpeningDialogueStarted { get; set; }
     }
 
     public sealed class SocialSaveData
@@ -67,12 +148,21 @@ namespace Arcanum.Runtime.Save
     public sealed class TechnologySaveData
     {
         public List<TechnologyCharacterSaveData> Characters { get; set; }
+        public List<TechnologyManualSaveData> Manuals { get; set; }
     }
 
     public sealed class TechnologyCharacterSaveData
     {
         public string Identity { get; set; }
         public int[] DisciplineRanks { get; set; }
+    }
+
+    public sealed class TechnologyManualSaveData
+    {
+        public string ItemIdentity { get; set; }
+        public string OwnerIdentity { get; set; }
+        public int Discipline { get; set; }
+        public int Expertise { get; set; }
     }
 
     public sealed class CraftingSaveData
@@ -151,6 +241,7 @@ namespace Arcanum.Runtime.Save
         public int Type { get; set; }
         public int PrototypeNumber { get; set; }
         public int NameIndex { get; set; }
+        public int DescriptionId { get; set; }
         public int SocialClass { get; set; }
         public int AiData { get; set; }
         public int Origin { get; set; }
@@ -169,6 +260,9 @@ namespace Arcanum.Runtime.Save
         public bool Off { get; set; }
         public bool Locked { get; set; }
         public int UseScriptNum { get; set; }
+        public uint UseScriptLocalFlags { get; set; }
+        public uint UseScriptLocalCounters { get; set; }
+        public string SceneryOccupantIdentity { get; set; }
         public int DialogNum { get; set; }
         public int ItemFlags { get; set; }
         public uint? InventoryArtId { get; set; }
@@ -176,6 +270,7 @@ namespace Arcanum.Runtime.Save
         public int GenericFlags { get; set; }
         public int WrittenSubtype { get; set; } = -1;
         public int WrittenStartLine { get; set; }
+        public int KeyId { get; set; }
         public int UnitWeight { get; set; }
         public int FootprintWidth { get; set; }
         public int FootprintHeight { get; set; }
@@ -259,6 +354,7 @@ namespace Arcanum.Runtime.Save
         public int Alignment { get; set; }
         public int MagickPoints { get; set; }
         public int TechPoints { get; set; }
+        public int MagickPointAdjustment { get; set; }
         public int TechnologyPointAdjustment { get; set; }
         public int ReactionBase { get; set; }
         public bool IsAloof { get; set; }
@@ -281,6 +377,38 @@ namespace Arcanum.Runtime.Save
         public List<ScriptAttachmentSaveData> Attachments { get; set; }
         public List<ReactionSaveData> Reactions { get; set; }
         public List<int> KnownAreas { get; set; } = new List<int>();
+        public ScriptTimerSaveData ScriptTimers { get; set; }
+        public ScriptEffectSaveData ScriptEffects { get; set; }
+    }
+
+    public sealed class ScriptTimerSaveData
+    {
+        public long NextSequence { get; set; } = 1;
+        public List<ScheduledScriptCallSaveData> Calls { get; set; } = new List<ScheduledScriptCallSaveData>();
+    }
+
+    public sealed class ScheduledScriptCallSaveData
+    {
+        public long Sequence { get; set; }
+        public long DueCampaignMilliseconds { get; set; }
+        public int ScriptNumber { get; set; }
+        public int StartLine { get; set; }
+        public string TriggererIdentity { get; set; }
+        public string AttacheeIdentity { get; set; }
+    }
+
+    public sealed class ScriptEffectSaveData
+    {
+        public long NextSequence { get; set; } = 1;
+        public List<ScriptEffectInstanceSaveData> Effects { get; set; } = new List<ScriptEffectInstanceSaveData>();
+    }
+
+    public sealed class ScriptEffectInstanceSaveData
+    {
+        public long Sequence { get; set; }
+        public string TargetIdentity { get; set; }
+        public int EffectId { get; set; }
+        public int Cause { get; set; }
     }
 
     public sealed class IndexedIntSaveData
@@ -304,6 +432,7 @@ namespace Arcanum.Runtime.Save
         public int AttachmentPoint { get; set; }
         public uint Flags { get; set; }
         public uint Counters { get; set; }
+        public int? ScriptNumber { get; set; }
     }
 
     public sealed class ReactionSaveData

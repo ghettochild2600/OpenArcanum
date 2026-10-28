@@ -2,172 +2,221 @@
 
 ## Status
 
-UI-C implementation and automated validation completed on 2026-10-05, but visual-fidelity acceptance is **reopened
-and pending**. The current production source HUD must be physically reviewed at 800×600, 1920×1080, 2560×1440, and
-3840×2160 and must show no clipping or misalignment before UI-C is closed again. The normal production gameplay view
-uses one source-backed retail HUD over the existing `GameUiController`, `CombatUiController`, quick-slot service, and
-session coordinator. The previous generic IMGUI button matrix is suppressed whenever the retail view is available.
-No gameplay, inventory, combat, vitality, equipment, shortcut, screen, or modal authority moved into presentation.
+UI-C.5 completed its bounded Fate and Sleep/Wait runtime-authority pass on 2026-10-07. The valid UI-C.1 cursor,
+UI-C.2 two-window composition, UI-C.3 counter/maintained-slot/Inventory corrections, and UI-C.4 state pass remain
+intact. UI-C overall is deliberately **OPEN** on two isolated source-authority boundaries: six skill-check critical-
+success Fate choices have no corresponding authoritative action checks in the current runtime, and bed use has no
+exact occupant/rental/SAP_USE authority. Those branches fail before Fate-point, time, vitality, spell, or presentation
+mutation instead of inventing behavior.
 
-No retail pixels or production Enhanced assets were committed. Original mode resolves retail ART from `GameData`
-through the UI-A resolver. The only Enhanced pixels used for validation were generated in the system temporary
-directory and deleted after the proof.
+The UI-D.1/UI-B.1/UI-C.5 player-facing correction pass is complete. It corrected bottom-control routing and the
+two-frame source skill-icon family while preserving this open authority boundary; UI-D.1 itself is complete.
 
-## Source evidence and composition
+The supported source HUD now includes saved primary notifications and highlighted ART, the Fate counter, six exact
+Fate paths, PC-maintained spell icons/cancellation, source-classified wilderness sleep and town wait, the source clock,
+contextual counter, two recent-action slots, and source XP gauge. `RetailGameplayHudView` remains a disposable
+projection; session state, SourceTime, vitality, inventory, magic, progression, combat, and Save V1 remain the
+authority. No retail pixels or production Enhanced assets were committed.
 
-The implementation was audited against retail `art/interface/interface.mes`, the decoded reference under
-`D:/OpenArcanum/UIReference/Original`, `arcanum-ce/src/ui/intgame.c`, and
-`arcanum-ce/src/ui/hotkey_ui.c`. Runtime does not read `UIReference`.
+## Corrected source evidence
 
-The fixed logical composition is 800 x 600:
+The correction was audited against retail `art/interface/interface.mes`, mounted retail ART, and the complete local
+`arcanum-ce/src` tree. UI-C.4 additionally traced `intgame.c`, `hotkey_ui.c`, `spell_ui.c`, `sleep_ui.c`, `fate_ui.c`,
+`fate.c`, `anim_ui.c`, `gameuilib.c`, and `hrp.c`, plus shipped interface/message data. The decisive window path is
+`src/ui/intgame.c`:
 
-| Region | Source rectangle | Production behavior |
-|---|---:|---|
-| Top interface | `(0,0,800,41)` | Normal-gameplay portion of ID 3; four source management controls are interactive. |
-| World / management | `(0,41,800,400)` | Transparent aperture in ID 3; the gameplay camera renders behind it. |
-| Bottom interface | `(0,441,800,159)` | Integrated source composition, not a reconstructed generic panel. |
+- `iso_interface_create` requests ID 185 at line 1221 and creates the top window with
+  `TIG_WINDOW_HIDDEN | TIG_WINDOW_CENTERED | TIG_WINDOW_TOP` at line 1237.
+- It requests ID 184 at line 1223 and creates the bottom window with
+  `TIG_WINDOW_HIDDEN | TIG_WINDOW_CENTERED | TIG_WINDOW_BOTTOM` at line 1240.
+- Each ART is blitted into its own window at line 1251.
+- Child rectangles are converted from absolute 800 x 600 coordinates to the owning window's local coordinates at
+  lines 1278–1299; quick-slot setup begins from the bottom window at line 1302.
+- `src/ui/hotkey_ui.c:178` and later `intgame.c` call sites reuse ID 184; later `intgame.c` call sites reuse ID 185.
+- `src/ui/hrp.c:26–49` translates center-horizontal windows by `(displayWidth - 800) / 2` and bottom windows by
+  `displayHeight - 600`. It does not resize either ART.
+- Primary normal IDs are Character 169, Logbook 187, Town Map 193, World Map 194, and Inventory 186. Persistent
+  notification variants are 561, 560, 558, 195, and 559; opening the corresponding screen clears its saved flag.
+- Fate uses panel ID 292, choice button ID 293, top button ID 137, and a two-digit counter at `(190,17,24,12)`.
+  Full Heal immediately restores hit points and fatigue and removes poison in the source. OpenArcanum currently has no
+  poison authority, so the representable HP/fatigue transaction is exact and the other eleven choices fail closed.
+- Sleep uses ID 565 and source choices 1/2/4/8/24 hours, until 07:00, until 20:00, and until healed. Each hour advances
+  SourceTime; wilderness sleep heals HP by Heal Rate and fatigue by three times Heal Rate, a bed doubles recovery,
+  wait-only towns do not heal, and PC-maintained spells end before the interval. Only map 1 wilderness permission is
+  currently authoritative; unsupported town and bed branches fail closed.
+- Maintained slots are `(281 + 50n,3)` with open IDs 188–192 and plugged IDs 628–632. Active icons use each spell's
+  shipped `spell_icon`; the supported catalog resolves Strength of Earth 93, Harm 105, Minor Healing 111, and Flash 82.
+- The contextual counter is `(104,512,50,20)`, six digits, with gold ID 474, ammunition IDs 250–253, and mana-store ID
+  469. Recent actions are `(69,548)` and `(114,548)` and initialize to skill icons 280 and 279. The XP gauge uses full
+  segments 773–782 and partial strip 772. The clock uses time strip 207, moons 208–215, and pointer 216; although the
+  source requests a 100 x 100 copy region for the pointer, the decoded 5 x 29 ART is blitted at native size without
+  scaling, which is the production geometry OpenArcanum now preserves.
 
-Retail ID 3 `intrface.art` supplies the full source composition and has real alpha in the world aperture. The camera
-therefore remains full-screen behind it; opaque source pixels conceal the world and transparent pixels reveal it.
-This matches the source image more faithfully than cropping the camera to a rectangular middle strip and also lets
-the widescreen sides show additional world without horizontally stretching the HUD.
+No literal `tig_art_interface_id_create(3, ...)` call or `intrface` source-name reference exists in the audited
+`arcanum-ce/src` tree. ID 3 is resolvable and visually resembles a legacy composite, but dimensions and decoded alpha
+are not sufficient authority. Indirect or table-driven use remains possible but unproven. Production therefore does
+not use ID 3 as the gameplay HUD.
 
-The source-backed elements used by the production view are:
+## Production composition
 
-- ID 3 `intrface`: complete 800 x 600 HUD composition.
-- IDs 20/18/19 `clrvial`/`redvial`/`bluvial`: empty glass, health liquid, and fatigue liquid.
-- ID 27 `morph15font`: dynamic counters, slot marks, and message text.
-- ID 354 `dialoguewindow`: the source message/lens frame at `(196,492,410,107)`.
-- ID 251 `ammo_icon_bullets`: the currently supported bounded ammunition icon at `(61,509,37,24)`.
-- IDs 169/187/193/186: Character, Logbook, Map, and Inventory top controls.
-- IDs 470/472/473/471: Combat, Skills, Spells, and Schematics bottom controls.
-- IDs 173–181 followed by ID 172: the ten source quick-slot backgrounds.
-- the shared UI-A source cursor and source button frame-state machinery.
-
-ID 184 `intbotom` and ID 185 `inttop` corroborate the split source regions, but production uses the proven full
-ID 3 alpha composition so the visible seams, decorative registration, and aperture remain exact.
-
-## Exact dynamic regions
-
-Health liquid is clipped to `(14,472,28,88)` and fatigue liquid to `(754,473,28,88)`. The source blitter retains an
-eight-pixel overlap beneath the vial neck for any non-zero value; zero remains empty. The resulting visible height is
-`8 + floor(80 * current / maximum)`, bounded to 0–88. Empty/full glass remains ID 20 at `(11,471,34,90)` and
-`(751,472,34,90)`. Numeric counters occupy `(15,578,29,12)` and `(755,578,27,12)`. All values are read from the M4
-projection; the view owns no vitality state and never issues a vitality mutation.
-
-The message/lens text clips to `(211,503,383,82)`. Its first line projects existing interaction/controller feedback;
-its second line projects the existing weapon/action state outside combat and the M8I combat mode, AP, and readiness
-inside combat. The lens is therefore the normal player-facing surface for existing diagnostics without retaining the
-placeholder debug grid.
-
-The current bounded ammunition projection uses ID 251 and an adjacent dynamic counter. It is hidden when the
-authoritative quantity is zero. Equipment, attack mode, ammunition, AP, combat mode, and readiness remain projections
-from M3/M8/M8I; UI-C does not classify attacks or select equipment.
-
-Ten source slots are placed at y=445 with x coordinates
-`198,237,276,315,354,418,456,495,534,573`. Their source IDs are
-`173,174,175,176,177,178,179,180,181,172`. Item quantities and spell/item bindings project from the existing
-session-owned shortcut service. Clicking a slot and number-key activation both call the same existing controller
-command. No second shortcut inventory, cooldown model, or drag/drop authority was added.
-
-## Source controls and removed placeholder controls
-
-The source controls and routes are:
-
-| Control | Source ID | Position | Existing route |
+| Window | Source ART | Native size | Physical placement |
 |---|---:|---:|---|
-| Character | 169 | `(4,2)` | Character |
-| Logbook | 187 | `(41,2)` | Journal |
-| Map | 193 | `(78,2)` | Map |
-| Inventory | 186 | `(115,2)` | Inventory |
-| Combat | 470 | `(86,457)` | existing combat toggle |
-| Skills | 472 | `(693,456)` | Skills |
-| Spells | 473 | `(649,494)` | Magic |
-| Schematics | 471 | `(693,539)` | Crafting |
+| Top | ID 185 `inttop` | 800 x 41 | centered horizontally, anchored to top |
+| Bottom | ID 184 `intbotom` | 800 x 159 | centered horizontally, anchored to bottom |
 
-The retail Schematics control is the authentic route to the completed crafting system. The placeholder Party,
-Barter, Save/Load, Technology, and duplicate Craft buttons were not reproduced. Their existing screens and keyboard
-routes remain intact; UI-C removes only the non-source convenience surface. Fate and Sleep source regions were not
-made interactive because their gameplay authorities are not implemented. No unsupported source branch was invented.
+The gameplay camera covers the full physical display. At 800 x 600 the windows occupy source y=0–40 and y=441–599.
+At higher resolutions they remain exactly 800 pixels wide and expose additional world both horizontally and
+vertically. They are not scaled to an 800 x 600 reference surface.
 
-Each source button uses its ART normal/hover/pressed frame family through `SourceUiButton`. No UI-C-specific audio
-mapping was proven, so UI-C relies on the existing shared M12D/UI-A behavior and does not synthesize a new sound.
+The Canvas uses constant pixel size. Top controls remain local to ID 185. Bottom content retains its audited absolute
+source coordinates and is converted with `localY = sourceY - 441` before parenting to ID 184. The full-screen cursor
+layer preserves the valid UI-C.1 hotspot correction and maps one source cursor pixel to one physical pixel.
 
-## Input, cursor, and lifecycle
+## Source-owned dynamic regions
 
-The persistent EventSystem is parented outside the transient Main Menu canvas so the same one EventSystem remains
-active after New Game. Only actual top and bottom source interface bands block pointer-to-world input. Transparent
-world aperture and widescreen side regions do not steal click-to-move or alpha-tested world interaction. Pointer
-coordinates continue through the shared centered 800 x 600 mapping.
+- IDs 20/18/19 provide empty glass, health liquid, and fatigue liquid.
+- Health liquid uses `(14,472,28,88)`; fatigue uses `(754,473,28,88)`.
+- Counters use `(15,578,29,12)` and `(755,578,27,12)`. Source font ID 171 supplies Cloister 18 digits; values are
+  zero-padded to three digits, measured, centered, and rendered over the black counter aperture.
+- Five maintained-spell slots use open IDs 188–192 at `(281 + 50n,3,32,32)` and plugged IDs 628–632 at
+  `(280 + 50n,2,35,35)`. Open capacity is the source-bounded `Intelligence / 4`, capped at five.
+- ID 354 supplies the message lens at `(196,492,410,107)`; dynamic text clips to `(211,503,383,82)`.
+- ID 251 supplies the bounded supported ammunition icon.
+- Ten quick slots use source x positions `198,237,276,315,354,418,456,495,534,573` at y=445 and source IDs
+  `173,174,175,176,177,178,179,180,181,172`.
+- IDs 169/187/193/186 provide Character, Logbook, Map, and Inventory at y=2 in the top window.
+- IDs 561/560/558/195/559 replace those primary controls only while their authoritative notification is pending.
+- Fate projects a saved two-digit point count. Full Heal consumes exactly one point after validation. Force Good
+  Reaction, Critical Hit, Critical Miss, Save Against Magick, and Spell At Maximum arm through saved session state,
+  resolve only at their source call sites, and remain armed when the attempted transaction fails before commit. The
+  six unsupported skill-check critical-success choices reject without mutation.
+- The five maintained apertures project only PC-cast maintained M10A effects in stable identity order. Clicking an
+  active icon cancels through M10A rather than mutating the presentation.
+- Sleep/Wait is an authoritative transaction over SourceTime, M4 vitality, party membership, and M10A effects.
+  Selected-sector `TownMapInfo` and `rules/townmap.mes` `[w:1]` provide source location authority: town wait advances
+  time and cancels maintained effects without recovery or Until Healed, while wilderness sleep also applies hourly
+  source recovery. Bed-specific use remains unavailable until exact occupancy/rental/SAP_USE authority exists.
+- The source clock derives exclusively from `SourceTimeService`; no Unity wall clock participates.
+- The bottom contextual counter selects Gold, supported ammunition, or mana-store facts from authoritative inventory.
+- Two recent actions preserve source recency/deduplication semantics and activate through existing item/spell routes.
+- XP segments are a read-only projection of M4C level progress; invalid or capped progress draws no invented state.
+- IDs 470/472/473/471 provide Combat, Skills, Spells, and Schematics in the bottom window.
+- Pointer and keyboard routes now share the same authority: Combat ID 470 / `R`, Skills ID 472 / `K`, Spells ID 473
+  / `M`, and Schematics ID 471 / `T`. Skills and Spells obey the rotating-window/message-window mutual-release path.
+- Skill action IDs 279/280/282/278 are a two-frame family. Frame 0 is normal and frame 1 is hover/pressed; production
+  no longer requests nonexistent frame 2. This is a family-specific state mapping, not a global frame clamp.
 
-`ProductionGameUiPresenter` owns exactly one `RetailGameplayHudView`. It synchronizes the source view from the existing
-controller and suppresses only the generic gameplay HUD drawing while the source view is available. Rebinding after a
-test fixture or graphics rebuild replaces/disposes presentation resources safely and restores the production-owned
-resolver; it does not duplicate controllers, presenters, subscriptions, or EventSystems.
+Health, fatigue, equipment, ammunition, AP, readiness, combat state, messages, and shortcuts remain projections of
+the completed M3/M4/M8/M12C systems. C/L/W/I and pointer controls share the controller routes; F and S open the Fate
+and Sleep panels, and A activates the first recent-action slot. Unsupported skill-action Fate resolution, bed sleep
+permission, broader ammunition/mana-store content, slot drag/cooldown, and rare-audio branches remain fail-closed or
+deferred.
 
-The source cursor remains presentation-only. Production attack/talk selection and keyboard input remain owned by the
-existing input stack.
+The four visible rotating-Skills actions remain deliberately unavailable for gameplay resolution. Source tracing
+proved that Prowling requires stealth/concealment plus world-perception authority, Pick Pocket requires a
+transactional theft/detection/reaction kernel, Disarm Traps requires authoritative trap state/difficulty/failure
+consequences, and Repair requires item durability/damage/failure effects. None exists in the current runtime, so a
+source-correct valid-target transaction cannot be completed without starting major gameplay systems. Each action
+therefore fails closed before time/AP, inventory, combat, vitality, world, or recent-action mutation. `INVALID`
+remains correct for unsupported/invalid targets; a failed attempt does not replace the item/spell recent-action
+history. UI-C must remain open on these four action kernels as well as the previously documented Fate and bed-use
+authority boundaries.
 
-## Modern resolutions and skins
+## Input and lifecycle
 
-At 800 x 600 the source composition maps exactly to the screen. At 1920 x 1080, 2560 x 1440, and 3840 x 2160 the
-shared uniform scales are 1.8, 2.4, and 3.6, producing centered 1440 x 1080, 1920 x 1440, and 2880 x 2160 fixed-art
-surfaces. Extra horizontal area exposes the full-screen world behind the source alpha; the 800-wide ornament is never
-stretched. Controls, vials, slots, hit rectangles, and logical text regions remain unchanged.
+Only the physical ID 185 and ID 184 rectangles block pointer-to-world input. The world between and around them is
+interactive. The cursor sits on a full-screen native layer. `ProductionGameUiPresenter` owns exactly one
+`RetailGameplayHudView`; the persistent EventSystem stays outside the transient Main Menu canvas. Graphics rebuilds
+replace only presentation resources and do not duplicate controllers, presenters, subscriptions, or EventSystems.
 
-Original mode resolves every production HUD pixel from the mounted retail data. A generated 3200 x 2400 ID 3 fixture
-proved the exact-4x Enhanced path while retaining the same 800 x 600 logical rectangle and controller state. Missing
-Enhanced button/slot frames fell back independently to Original. Original -> Enhanced -> Original preserved
-geometry, hit regions, session state, shortcut binding, combat authority, and the single presenter/EventSystem.
+Ordinary Inventory is the source exception to modal HUD hiding: it composes in the 800 x 400 middle window while the
+native top and bottom strips remain visible. The Inventory button toggles that route closed when pressed again. A
+selected inventory item can be assigned through an existing quick-slot button, but the shortcut service remains the
+only binding authority. Dialogue and every other management modal remain separate M12C routes and hide/replace the
+gameplay presentation through the existing modal controller.
 
-## Validation record
+## Resolution and skin behavior
 
-Focused UI-C EditMode validation passed **33/33**. It covers source resolution, the three source regions, vial clipping
-at zero/partial/nearly-full/full values, all ten slot IDs/positions, authoritative HP/fatigue/equipment/ammunition/AP
-and slot projections, source screen/control routing, absence of non-source convenience controls, input bands and world
-aperture, 800 x 600/1080p/1440p/4K mapping, full camera backing, exact-4x selection, per-frame fallback, skin rebuild,
-fixture-to-production resolver rebinding, and unique view/controller lifecycle.
+| Resolution | Strip x | Top y | Bottom y | Strip sizes |
+|---:|---:|---:|---:|---:|
+| 800 x 600 | 0 | 0 | 441 | 800 x 41 / 800 x 159 |
+| 1024 x 768 | 112 | 0 | 609 | 800 x 41 / 800 x 159 |
+| 1920 x 1080 | 560 | 0 | 921 | 800 x 41 / 800 x 159 |
+| 2560 x 1440 | 880 | 0 | 1281 | 800 x 41 / 800 x 159 |
+| 3840 x 2160 | 1520 | 0 | 2001 | 800 x 41 / 800 x 159 |
 
-Targeted regressions were limited to production code touched by UI-C:
+Original mode resolves IDs 185 and 184 from mounted retail data. Generated temporary 3200 x 164 and 3200 x 636
+fixtures prove exact-4x Enhanced texture selection while logical/physical window geometry remains 800 x 41 and
+800 x 159. Missing replacements fall back independently. Original -> Enhanced -> Original preserves controller,
+session, shortcut, combat, geometry, hit regions, cursor, and presenter/EventSystem identity.
 
-- UI-A source runtime: **23/23**.
-- M12C controller/presenter: **18/18**.
-- M8I combat UI: **17/17**.
-- Player navigation/input: **21/21**.
-- production keyboard input: **23/23**.
-- UI-B Main Menu/EventSystem lifecycle: **22/22**.
+## Physical validation and comparison corpus
 
-The complete EditMode suite passed **1169/1169**, with 0 failed, 0 skipped, and 0 inconclusive. Unity compilation was
-clean. Final Console was cleared and rechecked at 0 logs, 0 warnings, and 0 errors. `git diff --check` was clean.
+The existing Unity Editor and production `Assets/_Game/Scenes/OpenArcanum.unity` were used; no second Editor was
+launched. A fresh source-valid New Game reached START_MAP 1 at the crash site. The run proved the initial starting-item
+Inventory notification, normal/highlight ART and pointer plus C/L/W/I routes, exact notification clearing, maintained
+Strength of Earth icon/cancellation, one-hour wilderness sleep with SourceTime/recovery/demaintain, Fate 00 -> 01 ->
+Full Heal -> 00, all four clock periods, six-digit Gold context with ID 474, recent spell icon 93, XP projection,
+turn-based combat authority, and Original -> Enhanced -> Original presentation rebuild. One HUD, Inventory presenter,
+controller presenter, gameplay cursor, and EventSystem remained.
 
-The recorded physical Play Mode pass used the existing Unity Editor and `Assets/_Game/Scenes/OpenArcanum.unity`. A
-fresh source-valid New Game reached START_MAP 1 at the crash site. It proved the recognizable retail ID 3 HUD, absence of the generic
-button grid, authoritative health/fatigue/equipment/message state, the transparent world aperture, one presenter,
-one controller presenter, and one active EventSystem. The real Inventory source button opened the existing Inventory
-screen and the real `I` shortcut returned to the same HUD. A real world click moved the PC across a sector boundary
-without the HUD stealing input. A learned Strength of Earth binding appeared in slot 1 and the real `1` key activated
-it through existing magic/fatigue authority. An authentic loaded crash-site NPC drove the existing M8 turn-based
-combat route and the source lens reflected live combat mode/AP/readiness; M8I and keyboard regressions cover End Turn
-and real-time command routing without adding a non-source control. Original -> generated exact-4x Enhanced -> Original
-and 800 x 600/1080p/1440p/4K validator checks all passed. Those programmatic mappings and the earlier run do not close
-the newly reopened visual-fidelity gate: the current rendered HUD still requires direct human review at every target
-resolution for clipping and alignment. The validator itself emitted 0 warnings and 0 errors.
+Geometry passed at 800 x 600, 1024 x 768, 1920 x 1080, 2560 x 1440, and 3840 x 2160. At every target the native strips
+remained centered, unclipped, and unscaled, with expanded world around them. The production Inventory composition
+coexisted with the HUD, and authoritative state survived its route and graphics rebuilds.
 
-No pickup was required for the HUD proof because UI-C does not own inventory mutation and the relevant equipment,
-ammunition, slot, and Inventory routes were proved directly. Campaign progression did not continue beyond the bounded
-crash-site/adjacent-sector interaction proof.
+Local captures and the reference index stayed under ignored `Temp/UIC2Validation` and were not committed. Direct
+visual comparison used unmodified 800 x 600 retail screenshots indexed by MobyGames, including the original 2001
+Windows gallery and the later 1.0.7.4 full-screen-mode reference. The comparison was structural rather than a
+pixel-diff because scenes differed: top/bottom silhouettes, management buttons, quick slots, vials, message lens,
+and bottom control registration agreed; the prior oversized ID 3-derived composition was absent. Old-Games and ModDB
+captures were retained only as uncertain/modded corroboration, never as authority.
 
-## Explicit ambiguities and deferrals
+No external screenshot or original retail ART was added to Git.
 
-- Retail source behavior for every ammunition icon family is broader than the currently authoritative bounded combat
-  projection; UI-C presents the proven supported quantity and does not infer unsupported weapon/ammo categories.
-- Fate, Sleep, follower/party portrait regions, selected-actor indicators, clock/moon strips, and broader status icons
-  require their own source/gameplay authority audit before becoming interactive.
-- Quick-slot drag/drop artwork and unavailable/cooldown states were not proven by current authority and remain absent;
-  assignment and activation remain available through completed controller routes.
-- Exact rare HUD sounds remain a minor M12D presentation follow-up where no mapping is proven.
-- Character Creation, Inventory/Paper Doll, Character management, Magic/Technology screens, Journal, maps, merchant,
-  Save/Load, and other modal reconstructions remain outside UI-C.
+## UI-C.5 validation record
 
-The exact recommended UI-D boundary is one source-faithful **Character Creation presentation** over the completed
-M12B/M12C authority. It must not redesign creation rules or absorb Inventory, Character management, or another screen.
+- Complete EditMode: **1229/1229**, 0 failed, 0 skipped, 0 inconclusive (1207 plus 22 justified UI-C.5 cases).
+- Production UI-C.5 physical validator: **PASS** in the existing Editor. It proved the 12-choice Fate panel and Full
+  Heal transaction, F/S routes, crash-site town-wait classification and seven-option presentation, one-hour town wait
+  with no recovery, authentic wilderness selection and one-hour recovery, SourceTime advancement, maintained-effect
+  cancellation, clock refresh, and return to the crash-site sector.
+- Unity compilation: clean.
+- Final cleared Console: 0 errors and 0 unexpected warnings. `git diff --check`: clean.
+
+## Player-facing correction follow-up
+
+- Focused UI-C.5: **69/69**, 0 failed, skipped, or inconclusive.
+- Targeted cross-system regressions: **418/418**; complete EditMode: **1280/1280**.
+- Production physical validation passed Combat/Skills/Spells/Schematics pointer and keyboard parity, rotating-window
+  mutual release, two-frame IDs 279/280/282/278 with no frame-out-of-range warning, fail-closed unsupported skill
+  actions without transaction mutation, recent item/spell action preservation, Original -> Enhanced -> Original,
+  and all five target resolutions.
+- Unity compilation is clean; the final cleared Console has 0 errors and 0 warnings; `git diff --check` is clean.
+
+## Boundary
+
+UI-C.5 changes only coordinator-owned HUD state, exact existing-authority resolution call sites, source sector/town
+classification, source-proven presentation, optional fields inside the compatible Save V1 envelope, and validation.
+It does not add a parallel action-check system, invent bed permission, or alter combat/navigation/dialogue/Enhanced-
+art ownership. UI-C remains open until the six listed skill actions have authoritative action-resolution paths and bed
+occupation/rental/use-script state can be represented exactly. See the dedicated Fate and Sleep/Wait runtime notes.
+
+## Player-Facing Correctness Pass II
+
+Combat ID 470 now submits the same `CombatStateService.ToggleCombatReadiness` transaction as `R`. With no eligible
+nearby hostile, the service owns the PC's combat-ready stance; with an eligible hostile it enters the existing combat
+kernel. The presenter merely projects that authority and cursor state. Physical pointer and keyboard checks both
+entered and left the same combat state.
+
+The Sleep/Wait rows now expose their full source hit rectangles and execute the already-established SourceTime
+transactions. At the authentic crash site, selected-sector `TownMapInfo` plus retail `[w:1]` correctly classified the
+panel as town wait. One Hour, Two Hours, and Until Evening advanced the source clock and refreshed lighting without
+inventing wilderness recovery. Source IDs 137 and 293 are two-frame controls: frame 0 is normal and frame 1 serves
+hover/pressed, so production no longer requests frame 2 or emits the former warnings.
+
+The final physical pass also verified NumLock Always Run, HUD/Inventory coexistence, Inventory close/reopen, and
+unchanged centered HUD geometry at 800 x 600, 1024 x 768, 1920 x 1080, 2560 x 1440, and 3840 x 2160. The complete
+EditMode suite passed **1301/1301**, with 0 failed, skipped, or inconclusive. Compilation is clean; the final cleared
+Console has 0 logs, 0 warnings, and 0 errors; and `git diff --check` is clean. This correction closes the reported
+combat-control, Sleep/Wait, and two-frame presentation defects only. UI-C remains open on the documented skill/Fate
+action authorities and occupied/rented-bed semantics.

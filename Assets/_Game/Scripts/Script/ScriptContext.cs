@@ -24,6 +24,10 @@ namespace Arcanum.Script
         /// <summary>The running script's number — used to locate its <c>.dlg</c> for <c>FLOAT_LINE</c>/<c>PRINT_LINE</c>
         /// (engine <c>state-&gt;invocation-&gt;script-&gt;num</c>); 0 means messages are skipped.</summary>
         public int ScriptNum;
+        /// <summary>The source script number to persist back into the firing attachment point after execution.
+        /// Null means unchanged; zero detaches it. The running invocation keeps <see cref="ScriptNum"/> so later
+        /// FLOAT/PRINT operations still resolve the original script's dialog, matching retail.</summary>
+        public int? ReplacementScriptNum;
         /// <summary>Set by <c>SAT_REMOVE_THIS_SCRIPT</c> (engine <c>state-&gt;script_num = 0</c>): the host should
         /// detach the running script from the object so it won't fire again.</summary>
         public bool RemoveScript;

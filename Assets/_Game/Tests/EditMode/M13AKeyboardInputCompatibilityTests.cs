@@ -29,8 +29,7 @@ namespace Arcanum.Formats.Tests
         [TestCase(KeyCode.I, GameUiScreen.Inventory)]
         [TestCase(KeyCode.C, GameUiScreen.Character)]
         [TestCase(KeyCode.M, GameUiScreen.Magic)]
-        [TestCase(KeyCode.T, GameUiScreen.Technology)]
-        [TestCase(KeyCode.K, GameUiScreen.Skills)]
+        [TestCase(KeyCode.T, GameUiScreen.Crafting)]
         [TestCase(KeyCode.L, GameUiScreen.Journal)]
         [TestCase(KeyCode.W, GameUiScreen.Map)]
         [TestCase(KeyCode.O, GameUiScreen.Options)]
@@ -38,6 +37,14 @@ namespace Arcanum.Formats.Tests
         {
             Assert.That(_keyboard.Dispatch(key, ProductionKeyPhase.Down, Hud(), _commands), Is.True);
             Assert.That(_commands.Screen, Is.EqualTo(screen));
+        }
+
+        [Test]
+        public void KUsesTheSourceSkillsRotatingWindowInsteadOfAModalScreen()
+        {
+            Assert.That(_keyboard.Dispatch(KeyCode.K, ProductionKeyPhase.Down, Hud(), _commands), Is.True);
+            Assert.That(_commands.SkillToggles, Is.EqualTo(1));
+            Assert.That(_commands.Screen, Is.EqualTo(GameUiScreen.None));
         }
 
         [Test]
@@ -118,16 +125,18 @@ namespace Arcanum.Formats.Tests
         }
 
         [Test]
-        public void NumLockDefaultAndControlHeldTemporarilyInvertRunWalk()
+        public void NumLockAndControlIndependentlyRequestRunning()
         {
             Assert.That(_keyboard.EffectiveRun, Is.False);
             _keyboard.SetModifiers(true, false, false);
             Assert.That(_keyboard.EffectiveRun, Is.True);
             _keyboard.Dispatch(KeyCode.Numlock, ProductionKeyPhase.Down, Hud(), _commands);
-            Assert.That((_keyboard.AlwaysRun, _keyboard.EffectiveRun), Is.EqualTo((true, false)));
+            Assert.That((_keyboard.AlwaysRun, _keyboard.EffectiveRun), Is.EqualTo((true, true)));
             _keyboard.SetModifiers(false, true, true);
             Assert.That((_keyboard.EffectiveRun, _keyboard.ShiftHeld, _keyboard.AltHeld),
                 Is.EqualTo((true, true, true)));
+            _keyboard.Dispatch(KeyCode.Numlock, ProductionKeyPhase.Down, Hud(), _commands);
+            Assert.That((_keyboard.AlwaysRun, _keyboard.EffectiveRun), Is.EqualTo((false, false)));
         }
 
         [Test]
@@ -141,11 +150,12 @@ namespace Arcanum.Formats.Tests
         }
 
         [Test]
-        public void UnsupportedRetailSurfacesFailClosedInsteadOfOpeningDummyWindows()
+        public void SleepAndFateRouteToAuthoritativeHudPanelsWhileBroadcastFailsClosed()
         {
             foreach (KeyCode key in new[] { KeyCode.S, KeyCode.F, KeyCode.Return })
                 Assert.That(_keyboard.Dispatch(key, ProductionKeyPhase.Down, Hud(), _commands), Is.True);
-            Assert.That(_commands.UnsupportedActions, Is.EqualTo(new[] { "Sleep", "Fate points", "Broadcast/chat" }));
+            Assert.That((_commands.SleepToggles, _commands.FateToggles), Is.EqualTo((1, 1)));
+            Assert.That(_commands.UnsupportedActions, Is.EqualTo(new[] { "Broadcast/chat" }));
             Assert.That(_commands.Screen, Is.EqualTo(GameUiScreen.None));
         }
 
@@ -155,7 +165,8 @@ namespace Arcanum.Formats.Tests
             _keyboard.Dispatch(KeyCode.Home, ProductionKeyPhase.Up, Hud(), _commands);
             _keyboard.Dispatch(KeyCode.R, ProductionKeyPhase.Down, Hud(), _commands);
             _keyboard.Dispatch(KeyCode.A, ProductionKeyPhase.Down, Hud(), _commands);
-            Assert.That((_commands.Centers, _commands.ReadyToggles, _commands.ActiveActions), Is.EqualTo((1, 1, 1)));
+            Assert.That((_commands.Centers, _commands.CombatToggles, _commands.ReadyToggles, _commands.ActiveActions),
+                Is.EqualTo((1, 1, 0, 1)));
         }
 
         [Test]
@@ -169,6 +180,10 @@ namespace Arcanum.Formats.Tests
             Assert.That(party.IssueOrder(PartyOrder.SpreadOut), Is.True);
             Assert.That(party.DesiredFollowRange, Is.EqualTo(PartyFollowerMovementService.SourceSpreadRange));
             Assert.That(party.IssueOrder(PartyOrder.BackOff), Is.True);
+            Assert.That((party.FollowingEnabled, party.DesiredFollowRange),
+                Is.EqualTo((true, PartyFollowerMovementService.SourceSpreadRange)),
+                "source Back Off stops attacking without changing the follow/formation order");
+            Assert.That(party.IssueOrder(PartyOrder.Wait), Is.True);
             Assert.That(party.FollowingEnabled, Is.False);
             Assert.That(party.IssueOrder(PartyOrder.Follow), Is.True);
             Assert.That((party.FollowingEnabled, party.DesiredFollowRange),
@@ -217,6 +232,7 @@ namespace Arcanum.Formats.Tests
             public readonly List<string> UnsupportedActions = new();
             public int Saves, Loads, Screenshots, Closes, CombatToggles, Escapes, EndTurns;
             public int Centers, ReadyToggles, ActiveActions;
+            public int SleepToggles, FateToggles, SkillToggles;
             public CombatCalledLocation CalledLocation;
             public void Escape() => Escapes++;
             public void ToggleScreen(GameUiScreen screen) => Screen = screen;
@@ -226,6 +242,9 @@ namespace Arcanum.Formats.Tests
             public void ToggleAttackTalkMode() => ReadyToggles++;
             public void ActivateQuickSlot(int index) => QuickSlots.Add(index);
             public void ActivateRecentAction() => ActiveActions++;
+            public void ToggleSleep() => SleepToggles++;
+            public void ToggleFate() => FateToggles++;
+            public void ToggleSkills() => SkillToggles++;
             public void SetCalledLocation(CombatCalledLocation location) => CalledLocation = location;
             public void IssuePartyOrder(int sourceIndex) => PartyOrders.Add(sourceIndex);
             public void AutoSave() => Saves++;

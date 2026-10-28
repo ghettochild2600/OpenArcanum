@@ -67,11 +67,26 @@ namespace Arcanum.Runtime.Character
             UnspentCharacterPoints--;
         }
 
+        internal void DecreaseSkill(CharacterSkill skill)
+        {
+            if (_purchasedPoints[(int)skill] < 1)
+                throw new InvalidOperationException($"{skill} has no purchased point to refund.");
+            _purchasedPoints[(int)skill]--;
+            RefundCharacterPoint();
+        }
+
         internal void SpendCharacterPoint()
         {
             if (UnspentCharacterPoints < 1)
                 throw new InvalidOperationException("No character point is available.");
             UnspentCharacterPoints--;
+        }
+
+        internal void RefundCharacterPoint()
+        {
+            if (UnspentCharacterPoints >= CharacterProgressionService.MaximumUnspentCharacterPoints)
+                throw new InvalidOperationException("The source character-point limit has been reached.");
+            UnspentCharacterPoints++;
         }
 
         internal void SetTraining(CharacterSkill skill, SkillTrainingLevel training)

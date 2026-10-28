@@ -2,9 +2,17 @@ using System;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
+using System.Collections.Generic;
 
 namespace OpenArcanum.UI
 {
+    /// <summary>Source palette operations applied before a UI frame is presented.</summary>
+    public enum SourceUiPaletteTransform
+    {
+        None,
+        TigGrayscale,
+    }
+
     /// <summary>Scene lifetime owner for a production skin resolver. It carries presentation resources only.</summary>
     [DisallowMultipleComponent]
     public sealed class SourceUiRuntime : MonoBehaviour
@@ -52,10 +60,17 @@ namespace OpenArcanum.UI
         private Image _image;
         private UiSkinResolver _resolver;
         private bool _subscribed;
+        private SourceUiPaletteTransform _paletteTransform;
+        private Texture2D _paletteTexture;
+        private Sprite _paletteSprite;
+        private readonly Dictionary<UiAssetKey, UiResolvedAsset> _preparedAssets = new();
 
         public UiAssetKey Key => asset.Key;
         public UiResolvedAsset CurrentAsset { get; private set; }
+        public SourceUiPaletteTransform PaletteTransform => _paletteTransform;
         public Image Image => _image != null ? _image : (_image = GetComponent<Image>());
+        public int PreparedAssetCount => _preparedAssets.Count;
+        public bool IsBoundTo(UiSkinResolver resolver) => ReferenceEquals(_resolver, resolver);
 
         private void OnEnable()
         {
@@ -72,12 +87,23 @@ namespace OpenArcanum.UI
         }
 
         private void OnDisable() => Unsubscribe();
-        private void OnDestroy() => Unsubscribe();
+        private void OnDestroy()
+        {
+            Unsubscribe();
+            ReleasePaletteResources();
+        }
 
         public void Bind(UiSkinResolver resolver, UiAssetKey key, bool useNativeLogicalSize = false)
         {
             if (resolver == null) throw new ArgumentNullException(nameof(resolver));
+            if (ReferenceEquals(_resolver, resolver) && asset.Key.Equals(key)
+                && applyNativeLogicalSize == useNativeLogicalSize)
+            {
+                if (CurrentAsset == null) Refresh();
+                return;
+            }
             Unsubscribe();
+            if (!ReferenceEquals(_resolver, resolver)) _preparedAssets.Clear();
             _resolver = resolver;
             asset = new UiAssetReference(key);
             applyNativeLogicalSize = useNativeLogicalSize;
@@ -87,13 +113,48 @@ namespace OpenArcanum.UI
 
         public void SetKey(UiAssetKey key)
         {
+            if (asset.Key.Equals(key) && CurrentAsset != null) return;
             asset = new UiAssetReference(key);
+            Refresh();
+        }
+
+        public bool PrepareKey(UiAssetKey key)
+        {
+            if (_resolver == null) return false;
+            if (_preparedAssets.TryGetValue(key, out UiResolvedAsset prepared)
+                && prepared?.Sprite != null)
+                return true;
+            if (!_resolver.TryResolve(key, out prepared)) return false;
+            _preparedAssets[key] = prepared;
+            return true;
+        }
+
+        public void PrepareAsset(UiResolvedAsset prepared)
+        {
+            if (prepared?.Sprite == null) throw new ArgumentNullException(nameof(prepared));
+            _preparedAssets[prepared.Key] = prepared;
+        }
+
+        public void SetPaletteTransform(SourceUiPaletteTransform transform)
+        {
+            if (_paletteTransform == transform) return;
+            _paletteTransform = transform;
             Refresh();
         }
 
         public bool Refresh()
         {
-            if (_resolver == null || !_resolver.TryResolve(asset.Key, out UiResolvedAsset resolved))
+            ReleasePaletteResources();
+            if (_resolver == null)
+            {
+                CurrentAsset = null;
+                Image.sprite = null;
+                return false;
+            }
+
+            UiResolvedAsset resolved;
+            if (!_preparedAssets.TryGetValue(asset.Key, out resolved)
+                && !_resolver.TryResolve(asset.Key, out resolved))
             {
                 CurrentAsset = null;
                 Image.sprite = null;
@@ -101,12 +162,60 @@ namespace OpenArcanum.UI
             }
 
             CurrentAsset = resolved;
-            Image.sprite = resolved.Sprite;
-            Image.color = Color.white;
+            Image.sprite = _paletteTransform == SourceUiPaletteTransform.TigGrayscale
+                ? CreateTigGrayscaleSprite(resolved)
+                : resolved.Sprite;
+            // Tint belongs to the presenter (bitmap glyph coverage, disabled icons, status overlays).
+            // Refreshing or re-enabling the source asset must not silently erase that presentation state.
             ApplyScalePolicy(SourceUiScaleMetadataCatalog.Get(resolved.Key.SourceId));
             if (applyNativeLogicalSize)
                 ((RectTransform)transform).sizeDelta = resolved.LogicalSize;
             return true;
+        }
+
+        private Sprite CreateTigGrayscaleSprite(UiResolvedAsset resolved)
+        {
+            Color32[] pixels = resolved.Texture.GetPixels32();
+            for (int index = 0; index < pixels.Length; index++)
+            {
+                Color32 pixel = pixels[index];
+                byte gray = (byte)((pixel.r * 77u + pixel.g * 150u + pixel.b * 28u) / 255u);
+                pixels[index] = new Color32(gray, gray, gray, pixel.a);
+            }
+
+            _paletteTexture = new Texture2D(
+                resolved.Texture.width,
+                resolved.Texture.height,
+                TextureFormat.RGBA32,
+                mipChain: false,
+                linear: false)
+            {
+                name = $"{resolved.Texture.name}_TigGrayscale",
+                filterMode = resolved.Texture.filterMode,
+                wrapMode = resolved.Texture.wrapMode,
+                anisoLevel = resolved.Texture.anisoLevel,
+            };
+            _paletteTexture.SetPixels32(pixels);
+            _paletteTexture.Apply(updateMipmaps: false, makeNoLongerReadable: false);
+
+            _paletteSprite = Sprite.Create(
+                _paletteTexture,
+                new Rect(0f, 0f, _paletteTexture.width, _paletteTexture.height),
+                resolved.Pivot,
+                resolved.Sprite.pixelsPerUnit,
+                extrude: 0,
+                meshType: SpriteMeshType.FullRect,
+                border: resolved.Sprite.border);
+            _paletteSprite.name = $"{resolved.Sprite.name}_TigGrayscale";
+            return _paletteSprite;
+        }
+
+        private void ReleasePaletteResources()
+        {
+            RetailUiAssetResolver.Destroy(_paletteSprite);
+            RetailUiAssetResolver.Destroy(_paletteTexture);
+            _paletteSprite = null;
+            _paletteTexture = null;
         }
 
         private void ApplyScalePolicy(SourceUiScaleMetadata metadata)
@@ -141,6 +250,7 @@ namespace OpenArcanum.UI
             // glyph. Unity's native object is already gone in that narrow window, so fail closed instead of
             // touching the retired component.
             if (this == null) return;
+            _preparedAssets.Clear();
             Refresh();
         }
     }
@@ -194,21 +304,29 @@ namespace OpenArcanum.UI
             _resolver = resolver ?? throw new ArgumentNullException(nameof(resolver));
             normal = new UiAssetReference(normalKey);
             hover = new UiAssetReference(hoverKey);
-            pressed = new UiAssetReference(pressedKey);
+            // Some source buttons expose only normal/active frames. TIG keeps their active frame while pressed;
+            // probing a conventional third frame both warns and creates work on the hover path.
+            pressed = new UiAssetReference(_resolver.Original.IsFrameAvailable(pressedKey)
+                ? pressedKey
+                : hoverKey);
             disabled = new UiAssetReference(disabledKey);
             hasSelectedState = selectedKey.HasValue;
             selected = new UiAssetReference(selectedKey ?? normalKey);
+            SourceImage.Bind(_resolver, normalKey);
+            PreparePresentationKeys();
             RefreshPresentation();
         }
 
         public void SetInteractable(bool value)
         {
+            if (Button.interactable == value) return;
             Button.interactable = value;
             RefreshPresentation();
         }
 
         public void SetSelected(bool value)
         {
+            if (_selected == value) return;
             _selected = value;
             RefreshPresentation();
         }
@@ -236,20 +354,16 @@ namespace OpenArcanum.UI
         public void OnPointerUp(PointerEventData eventData)
         {
             _pressed = false;
+            // TIG momentary buttons return to their authored up frame when the mouse is released.
+            // A later pointer-enter can show hover again; Unity keyboard/event focus must not latch
+            // the visual active frame after a click.
+            _hovered = false;
             RefreshPresentation();
         }
 
-        public void OnSelect(BaseEventData eventData)
-        {
-            _selected = true;
-            RefreshPresentation();
-        }
+        public void OnSelect(BaseEventData eventData) { }
 
-        public void OnDeselect(BaseEventData eventData)
-        {
-            _selected = false;
-            RefreshPresentation();
-        }
+        public void OnDeselect(BaseEventData eventData) { }
 
         private void RefreshPresentation()
         {
@@ -261,7 +375,16 @@ namespace OpenArcanum.UI
             else if (_hovered) key = hover.Key;
             else key = normal.Key;
 
-            SourceImage.Bind(_resolver, key);
+            SourceImage.SetKey(key);
+        }
+
+        private void PreparePresentationKeys()
+        {
+            SourceImage.PrepareKey(normal.Key);
+            SourceImage.PrepareKey(hover.Key);
+            SourceImage.PrepareKey(pressed.Key);
+            SourceImage.PrepareKey(disabled.Key);
+            if (hasSelectedState) SourceImage.PrepareKey(selected.Key);
         }
     }
 

@@ -61,6 +61,9 @@ namespace Arcanum.Formats.Tests
             public int DisbandCalls; public object Disbanded; public void CritterDisband(object obj) { DisbandCalls++; Disbanded = obj; }
             public int StatResult; public int GetStat(object obj, int stat) => StatResult;
             public int SkillResult; public int GetSkill(object obj, int skill) => SkillResult;
+            public int CurrentHpResult, MaximumHpResult;
+            public void GetHitPoints(object obj, out int current, out int maximum)
+            { current = CurrentHpResult; maximum = MaximumHpResult; }
             public bool KnowsSpellResult; public bool KnowsSpell(object obj, int spell) => KnowsSpellResult;
             public int DialogCalls; public object DialogObj; public int DialogLine; public int DialogScriptNum, DialogScriptLine;
             public bool MetPc, InDialog, Daytime = true; public int HasItemName = -1;
@@ -361,6 +364,17 @@ namespace Arcanum.Formats.Tests
             var (g, _) = RunOn(File(Cond(Sct.True,
                 Act(Sat.GetStat, (Svt.Number, 0), Obj(Sfo.Triggerer), (Svt.GlVar, 0)), Nop())), host);
             Assert.That(g.GetVar(0), Is.EqualTo(14));
+        }
+
+        [Test, Category("M2BUseScript")]
+        public void GetHitPoints_WritesCurrentAndMaximumForBedRentalScripts()
+        {
+            var host = new StubHost
+                { Resolved = new object(), CurrentHpResult = 17, MaximumHpResult = 31 };
+            var (g, _) = RunOn(File(Cond(Sct.True,
+                Act(Sat.GetHitPoints, Obj(Sfo.Triggerer), (Svt.GlVar, 0), (Svt.GlVar, 1)), Nop())), host);
+            Assert.That(g.GetVar(0), Is.EqualTo(17));
+            Assert.That(g.GetVar(1), Is.EqualTo(31));
         }
 
         [Test]
@@ -722,12 +736,37 @@ namespace Arcanum.Formats.Tests
         }
 
         [Test]
-        public void RemoveThisScript_SignalsRemovalAndZeroesScriptNum()
+        public void RemoveThisScript_RecordsDetachmentWithoutChangingRunningSource()
         {
             var ctx = new ScriptContext { ScriptNum = 1781 };
             new ScriptVm(new StubHost()).Execute(File(Cond(Sct.True, Act(Sat.RemoveThisScript), Nop())), ctx);
             Assert.That(ctx.RemoveScript, Is.True);
-            Assert.That(ctx.ScriptNum, Is.EqualTo(0));
+            Assert.That(ctx.ReplacementScriptNum, Is.EqualTo(0));
+            Assert.That(ctx.ScriptNum, Is.EqualTo(1781));
+        }
+
+        [Test]
+        public void StrictUnsupportedOpcode_ReportsScriptInstructionOperationAndObjects()
+        {
+            var ctx = new ScriptContext
+            {
+                ScriptNum = 1494,
+                AttachmentPoint = (int)Sap.Use,
+                Triggerer = "PC",
+                Attachee = "GESHTIANNA",
+            };
+
+            ScriptExecutionResult result = new ScriptVm(new StubHost()).ExecuteStrict(
+                File(Cond(Sct.True, Act(Sat.AddEffect), Nop())), ctx);
+
+            Assert.That(result.Status, Is.EqualTo(ScriptExecutionStatus.UnsupportedOpcode));
+            Assert.That(result.Detail, Does.Contain("script=1494.scr"));
+            Assert.That(result.Detail, Does.Contain("instruction=0"));
+            Assert.That(result.Detail, Does.Contain($"operation=action AddEffect (opcode {(int)Sat.AddEffect})"));
+            Assert.That(result.Detail, Does.Contain("attachment=Use"));
+            Assert.That(result.Detail, Does.Contain("triggerer=PC"));
+            Assert.That(result.Detail, Does.Contain("attachee=GESHTIANNA"));
+            Assert.That(result.Detail, Does.Contain("reason=action AddEffect"));
         }
 
         // The pc_chooses gate: a heartbeat that kills the attachee unless GlobalFlag[N] is set.

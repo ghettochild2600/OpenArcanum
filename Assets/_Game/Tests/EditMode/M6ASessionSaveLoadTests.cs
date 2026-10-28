@@ -2,12 +2,15 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using Arcanum.Formats.Art;
 using Arcanum.Formats.Objects;
 using Arcanum.Formats.Quest;
+using Arcanum.Formats.Script;
 using Arcanum.Runtime.Campaign;
 using Arcanum.Runtime.Character;
 using Arcanum.Runtime.Save;
 using Arcanum.Runtime.World;
+using Arcanum.Script;
 using Arcanum.World;
 using NUnit.Framework;
 using UnityEngine;
@@ -224,6 +227,29 @@ namespace Arcanum.Formats.Tests
             Assert.That(next.State.Identity, Is.EqualTo(ArcanumObjectId.CreateSessionDynamic(expected)));
         }
 
+        [Test, Category("PoisonRuntime")]
+        public void PoisonLevelAndPendingEventPhaseRoundTrip()
+        {
+            Assert.That(_session.Poison.Apply(_pc.Identity, 250).ResultingLevel, Is.EqualTo(200));
+            _session.SourceTime.Advance(14_999);
+            var before = (_session.Poison.GetLevel(_pc.Identity),
+                _session.Characters.GetEffectiveAttribute(_pc.Identity, CharacterAttribute.Strength),
+                _session.Vitality.GetMaximumHitPoints(_pc.Identity),
+                _session.Vitality.Get(_pc.Identity).HitPointDamage,
+                _session.Vitality.GetCurrentHitPoints(_pc.Identity));
+            string json = _session.SaveGames.SerializeCurrentSession();
+
+            Assert.That(_session.SaveGames.LoadJson(json).Succeeded, Is.True);
+            var restored = (_session.Poison.GetLevel(_pc.Identity),
+                _session.Characters.GetEffectiveAttribute(_pc.Identity, CharacterAttribute.Strength),
+                _session.Vitality.GetMaximumHitPoints(_pc.Identity),
+                _session.Vitality.Get(_pc.Identity).HitPointDamage,
+                _session.Vitality.GetCurrentHitPoints(_pc.Identity));
+            Assert.That(restored, Is.EqualTo(before));
+            _session.SourceTime.Advance(1);
+            Assert.That(_session.Vitality.GetCurrentHitPoints(_pc.Identity), Is.EqualTo(before.Item5 - 2));
+        }
+
         [Test]
         public void ResetThenLoadReplacesEveryAuthoritativeRootAndRebuildsTheSelectedSector()
         {
@@ -344,6 +370,29 @@ namespace Arcanum.Formats.Tests
         }
 
         [Test]
+        public void BedScriptLocalsAndOccupancyRoundTripWithActiveBedState()
+        {
+            uint art = ((uint)ArtId.TypeScenery << 28)
+                       | ((uint)BedSleepAuthority.SourceBedScenerySubtype << 6) | (2u << 19);
+            PersistentObjectState bed = AddAuthored(ObjectType.Scenery, 20002, 30, 6, art);
+            bed.UseScriptNum = 1729;
+            bed.UseScriptLocalFlags = 1u << 7;
+            bed.UseScriptLocalCounters = 0x01020304u;
+            bed.SceneryOccupantIdentity = _pc.Identity;
+
+            string json = _session.SaveGames.SerializeCurrentSession();
+            SessionLoadResult result = _session.SaveGames.LoadJson(json);
+
+            Assert.That(result.Succeeded, Is.True, result.Message);
+            PersistentObjectState restored = _session.States[bed.Identity];
+            Assert.That(restored.UseScriptNum, Is.EqualTo(1729));
+            Assert.That(restored.UseScriptLocalFlags, Is.EqualTo(1u << 7));
+            Assert.That(restored.UseScriptLocalCounters, Is.EqualTo(0x01020304u));
+            Assert.That(restored.SceneryOccupantIdentity, Is.EqualTo(_session.PlayerState.Identity));
+            Assert.That(_session.Beds.IsActiveFor(_session.PlayerState.Identity), Is.True);
+        }
+
+        [Test]
         public void FailedSaveDoesNotReplacePreviousValidFile()
         {
             string path = Path.Combine(_temporaryDirectory, "slot.json");
@@ -360,6 +409,33 @@ namespace Arcanum.Formats.Tests
             {
                 Object.DestroyImmediate(emptyRoot);
             }
+        }
+
+        [Test]
+        public void ScheduledScriptCallSurvivesSaveLoadAndExecutesOnceAtDeadline()
+        {
+            var action = new ScriptAction { Type = (int)Sat.SetGlobalFlag };
+            action.OpType[0] = (byte)Svt.Number;
+            action.OpValue[0] = 612;
+            var callback = new ScriptFile();
+            callback.Entries.Add(new ScriptCondition
+            {
+                Type = (int)Sct.True,
+                Action = action,
+                Els = new ScriptAction { Type = (int)Sat.DoNothing },
+            });
+            _session.BindUseScriptSource(number => number == 9001 ? callback : null);
+            _session.ScriptTimers.Schedule(9001, 0, _pc.Identity, _pc.Identity, 2);
+            string json = _session.SaveGames.SerializeCurrentSession();
+
+            Assert.That(_session.SaveGames.LoadJson(json).Succeeded, Is.True);
+            Assert.That(_session.ScriptTimers.Calls, Has.Count.EqualTo(1));
+            _session.SourceTime.Advance(15_999);
+            Assert.That(_session.Campaign.GetFlag(612), Is.Zero);
+            _session.SourceTime.Advance(1);
+
+            Assert.That(_session.Campaign.GetFlag(612), Is.EqualTo(1));
+            Assert.That(_session.ScriptTimers.Calls, Is.Empty);
         }
 
         private void AssertRejected(SessionSaveData data, SessionLoadFailure expected)

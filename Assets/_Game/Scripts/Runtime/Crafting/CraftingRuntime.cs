@@ -58,6 +58,10 @@ namespace Arcanum.Runtime.Crafting
 
     public sealed class SchematicCatalog
     {
+        // rules/schematic.mes stores proto.c basic-prototype names. Retail resolves each through
+        // sub_4685A0/sub_468860, whose permanent prototype number is the source value plus 20.
+        public const int BasicPrototypeNumberOffset = 20;
+
         private readonly Dictionary<int, SchematicDefinition> _definitions;
         public IReadOnlyDictionary<int, SchematicDefinition> Definitions => _definitions;
         private SchematicCatalog(Dictionary<int, SchematicDefinition> definitions) => _definitions = definitions;
@@ -75,9 +79,10 @@ namespace Arcanum.Runtime.Crafting
                 int id = row.Key;
                 if (id < 2000 || id > 5999 || id % 10 != 0 || definitions.ContainsKey(id)) continue;
                 if (!TryInt(rules.Get(id), out int nameId) || !TryInt(rules.Get(id + 1), out int descriptionId)
-                    || !TryInt(rules.Get(id + 2), out int art) || !TryAliases(rules.Get(id + 3), out int[] first)
-                    || !TryAliases(rules.Get(id + 4), out int[] second)
-                    || !TryAliases(rules.Get(id + 5), out int[] products)
+                    || !TryInt(rules.Get(id + 2), out int art)
+                    || !TrySourcePrototypeAliases(rules.Get(id + 3), out int[] first)
+                    || !TrySourcePrototypeAliases(rules.Get(id + 4), out int[] second)
+                    || !TrySourcePrototypeAliases(rules.Get(id + 5), out int[] products)
                     || !TryInt(rules.Get(id + 6), out int quantity) || quantity < 1)
                     throw new FormatException($"Schematic {id} is incomplete or malformed.");
                 SchematicAcquisition acquisition = id < 4000 ? SchematicAcquisition.BuiltIn : SchematicAcquisition.Found;
@@ -103,15 +108,20 @@ namespace Arcanum.Runtime.Crafting
 
         private static bool TryInt(string value, out int result)
             => int.TryParse(value?.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out result);
-        private static bool TryAliases(string value, out int[] aliases)
+        private static bool TrySourcePrototypeAliases(string value, out int[] aliases)
         {
             aliases = null;
             string[] tokens = (value ?? string.Empty).Split(new[] { ' ', '\t', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
             if (tokens.Length < 1 || tokens.Length > 3) return false;
             var parsed = new int[3];
             for (int i = 0; i < tokens.Length; i++)
-                if (!int.TryParse(tokens[i], NumberStyles.Integer, CultureInfo.InvariantCulture, out parsed[i])
-                    || parsed[i] <= 0) return false;
+            {
+                if (!int.TryParse(tokens[i], NumberStyles.Integer, CultureInfo.InvariantCulture,
+                        out int basicPrototype)
+                    || basicPrototype <= 0 || basicPrototype > int.MaxValue - BasicPrototypeNumberOffset)
+                    return false;
+                parsed[i] = basicPrototype + BasicPrototypeNumberOffset;
+            }
             for (int i = tokens.Length; i < 3; i++) parsed[i] = parsed[tokens.Length - 1];
             aliases = parsed;
             return true;
@@ -198,6 +208,15 @@ namespace Arcanum.Runtime.Crafting
             => _catalog == null ? Array.Empty<SchematicDefinition>()
                 : _catalog.Definitions.Values.Where(value => Knows(identity, value.Id))
                     .OrderBy(value => value.Id.Value).ToArray();
+
+        /// <summary>All seven source-defined built-in schematics for a Character Editor discipline.</summary>
+        public IReadOnlyList<SchematicDefinition> ProjectBuiltIn(TechnologyDiscipline discipline)
+            => _catalog == null ? Array.Empty<SchematicDefinition>()
+                : _catalog.Definitions.Values
+                    .Where(value => value.Acquisition == SchematicAcquisition.BuiltIn
+                                    && value.BuiltInDiscipline == discipline)
+                    .OrderBy(value => value.BuiltInDegree)
+                    .ToArray();
 
         public SchematicLearningResult LearnFoundSchematic(ArcanumObjectId character, ArcanumObjectId writtenItem)
         {

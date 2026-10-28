@@ -4,6 +4,7 @@ using System.Linq;
 using Arcanum.Formats.Art;
 using Arcanum.Formats.Objects;
 using Arcanum.Runtime.Character;
+using Arcanum.Runtime.UI;
 using Arcanum.Runtime.World;
 using UnityEngine;
 
@@ -591,10 +592,12 @@ namespace Arcanum.Runtime.Combat
         private readonly List<Vector2Int> _route = new();
         private SectorNavigationMap _navigationMap;
         private ICombatRandom _random;
+        private ArcanumObjectId _combatReadyActor;
 
         public CombatLifecycle Lifecycle { get; private set; }
         public CombatMode Mode { get; private set; } = CombatMode.TurnBased;
         public bool IsActive => Lifecycle == CombatLifecycle.Active;
+        public bool IsCombatModeActive => IsActive || !_combatReadyActor.IsNull;
         public IReadOnlyList<CombatParticipant> Participants => _participants;
         public IReadOnlyCollection<ArcanumObjectId> EngagedParticipants => _engaged;
         public ArcanumObjectId CurrentParticipant { get; private set; }
@@ -731,6 +734,7 @@ namespace Arcanum.Runtime.Combat
             SortSourceOrder(pending);
 
             Lifecycle = CombatLifecycle.Starting;
+            _combatReadyActor = default;
             _world.Dialogue.Cancel("Combat started.");
             _participants.AddRange(pending);
             _engaged.UnionWith(pendingEngagement);
@@ -743,6 +747,68 @@ namespace Arcanum.Runtime.Combat
             Lifecycle = CombatLifecycle.Active;
             return Success();
         }
+
+        /// <summary>
+        /// Source <c>combat_critter_activate_combat_mode</c>. With an eligible nearby hostile this enters the
+        /// existing encounter kernel; otherwise the session authority retains the PC's combat-ready stance.
+        /// </summary>
+        public CombatResult ActivateCombatMode(ArcanumObjectId actor)
+        {
+            if (IsCombatModeActive) return Fail(CombatFailure.AlreadyActive);
+            if (!TryValidateActor(actor, out _, out CombatFailure failure)) return Fail(failure);
+            CombatActorSource? hostile = FindNearestSourceHostile(actor);
+            if (hostile.HasValue) return StartCombat(actor, hostile.Value.Identity, CombatMode.TurnBased);
+            _combatReadyActor = actor;
+            return Success();
+        }
+
+        public CombatResult DeactivateCombatMode(ArcanumObjectId actor)
+        {
+            if (IsActive) return EndCombat(actor);
+            if (_combatReadyActor.IsNull) return Fail(CombatFailure.Inactive);
+            if (_combatReadyActor != actor) return Fail(CombatFailure.InvalidActor);
+            _combatReadyActor = default;
+            return Success();
+        }
+
+        public CombatResult ToggleCombatReadiness(ArcanumObjectId actor)
+            => IsCombatModeActive ? DeactivateCombatMode(actor) : ActivateCombatMode(actor);
+
+        /// <summary>
+        /// Source autonomous KOS acquisition. Each eligible hostile uses its own perception range and
+        /// navigation line of sight; the PC does not need to enter combat mode first.
+        /// </summary>
+        public bool TryStartAutonomousHostileEncounter()
+        {
+            if (IsActive || _world.PlayerState == null) return false;
+            ArcanumObjectId pc = _world.PlayerState.Identity;
+            if (!TryGetCombatPosition(pc, out Vector2Int pcPosition)) return false;
+            CombatActorSource? hostile = _sources.Values
+                .Where(source => source.ObjectType == ObjectType.Npc && IsEligible(source)
+                                 && IsSourceHostile(source)
+                                 && TryGetCombatPosition(source.Identity, out Vector2Int position)
+                                 && IsWithinPerception(source.Identity, position, pcPosition)
+                                 && (_navigationMap == null
+                                     || _navigationMap.HasProjectileLineOfFire(position, pcPosition)))
+                .OrderBy(source => SourceDistance(source.Identity, pcPosition))
+                .ThenBy(source => source.SourceOrder)
+                .ThenBy(source => source.Identity.Key, StringComparer.Ordinal)
+                .Cast<CombatActorSource?>().FirstOrDefault();
+            return hostile.HasValue
+                   && StartCombat(pc, hostile.Value.Identity, CombatMode.TurnBased).Succeeded;
+        }
+
+        private bool IsWithinPerception(ArcanumObjectId observer, Vector2Int position, Vector2Int target)
+        {
+            int perception = _world.Characters.GetEffectiveAttribute(observer, CharacterAttribute.Perception);
+            int range = Math.Max(10, perception / 2 + 5);
+            return Math.Abs(position.x - target.x) <= range && Math.Abs(position.y - target.y) <= range;
+        }
+
+        private int SourceDistance(ArcanumObjectId observer, Vector2Int target)
+            => TryGetCombatPosition(observer, out Vector2Int position)
+                ? Math.Max(Math.Abs(position.x - target.x), Math.Abs(position.y - target.y))
+                : int.MaxValue;
 
         /// <summary>Source Space-key combat-mode switch. Roster and committed world state stay authoritative.</summary>
         public CombatResult ToggleMode(ArcanumObjectId actor)
@@ -974,6 +1040,7 @@ namespace Arcanum.Runtime.Combat
                     return PreviewFailure(CombatFailure.InsufficientActionPoints, request);
                 if (!TryGetMeleeDamageRange(source, meleeWeapon, DamageType.Normal, out _, out _)
                     || !TryGetMeleeDamageRange(source, meleeWeapon, DamageType.Fatigue, out _, out _)
+                    || !TryGetMeleeDamageRange(source, meleeWeapon, DamageType.Poison, out _, out _)
                     || HasUnsupportedMeleeDamage(source, meleeWeapon))
                     return PreviewFailure(CombatFailure.UnsupportedDamageProfile, request);
                 CombatHitChance chance = BuildMeleeHitChance(actor, target, meleeWeapon, request.CalledLocation,
@@ -1009,7 +1076,7 @@ namespace Arcanum.Runtime.Combat
                 return PreviewFailure(CombatFailure.InsufficientActionPoints, request);
             if (!TryGetWeaponDamageRange(weapon, DamageType.Normal, out _, out _)
                 || !TryGetWeaponDamageRange(weapon, DamageType.Fatigue, out _, out _)
-                || weapon.DamageMax[(int)DamageType.Poison] != 0
+                || !TryGetWeaponDamageRange(weapon, DamageType.Poison, out _, out _)
                 || weapon.DamageMax[(int)DamageType.Electrical] != 0
                 || weapon.DamageMax[(int)DamageType.Fire] != 0)
                 return PreviewFailure(CombatFailure.UnsupportedDamageProfile, request);
@@ -1120,6 +1187,8 @@ namespace Arcanum.Runtime.Combat
                     out int normalMaximum)
                 || !TryGetMeleeDamageRange(source, weapon, DamageType.Fatigue, out int fatigueMinimum,
                     out int fatigueMaximum)
+                || !TryGetMeleeDamageRange(source, weapon, DamageType.Poison, out int poisonMinimum,
+                    out int poisonMaximum)
                 || HasUnsupportedMeleeDamage(source, weapon))
                 return AttackFailure(CombatFailure.UnsupportedDamageProfile, request);
 
@@ -1139,9 +1208,21 @@ namespace Arcanum.Runtime.Combat
             CombatAttackOutcome outcome = aptitudeCriticalFailure
                 ? CombatAttackOutcome.CriticalFailure
                 : ClassifyAttack(ordinaryHit, criticalRoll, criticalChance);
-            bool hit = ordinaryHit;
+            bool forceCriticalHit = _world.PlayerState != null
+                                    && actor == _world.PlayerState.Identity
+                                    && _world.GameplayHud.IsFateActive(FateChoice.CriticalHit);
+            bool forceCriticalMiss = _world.PlayerState != null
+                                     && target == _world.PlayerState.Identity
+                                     && _world.GameplayHud.IsFateActive(FateChoice.CriticalMiss);
+            bool hit = forceCriticalHit || ordinaryHit;
+            if (forceCriticalHit) outcome = CombatAttackOutcome.CriticalSuccess;
+            else if (forceCriticalMiss)
+            {
+                hit = false;
+                outcome = CombatAttackOutcome.CriticalFailure;
+            }
             DodgeResolution dodge = default;
-            if (hit && !aptitudeCriticalFailure)
+            if (hit && !aptitudeCriticalFailure && !forceCriticalHit)
             {
                 dodge = ResolveDodge(target, chance.DodgeChance);
                 hit = !dodge.Succeeded;
@@ -1158,6 +1239,7 @@ namespace Arcanum.Runtime.Combat
             int mitigatedNormal = 0;
             int rawFatigue = 0;
             int mitigatedFatigue = 0;
+            int rawPoison = 0;
             CombatCriticalEffect criticalEffect = CombatCriticalEffect.None;
             int criticalEffectRoll = 0;
             int secondaryCriticalEffectRoll = 0;
@@ -1179,6 +1261,7 @@ namespace Arcanum.Runtime.Combat
             {
                 rawNormal = RollDamage(normalMinimum, normalMaximum);
                 rawFatigue = RollDamage(fatigueMinimum, fatigueMaximum);
+                rawPoison = RollDamage(poisonMinimum, poisonMaximum);
                 int resistance = _world.DerivedStats.GetResistance(effectTarget, CharacterResistance.Normal);
                 mitigatedNormal = ApplyResistance(rawNormal, resistance);
                 mitigatedFatigue = ApplyResistance(rawFatigue, 3 * resistance / 4);
@@ -1194,12 +1277,15 @@ namespace Arcanum.Runtime.Combat
             if (resolvesDamage && mitigatedNormal >= hitPointsBefore && effectTargetSource.DyingScriptNum != 0)
                 return AttackFailure(CombatFailure.UnresolvedDeathScript, request);
 
+            if (forceCriticalHit) _world.GameplayHud.TryResolveFate(FateChoice.CriticalHit);
+            if (forceCriticalMiss) _world.GameplayHud.TryResolveFate(FateChoice.CriticalMiss);
             int spent = turnBased ? Math.Min(CurrentActionPoints, actionPointCost) : 0;
             int overdrawFatigue = overdraw ? 2 : 0;
             if (turnBased) CurrentActionPoints -= spent;
             if (overdrawFatigue > 0) _world.Vitality.ApplyFatigueDamage(actor, overdrawFatigue);
             if (mitigatedNormal > 0) _world.Vitality.ApplyHitPointDamage(effectTarget, mitigatedNormal);
             if (mitigatedFatigue > 0) _world.Vitality.ApplyFatigueDamage(effectTarget, mitigatedFatigue);
+            if (rawPoison > 0) _world.Poison.Apply(effectTarget, rawPoison);
             int resultingHitPoints = _world.Vitality.GetCurrentHitPoints(effectTarget);
             int resultingFatigue = _world.Vitality.GetCurrentFatigue(effectTarget);
             if (hitPointsBefore > 0 && resultingHitPoints <= 0)
@@ -1328,7 +1414,8 @@ namespace Arcanum.Runtime.Combat
                     out int normalMaximum)
                 || !TryGetWeaponDamageRange(weapon, DamageType.Fatigue, out int fatigueMinimum,
                     out int fatigueMaximum)
-                || weapon.DamageMax[(int)DamageType.Poison] != 0
+                || !TryGetWeaponDamageRange(weapon, DamageType.Poison, out int poisonMinimum,
+                    out int poisonMaximum)
                 || weapon.DamageMax[(int)DamageType.Electrical] != 0
                 || weapon.DamageMax[(int)DamageType.Fire] != 0)
                 return AttackFailure(CombatFailure.UnsupportedDamageProfile, request);
@@ -1343,11 +1430,21 @@ namespace Arcanum.Runtime.Combat
             int criticalChance = GetCriticalChance(chance.MeleeEffectiveness, ordinaryHit,
                 calledLocationBonus: GetCalledLocationCriticalBonus(request.CalledLocation));
             CombatAttackOutcome outcome = ClassifyAttack(ordinaryHit, criticalRoll, criticalChance);
-            if (outcome == CombatAttackOutcome.CriticalFailure)
-                return AttackFailure(CombatFailure.UnsupportedCriticalEffect, request);
-            bool hit = ordinaryHit;
+            bool forceCriticalHit = _world.PlayerState != null
+                                    && actor == _world.PlayerState.Identity
+                                    && _world.GameplayHud.IsFateActive(FateChoice.CriticalHit);
+            bool forceCriticalMiss = _world.PlayerState != null
+                                     && target == _world.PlayerState.Identity
+                                     && _world.GameplayHud.IsFateActive(FateChoice.CriticalMiss);
+            bool hit = forceCriticalHit || ordinaryHit;
+            if (forceCriticalHit) outcome = CombatAttackOutcome.CriticalSuccess;
+            else if (forceCriticalMiss)
+            {
+                hit = false;
+                outcome = CombatAttackOutcome.CriticalFailure;
+            }
             DodgeResolution dodge = default;
-            if (hit)
+            if (hit && !forceCriticalHit)
             {
                 dodge = ResolveDodge(target, chance.DodgeChance);
                 hit = !dodge.Succeeded;
@@ -1361,7 +1458,10 @@ namespace Arcanum.Runtime.Combat
             CombatActorSource effectTargetSource = targetSource;
             CombatCriticalEffect transactionCriticalEffect = CombatCriticalEffect.None;
             int transactionCriticalEffectRoll = 0;
-            if (dodge.CriticalDodge)
+            bool supportedCriticalFailure = forceCriticalMiss || dodge.CriticalDodge;
+            if (outcome == CombatAttackOutcome.CriticalFailure && !supportedCriticalFailure)
+                return AttackFailure(CombatFailure.UnsupportedCriticalEffect, request);
+            if (supportedCriticalFailure)
             {
                 transactionCriticalEffectRoll = _random.NextInclusive(1, 100);
                 if (transactionCriticalEffectRoll <= 50)
@@ -1374,7 +1474,7 @@ namespace Arcanum.Runtime.Combat
             SkillTrainingLevel bowTraining = _world.Progression.GetTrainingLevel(actor,
                 CharacterSkill.Bow);
             int impactCount = bowTraining >= SkillTrainingLevel.Expert ? 2 : 1;
-            bool resolvesDamage = hit || dodge.CriticalDodge;
+            bool resolvesDamage = hit || supportedCriticalFailure;
             var plans = new CombatImpactPlan[impactCount];
             int projectedHitPoints = _world.Vitality.GetCurrentHitPoints(effectTarget);
             for (int index = 0; index < impactCount; index++)
@@ -1383,6 +1483,7 @@ namespace Arcanum.Runtime.Combat
                 int mitigatedNormal = 0;
                 int rawFatigue = 0;
                 int mitigatedFatigue = 0;
+                int rawPoison = 0;
                 CombatCriticalEffect criticalEffect = transactionCriticalEffect;
                 int criticalEffectRoll = transactionCriticalEffectRoll;
                 int secondaryCriticalEffectRoll = 0;
@@ -1391,6 +1492,7 @@ namespace Arcanum.Runtime.Combat
                 {
                     rawNormal = RollDamage(normalMinimum, normalMaximum);
                     rawFatigue = RollDamage(fatigueMinimum, fatigueMaximum);
+                    rawPoison = RollDamage(poisonMinimum, poisonMaximum);
                     int resistance = _world.DerivedStats.GetResistance(effectTarget,
                         CharacterResistance.Normal);
                     mitigatedNormal = ApplyResistance(rawNormal, resistance);
@@ -1408,10 +1510,12 @@ namespace Arcanum.Runtime.Combat
                     return AttackFailure(CombatFailure.UnresolvedDeathScript, request);
                 projectedHitPoints -= mitigatedNormal;
                 plans[index] = new CombatImpactPlan(rawNormal, mitigatedNormal, rawFatigue,
-                    mitigatedFatigue, criticalEffect, criticalEffectRoll,
+                    mitigatedFatigue, rawPoison, criticalEffect, criticalEffectRoll,
                     secondaryCriticalEffectRoll, tertiaryCriticalEffectRoll);
             }
 
+            if (forceCriticalHit) _world.GameplayHud.TryResolveFate(FateChoice.CriticalHit);
+            if (forceCriticalMiss) _world.GameplayHud.TryResolveFate(FateChoice.CriticalMiss);
             int spent = turnBased ? Math.Min(CurrentActionPoints, actionPointCost) : 0;
             int previousActionPoints = CurrentActionPoints;
             if (turnBased) CurrentActionPoints -= spent;
@@ -1435,6 +1539,8 @@ namespace Arcanum.Runtime.Combat
                     _world.Vitality.ApplyHitPointDamage(effectTarget, plan.MitigatedNormal);
                 if (plan.MitigatedFatigue > 0)
                     _world.Vitality.ApplyFatigueDamage(effectTarget, plan.MitigatedFatigue);
+                if (plan.RawPoison > 0)
+                    _world.Poison.Apply(effectTarget, plan.RawPoison);
                 int resultingHitPoints = _world.Vitality.GetCurrentHitPoints(effectTarget);
                 int resultingFatigue = _world.Vitality.GetCurrentFatigue(effectTarget);
                 if (hitPointsBefore > 0 && resultingHitPoints <= 0)
@@ -1572,8 +1678,7 @@ namespace Arcanum.Runtime.Combat
         private static bool HasUnsupportedMeleeDamage(CombatActorSource source, Weapon weapon)
             => weapon == null
                 ? HasUnsupportedNaturalDamage(source)
-                : weapon.DamageMax[(int)DamageType.Poison] != 0
-                  || weapon.DamageMax[(int)DamageType.Electrical] != 0
+                : weapon.DamageMax[(int)DamageType.Electrical] != 0
                   || weapon.DamageMax[(int)DamageType.Fire] != 0;
 
         private bool TryGetUnarmedDamageRange(CombatActorSource source, DamageType type,
@@ -1626,8 +1731,7 @@ namespace Arcanum.Runtime.Combat
             => value <= 0 || value + bonus > 0 ? value + bonus : 1;
 
         private static bool HasUnsupportedNaturalDamage(CombatActorSource source)
-            => source.GetNaturalDamageMaximum(DamageType.Poison) != 0
-               || source.GetNaturalDamageMaximum(DamageType.Electrical) != 0
+            => source.GetNaturalDamageMaximum(DamageType.Electrical) != 0
                || source.GetNaturalDamageMaximum(DamageType.Fire) != 0;
 
         private int RollDamage(int minimum, int maximum)
@@ -1746,13 +1850,14 @@ namespace Arcanum.Runtime.Combat
             public int MitigatedNormal { get; }
             public int RawFatigue { get; }
             public int MitigatedFatigue { get; }
+            public int RawPoison { get; }
             public CombatCriticalEffect CriticalEffect { get; }
             public int CriticalEffectRoll { get; }
             public int SecondaryCriticalEffectRoll { get; }
             public int TertiaryCriticalEffectRoll { get; }
 
             public CombatImpactPlan(int rawNormal, int mitigatedNormal, int rawFatigue,
-                int mitigatedFatigue, CombatCriticalEffect criticalEffect,
+                int mitigatedFatigue, int rawPoison, CombatCriticalEffect criticalEffect,
                 int criticalEffectRoll, int secondaryCriticalEffectRoll,
                 int tertiaryCriticalEffectRoll)
             {
@@ -1760,6 +1865,7 @@ namespace Arcanum.Runtime.Combat
                 MitigatedNormal = mitigatedNormal;
                 RawFatigue = rawFatigue;
                 MitigatedFatigue = mitigatedFatigue;
+                RawPoison = rawPoison;
                 CriticalEffect = criticalEffect;
                 CriticalEffectRoll = criticalEffectRoll;
                 SecondaryCriticalEffectRoll = secondaryCriticalEffectRoll;
@@ -1963,6 +2069,20 @@ namespace Arcanum.Runtime.Combat
             }
         }
 
+        private CombatActorSource? FindNearestSourceHostile(ArcanumObjectId pc)
+        {
+            if (!TryGetCombatPosition(pc, out Vector2Int pcPosition)) return null;
+            int perception = _world.Characters.GetEffectiveAttribute(pc, CharacterAttribute.Perception);
+            int range = Math.Max(10, perception / 2 + 5);
+            return _sources.Values.Where(source => source.ObjectType == ObjectType.Npc
+                                                   && IsEligible(source) && IsSourceHostile(source)
+                                                   && TryGetCombatPosition(source.Identity, out Vector2Int position)
+                                                   && Math.Abs(position.x - pcPosition.x) <= range
+                                                   && Math.Abs(position.y - pcPosition.y) <= range)
+                .OrderBy(source => source.SourceOrder).ThenBy(source => source.Identity.Key, StringComparer.Ordinal)
+                .Cast<CombatActorSource?>().FirstOrDefault();
+        }
+
         private bool IsSourceHostile(CombatActorSource source)
         {
             if (_world.PlayerState == null || _world.Party.IsMember(source.Identity)
@@ -1998,6 +2118,7 @@ namespace Arcanum.Runtime.Combat
             LastAttackResult = null;
             AttackResolutionSequence = 0;
             Mode = CombatMode.TurnBased;
+            _combatReadyActor = default;
             Lifecycle = CombatLifecycle.Inactive;
         }
 

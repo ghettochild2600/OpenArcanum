@@ -9,7 +9,7 @@ namespace Arcanum.Runtime.Character
         public ArcanumObjectId Identity { get; }
         public ObjectType ObjectType { get; }
         public int? PrototypeNumber { get; }
-        public CharacterVitalitySource Source { get; }
+        public CharacterVitalitySource Source { get; private set; }
         public int HitPointDamage { get; private set; }
         public int FatigueDamage { get; private set; }
         public int MaximumHitPoints { get; private set; }
@@ -42,6 +42,8 @@ namespace Arcanum.Runtime.Character
             HitPointDamage = hitPointDamage;
             FatigueDamage = fatigueDamage;
         }
+
+        internal void ReplaceSource(CharacterVitalitySource source) => Source = source;
 
         internal void SynchronizeMaxima(int maximumHitPoints, int maximumFatigue, int hitPointDamage,
             int fatigueDamage)

@@ -368,8 +368,8 @@ namespace Arcanum.Formats.Tests
             Assert.That(_session.Combat.RoundNumber, Is.EqualTo(2));
         }
 
-        [Test]
-        public void UnsupportedNaturalDamageProfileFailsBeforeApOrRng()
+        [Test, Category("PoisonRuntime")]
+        public void PoisonBearingNaturalAttackAppliesThroughAuthoritativePoisonRuntime()
         {
             int[] poison = { 1, 2, 0, 1, 0, 0, 0, 0, 0, 0 };
             ArcanumObjectId attacker = AddNpc("G_22222222_2222_2222_2222_222222222222", 28002,
@@ -377,11 +377,13 @@ namespace Arcanum.Formats.Tests
                 out WorldObject attackerRuntime);
             _map.Register(attackerRuntime, 0);
             Assert.That(_session.Combat.StartCombat(_pc.Identity, attacker).Succeeded, Is.True);
-            _session.Combat.SetRandomSource(new SequenceRandom());
+            _session.Combat.SetRandomSource(new SequenceRandom(1, 100, 1, 1));
 
-            Assert.That(_session.Combat.Attack(attacker, _pc.Identity).Failure,
-                Is.EqualTo(CombatFailure.UnsupportedDamageProfile));
-            Assert.That(_session.Combat.CurrentActionPoints, Is.EqualTo(8));
+            Assert.That(_session.Combat.Attack(attacker, _pc.Identity).Succeeded, Is.True);
+            Assert.That(_session.Poison.GetLevel(_pc.Identity), Is.EqualTo(1),
+                "one poison point remains one after the source integer resistance calculation");
+            Assert.That(_session.Combat.CurrentParticipant, Is.EqualTo(attacker));
+            Assert.That(_session.Combat.CurrentActionPoints, Is.EqualTo(3));
         }
 
         [Test]

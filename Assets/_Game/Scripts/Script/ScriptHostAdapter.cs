@@ -44,6 +44,10 @@ namespace Arcanum.Script
         public virtual void CritterDisband(object obj) => throw Unsupported(nameof(CritterDisband));
         public virtual int GetStat(object obj, int stat) => throw Unsupported(nameof(GetStat));
         public virtual int GetSkill(object obj, int skill) => throw Unsupported(nameof(GetSkill));
+        public virtual void GetHitPoints(object obj, out int current, out int maximum)
+        {
+            throw Unsupported(nameof(GetHitPoints));
+        }
         public virtual bool KnowsSpell(object obj, int spell) => throw Unsupported(nameof(KnowsSpell));
         public virtual void StartDialog(object obj, int dialogLine, int scriptNum, int scriptLine) => throw Unsupported(nameof(StartDialog));
         public virtual void Attack(object attacker, object target) => throw Unsupported(nameof(Attack));

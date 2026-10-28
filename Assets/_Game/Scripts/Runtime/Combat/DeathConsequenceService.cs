@@ -102,6 +102,14 @@ namespace Arcanum.Runtime.Combat
                 {
                     award = checked((int)(20L * victimSource.ExperienceWorth / 100L));
                     if (award > 0) _world.Progression.AwardExperience(_world.PlayerState.Identity, award);
+                    ArcanumObjectId pc = _world.PlayerState.Identity;
+                    int level = _world.Progression.TryGet(victim, out PersistentCharacterProgressionState progression)
+                        ? progression.Level : 0;
+                    int alignment = _world.DerivedStats.TryGet(victim, out _)
+                        ? _world.DerivedStats.GetAlignment(victim) : 0;
+                    int aptitude = _world.DerivedStats.TryGet(victim, out _)
+                        ? _world.DerivedStats.GetDerivedStat(victim, CharacterDerivedStat.MagickTechAptitude) : 0;
+                    _world.Logbook.RecordKill(pc, victimState.DescriptionId, level, alignment, aptitude);
                 }
                 victimState.DeathConsequencesProcessed = true;
             }

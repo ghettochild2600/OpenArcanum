@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using Arcanum.Runtime.Campaign;
 
 namespace Arcanum.Runtime.World
 {
@@ -21,6 +22,9 @@ namespace Arcanum.Runtime.World
     /// </summary>
     public sealed class SourceTimeService
     {
+        public const int InitialYear = 1885;
+        public const int InitialHour = 15;
+        public const long InitialMilliseconds = InitialHour * 3_600_000L;
         public const int RealTimeScale = 8;
         public const int MinimumPollMilliseconds = 5;
         public const int MaximumPollMilliseconds = 250;
@@ -29,6 +33,7 @@ namespace Arcanum.Runtime.World
         private long? _lastMonotonicMilliseconds;
 
         public long ElapsedMilliseconds { get; private set; }
+        public long CampaignMilliseconds => InitialMilliseconds + ElapsedMilliseconds;
         public bool IsPaused { get; private set; }
         public event Action<SourceTimeAdvance> Advanced;
 
@@ -81,5 +86,56 @@ namespace Arcanum.Runtime.World
 
         private static long ToMonotonicMilliseconds(long timestamp)
             => (long)(timestamp * (1000d / Stopwatch.Frequency));
+    }
+
+    public static class SourceCalendar
+    {
+        private const long DayMilliseconds = 86_400_000L;
+        private static readonly string[] Months =
+            { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
+
+        public static QuestTimestamp Timestamp(long campaignMilliseconds)
+        {
+            if (campaignMilliseconds < 0) throw new ArgumentOutOfRangeException(nameof(campaignMilliseconds));
+            return new QuestTimestamp((uint)(campaignMilliseconds / DayMilliseconds),
+                (uint)(campaignMilliseconds % DayMilliseconds));
+        }
+
+        public static string FormatLogbook(QuestTimestamp timestamp)
+        {
+            DateParts(timestamp, out int year, out int month, out int day, out int hour, out int minute, out _);
+            int displayHour = hour % 12;
+            if (displayHour == 0) displayHour = 12;
+            return $"{Months[month - 1]} {day}, {year}  {displayHour}:{minute:00}{(hour < 12 ? 'a' : 'p')}m";
+        }
+
+        public static string FormatHud(long campaignMilliseconds)
+        {
+            QuestTimestamp timestamp = Timestamp(campaignMilliseconds);
+            return $"Current Time: {FormatHudTime(timestamp)}   Current Date: {FormatHudDate(timestamp)}";
+        }
+
+        public static string FormatHudTime(QuestTimestamp timestamp)
+        {
+            DateParts(timestamp, out _, out _, out _, out int hour, out int minute, out int second);
+            return $"{hour:00}:{minute:00}:{second:00}";
+        }
+
+        public static string FormatHudDate(QuestTimestamp timestamp)
+        {
+            DateParts(timestamp, out int year, out int month, out int day, out _, out _, out _);
+            return $"{month}/{day}/{year}";
+        }
+
+        private static void DateParts(QuestTimestamp timestamp, out int year, out int month, out int day,
+            out int hour, out int minute, out int second)
+        {
+            year = SourceTimeService.InitialYear + (int)timestamp.Days / 360;
+            month = (int)timestamp.Days / 30 % 12 + 1;
+            day = (int)timestamp.Days % 30 + 1;
+            hour = (int)(timestamp.Milliseconds / 3_600_000u) % 24;
+            minute = (int)(timestamp.Milliseconds / 60_000u) % 60;
+            second = (int)(timestamp.Milliseconds / 1_000u) % 60;
+        }
     }
 }

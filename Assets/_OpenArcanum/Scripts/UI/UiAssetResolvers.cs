@@ -30,7 +30,12 @@ namespace OpenArcanum.UI
             new Dictionary<UiAssetKey, UiResolvedAsset>();
         private readonly Dictionary<string, MesFile> _messageTables =
             new Dictionary<string, MesFile>(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<uint, RetailItemArtAsset> _inventoryItems =
+            new Dictionary<uint, RetailItemArtAsset>();
+        private readonly Dictionary<string, RetailPortraitAsset> _portraits =
+            new Dictionary<string, RetailPortraitAsset>(StringComparer.OrdinalIgnoreCase);
         private readonly HashSet<string> _reported = new HashSet<string>(StringComparer.Ordinal);
+        private ItemArtResolver _itemArt;
         private bool _disposed;
 
         public int CachedFrameCount => _frames.Count;
@@ -101,6 +106,8 @@ namespace OpenArcanum.UI
                 texture.name = $"UI_Original_{key}";
                 texture.filterMode = FilterMode.Point;
                 texture.wrapMode = TextureWrapMode.Clamp;
+                if (UsesSourceFontAlpha(key.SourceId))
+                    ApplySourceFontAlpha(texture);
 
                 Vector2 pivot = Pivot(frame);
                 Vector4 border = SourceUiScaleMetadataCatalog.Get(key.SourceId).Border;
@@ -139,6 +146,18 @@ namespace OpenArcanum.UI
             }
         }
 
+        public bool IsFrameAvailable(UiAssetKey key)
+        {
+            ThrowIfDisposed();
+            if (key.SourceId < 0 || key.Palette < 0 || key.Rotation < 0 || key.Frame < 0)
+                return false;
+            if (!TryGetSource(key.SourceId, out DecodedSource source)) return false;
+            ArtFile art = source.Art;
+            return key.Palette < art.Palettes.Count
+                   && key.Rotation < art.Rotations.Count
+                   && key.Frame < art.Rotations[key.Rotation].Frames.Length;
+        }
+
         /// <summary>
         /// Reads localized retail text through the same mounted source hierarchy as interface artwork. Screen
         /// presenters use this instead of copying message tables or opening a second archive stack.
@@ -166,6 +185,123 @@ namespace OpenArcanum.UI
                 }
             }
             return table.TryGet(key, out value);
+        }
+
+        /// <summary>
+        /// Resolves a retained source inventory AID through the retail item MES tables. Inventory pixels remain
+        /// presentation-only; ownership, placement, equipment, and shortcut state continue to come from runtime
+        /// services.
+        /// </summary>
+        public static int InventoryPaletteIndex(uint artId) => (int)((artId >> 4) & 0x3u);
+
+        public bool TryResolveInventoryItem(uint artId, out RetailItemArtAsset asset)
+        {
+            ThrowIfDisposed();
+            if (_inventoryItems.TryGetValue(artId, out asset) && asset?.Sprite != null) return true;
+            asset = null;
+            try
+            {
+                _itemArt ??= new ItemArtResolver(
+                    ReadMes("art/item/item_ground.mes"),
+                    ReadMes("art/item/item_inven.mes"),
+                    ReadMes("art/item/item_paper.mes"),
+                    ReadMes("art/item/item_schematic.mes"));
+                string path = _itemArt.Resolve(artId);
+                if (string.IsNullOrEmpty(path) || !_vfs.Exists(path)) return false;
+                ArtFile art = ArtReader.Read(_vfs.ReadAllBytes(path));
+                if (art.Palettes.Count == 0 || art.Rotations.Count == 0
+                    || art.Rotations[0].Frames.Length == 0) return false;
+                ArtFrame frame = art.Rotations[0].Frames[0];
+                int paletteIndex = InventoryPaletteIndex(artId);
+                if (paletteIndex >= art.Palettes.Count)
+                    throw new InvalidDataException($"palette {paletteIndex} is unavailable in {path}");
+                Texture2D texture = ArtTextureFactory.CreateTexture(frame, art.Palettes[paletteIndex]);
+                texture.name = $"UI_Inventory_{artId:X8}";
+                texture.filterMode = FilterMode.Point;
+                texture.wrapMode = TextureWrapMode.Clamp;
+                Sprite sprite = Sprite.Create(texture, new Rect(0f, 0f, texture.width, texture.height),
+                    Pivot(frame), 1f, 0, SpriteMeshType.FullRect);
+                sprite.name = texture.name;
+                asset = new RetailItemArtAsset(artId, path, texture, sprite,
+                    new Vector2Int(frame.Width, frame.Height));
+                _inventoryItems[artId] = asset;
+                return true;
+            }
+            catch (Exception exception)
+            {
+                string message = $"OpenArcanum UI: inventory item 0x{artId:X8} unavailable: {exception.Message}.";
+                if (_reported.Add(message)) _diagnostic(message);
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Resolves a single-player portrait through the source <c>portrait/&lt;name&gt;_b.bmp</c> path with the
+        /// retail fallback to the ordinary BMP. Character identity and portrait legality remain owned by M12B;
+        /// this method decodes presentation pixels only.
+        /// </summary>
+        public bool TryResolvePortrait(string sourceName, out RetailPortraitAsset asset)
+        {
+            ThrowIfDisposed();
+            asset = null;
+            string name = sourceName?.Trim();
+            if (string.IsNullOrEmpty(name)) return false;
+            if (_portraits.TryGetValue(name, out asset) && asset?.Sprite != null) return true;
+
+            string path = $"portrait/{name}_b.bmp";
+            if (!_vfs.Exists(path)) path = $"portrait/{name}.bmp";
+            if (!_vfs.Exists(path)) return false;
+
+            Texture2D texture = null;
+            Sprite sprite = null;
+            try
+            {
+                BmpImage bmp = BmpReader.Read(_vfs.ReadAllBytes(path));
+                texture = new Texture2D(bmp.Width, bmp.Height, TextureFormat.RGBA32, false, false)
+                {
+                    name = $"UI_Portrait_{name}",
+                    filterMode = FilterMode.Point,
+                    wrapMode = TextureWrapMode.Clamp,
+                };
+                texture.LoadRawTextureData(bmp.Rgba);
+                texture.Apply(false, true);
+                sprite = Sprite.Create(texture, new Rect(0f, 0f, bmp.Width, bmp.Height),
+                    new Vector2(.5f, .5f), 1f, 0, SpriteMeshType.FullRect);
+                sprite.name = texture.name;
+                asset = new RetailPortraitAsset(name, path, texture, sprite,
+                    new Vector2Int(bmp.Width, bmp.Height));
+                _portraits[name] = asset;
+                return true;
+            }
+            catch (Exception exception)
+            {
+                Destroy(sprite);
+                Destroy(texture);
+                string message = $"OpenArcanum UI: portrait '{name}' unavailable: {exception.Message}.";
+                if (_reported.Add(message)) _diagnostic(message);
+                return false;
+            }
+        }
+
+        /// <summary>Resolves a retail portrait number through <c>portrait/gameport.mes</c>.</summary>
+        public bool TryResolvePortrait(int portraitId, out RetailPortraitAsset asset)
+        {
+            asset = null;
+            int sourceId = portraitId > 0 ? portraitId : 1000;
+            MesFile portraits = ReadMes("portrait/gameport.mes");
+            string sourceName = portraits?.Get(sourceId);
+            return !string.IsNullOrWhiteSpace(sourceName)
+                   && TryResolvePortrait(sourceName.Trim(), out asset);
+        }
+
+        private MesFile ReadMes(string path)
+        {
+            string normalized = DatFileEntry.Normalize(path);
+            if (_messageTables.TryGetValue(normalized, out MesFile table)) return table;
+            if (!_vfs.Exists(normalized)) return null;
+            table = MesReader.Read(_vfs.ReadAllBytes(normalized));
+            _messageTables.Add(normalized, table);
+            return table;
         }
 
         private bool TryGetSource(int sourceId, out DecodedSource source)
@@ -231,6 +367,36 @@ namespace OpenArcanum.UI
             return new Vector2(frame.HotX / (float)width, (height - frame.HotY) / (float)height);
         }
 
+        private static bool UsesSourceFontAlpha(int sourceId)
+            // Roller font 25 is the exception: roller_ui.c draws it as an opaque black/green/red
+            // font over authored ART 314 digit wells. Treating its dark palette red channel as
+            // coverage makes the black quantity numerals effectively transparent.
+            => sourceId == SourceUiBitmapText.Morph15FontSourceId
+               || sourceId == SourceUiBitmapText.Pork12FontSourceId
+               || sourceId == SourceUiBitmapText.Flare12FontSourceId
+               || sourceId == SourceUiBitmapText.Cloister18FontSourceId
+               || sourceId == SourceUiBitmapText.Nick16FontSourceId
+               || sourceId == SourceUiBitmapText.Garmond9FontSourceId
+               || sourceId == SourceUiBitmapText.InventoryStatFontSourceId
+               || sourceId == SourceUiBitmapText.DefaultFontSourceId;
+
+        private static void ApplySourceFontAlpha(Texture2D texture)
+        {
+            // TIG's font blitter ignores the glyph palette RGB, paints the requested constant tint, and uses the
+            // palette red channel as per-pixel coverage (TIG_ART_BLT_BLEND_COLOR_CONST | BLEND_ALPHA_SRC).
+            // The ordinary ART texture path makes every non-zero palette index opaque, which turns the soft outer
+            // coverage of the source bitmap fonts into visibly oversized, heavy silhouettes.
+            Color32[] pixels = texture.GetPixels32();
+            for (int index = 0; index < pixels.Length; index++)
+            {
+                Color32 pixel = pixels[index];
+                if (pixel.a == 0) continue;
+                pixels[index] = new Color32(byte.MaxValue, byte.MaxValue, byte.MaxValue, pixel.r);
+            }
+            texture.SetPixels32(pixels);
+            texture.Apply(updateMipmaps: false, makeNoLongerReadable: false);
+        }
+
         private void ThrowIfDisposed()
         {
             if (_disposed) throw new ObjectDisposedException(nameof(RetailUiAssetResolver));
@@ -246,6 +412,18 @@ namespace OpenArcanum.UI
                 Destroy(asset?.Texture);
             }
             _frames.Clear();
+            foreach (RetailItemArtAsset asset in _inventoryItems.Values)
+            {
+                Destroy(asset?.Sprite);
+                Destroy(asset?.Texture);
+            }
+            _inventoryItems.Clear();
+            foreach (RetailPortraitAsset asset in _portraits.Values)
+            {
+                Destroy(asset?.Sprite);
+                Destroy(asset?.Texture);
+            }
+            _portraits.Clear();
             _sources.Clear();
             _messageTables.Clear();
             _vfs.Dispose();
@@ -267,6 +445,44 @@ namespace OpenArcanum.UI
                 Path = path;
                 Art = art;
             }
+        }
+    }
+
+    public sealed class RetailItemArtAsset
+    {
+        public uint ArtId { get; }
+        public string SourcePath { get; }
+        public Texture2D Texture { get; }
+        public Sprite Sprite { get; }
+        public Vector2Int LogicalSize { get; }
+
+        internal RetailItemArtAsset(uint artId, string sourcePath, Texture2D texture, Sprite sprite,
+            Vector2Int logicalSize)
+        {
+            ArtId = artId;
+            SourcePath = sourcePath;
+            Texture = texture;
+            Sprite = sprite;
+            LogicalSize = logicalSize;
+        }
+    }
+
+    public sealed class RetailPortraitAsset
+    {
+        public string SourceName { get; }
+        public string SourcePath { get; }
+        public Texture2D Texture { get; }
+        public Sprite Sprite { get; }
+        public Vector2Int LogicalSize { get; }
+
+        internal RetailPortraitAsset(string sourceName, string sourcePath, Texture2D texture, Sprite sprite,
+            Vector2Int logicalSize)
+        {
+            SourceName = sourceName;
+            SourcePath = sourcePath;
+            Texture = texture;
+            Sprite = sprite;
+            LogicalSize = logicalSize;
         }
     }
 

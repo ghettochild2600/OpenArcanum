@@ -79,6 +79,63 @@ namespace Arcanum.Runtime.Technology
             if (degree < TechnologyDegree.Novice || degree > TechnologyDegree.Doctorate) throw new ArgumentOutOfRangeException(nameof(degree));
             return 1990 + 200 * (int)discipline + 10 * (int)degree;
         }
+
+        public static int EffectiveLevel(TechnologyDegree degree) => degree switch
+        {
+            TechnologyDegree.Layman => 0,
+            TechnologyDegree.Novice => 10,
+            TechnologyDegree.Assistant => 20,
+            TechnologyDegree.Associate => 35,
+            TechnologyDegree.Technician => 50,
+            TechnologyDegree.Engineer => 65,
+            TechnologyDegree.Professor => 80,
+            TechnologyDegree.Doctorate => 100,
+            _ => 0,
+        };
+    }
+
+    public sealed class TechnologyManualDefinition
+    {
+        public int PrototypeNumber { get; }
+        public string Name { get; }
+        public TechnologyDiscipline Discipline { get; }
+        public int EffectId { get; }
+
+        internal TechnologyManualDefinition(int prototypeNumber, string name,
+            TechnologyDiscipline discipline, int effectId)
+        {
+            PrototypeNumber = prototypeNumber;
+            Name = name;
+            Discipline = discipline;
+            EffectId = effectId;
+        }
+    }
+
+    /// <summary>
+    /// Retail Technical Manual identities. The insert script applies the listed +1 discipline effect
+    /// once per point of the direct holder's Intelligence; duplicate item instances therefore stack.
+    /// </summary>
+    public static class TechnologyManualCatalog
+    {
+        private static readonly TechnologyManualDefinition[] Definitions =
+        {
+            new(15190, "Herbology Manual", TechnologyDiscipline.Herbology, 168),
+            new(15188, "Chemistry Manual", TechnologyDiscipline.Chemistry, 169),
+            new(15191, "Electrical Manual", TechnologyDiscipline.Electrical, 170),
+            new(15189, "Explosives Manual", TechnologyDiscipline.Explosives, 171),
+            new(15195, "Gunsmithy Manual", TechnologyDiscipline.GunSmithy, 172),
+            new(15193, "Mechanical Manual", TechnologyDiscipline.Mechanical, 173),
+            new(15194, "Smithy Manual", TechnologyDiscipline.Smithy, 174),
+            new(15192, "Therapeutics Manual", TechnologyDiscipline.Therapeutics, 175),
+        };
+
+        public static IReadOnlyList<TechnologyManualDefinition> All => Definitions;
+
+        public static bool TryGet(int prototypeNumber, out TechnologyManualDefinition definition)
+        {
+            definition = Definitions.FirstOrDefault(value => value.PrototypeNumber == prototypeNumber);
+            return definition != null;
+        }
     }
 
     public readonly struct TechnologyUseRequest
@@ -115,9 +172,20 @@ namespace Arcanum.Runtime.Technology
     /// <summary>Authoritative M10B discipline, aptitude and technological item-use runtime.</summary>
     public sealed class TechnologyStateService
     {
+        private readonly struct ManualContribution
+        {
+            public ArcanumObjectId Owner { get; }
+            public TechnologyDiscipline Discipline { get; }
+            public int Expertise { get; }
+
+            public ManualContribution(ArcanumObjectId owner, TechnologyDiscipline discipline, int expertise)
+            { Owner = owner; Discipline = discipline; Expertise = expertise; }
+        }
+
         private static readonly int[] IntelligenceRequirements = { 0, 5, 8, 11, 13, 15, 17, 19 };
         private readonly WorldMapSessionCoordinator _world;
         private readonly Dictionary<ArcanumObjectId, int[]> _disciplineRanks = new();
+        private readonly Dictionary<ArcanumObjectId, ManualContribution> _manualContributions = new();
         private readonly HashSet<ArcanumObjectId> _restoredCharacters = new();
         public TechnologyStateService(WorldMapSessionCoordinator world) => _world = world ?? throw new ArgumentNullException(nameof(world));
 
@@ -142,19 +210,12 @@ namespace Arcanum.Runtime.Technology
         }
         public int GetEffectiveLevel(ArcanumObjectId identity, TechnologyDiscipline discipline)
         {
-            TechnologyDegree degree = GetEffectiveDegree(identity, discipline);
-            return degree switch
-            {
-                TechnologyDegree.Layman => 0,
-                TechnologyDegree.Novice => 10,
-                TechnologyDegree.Assistant => 20,
-                TechnologyDegree.Associate => 35,
-                TechnologyDegree.Technician => 50,
-                TechnologyDegree.Engineer => 65,
-                TechnologyDegree.Professor => 80,
-                TechnologyDegree.Doctorate => 100,
-                _ => 0,
-            };
+            int level = PhaseOneTechnologyCatalog.EffectiveLevel(GetEffectiveDegree(identity, discipline));
+            ReconcileManualContributions();
+            foreach (ManualContribution value in _manualContributions.Values)
+                if (value.Owner == identity && value.Discipline == discipline)
+                    level += value.Expertise;
+            return level;
         }
         public bool KnowsBuiltInSchematic(ArcanumObjectId identity, TechnologyDiscipline discipline, TechnologyDegree degree)
             => degree >= TechnologyDegree.Novice && degree <= GetEffectiveDegree(identity, discipline);
@@ -181,6 +242,18 @@ namespace Arcanum.Runtime.Technology
             ranks[(int)discipline]++;
             _world.DerivedStats.AddTechnologyPoint(identity);
             return preview;
+        }
+
+        internal bool RefundLastDegree(ArcanumObjectId identity, TechnologyDiscipline discipline)
+        {
+            if (!_world.Characters.TryGet(identity, out _) || !_world.Progression.TryGet(identity, out _)
+                || !_world.DerivedStats.TryGet(identity, out _)) return false;
+            int[] ranks = GetRanks(identity);
+            if (ranks[(int)discipline] <= 0) return false;
+            ranks[(int)discipline]--;
+            _world.DerivedStats.RemoveTechnologyPoint(identity);
+            _world.Progression.RefundCharacterPoint(identity);
+            return true;
         }
 
         public TechnologyUseResult PreviewUse(TechnologyUseRequest request) => PreviewUseInternal(request, false);
@@ -246,11 +319,23 @@ namespace Arcanum.Runtime.Technology
             return effective;
         }
 
-        public TechnologySaveData ExportSaveData() => new()
+        public TechnologySaveData ExportSaveData()
         {
-            Characters = _disciplineRanks.OrderBy(p => p.Key.Key, StringComparer.Ordinal).Select(p => new TechnologyCharacterSaveData
-            { Identity = p.Key.Key, DisciplineRanks = (int[])p.Value.Clone() }).ToList(),
-        };
+            ReconcileManualContributions();
+            return new TechnologySaveData
+            {
+                Characters = _disciplineRanks.OrderBy(p => p.Key.Key, StringComparer.Ordinal).Select(p => new TechnologyCharacterSaveData
+                    { Identity = p.Key.Key, DisciplineRanks = (int[])p.Value.Clone() }).ToList(),
+                Manuals = _manualContributions.OrderBy(p => p.Key.Key, StringComparer.Ordinal)
+                    .Select(p => new TechnologyManualSaveData
+                    {
+                        ItemIdentity = p.Key.Key,
+                        OwnerIdentity = p.Value.Owner.Key,
+                        Discipline = (int)p.Value.Discipline,
+                        Expertise = p.Value.Expertise,
+                    }).ToList(),
+            };
+        }
         internal void RestoreSaveData(TechnologySaveData data)
         {
             if (data == null) return;
@@ -260,6 +345,48 @@ namespace Arcanum.Runtime.Technology
                 int[] ranks = (int[])value.DisciplineRanks.Clone();
                 _disciplineRanks.Add(identity, ranks); _restoredCharacters.Add(identity);
             }
+            if (data.Manuals == null) return;
+            foreach (TechnologyManualSaveData value in data.Manuals)
+            {
+                ArcanumObjectId.TryParsePersistent(value.ItemIdentity, out ArcanumObjectId item);
+                ArcanumObjectId.TryParsePersistent(value.OwnerIdentity, out ArcanumObjectId owner);
+                _manualContributions.Add(item,
+                    new ManualContribution(owner, (TechnologyDiscipline)value.Discipline, value.Expertise));
+            }
+        }
+
+        private void ReconcileManualContributions()
+        {
+            foreach (ArcanumObjectId item in _manualContributions.Keys.ToArray())
+                if (!_world.TryGetObjectState(item, out PersistentObjectState state)
+                    || !TryResolveHeldManual(state, out TechnologyManualDefinition definition)
+                    || state.ParentIdentity != _manualContributions[item].Owner
+                    || definition.Discipline != _manualContributions[item].Discipline)
+                    _manualContributions.Remove(item);
+
+            foreach (PersistentObjectState state in _world.States.Values.OrderBy(value => value.Identity.Key,
+                         StringComparer.Ordinal))
+            {
+                if (_manualContributions.ContainsKey(state.Identity)
+                    || !TryResolveHeldManual(state, out TechnologyManualDefinition definition)) continue;
+                int intelligence = _world.Characters.GetEffectiveAttribute(state.ParentIdentity,
+                    CharacterAttribute.Intelligence);
+                _manualContributions.Add(state.Identity,
+                    new ManualContribution(state.ParentIdentity, definition.Discipline, intelligence));
+            }
+        }
+
+        private bool TryResolveHeldManual(PersistentObjectState item, out TechnologyManualDefinition definition)
+        {
+            definition = null;
+            if (item.Placement.Kind is not (ObjectPlacementKind.Contained or ObjectPlacementKind.Equipped)
+                || !_world.Characters.TryGet(item.ParentIdentity, out _)
+                || !TechnologyManualCatalog.TryGet(item.PrototypeNumber, out TechnologyManualDefinition candidate))
+                return false;
+            ObjectProtoInfo prototype = _world.ResolvePrototype(item.PrototypeNumber);
+            if (prototype?.ItemDiscipline != (int)candidate.Discipline) return false;
+            definition = candidate;
+            return true;
         }
 
         private int[] GetRanks(ArcanumObjectId identity)

@@ -8,19 +8,8 @@ namespace Arcanum.Runtime.Character
     public sealed class CharacterStatService
     {
         private readonly Dictionary<ArcanumObjectId, PersistentCharacterState> _states = new();
-        private readonly Dictionary<ArcanumObjectId, Dictionary<string, AttributeModifier>> _modifiers = new();
-
-        private readonly struct AttributeModifier
-        {
-            public CharacterAttribute Attribute { get; }
-            public int Amount { get; }
-
-            public AttributeModifier(CharacterAttribute attribute, int amount)
-            {
-                Attribute = attribute;
-                Amount = amount;
-            }
-        }
+        private const string RaceOwner = "identity:race";
+        private const string SexOwner = "identity:sex";
 
         public static IReadOnlyList<CharacterAttribute> AllAttributes { get; } = Array.AsReadOnly(new[]
             {
@@ -35,7 +24,11 @@ namespace Arcanum.Runtime.Character
             });
 
         public IReadOnlyDictionary<ArcanumObjectId, PersistentCharacterState> States => _states;
+        public CharacterContributorService Contributors { get; } = new();
         public event Action<ArcanumObjectId> EffectiveAttributesChanged;
+
+        public CharacterStatService()
+            => Contributors.Changed += identity => EffectiveAttributesChanged?.Invoke(identity);
 
         public PersistentCharacterState GetOrCreateDevelopmentPlayer(ArcanumObjectId identity)
         {
@@ -74,6 +67,7 @@ namespace Arcanum.Runtime.Character
         {
             if (state == null) throw new ArgumentNullException(nameof(state));
             _states.Add(state.Identity, state);
+            SyncIdentityContributors(state);
         }
 
         public int GetBaseAttribute(ArcanumObjectId identity, CharacterAttribute attribute)
@@ -81,51 +75,59 @@ namespace Arcanum.Runtime.Character
 
         public int GetEffectiveAttribute(ArcanumObjectId identity, CharacterAttribute attribute)
         {
-            int value = Get(identity).GetEffective(attribute);
-            if (_modifiers.TryGetValue(identity, out Dictionary<string, AttributeModifier> modifiers))
-                foreach (AttributeModifier modifier in modifiers.Values)
-                    if (modifier.Attribute == attribute) value = checked(value + modifier.Amount);
-            int maximum = CharacterAttributeRules.SourceMaximum(Get(identity).Race, attribute);
+            PersistentCharacterState state = Get(identity);
+            return GetEffectiveAttributeForBase(identity, attribute, state.GetBase(attribute));
+        }
+
+        internal int GetEffectiveAttributeForBase(ArcanumObjectId identity, CharacterAttribute attribute,
+            int baseValue)
+        {
+            PersistentCharacterState state = Get(identity);
+            CharacterAttributeRules.ValidateAttribute(attribute);
+            int value = Contributors.Evaluate(identity, CharacterContributorTarget.Attribute(attribute), baseValue);
+            int maximum = CharacterAttributeRules.SourceMaximum(state.Race, attribute);
             return Math.Max(CharacterAttributeSet.SourceMinimum, Math.Min(maximum, value));
+        }
+
+        internal void SetBaseAttribute(ArcanumObjectId identity, CharacterAttribute attribute, int value)
+        {
+            Get(identity).SetBase(attribute, value);
+            EffectiveAttributesChanged?.Invoke(identity);
         }
 
         /// <summary>Registers one inspectable non-base modifier, keyed by its owning runtime effect.</summary>
         public void SetEffectModifier(ArcanumObjectId identity, string effectIdentity,
-            CharacterAttribute attribute, int amount)
+            CharacterAttribute attribute, int amount, CharacterContributorDomain domain = CharacterContributorDomain.Other,
+            int sourceId = 0)
         {
             _ = Get(identity);
             CharacterAttributeRules.ValidateAttribute(attribute);
             if (string.IsNullOrWhiteSpace(effectIdentity))
                 throw new ArgumentException("Effect identity is required.", nameof(effectIdentity));
-            if (!_modifiers.TryGetValue(identity, out Dictionary<string, AttributeModifier> modifiers))
-                _modifiers.Add(identity, modifiers = new Dictionary<string, AttributeModifier>(StringComparer.Ordinal));
-            if (modifiers.ContainsKey(effectIdentity))
-                throw new InvalidOperationException($"Character effect {effectIdentity} is already applied to {identity}.");
-            modifiers.Add(effectIdentity, new AttributeModifier(attribute, amount));
-            EffectiveAttributesChanged?.Invoke(identity);
+            Contributors.SetOwnerContributors(identity, effectIdentity, new[]
+            {
+                new CharacterContributor(effectIdentity, domain, sourceId, effectIdentity,
+                    CharacterContributorTarget.Attribute(attribute), CharacterContributorOperation.Add, amount),
+            });
         }
 
         public bool RemoveEffectModifier(ArcanumObjectId identity, string effectIdentity)
-        {
-            if (!_modifiers.TryGetValue(identity, out Dictionary<string, AttributeModifier> modifiers)
-                || !modifiers.Remove(effectIdentity)) return false;
-            if (modifiers.Count == 0) _modifiers.Remove(identity);
-            EffectiveAttributesChanged?.Invoke(identity);
-            return true;
-        }
+            => Contributors.RemoveOwner(identity, effectIdentity);
 
         /// <summary>Mirrors source race replacement: remove the old Race-caused effect, then apply 64 + race.</summary>
         public void SetRace(ArcanumObjectId identity, CharacterRace race)
         {
-            Get(identity).SetRace(race);
-            EffectiveAttributesChanged?.Invoke(identity);
+            PersistentCharacterState state = Get(identity);
+            state.SetRace(race);
+            SyncRaceContributors(state);
         }
 
         /// <summary>Mirrors source gender replacement: remove the old Gender effect, then apply 330 for Female.</summary>
         public void SetGender(ArcanumObjectId identity, CharacterGender gender)
         {
-            Get(identity).SetGender(gender);
-            EffectiveAttributesChanged?.Invoke(identity);
+            PersistentCharacterState state = Get(identity);
+            state.SetGender(gender);
+            SyncSexContributors(state);
         }
 
         private PersistentCharacterState GetOrCreate(ArcanumObjectId identity, ObjectType objectType,
@@ -142,7 +144,65 @@ namespace Arcanum.Runtime.Character
             var state = new PersistentCharacterState(identity, objectType, prototypeNumber, attributes, race, gender,
                 hasInstanceStatOverride);
             _states.Add(identity, state);
+            SyncIdentityContributors(state);
             return state;
         }
+
+        private void SyncIdentityContributors(PersistentCharacterState state)
+        {
+            SyncRaceContributors(state);
+            SyncSexContributors(state);
+        }
+
+        private void SyncRaceContributors(PersistentCharacterState state)
+        {
+            int sourceId = 64 + (int)state.Race;
+            var values = new List<CharacterContributor>();
+            foreach (CharacterAttribute attribute in AllAttributes)
+            {
+                int amount = CharacterAttributeRules.RaceAdjustment(state.Race, attribute);
+                if (amount != 0)
+                    values.Add(Add(RaceOwner, CharacterContributorDomain.Race, sourceId,
+                        $"race:{(int)state.Race}:attribute:{(int)attribute}",
+                        CharacterContributorTarget.Attribute(attribute), amount, (int)attribute));
+            }
+            foreach (CharacterResistance resistance in CharacterDerivedStatRules.AllResistances)
+            {
+                int amount = CharacterDerivedStatRules.ResistanceAdjustment(state.Race, resistance);
+                if (amount != 0)
+                    values.Add(Add(RaceOwner, CharacterContributorDomain.Race, sourceId,
+                        $"race:{(int)state.Race}:resistance:{(int)resistance}",
+                        CharacterContributorTarget.Resistance(resistance), amount, 100 + (int)resistance));
+            }
+            int magick = CharacterDerivedStatRules.AptitudePointAdjustment(state.Race, true);
+            if (magick != 0)
+                values.Add(Add(RaceOwner, CharacterContributorDomain.Race, sourceId,
+                    $"race:{(int)state.Race}:magick-points", CharacterContributorTarget.MagickPoints, magick, 200));
+            int technology = CharacterDerivedStatRules.AptitudePointAdjustment(state.Race, false);
+            if (technology != 0)
+                values.Add(Add(RaceOwner, CharacterContributorDomain.Race, sourceId,
+                    $"race:{(int)state.Race}:technology-points", CharacterContributorTarget.TechnologyPoints,
+                    technology, 201));
+            Contributors.SetOwnerContributors(state.Identity, RaceOwner, values);
+        }
+
+        private void SyncSexContributors(PersistentCharacterState state)
+        {
+            var values = new List<CharacterContributor>();
+            if (state.Gender == CharacterGender.Female)
+                foreach (CharacterAttribute attribute in AllAttributes)
+                {
+                    int amount = CharacterAttributeRules.GenderAdjustment(state.Gender, attribute);
+                    if (amount != 0)
+                        values.Add(Add(SexOwner, CharacterContributorDomain.Sex, 330,
+                            $"sex:female:attribute:{(int)attribute}",
+                            CharacterContributorTarget.Attribute(attribute), amount, (int)attribute));
+                }
+            Contributors.SetOwnerContributors(state.Identity, SexOwner, values);
+        }
+
+        private static CharacterContributor Add(string owner, CharacterContributorDomain domain, int sourceId,
+            string identity, CharacterContributorTarget target, int amount, int order)
+            => new(owner, domain, sourceId, identity, target, CharacterContributorOperation.Add, amount, order);
     }
 }

@@ -9,6 +9,7 @@ using Arcanum.Runtime.Character;
 using Arcanum.Runtime.Campaign;
 using Arcanum.Runtime.Dialogue;
 using Arcanum.Formats.Quest;
+using Arcanum.Formats.Text;
 using Arcanum.Script;
 using Arcanum.World;
 using Arcanum.Runtime.Save;
@@ -38,15 +39,19 @@ namespace Arcanum.Runtime.World
         private ISectorPresentationOwner _terrainOwner;
         private ISectorPresentationOwner _objectOwner;
         private Func<int, ObjectProtoInfo> _resolvePrototype;
+        private Func<int, string> _resolveDescription;
         private Func<uint?, InventoryFootprint> _resolveInventoryFootprint;
         private CharacterStatService _characters;
         private InventoryCapacityService _inventoryCapacity;
         private CharacterVitalityService _vitality;
+        private CharacterPoisonService _poison;
         private CharacterProgressionService _progression;
         private CharacterDerivedStatService _derivedStats;
         private ProductionDialogueSession _dialogue;
         private JournalProjectionService _journal;
         private QuestLog _questSource;
+        private MesFile _rumorSource;
+        private MesFile _dumbRumorSource;
         private PortalTransitionScheduler _portals;
         private CampaignStateService _campaign;
         private SessionSaveService _saveGames;
@@ -59,6 +64,8 @@ namespace Arcanum.Runtime.World
         private MapTransitionResolver _mapTransitions;
         private AreaEntranceResolver _areaEntrances;
         private MapAreaResolver _mapAreas;
+        private ISleepLocationSource _sleepLocations;
+        private BedSleepAuthority _beds;
         private AreaList _areaSource;
         private WorldMapDestinationProjection _worldMapDestinations;
         private WorldMapTravelSource _worldMapTravelSource;
@@ -67,11 +74,16 @@ namespace Arcanum.Runtime.World
         private DeathConsequenceService _deathConsequences;
         private PartyStateService _party;
         private ProductionShortcutState _shortcuts;
+        private GameplayHudStateService _gameplayHud;
         private MagicStateService _magic;
+        private SpellPresentationCatalog _spellPresentation;
         private TechnologyStateService _technology;
         private CraftingStateService _crafting;
         private SchematicCatalog _schematicSource;
         private SourceTimeService _sourceTime;
+        private ScriptTimerAuthority _scriptTimers;
+        private ScriptEffectAuthority _scriptEffects;
+        private RetailScriptEffectCatalog _scriptEffectSource;
         private EconomyStateService _economy;
         private InventorySourceCatalog _economySource;
         private SocialStateService _social;
@@ -79,6 +91,9 @@ namespace Arcanum.Runtime.World
         private SocialAiCatalog _socialAiSource;
         private CharacterCreationCatalog _characterCreationSource;
         private CharacterCreationStateService _characterCreation;
+        private LocalMapStateService _localMap;
+        private LogbookStateService _logbook;
+        private LocalMapSource _localMapSource;
         private bool _mapTransitionActive;
         private ulong _nextDynamicIdentity = 1;
 
@@ -93,6 +108,8 @@ namespace Arcanum.Runtime.World
             => _progression ??= new CharacterProgressionService(Characters);
         public CharacterVitalityService Vitality
             => _vitality ??= new CharacterVitalityService(Characters, Progression);
+        public CharacterPoisonService Poison
+            => _poison ??= new CharacterPoisonService(Characters, DerivedStats, Vitality, SourceTime);
         public CharacterDerivedStatService DerivedStats
             => _derivedStats ??= new CharacterDerivedStatService(Characters, Progression, InventoryCapacity);
         public InventoryCapacityService InventoryCapacity
@@ -115,14 +132,23 @@ namespace Arcanum.Runtime.World
             => _deathConsequences ??= new DeathConsequenceService(this);
         public PartyStateService Party => _party ??= new PartyStateService(this);
         public ProductionShortcutState Shortcuts => _shortcuts ??= new ProductionShortcutState(this);
+        public GameplayHudStateService GameplayHud => _gameplayHud ??= new GameplayHudStateService(this);
         public SourceTimeService SourceTime => _sourceTime ??= new SourceTimeService();
+        public ScriptTimerAuthority ScriptTimers => _scriptTimers ??= new ScriptTimerAuthority(this, SourceTime);
+        public ScriptEffectAuthority ScriptEffects
+            => _scriptEffects ??= new ScriptEffectAuthority(this, _scriptEffectSource);
+        public ISleepLocationSource SleepLocations => _sleepLocations;
+        public BedSleepAuthority Beds => _beds ??= new BedSleepAuthority(this);
         public MagicStateService Magic => _magic ??= new MagicStateService(this);
+        public SpellPresentationCatalog SpellPresentation => _spellPresentation;
         public TechnologyStateService Technology => _technology ??= new TechnologyStateService(this);
         public CraftingStateService Crafting => _crafting ??= CreateCrafting();
         public EconomyStateService Economy => _economy ??= CreateEconomy();
         public SocialStateService Social => _social ??= CreateSocial();
         public CharacterCreationStateService CharacterCreation
             => _characterCreation ??= new CharacterCreationStateService(this, _characterCreationSource);
+        public LocalMapStateService LocalMap => _localMap ??= new LocalMapStateService(this, _localMapSource);
+        public LogbookStateService Logbook => _logbook ??= new LogbookStateService(this);
         internal bool HasMagicCritterFlag(ArcanumObjectId identity, int flag)
             => _magic?.HasActiveCritterFlag(identity, flag) == true;
         public bool IsMapTransitionActive => _mapTransitionActive;
@@ -249,6 +275,13 @@ namespace Arcanum.Runtime.World
             UseScripts = new WorldUseScriptDispatcher(this, resolveScript, ScriptGlobals);
         }
 
+        internal bool IsScriptObjectAlive(ArcanumObjectId identity)
+            => identity.IsPersistent && (PlayerState?.Identity == identity || _states.ContainsKey(identity));
+
+        internal ScriptExecutionResult DispatchScheduledScript(ScheduledScriptCall call)
+            => UseScripts?.DispatchScheduled(call)
+               ?? new ScriptExecutionResult(ScriptExecutionStatus.MissingScript);
+
         public void BindDialogueSource(Func<int, ScriptFile> resolveScript,
             Func<int, Arcanum.Formats.Dialog.DialogScript> resolveDialogue)
         {
@@ -276,6 +309,13 @@ namespace Arcanum.Runtime.World
             Journal.BindSource(source);
         }
 
+        public void BindRumorSource(MesFile normal, MesFile dumb)
+        {
+            _rumorSource = normal ?? throw new ArgumentNullException(nameof(normal));
+            _dumbRumorSource = dumb;
+            Journal.BindRumorSource(normal, dumb);
+        }
+
         private ProductionDialogueSession CreateDialogue()
         {
             var dialogue = new ProductionDialogueSession(this, Campaign);
@@ -290,14 +330,47 @@ namespace Arcanum.Runtime.World
         {
             var journal = new JournalProjectionService(Campaign);
             if (_questSource != null) journal.BindSource(_questSource);
+            if (_rumorSource != null) journal.BindRumorSource(_rumorSource, _dumbRumorSource);
             return journal;
         }
 
         public void BindPrototypeSource(Func<int, ObjectProtoInfo> resolvePrototype)
             => _resolvePrototype = resolvePrototype ?? throw new ArgumentNullException(nameof(resolvePrototype));
 
+        public void BindDescriptionSource(Func<int, string> resolveDescription)
+            => _resolveDescription = resolveDescription ?? throw new ArgumentNullException(nameof(resolveDescription));
+
         internal ObjectProtoInfo ResolvePrototype(int prototypeNumber)
             => _resolvePrototype?.Invoke(prototypeNumber);
+
+        public string ResolveDisplayName(PersistentObjectState state)
+        {
+            if (state == null) return string.Empty;
+            int? description = state.DescriptionId > 0
+                ? state.DescriptionId
+                : ResolvePrototype(state.PrototypeNumber)?.Description;
+            string value = description.HasValue ? _resolveDescription?.Invoke(description.Value) : null;
+            return !string.IsNullOrWhiteSpace(value) ? value.Trim() : state.Type.ToString();
+        }
+
+        public string ResolvePrototypeDisplayName(int prototypeNumber)
+        {
+            ObjectProtoInfo prototype = ResolvePrototype(prototypeNumber);
+            // proto.c owns a number of basic prototypes (including schematic ingredients) that have no
+            // authored .pro override.  Those objects use their basic-prototype number as description.mes id.
+            int description = prototype?.Description ?? prototypeNumber;
+            string value = _resolveDescription?.Invoke(description);
+            return !string.IsNullOrWhiteSpace(value) ? value.Trim() : prototypeNumber.ToString();
+        }
+
+        public string ResolveDescriptionId(int descriptionId)
+        {
+            string value = descriptionId > 0 ? _resolveDescription?.Invoke(descriptionId) : null;
+            return !string.IsNullOrWhiteSpace(value) ? value.Trim() : string.Empty;
+        }
+
+        public void BindSpellPresentationSource(SpellPresentationCatalog source)
+            => _spellPresentation = source ?? throw new ArgumentNullException(nameof(source));
 
         internal InventoryFootprint ResolveInventoryFootprint(uint? inventoryArtId)
             => _resolveInventoryFootprint?.Invoke(inventoryArtId) ?? InventoryFootprint.OneCell;
@@ -327,6 +400,12 @@ namespace Arcanum.Runtime.World
             CharacterCreation.BindCatalog(source);
         }
 
+        public void BindScriptEffectSource(RetailScriptEffectCatalog source)
+        {
+            _scriptEffectSource = source ?? throw new ArgumentNullException(nameof(source));
+            ScriptEffects.BindCatalog(source);
+        }
+
         public void BindInventoryFootprintSource(Func<uint?, InventoryFootprint> resolveInventoryFootprint)
             => _resolveInventoryFootprint = resolveInventoryFootprint
                 ?? throw new ArgumentNullException(nameof(resolveInventoryFootprint));
@@ -340,8 +419,36 @@ namespace Arcanum.Runtime.World
         public void BindMapAreaSource(MapAreaResolver resolver)
             => _mapAreas = resolver ?? throw new ArgumentNullException(nameof(resolver));
 
+        public void BindSleepLocationSource(ISleepLocationSource source)
+            => _sleepLocations = source ?? throw new ArgumentNullException(nameof(source));
+
+        public void BindLocalMapSource(LocalMapSource source)
+        {
+            _localMapSource = source ?? throw new ArgumentNullException(nameof(source));
+            LocalMap.BindSource(source);
+        }
+
         public int CurrentArea => PlayerState != null && HasSelectedSector && _mapAreas != null
             ? _mapAreas.Resolve(SelectedSector, PlayerState.MapPosition) : 0;
+
+        internal int ResolveScriptArea(ArcanumObjectId identity)
+        {
+            if (_mapAreas == null) return 0;
+            if (PlayerState?.Identity == identity)
+                return HasSelectedSector ? _mapAreas.Resolve(SelectedSector, PlayerState.MapPosition) : 0;
+            return _states.TryGetValue(identity, out PersistentObjectState state)
+                   && state.Placement.Kind == ObjectPlacementKind.World
+                ? _mapAreas.Resolve(state.Placement.Sector, state.TilePosition)
+                : 0;
+        }
+
+        public bool TryGetCurrentMapId(out int mapId)
+        {
+            if (_mapTransitions != null && !string.IsNullOrWhiteSpace(CurrentMap))
+                return _mapTransitions.TryGetMapId(CurrentMap, out mapId);
+            mapId = 0;
+            return false;
+        }
 
         public bool SetNpcWaiting(ArcanumObjectId identity, bool waiting)
         {
@@ -370,6 +477,7 @@ namespace Arcanum.Runtime.World
         private CampaignStateService CreateCampaign()
         {
             var campaign = new CampaignStateService();
+            campaign.BindTimeSource(() => SourceTime.CampaignMilliseconds);
             if (_areaSource != null) campaign.BindAreaSource(_areaSource);
             return campaign;
         }
@@ -418,6 +526,7 @@ namespace Arcanum.Runtime.World
             }
 
             SelectedSector = sector;
+            _localMap?.MarkCurrentVisited();
             SectorSelected?.Invoke(sector);
             if (PlayerState != null)
                 Combat.RegisterActorSource(new CombatActorSource(PlayerState.Identity, ObjectType.Pc, null,
@@ -627,7 +736,9 @@ namespace Arcanum.Runtime.World
             int? origin = null,
             int? faction = null,
             int? writtenSubtype = null,
-            int? writtenStartLine = null)
+            int? writtenStartLine = null,
+            int? descriptionId = null,
+            int? keyId = null)
         {
             if (!identity.IsPersistent) return null;
             if (_removedObjectIdentities.Contains(identity)) return null;
@@ -641,7 +752,7 @@ namespace Arcanum.Runtime.World
                 inventoryLocation, nameIndex, socialClass, weaponData, ammoItemType, sourceWorth,
                 maximumHitPoints, hitPointDamage, retailPriceMultiplier, inventorySourceId,
                 substituteInventoryIdentity, npcFlags, buyObjectScriptNum, containerFlags, aiData, origin, faction,
-                writtenSubtype, writtenStartLine);
+                writtenSubtype, writtenStartLine, descriptionId, keyId);
             _states.Add(identity, state);
             return state;
         }
@@ -655,13 +766,14 @@ namespace Arcanum.Runtime.World
             int? inventorySourceId = null, ArcanumObjectId substituteInventoryIdentity = default,
             int npcFlags = 0, int buyObjectScriptNum = 0, int containerFlags = 0,
             int? aiData = null, int? origin = null, int? faction = null,
-            int? writtenSubtype = null, int? writtenStartLine = null)
+            int? writtenSubtype = null, int? writtenStartLine = null, int? descriptionId = null,
+            int? keyId = null)
             => GetOrCreate(source, source.Identity, sector, artId, off, locked, itemFlags, inventoryArtId,
                 weaponFlags, genericFlags, stackQuantity, unitWeight, inventoryFootprint, inventoryLocation,
                 nameIndex, socialClass, weaponData, ammoItemType, sourceWorth, maximumHitPoints,
                 hitPointDamage, retailPriceMultiplier, inventorySourceId, substituteInventoryIdentity,
                 npcFlags, buyObjectScriptNum, containerFlags, aiData, origin, faction,
-                writtenSubtype, writtenStartLine);
+                writtenSubtype, writtenStartLine, descriptionId, keyId);
 
         public void Bind(string sector, PersistentObjectState state, WorldObject runtime)
         {
@@ -709,15 +821,29 @@ namespace Arcanum.Runtime.World
         internal PersistentPlayerState InitializeCreatedPlayer(ArcanumObjectId identity, string sector,
             Vector2 spawnTile, uint artId, CharacterAttributeSet attributes, CharacterRace race,
             CharacterGender gender, CharacterProgressionSource progression, CharacterDerivedSource derived,
-            CharacterVitalitySource vitality, int[] spellTech)
+            CharacterVitalitySource vitality, int[] spellTech, ObjectProtoInfo sourcePrototype = null)
         {
             if (PlayerState != null) throw new InvalidOperationException("A production player is already registered.");
             string normalized = NormalizeSector(sector)
                 ?? throw new ArgumentException("Player sector is required.", nameof(sector));
-            Characters.GetOrCreateCreatedPlayer(identity, attributes, race, gender);
-            Progression.GetOrCreateCreatedPlayer(identity, progression);
-            DerivedStats.GetOrCreateCreatedPlayer(identity, derived);
-            Vitality.GetOrCreateCreatedPlayer(identity, vitality);
+            if (sourcePrototype == null)
+            {
+                Characters.GetOrCreateCreatedPlayer(identity, attributes, race, gender);
+                Progression.GetOrCreateCreatedPlayer(identity, progression);
+                DerivedStats.GetOrCreateCreatedPlayer(identity, derived);
+                Vitality.GetOrCreateCreatedPlayer(identity, vitality);
+            }
+            else
+            {
+                Characters.GetOrCreateSourceCharacter(identity, ObjectType.Pc, sourcePrototype.ProtoNumber,
+                    null, sourcePrototype.StatBase);
+                Progression.GetOrCreateSourceCharacter(identity, ObjectType.Pc,
+                    sourcePrototype.ProtoNumber, progression);
+                DerivedStats.GetOrCreateSourceCharacter(identity, ObjectType.Pc,
+                    sourcePrototype.ProtoNumber, derived);
+                Vitality.GetOrCreateSourceCharacter(identity, ObjectType.Pc,
+                    sourcePrototype.ProtoNumber, vitality);
+            }
             Magic.RegisterSourceCharacter(identity, spellTech, null);
             Technology.RegisterSourceCharacter(identity, spellTech, null);
             Combat.RegisterActorSource(new CombatActorSource(identity, ObjectType.Pc, null, normalized,
@@ -785,6 +911,40 @@ namespace Arcanum.Runtime.World
                 }
             return item != null;
         }
+
+        /// <summary>Authoritative source-grid move used by Inventory drag/drop.</summary>
+        public bool TrySetInventoryLocation(ArcanumObjectId owner, ArcanumObjectId item, int location)
+            => InventoryCapacity.TrySetInventoryLocation(owner, item, location);
+
+        /// <summary>
+        /// Atomically places an owned contained or worn item at an exact inventory-grid origin.
+        /// An illegal equipped-item drop leaves both its worn location and inventory state unchanged.
+        /// </summary>
+        public bool TryMoveItemToInventory(ArcanumObjectId owner, ArcanumObjectId itemIdentity, int location)
+        {
+            if (!_states.TryGetValue(itemIdentity, out PersistentObjectState item)
+                || item.Placement.Kind == ObjectPlacementKind.Equipped && (item.ItemFlags & 0x20) != 0
+                || !InventoryCapacity.CanPlaceInInventory(owner, itemIdentity, location))
+                return false;
+            ObjectPlacement previous = item.Placement;
+            int previousLocation = item.InventoryLocation;
+            ObjectPlacement destination = ObjectPlacement.ContainedBy(owner);
+            item.Placement = destination;
+            item.InventoryLocation = location;
+            if (previous.Kind != destination.Kind || previous.ParentIdentity != destination.ParentIdentity
+                || previousLocation != location)
+                ObjectPlacementChanged?.Invoke(item, previous, destination);
+            return true;
+        }
+
+        /// <summary>Source barter exact-cell preflight for an item still owned by the opposite inventory.</summary>
+        public bool CanReceiveInventoryItemAt(ArcanumObjectId owner, ArcanumObjectId itemIdentity, int location)
+            => InventoryCapacity.CanReceiveAt(owner, itemIdentity, location);
+
+        /// <summary>Authoritative source arrange command; presentation owns no item positions.</summary>
+        public bool ArrangeInventory(ArcanumObjectId owner,
+            InventoryArrangeMode mode = InventoryArrangeMode.Horizontal)
+            => InventoryCapacity.ArrangeInventory(owner, mode);
 
         /// <summary>Finds the stable source-shaped ammo stack used by the bounded ranged transaction.</summary>
         public bool TryGetAmmo(ArcanumObjectId owner, int ammoType, int quantity,
@@ -1154,6 +1314,22 @@ namespace Arcanum.Runtime.World
             return match;
         }
 
+        private PersistentObjectState FindCompatibleContainedStack(ObjectProtoInfo prototype,
+            ArcanumObjectId parentIdentity)
+        {
+            if (prototype == null || prototype.Type is not (ObjectType.Ammo or ObjectType.Gold)) return null;
+            PersistentObjectState match = null;
+            foreach (PersistentObjectState candidate in _states.Values)
+                if (candidate.Placement.Kind == ObjectPlacementKind.Contained
+                    && candidate.Placement.ParentIdentity == parentIdentity
+                    && candidate.Type == prototype.Type
+                    && candidate.PrototypeNumber == prototype.ProtoNumber
+                    && candidate.StackQuantity is > 0
+                    && (match == null || string.CompareOrdinal(candidate.Identity.Key, match.Identity.Key) < 0))
+                    match = candidate;
+            return match;
+        }
+
         public bool IsWorldPresentationEligible(PersistentObjectState state, string sector)
             => state != null && !state.Off && state.Placement.Kind == ObjectPlacementKind.World
                && string.Equals(state.Placement.Sector, NormalizeSector(sector), StringComparison.Ordinal);
@@ -1178,6 +1354,8 @@ namespace Arcanum.Runtime.World
             if (previous == destination)
                 return new InventoryTransferResult(InventoryResultCode.AlreadyAtDestination, itemIdentity, previous,
                     destination);
+            if (CanAbsorbIntoPlayerKeyring(item, destination))
+                return new InventoryTransferResult(InventoryResultCode.Success, itemIdentity, previous, destination);
 
             PersistentObjectState existing = null;
             if (destination.Kind == ObjectPlacementKind.Contained && item.StackQuantity.HasValue)
@@ -1214,6 +1392,15 @@ namespace Arcanum.Runtime.World
             if (previous == destination)
                 return new InventoryTransferResult(InventoryResultCode.AlreadyAtDestination, itemIdentity, previous, destination);
 
+            if (CanAbsorbIntoPlayerKeyring(item, destination))
+            {
+                Logbook.AcquireKey(destination.ParentIdentity, item.KeyId);
+                _states.Remove(item.Identity);
+                _removedObjectIdentities.Add(item.Identity);
+                ObjectStateRemoved?.Invoke(item, previous);
+                return new InventoryTransferResult(InventoryResultCode.Success, itemIdentity, previous, destination);
+            }
+
             PersistentObjectState existing = null;
             if (destination.Kind == ObjectPlacementKind.Contained && item.StackQuantity.HasValue)
             {
@@ -1245,6 +1432,14 @@ namespace Arcanum.Runtime.World
             ObjectPlacementChanged?.Invoke(item, previous, destination);
             return new InventoryTransferResult(InventoryResultCode.Success, itemIdentity, previous, destination);
         }
+
+        private bool CanAbsorbIntoPlayerKeyring(PersistentObjectState item, ObjectPlacement destination)
+            => item.Type == ObjectType.Key && item.KeyId > 0
+               && destination.Kind == ObjectPlacementKind.Contained
+               && PlayerState?.Identity == destination.ParentIdentity
+               && _states.Values.Any(value => value.Type == ObjectType.KeyRing
+                   && value.ParentIdentity == destination.ParentIdentity
+                   && value.Placement.Kind is ObjectPlacementKind.Contained or ObjectPlacementKind.Equipped);
 
         /// <summary>
         /// Atomic source-owner transfer used only after the death-consequence service has established a corpse.
@@ -1473,6 +1668,16 @@ namespace Arcanum.Runtime.World
             return true;
         }
 
+        internal bool DestroyScriptObject(ArcanumObjectId identity)
+        {
+            if (!_states.TryGetValue(identity, out PersistentObjectState state)) return false;
+            ObjectPlacement placement = state.Placement;
+            _states.Remove(identity);
+            _removedObjectIdentities.Add(identity);
+            ObjectStateRemoved?.Invoke(state, placement);
+            return true;
+        }
+
         public ItemCreationResult CreateItem(int prototypeNumber, ObjectPlacement destination)
         {
             if (_resolvePrototype == null)
@@ -1485,10 +1690,33 @@ namespace Arcanum.Runtime.World
 
             InventoryFootprint footprint = _resolveInventoryFootprint?.Invoke(prototype.InvAid)
                                            ?? InventoryFootprint.OneCell;
+            PersistentObjectState existing = destination.Kind == ObjectPlacementKind.Contained
+                ? FindCompatibleContainedStack(prototype, destination.ParentIdentity)
+                : null;
+            int? createdQuantity = prototype.Type switch
+            {
+                ObjectType.Ammo => prototype.AmmoQuantity,
+                ObjectType.Gold => prototype.GoldQuantity,
+                _ => null,
+            };
+            if (existing != null
+                && ((createdQuantity ?? 0) < 1
+                    || (long)existing.StackQuantity.Value + createdQuantity.Value > MaxStackQuantity))
+                return new ItemCreationResult(InventoryResultCode.QuantityOverflow);
             InventoryAcceptance acceptance = destination.Kind == ObjectPlacementKind.Contained
-                ? InventoryCapacity.EvaluatePrototype(prototype, footprint, destination.ParentIdentity)
+                ? InventoryCapacity.EvaluatePrototype(prototype, footprint, destination.ParentIdentity, existing)
                 : InventoryAcceptance.Accept(-1);
             if (!acceptance.Succeeded) return new ItemCreationResult(acceptance.Code);
+
+            // item_insert coalesces matching Gold/Ammo immediately. Creation therefore shares the same
+            // source insertion rule as transfers instead of leaving restocks as duplicate runtime objects.
+            if (existing != null)
+            {
+                int previous = existing.StackQuantity.Value;
+                existing.StackQuantity = checked(previous + createdQuantity.Value);
+                ObjectQuantityChanged?.Invoke(existing, previous, existing.StackQuantity.Value);
+                return new ItemCreationResult(InventoryResultCode.Success, existing);
+            }
 
             if (!TryAllocateDynamicIdentity(out ArcanumObjectId identity))
                 return new ItemCreationResult(InventoryResultCode.IdentityExhausted);
@@ -1603,11 +1831,64 @@ namespace Arcanum.Runtime.World
                 return new WorldInteractionResult(command, WorldInteractionResultCode.TargetNotFound);
             if (targetState.Type == ObjectType.Scenery && target.Type == ObjectType.Scenery)
             {
+                if (BedSleepAuthority.IsBed(targetState))
+                {
+                    if (!SectorCoordinate.TryParse(targetState.Placement.Sector, out SectorCoordinate bedSector)
+                        || !InteractionRangeRules.IsWithin(PlayerState.MapPosition,
+                            bedSector.ToGlobal(targetState.Placement.TilePosition), InteractionRangeRules.PortalUseRange))
+                        return new WorldInteractionResult(command, WorldInteractionResultCode.OutOfRange);
+                    BedUseResult bed = Beds.Begin(command.Actor, command.Target);
+                    return new WorldInteractionResult(command,
+                        bed.Succeeded ? WorldInteractionResultCode.Success : WorldInteractionResultCode.Blocked,
+                        scriptNum: bed.ScriptNum, scriptStatus: bed.ScriptStatus,
+                        scriptRunDefault: bed.ScriptRunDefault, bedFailure: bed.Failure,
+                        sleepMode: bed.Succeeded ? SleepLocationMode.BedSleep : null);
+                }
                 AreaEntranceResult travel = RequestAreaEntrance(command.Actor, command.Target);
                 return new WorldInteractionResult(command, travel.Succeeded ? WorldInteractionResultCode.Success
                         : travel.Failure == AreaEntranceFailure.OutOfRange ? WorldInteractionResultCode.OutOfRange
                         : WorldInteractionResultCode.TravelFailed,
                     scriptNum: targetState.UseScriptNum, scriptRunDefault: false, areaEntrance: travel);
+            }
+            if (targetState.Type == ObjectType.Container && target.Type == ObjectType.Container)
+            {
+                if (!SectorCoordinate.TryParse(targetState.Placement.Sector, out SectorCoordinate containerSector)
+                    || !InteractionRangeRules.IsWithin(PlayerState.MapPosition,
+                        containerSector.ToGlobal(targetState.Placement.TilePosition), InteractionRangeRules.PortalUseRange))
+                    return new WorldInteractionResult(command, WorldInteractionResultCode.OutOfRange);
+                int containerScript = Campaign.GetScriptNumber(command.Target, (int)Sap.Use,
+                    targetState.UseScriptNum);
+                ScriptExecutionResult containerResult = default;
+                if (containerScript != 0)
+                {
+                    if (UseScripts == null)
+                        return new WorldInteractionResult(command, WorldInteractionResultCode.ScriptUnavailable,
+                            scriptNum: containerScript);
+                    containerResult = UseScripts.DispatchUse(command.Actor, command.Target, containerScript);
+                    if (!containerResult.Succeeded)
+                    {
+                        WorldInteractionResultCode failure = containerResult.Status switch
+                        {
+                            ScriptExecutionStatus.MissingScript => WorldInteractionResultCode.ScriptMissing,
+                            ScriptExecutionStatus.UnsupportedOpcode or ScriptExecutionStatus.EmptyScript
+                                => WorldInteractionResultCode.ScriptUnsupported,
+                            _ => WorldInteractionResultCode.ScriptFailed,
+                        };
+                        return new WorldInteractionResult(command, failure, scriptNum: containerScript,
+                            scriptStatus: containerResult.Status, scriptRunDefault: false);
+                    }
+                    if (!containerResult.RunDefault)
+                        return new WorldInteractionResult(command, WorldInteractionResultCode.Success,
+                            scriptNum: containerScript, scriptStatus: containerResult.Status,
+                            scriptRunDefault: false);
+                }
+                if (targetState.Locked)
+                    return new WorldInteractionResult(command, WorldInteractionResultCode.Blocked,
+                        scriptNum: containerScript, scriptStatus: ScriptStatus(containerScript, containerResult),
+                        scriptRunDefault: ScriptDefault(containerScript, containerResult));
+                return new WorldInteractionResult(command, WorldInteractionResultCode.Success,
+                    scriptNum: containerScript, scriptStatus: ScriptStatus(containerScript, containerResult),
+                    scriptRunDefault: ScriptDefault(containerScript, containerResult));
             }
             if (targetState.Type != ObjectType.Portal || target.Type != ObjectType.Portal)
                 return new WorldInteractionResult(command, WorldInteractionResultCode.InvalidTarget);
@@ -1617,9 +1898,9 @@ namespace Arcanum.Runtime.World
             if (!InteractionRangeRules.IsWithin(PlayerState.MapPosition, targetPosition,
                     InteractionRangeRules.PortalUseRange))
                 return new WorldInteractionResult(command, WorldInteractionResultCode.OutOfRange);
-            int scriptNum = targetState.UseScriptNum;
+            int scriptNum = Campaign.GetScriptNumber(command.Target, (int)Sap.Use, targetState.UseScriptNum);
             ScriptExecutionResult scriptResult = default;
-            if (targetState.UseScriptNum != 0)
+            if (scriptNum != 0)
             {
                 if (UseScripts == null)
                     return new WorldInteractionResult(command, WorldInteractionResultCode.ScriptUnavailable,
@@ -1685,7 +1966,7 @@ namespace Arcanum.Runtime.World
                     => WorldInteractionResultCode.TargetNotFound,
                 _ => WorldInteractionResultCode.DialogueFailed,
             };
-            return new WorldInteractionResult(command, result, scriptNum: targetState.DialogNum);
+            return new WorldInteractionResult(command, result, scriptNum: Dialogue.DialogueNumber);
         }
 
         private WorldInteractionResult ExecuteLoot(WorldInteractionCommand command)
@@ -1825,6 +2106,23 @@ namespace Arcanum.Runtime.World
                     return true;
                 }
             return false;
+        }
+
+        /// <summary>Projects the source combat-ready stand with the currently equipped weapon family.</summary>
+        public bool SetCombatReadyPresentation(ArcanumObjectId identity, bool ready)
+        {
+            if (PlayerState == null || PlayerState.Identity != identity) return false;
+            uint artId = CritterArtResolver.WithAnimRotation(PlayerState.ArtId, 0,
+                CritterArtResolver.RotationOf(PlayerState.ArtId)) & ~(0x1Fu << 14);
+            int weaponArt = 0;
+            if (ready && TryGetEquippedItem(identity, WornLocation.Weapon, out PersistentObjectState equipped)
+                      && equipped.Type == ObjectType.Weapon && equipped.WeaponData != null)
+            {
+                weaponArt = equipped.WeaponData.Skill == WeaponSkill.Bow
+                    ? 8 : (int)(equipped.ArtId >> 6) & 0xF;
+            }
+            artId = (artId & ~0xFu) | (uint)weaponArt;
+            return SetMovementState(identity, PlayerState.TilePosition, artId, false);
         }
 
         public void SetPlayerDestination(Vector2Int destination)
@@ -2088,15 +2386,22 @@ namespace Arcanum.Runtime.World
             _characters = null;
             _progression = null;
             _vitality = null;
+            _poison?.Dispose();
+            _poison = null;
             _inventoryCapacity = null;
             _derivedStats = null;
             _campaign = null;
             _worldMapDestinations = null;
             _worldMapTravel = null;
+            _localMap = null;
+            _logbook = null;
             _combat = null;
             _deathConsequences = null;
             _party = null;
             _shortcuts = null;
+            _gameplayHud?.Dispose();
+            _gameplayHud = null;
+            _beds = null;
             _magic = null;
             _technology = null;
             _crafting = null;
@@ -2104,6 +2409,10 @@ namespace Arcanum.Runtime.World
             _social = null;
             _characterCreation?.ClearFinalized();
             _sourceTime = null;
+            _scriptTimers?.Dispose();
+            _scriptTimers = null;
+            _scriptEffects?.Dispose();
+            _scriptEffects = null;
             _portals = null;
             _dialogue = null;
             _journal = null;
@@ -2119,6 +2428,11 @@ namespace Arcanum.Runtime.World
             if (plan == null) throw new ArgumentNullException(nameof(plan));
             ClearSelectedSector();
             foreach (string sector in new List<string>(_loaded.Keys)) UnloadSector(sector);
+            _gameplayHud?.Dispose();
+            _gameplayHud = null;
+            _beds = null;
+            _poison?.Dispose();
+            _poison = null;
 
             _states.Clear();
             foreach (var pair in plan.Objects) _states.Add(pair.Key, pair.Value);
@@ -2140,8 +2454,18 @@ namespace Arcanum.Runtime.World
             _crafting = null;
             _economy = null;
             _social = null;
+            _logbook = null;
             _sourceTime = new SourceTimeService();
             _sourceTime.Restore(plan.Magic?.ElapsedMilliseconds ?? 0);
+            _scriptTimers?.Dispose();
+            _scriptTimers = new ScriptTimerAuthority(this, _sourceTime);
+            _scriptTimers.RestoreSaveData(plan.ScriptTimers);
+            _scriptEffects?.Dispose();
+            _scriptEffects = new ScriptEffectAuthority(this, _scriptEffectSource);
+            _scriptEffects.RestoreSaveData(plan.ScriptEffects);
+            _poison = new CharacterPoisonService(_characters, _derivedStats, _vitality, _sourceTime);
+            _poison.RestoreSaveData(plan.Poison);
+            _campaign.BindTimeSource(() => SourceTime.CampaignMilliseconds);
             foreach (PartyMember member in plan.PartyMembers)
                 if (!_party.TryAddRestored(member, out string partyError))
                     throw new InvalidOperationException(partyError);
@@ -2169,12 +2493,25 @@ namespace Arcanum.Runtime.World
             _economy.RestoreSaveData(plan.Economy);
             _social = CreateSocial();
             _social.RestoreSaveData(plan.Social);
+            _logbook = new LogbookStateService(this);
+            _logbook.RestoreSaveData(plan.Logbook);
             CharacterCreation.RestoreSaveData(plan.CharacterCreation);
-            return SelectSector(plan.SelectedSector);
+            _poison.FinalizeRestore();
+            _gameplayHud = new GameplayHudStateService(this);
+            _gameplayHud.RestoreSaveData(plan.GameplayHud);
+            _localMap = new LocalMapStateService(this, _localMapSource);
+            _localMap.RestoreSaveData(plan.LocalMap);
+            bool selected = SelectSector(plan.SelectedSector);
+            if (selected) Beds.RestoreTransient(PlayerState.Identity);
+            return selected;
         }
 
         private void OnDestroy()
         {
+            _scriptTimers?.Dispose();
+            _scriptEffects?.Dispose();
+            _gameplayHud?.Dispose();
+            _poison?.Dispose();
             foreach (string sector in new List<string>(_loaded.Keys)) UnloadSector(sector);
         }
     }

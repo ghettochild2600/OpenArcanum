@@ -170,12 +170,19 @@ internal static class M8ICombatUiValidation
 
             string activeJson = session.SaveGames.SerializeCurrentSession();
             Check(session.SaveGames.LoadJson(activeJson).Succeeded, "Save V1 reload succeeds during combat");
+            ProductionCombatAiDriver reloadDriver = Object.FindFirstObjectByType<ProductionCombatAiDriver>();
+            Check(reloadDriver != null, "production AI driver exists after Save V1 presentation rebuild");
+            // The active-save fixture leaves the PC inside the bear's source acquisition radius. Isolate the
+            // transient-UI normalization assertion from M9A's production re-aggro, which is certified separately.
+            reloadDriver.enabled = false;
             yield return null;
             Refresh(out loader, out lifecycle, out presenter);
             presenter.Controller.Refresh();
             Check(!session.Combat.IsActive && !presenter.Controller.HasSelectedTarget
                   && presenter.Controller.LastResult == null,
-                "Save V1 normalizes combat and all transient UI selection/result state");
+                "Save V1 normalizes combat and all transient UI selection/result state "
+                + $"[active={session.Combat.IsActive}; selected={presenter.Controller.HasSelectedTarget}; "
+                + $"result={presenter.Controller.LastResult.HasValue}]");
 
             Check(session.SaveGames.LoadJson(baselineJson).Succeeded,
                 "pre-validation authoritative baseline restores");

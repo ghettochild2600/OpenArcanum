@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Arcanum.Runtime.Dialogue;
 using Arcanum.Runtime.Save;
+using Arcanum.Runtime.UI;
 using Arcanum.Runtime.World;
 using NUnit.Framework;
 using UnityEngine;
@@ -39,9 +40,40 @@ namespace Arcanum.Formats.Tests
             _panel.Open(SaveLoadPanelMode.Load);
             SaveLoadSlotView slot = _panel.Slots.Single();
             Assert.That(slot.Timestamp, Is.EqualTo("2026-09-13 20:15 UTC"));
-            Assert.That(slot.Location, Is.EqualTo("maps/test/1.sec"));
+            Assert.That(slot.Location, Is.EqualTo("test"));
             Assert.That(slot.Level, Is.EqualTo("7"));
             Assert.That(slot.Version, Is.EqualTo("slot 1 / session 1"));
+        }
+
+        [Test]
+        public void SourceFacingMetadataUsesGameClockNameLocationAndThumbnail()
+        {
+            string thumbnail = Convert.ToBase64String(new byte[] { 1, 2, 3 });
+            _slots.Add("alpha", true, displayName: "Crash Site", pcName: "Morgan",
+                areaName: "The Crash Site", gameTime: SourceTimeService.InitialMilliseconds + 37_000,
+                thumbnail: thumbnail);
+            _panel.Open(SaveLoadPanelMode.Load);
+            SaveLoadSlotView slot = _panel.Slots.Single();
+            Assert.That(slot.DisplayName, Is.EqualTo("Crash Site"));
+            Assert.That(slot.PcName, Is.EqualTo("Morgan"));
+            Assert.That(slot.Location, Is.EqualTo("The Crash Site"));
+            Assert.That(slot.GameDate, Is.EqualTo("1/1/1885"));
+            Assert.That(slot.GameTime, Is.EqualTo("3:00pm"));
+            Assert.That(slot.ThumbnailPngBase64, Is.EqualTo(thumbnail));
+        }
+
+        [Test]
+        public void RetailLayoutMatchesMainmenuSourceRectangles()
+        {
+            Assert.That(RetailSaveLoadLayout.BackgroundSourceId, Is.EqualTo(745));
+            Assert.That(RetailSaveLoadLayout.PcLensFrameSourceId, Is.EqualTo(746));
+            Assert.That(RetailSaveLoadLayout.ScreenshotFrameSourceId, Is.EqualTo(748));
+            Assert.That(RetailSaveLoadLayout.SlotList, Is.EqualTo(new Rect(42, 120, 145, 213)));
+            Assert.That(RetailSaveLoadLayout.Screenshot, Is.EqualTo(new Rect(281, 55, 468, 300)));
+            Assert.That(RetailSaveLoadLayout.Location, Is.EqualTo(new Rect(281, 212, 465, 18)));
+            Assert.That(RetailSaveLoadLayout.Action, Is.EqualTo(new Vector2(675, 55)));
+            Assert.That(RetailSaveLoadLayout.Cancel, Is.EqualTo(new Vector2(69, 55)));
+            Assert.That(RetailSaveLoadLayout.Delete, Is.EqualTo(new Vector2(115, 396)));
         }
 
         [Test]
@@ -77,6 +109,16 @@ namespace Arcanum.Formats.Tests
             Assert.That(_panel.SelectedSlotId, Is.EqualTo("manual01"));
             Assert.That(_panel.StatusMessage, Is.EqualTo("Saved 'manual01'."));
             Assert.That(_panel.Slots.Select(slot => slot.SlotId), Contains.Item("manual01"));
+        }
+
+        [Test]
+        public void SourceSaveNameIsPassedAsPresentationMetadata()
+        {
+            _panel.Open(SaveLoadPanelMode.Save);
+            _panel.SetDraftSaveName("The Crash Site");
+            _panel.RequestSave();
+            Assert.That(_slots.LastDisplayName, Is.EqualTo("The Crash Site"));
+            Assert.That(_panel.Slots.Single().DisplayName, Is.EqualTo("The Crash Site"));
         }
 
         [Test]
@@ -301,7 +343,7 @@ namespace Arcanum.Formats.Tests
             SessionLoadFailure sessionFailure = SessionLoadFailure.None)
             => new(failure, "detail", sessionFailure);
 
-        private sealed class FakeSlots : ISessionSaveSlotOperations
+        private sealed class FakeSlots : ISessionSaveSlotOperations, ISessionSaveSlotPresentationOperations
         {
             private readonly List<SessionSaveSlotInfo> _entries = new();
             public int SaveCalls { get; private set; }
@@ -309,6 +351,7 @@ namespace Arcanum.Formats.Tests
             public int DeleteCalls { get; private set; }
             public int ListCalls { get; private set; }
             public string LastSlotId { get; private set; }
+            public string LastDisplayName { get; private set; }
             public object ActiveSessionToken { get; } = new();
             public SessionSaveSlotResult SaveResult { get; set; } = Result(SessionSaveSlotFailure.None);
             public SessionSaveSlotResult LoadResult { get; set; } = Result(SessionSaveSlotFailure.None);
@@ -316,7 +359,9 @@ namespace Arcanum.Formats.Tests
             public SessionSaveSlotFailure ListFailure { get; set; }
 
             public void Add(string id, bool valid, string timestamp = "2026-09-13T20:15:30.0000000Z",
-                string sector = "maps/test/1.sec", int level = 1, int version = 1, string error = null)
+                string sector = "maps/test/1.sec", int level = 1, int version = 1, string error = null,
+                string displayName = null, string pcName = null, string areaName = null,
+                long gameTime = 0, string thumbnail = null)
             {
                 _entries.Add(new SessionSaveSlotInfo
                 {
@@ -333,6 +378,11 @@ namespace Arcanum.Formats.Tests
                         SelectedSector = sector,
                         PcIdentity = "G_00000000_0000_0000_0000_000000000001",
                         PcLevel = level,
+                        DisplayName = displayName,
+                        PcName = pcName,
+                        AreaName = areaName,
+                        GameTimeMilliseconds = gameTime,
+                        ThumbnailPngBase64 = thumbnail,
                     } : null,
                 });
                 _entries.Sort((left, right) => string.CompareOrdinal(left.SlotId, right.SlotId));
@@ -341,12 +391,16 @@ namespace Arcanum.Formats.Tests
             public void Remove(string id) => _entries.RemoveAll(entry => entry.SlotId == id);
 
             public SessionSaveSlotResult SaveSlot(string slotId)
+                => SaveSlot(slotId, slotId);
+
+            public SessionSaveSlotResult SaveSlot(string slotId, string displayName)
             {
                 SaveCalls++;
                 LastSlotId = slotId;
+                LastDisplayName = displayName;
                 if (!SaveResult.Succeeded) return SaveResult;
                 Remove(slotId);
-                Add(slotId, true);
+                Add(slotId, true, displayName: displayName);
                 return SaveResult;
             }
 

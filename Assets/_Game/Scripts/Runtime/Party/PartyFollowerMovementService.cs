@@ -60,7 +60,8 @@ namespace Arcanum.Runtime.Party
         {
             route?.Clear();
             if (_world.Combat.IsActive) return FollowerMoveResult.CombatActive;
-            if (!_world.Party.FollowingEnabled) return FollowerMoveResult.Unavailable;
+            PartyFollowerOrderState order = _world.Party.GetOrderState(follower);
+            if (!order.FollowingEnabled) return FollowerMoveResult.Unavailable;
             if (!_world.Party.CanAccompany(follower) || map == null
                 || !_world.TryGetLoadedObject(follower, out WorldObject followerRuntime)
                 || _world.PlayerState == null
@@ -72,11 +73,11 @@ namespace Arcanum.Runtime.Party
 
             Vector2Int start = followerRuntime.Tile;
             Vector2Int leader = leaderRuntime.Tile;
-            int desiredRange = _world.Party.DesiredFollowRange;
-            if (_world.Party.OrderedLocation.HasValue
+            int desiredRange = order.DesiredFollowRange;
+            if (order.OrderedLocation.HasValue
                 && SectorCoordinate.TryParse(_world.SelectedSector, out SectorCoordinate sector))
             {
-                leader = sector.ToLocal(_world.Party.OrderedLocation.Value);
+                leader = sector.ToLocal(order.OrderedLocation.Value);
                 desiredRange = 0;
             }
             if (Distance(start, leader) <= desiredRange) return FollowerMoveResult.InRange;

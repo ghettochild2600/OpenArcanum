@@ -16,6 +16,7 @@ using Arcanum.Runtime.Economy;
 using Arcanum.Runtime.Social;
 using Arcanum.Runtime.Crafting;
 using Arcanum.Runtime.Creation;
+using Arcanum.Runtime.UI;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Serialization;
 using UnityEngine;
@@ -96,11 +97,17 @@ namespace Arcanum.Runtime.Save
         internal CampaignStateService Campaign;
         internal List<PartyMember> PartyMembers;
         internal MagicSaveData Magic;
+        internal PoisonSaveData Poison;
         internal TechnologySaveData Technology;
         internal CraftingSaveData Crafting;
         internal EconomySaveData Economy;
         internal SocialSaveData Social;
         internal CharacterCreationSaveData CharacterCreation;
+        internal GameplayHudSaveData GameplayHud;
+        internal LocalMapSaveData LocalMap;
+        internal LogbookSaveData Logbook;
+        internal ScriptTimerSaveData ScriptTimers;
+        internal ScriptEffectSaveData ScriptEffects;
     }
 
     /// <summary>Versioned, presentation-independent persistence for the bounded M1-M5 session state.</summary>
@@ -287,11 +294,15 @@ namespace Arcanum.Runtime.Save
                     .OrderBy(state => state.Identity.Key, StringComparer.Ordinal).Select(CaptureCharacter).ToList(),
                 Campaign = _session.Campaign.ExportSaveData(),
                 Magic = _session.Magic.ExportSaveData(),
+                Poison = _session.Poison.ExportSaveData(),
                 Technology = _session.Technology.ExportSaveData(),
                 Crafting = _session.Crafting.ExportSaveData(),
                 Economy = _session.Economy.ExportSaveData(),
                 Social = _session.Social.ExportSaveData(),
                 CharacterCreation = _session.CharacterCreation.ExportSaveData(),
+                GameplayHud = _session.GameplayHud.ExportSaveData(),
+                LocalMap = _session.LocalMap.ExportSaveData(),
+                Logbook = _session.Logbook.ExportSaveData(),
                 Party = new PartySaveData
                 {
                     LeaderIdentity = _session.Party.Leader.Key,
@@ -302,6 +313,8 @@ namespace Arcanum.Runtime.Save
                     }).ToList(),
                 },
             };
+            data.Campaign.ScriptTimers = _session.ScriptTimers.ExportSaveData();
+            data.Campaign.ScriptEffects = _session.ScriptEffects.ExportSaveData();
             data.Campaign.Reactions = _session.DerivedStats.ExportReactionAdjustments()
                 .Select(value => new ReactionSaveData
                 {
@@ -321,6 +334,7 @@ namespace Arcanum.Runtime.Save
                 Type = (int)state.Type,
                 PrototypeNumber = state.PrototypeNumber,
                 NameIndex = state.NameIndex,
+                DescriptionId = state.DescriptionId,
                 SocialClass = state.SocialClass,
                 AiData = state.AiData,
                 Origin = state.Origin,
@@ -340,6 +354,10 @@ namespace Arcanum.Runtime.Save
                 Off = state.Off,
                 Locked = state.Locked,
                 UseScriptNum = state.UseScriptNum,
+                UseScriptLocalFlags = state.UseScriptLocalFlags,
+                UseScriptLocalCounters = state.UseScriptLocalCounters,
+                SceneryOccupantIdentity = state.SceneryOccupantIdentity.IsNull
+                    ? null : state.SceneryOccupantIdentity.Key,
                 DialogNum = state.DialogNum,
                 ItemFlags = state.ItemFlags,
                 InventoryArtId = state.InventoryArtId,
@@ -347,6 +365,7 @@ namespace Arcanum.Runtime.Save
                 GenericFlags = state.GenericFlags,
                 WrittenSubtype = state.WrittenSubtype,
                 WrittenStartLine = state.WrittenStartLine,
+                KeyId = state.KeyId,
                 UnitWeight = state.UnitWeight,
                 FootprintWidth = state.InventoryFootprint.Width,
                 FootprintHeight = state.InventoryFootprint.Height,
@@ -441,6 +460,7 @@ namespace Arcanum.Runtime.Save
                     Alignment = derived.Alignment,
                     MagickPoints = derived.Source.MagickPoints,
                     TechPoints = derived.Source.TechPoints,
+                    MagickPointAdjustment = derived.MagickPointAdjustment,
                     TechnologyPointAdjustment = derived.TechnologyPointAdjustment,
                     ReactionBase = derived.Source.ReactionBase,
                     IsAloof = derived.Source.IsAloof,
@@ -464,9 +484,13 @@ namespace Arcanum.Runtime.Save
 
             SessionLoadResult result = BuildWorld(data, out plan);
             if (!result.Succeeded) return result;
+            result = BuildCharacterCreation(data.CharacterCreation, plan);
+            if (!result.Succeeded) { plan = null; return result; }
             result = BuildCharacters(data.Characters, plan);
             if (!result.Succeeded) { plan = null; return result; }
             result = BuildMagic(data.Magic, plan);
+            if (!result.Succeeded) { plan = null; return result; }
+            result = BuildPoison(data.Poison, plan);
             if (!result.Succeeded) { plan = null; return result; }
             result = BuildTechnology(data.Technology, plan);
             if (!result.Succeeded) { plan = null; return result; }
@@ -476,12 +500,87 @@ namespace Arcanum.Runtime.Save
             if (!result.Succeeded) { plan = null; return result; }
             result = BuildSocial(data.Social, plan);
             if (!result.Succeeded) { plan = null; return result; }
-            result = BuildCharacterCreation(data.CharacterCreation, plan);
-            if (!result.Succeeded) { plan = null; return result; }
             result = BuildCampaign(data.Campaign, plan);
+            if (!result.Succeeded) { plan = null; return result; }
+            result = BuildScriptTimers(data.Campaign.ScriptTimers, plan);
+            if (!result.Succeeded) { plan = null; return result; }
+            result = BuildScriptEffects(data.Campaign.ScriptEffects, plan);
             if (!result.Succeeded) { plan = null; return result; }
             result = BuildParty(data.Party, plan);
             if (!result.Succeeded) { plan = null; return result; }
+            result = BuildGameplayHud(data.GameplayHud, plan);
+            if (!result.Succeeded) { plan = null; return result; }
+            result = BuildLocalMap(data.LocalMap, plan);
+            if (!result.Succeeded) { plan = null; return result; }
+            result = BuildLogbook(data.Logbook, plan);
+            if (!result.Succeeded) { plan = null; return result; }
+            return new SessionLoadResult(SessionLoadFailure.None);
+        }
+
+        private static SessionLoadResult BuildScriptTimers(ScriptTimerSaveData data, SessionRestorePlan plan)
+        {
+            data ??= new ScriptTimerSaveData();
+            if (data.NextSequence < 1 || data.Calls == null)
+                return Failure(SessionLoadFailure.InvalidCampaign, "The script timer state is incomplete.");
+            var sequences = new HashSet<long>();
+            foreach (ScheduledScriptCallSaveData value in data.Calls)
+            {
+                if (value == null || value.Sequence < 1 || value.Sequence >= data.NextSequence
+                    || !sequences.Add(value.Sequence) || value.DueCampaignMilliseconds < 0
+                    || value.ScriptNumber <= 0 || value.StartLine < 0
+                    || !TryIdentity(value.TriggererIdentity, out ArcanumObjectId triggerer)
+                    || !TryIdentity(value.AttacheeIdentity, out ArcanumObjectId attachee)
+                    || !ContainsIdentity(plan, triggerer) || !ContainsIdentity(plan, attachee))
+                    return Failure(SessionLoadFailure.InvalidCampaign, "A scheduled script callback is invalid.");
+            }
+            plan.ScriptTimers = data;
+            return new SessionLoadResult(SessionLoadFailure.None);
+        }
+
+        private static SessionLoadResult BuildScriptEffects(ScriptEffectSaveData data, SessionRestorePlan plan)
+        {
+            data ??= new ScriptEffectSaveData();
+            if (data.NextSequence < 1 || data.Effects == null)
+                return Failure(SessionLoadFailure.InvalidCampaign, "The script effect state is incomplete.");
+            var sequences = new HashSet<long>();
+            foreach (ScriptEffectInstanceSaveData value in data.Effects)
+            {
+                if (value == null || value.Sequence < 1 || value.Sequence >= data.NextSequence
+                    || !sequences.Add(value.Sequence) || value.EffectId is < 0 or >= 400
+                    || !TryIdentity(value.TargetIdentity, out ArcanumObjectId target)
+                    || !plan.Characters.States.ContainsKey(target))
+                    return Failure(SessionLoadFailure.InvalidCampaign, "A persistent script effect is invalid.");
+            }
+            plan.ScriptEffects = data;
+            return new SessionLoadResult(SessionLoadFailure.None);
+        }
+
+        private static bool ContainsIdentity(SessionRestorePlan plan, ArcanumObjectId identity)
+            => plan.Player.Identity == identity || plan.Objects.ContainsKey(identity);
+
+        private static SessionLoadResult BuildLogbook(LogbookSaveData data, SessionRestorePlan plan)
+        {
+            if (!LogbookStateService.ValidateSaveData(data, plan.Player.Identity, out string error))
+                return Failure(SessionLoadFailure.InvalidCampaign, error);
+            plan.Logbook = data;
+            return new SessionLoadResult(SessionLoadFailure.None);
+        }
+
+        private static SessionLoadResult BuildLocalMap(LocalMapSaveData data, SessionRestorePlan plan)
+        {
+            if (!LocalMapStateService.ValidateSaveData(data, out string error))
+                return Failure(SessionLoadFailure.InvalidWorld, error);
+            plan.LocalMap = data;
+            return new SessionLoadResult(SessionLoadFailure.None);
+        }
+
+        private static SessionLoadResult BuildGameplayHud(GameplayHudSaveData data, SessionRestorePlan plan)
+        {
+            // Earlier V1 saves legitimately have no UI-C.4 HUD domain.
+            if (!GameplayHudStateService.ValidateSaveData(data, plan.Objects, plan.Player.Identity,
+                    out string error))
+                return Failure(SessionLoadFailure.InvalidCharacter, error);
+            plan.GameplayHud = data;
             return new SessionLoadResult(SessionLoadFailure.None);
         }
 
@@ -496,7 +595,9 @@ namespace Arcanum.Runtime.Save
                 || data.BackgroundId < 0 || data.BackgroundTextId < 1000
                 || data.PortraitId < 1000 || data.Age != CharacterCreationRules.SourceStartingAge
                 || data.SpentCharacterPoints < 0
-                || data.SpentCharacterPoints > CharacterCreationRules.StartingCharacterPoints)
+                || data.SpentCharacterPoints > CharacterCreationRules.StartingCharacterPoints
+                || data.PregeneratedSourceIndex < 0
+                || data.AutoLevelScheme is < 0 or >= 200)
                 return Failure(SessionLoadFailure.InvalidCharacter,
                     "The finalized character-creation identity is invalid.");
             plan.CharacterCreation = data;
@@ -619,6 +720,16 @@ namespace Arcanum.Runtime.Save
             return new SessionLoadResult(SessionLoadFailure.None);
         }
 
+        private static SessionLoadResult BuildPoison(PoisonSaveData data, SessionRestorePlan plan)
+        {
+            long elapsed = plan.Magic?.ElapsedMilliseconds ?? 0;
+            if (!CharacterPoisonService.ValidateSaveData(data, plan.Characters, plan.Vitality, elapsed,
+                    out string error))
+                return Failure(SessionLoadFailure.InvalidCharacter, error);
+            plan.Poison = data;
+            return new SessionLoadResult(SessionLoadFailure.None);
+        }
+
         private SessionLoadResult BuildTechnology(TechnologySaveData data, SessionRestorePlan plan)
         {
             // Earlier V1 saves legitimately have no technology domain.
@@ -633,6 +744,28 @@ namespace Arcanum.Runtime.Save
                     || value.DisciplineRanks.Any(rank => rank < 0 || rank > 7))
                     return Failure(SessionLoadFailure.InvalidCharacter,
                         $"Technology knowledge for '{value?.Identity}' is invalid.");
+            var manuals = new HashSet<ArcanumObjectId>();
+            foreach (TechnologyManualSaveData value in data.Manuals ?? new List<TechnologyManualSaveData>())
+            {
+                if (value == null
+                    || !TryIdentity(value.ItemIdentity, out ArcanumObjectId itemIdentity)
+                    || !TryIdentity(value.OwnerIdentity, out ArcanumObjectId ownerIdentity)
+                    || !manuals.Add(itemIdentity)
+                    || !plan.Objects.TryGetValue(itemIdentity, out PersistentObjectState item)
+                    || !plan.Characters.TryGet(ownerIdentity, out _)
+                    || item.ParentIdentity != ownerIdentity
+                    || item.Placement.Kind is not (ObjectPlacementKind.Contained or ObjectPlacementKind.Equipped)
+                    || !TechnologyManualCatalog.TryGet(item.PrototypeNumber,
+                        out TechnologyManualDefinition definition)
+                    || value.Discipline != (int)definition.Discipline
+                    || value.Expertise < 0 || value.Expertise > 100)
+                    return Failure(SessionLoadFailure.InvalidCharacter,
+                        $"Technical Manual contribution for '{value?.ItemIdentity}' is invalid.");
+                ObjectProtoInfo prototype = _session.ResolvePrototype(item.PrototypeNumber);
+                if (prototype?.ItemDiscipline != value.Discipline)
+                    return Failure(SessionLoadFailure.InvalidCharacter,
+                        $"Technical Manual prototype for '{value.ItemIdentity}' is invalid.");
+            }
             plan.Technology = data;
             return new SessionLoadResult(SessionLoadFailure.None);
         }
@@ -783,6 +916,9 @@ namespace Arcanum.Runtime.Save
             if (!TryNullableIdentity(value.SubstituteInventoryIdentity, out ArcanumObjectId substituteInventory))
                 return Failure(SessionLoadFailure.InvalidIdentity,
                     $"Object {identity} has an invalid substitute inventory.");
+            if (!TryNullableIdentity(value.SceneryOccupantIdentity, out ArcanumObjectId sceneryOccupant))
+                return Failure(SessionLoadFailure.InvalidIdentity,
+                    $"Object {identity} has an invalid scenery occupant.");
             SessionLoadResult placementResult = TryRestorePlacement(value.Placement, out ObjectPlacement placement);
             if (!placementResult.Succeeded) return placementResult;
 
@@ -790,7 +926,7 @@ namespace Arcanum.Runtime.Save
             {
                 ObjectProtoInfo prototype = _session.ResolvePrototype(value.PrototypeNumber);
                 state = new PersistentObjectState(identity, authoredParent, sourceSector, type, value.PrototypeNumber,
-                    value.NameIndex, value.SocialClass, value.AiData, value.Origin, value.Faction,
+                    value.NameIndex, value.DescriptionId, value.SocialClass, value.AiData, value.Origin, value.Faction,
                     value.SourceWorth, value.MaximumHitPoints,
                     value.HitPointDamage, value.RetailPriceMultiplier, value.InventorySourceId,
                     substituteInventory, value.NpcFlags, value.BuyObjectScriptNum, value.ContainerFlags,
@@ -801,7 +937,8 @@ namespace Arcanum.Runtime.Save
                     value.StackQuantity, value.PortalOpen, new Vector2(value.TileX, value.TileY), placement,
                     value.RuntimeCreated,
                     prototype?.Weapon != null ? Combat.Weapon.FromFields(prototype.Weapon) : null,
-                    prototype?.AmmoItemType, value.DeathConsequencesProcessed);
+                    prototype?.AmmoItemType, value.DeathConsequencesProcessed,
+                    value.UseScriptLocalFlags, value.UseScriptLocalCounters, sceneryOccupant, value.KeyId);
             }
             catch (Exception ex)
             {
@@ -854,8 +991,20 @@ namespace Arcanum.Runtime.Save
             HashSet<ArcanumObjectId> tombstones)
         {
             var occupied = new HashSet<string>(StringComparer.Ordinal);
+            var bedOccupants = new HashSet<ArcanumObjectId>();
             foreach (PersistentObjectState state in objects.Values)
             {
+                if (!state.SceneryOccupantIdentity.IsNull)
+                {
+                    ArcanumObjectId occupant = state.SceneryOccupantIdentity;
+                    if (!BedSleepAuthority.IsBed(state)
+                        || tombstones.Contains(occupant)
+                        || occupant != player && (!objects.TryGetValue(occupant, out PersistentObjectState critter)
+                            || critter.Type is not ObjectType.Pc and not ObjectType.Npc)
+                        || !bedOccupants.Add(occupant))
+                        return Failure(SessionLoadFailure.InvalidReference,
+                            $"Scenery occupant {occupant} for {state.Identity} is invalid.");
+                }
                 if (state.Placement.Kind == ObjectPlacementKind.World) continue;
                 ArcanumObjectId parent = state.ParentIdentity;
                 if (tombstones.Contains(parent))
@@ -914,8 +1063,9 @@ namespace Arcanum.Runtime.Save
                         || (ObjectType)value.ObjectType is not ObjectType.Pc and not ObjectType.Npc)
                         return Failure(SessionLoadFailure.InvalidCharacter, $"Character {identity} has an invalid type.");
                     ObjectType objectType = (ObjectType)value.ObjectType;
+                    bool pregeneratedPc = plan.CharacterCreation?.PregeneratedSourceIndex > 0;
                     if (objectType == ObjectType.Pc
-                        ? identity != plan.Player.Identity || value.PrototypeNumber.HasValue
+                        ? identity != plan.Player.Identity || value.PrototypeNumber.HasValue != pregeneratedPc
                         : !value.PrototypeNumber.HasValue || !plan.Objects.TryGetValue(identity, out PersistentObjectState npc)
                           || npc.Type != ObjectType.Npc || npc.PrototypeNumber != value.PrototypeNumber.Value)
                         return Failure(SessionLoadFailure.InvalidCharacter, $"Character {identity} has no matching owner.");
@@ -1007,9 +1157,10 @@ namespace Arcanum.Runtime.Save
                     PersistentCharacterDerivedState state = derived.GetOrCreateRestored(identity,
                         (ObjectType)value.ObjectType, value.PrototypeNumber, derivedSource);
                     state.SetAlignment(source.Alignment);
-                    if (source.TechnologyPointAdjustment < 0)
+                    if (source.MagickPointAdjustment < 0 || source.TechnologyPointAdjustment < 0)
                         return Failure(SessionLoadFailure.InvalidCharacter,
-                            $"Character {identity} technology point adjustment is invalid.");
+                            $"Character {identity} aptitude point adjustment is invalid.");
+                    state.SetMagickPointAdjustment(source.MagickPointAdjustment);
                     state.SetTechnologyPointAdjustment(source.TechnologyPointAdjustment);
                 }
                 plan.Characters = characters;
@@ -1068,6 +1219,7 @@ namespace Arcanum.Runtime.Save
                     || identity != plan.Player.Identity && !plan.Objects.ContainsKey(identity)
                        && !plan.Tombstones.Contains(identity)
                     || (uint)attachment.AttachmentPoint > (uint)Arcanum.Formats.Script.Sap.CriticalMiss
+                    || attachment.ScriptNumber < 0
                     || !attachments.Add(identity.Key + ":" + attachment.AttachmentPoint))
                     return Failure(SessionLoadFailure.InvalidCampaign, "A script attachment is invalid.");
             }

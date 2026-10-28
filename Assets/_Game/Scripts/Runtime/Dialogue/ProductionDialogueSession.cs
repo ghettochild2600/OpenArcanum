@@ -9,6 +9,8 @@ using Arcanum.Runtime.Campaign;
 using Arcanum.Runtime.Character;
 using Arcanum.Runtime.Combat;
 using Arcanum.Runtime.Party;
+using Arcanum.Runtime.Save;
+using Arcanum.Runtime.UI;
 using Arcanum.Runtime.World;
 using Arcanum.Runtime.Social;
 using Arcanum.Script;
@@ -201,7 +203,7 @@ namespace Arcanum.Runtime.Dialogue
             if (_resolveScript == null || _resolveDialogue == null)
                 return FailStart(DialogueStartStatus.MissingScript, "Dialogue sources have not been bound.");
 
-            DialogueNumber = npcState.DialogNum;
+            DialogueNumber = _campaign.GetScriptNumber(npc, (int)Sap.Dialog, npcState.DialogNum);
             ScriptFile script = _resolveScript(DialogueNumber);
             if (script == null)
                 return FailStart(DialogueStartStatus.MissingScript, $"SAP_DIALOG script {DialogueNumber} is missing.");
@@ -209,13 +211,17 @@ namespace Arcanum.Runtime.Dialogue
             if (_dialogue == null)
                 return FailStart(DialogueStartStatus.MissingDialogue, $"Dialogue {DialogueNumber} is missing.");
 
+            DialogueTransactionSnapshot snapshot = new(_world, _campaign);
+            if (_world.Social.GetReaction(npc, pc) < 100
+                && _world.GameplayHud.TryResolveFate(FateChoice.ForceGoodReaction))
+                _world.Social.SetReaction(npc, pc, 100);
+
             _context = new ProductionDialogueContext(_world, _campaign, pc, npc, _resolveGeneratedText,
                 () =>
                 {
                     SpecialView = DialogueSpecialView.CharacterExamination;
                     SpecialViewTarget = npc;
                 });
-            DialogueTransactionSnapshot snapshot = new(_world, _campaign);
             ScriptAttachmentState attachment = _campaign.GetScriptAttachment(npc, (int)Sap.Dialog);
             var scriptContext = new ScriptContext
             {
@@ -245,6 +251,11 @@ namespace Arcanum.Runtime.Dialogue
             }
             _campaign.SetScriptAttachment(npc, (int)Sap.Dialog, scriptContext.LocalFlags,
                 scriptContext.LocalCounters);
+            if (scriptContext.ReplacementScriptNum.HasValue)
+            {
+                _campaign.SetScriptNumber(npc, (int)Sap.Dialog, scriptContext.ReplacementScriptNum.Value);
+                npcState.DialogNum = scriptContext.ReplacementScriptNum.Value;
+            }
             LastFailure = null;
             Changed?.Invoke();
             return DialogueStartStatus.Started;
@@ -646,6 +657,7 @@ namespace Arcanum.Runtime.Dialogue
             private readonly CharacterDerivedStatService.Snapshot _derived;
             private readonly SocialStateService.Snapshot _social;
             private readonly WorldMapSessionCoordinator.DialogueInventorySnapshot _inventory;
+            private readonly GameplayHudSaveData _gameplayHud;
             private readonly PartyMember[] _party;
             private readonly Dictionary<ArcanumObjectId, bool> _waiting;
 
@@ -656,6 +668,7 @@ namespace Arcanum.Runtime.Dialogue
                 _derived = world.DerivedStats.CaptureSnapshot();
                 _social = world.Social.CaptureSnapshot();
                 _inventory = world.CaptureDialogueInventorySnapshot();
+                _gameplayHud = world.GameplayHud.ExportSaveData();
                 _party = world.Party.CaptureMembership();
                 _waiting = new Dictionary<ArcanumObjectId, bool>();
                 foreach (PersistentObjectState state in world.States.Values)
@@ -670,6 +683,7 @@ namespace Arcanum.Runtime.Dialogue
                 world.DerivedStats.RestoreSnapshot(_derived);
                 world.Social.RestoreSnapshot(_social);
                 world.RestoreDialogueInventorySnapshot(_inventory);
+                world.GameplayHud.RestoreSaveData(_gameplayHud);
                 world.Party.RestoreMembership(_party);
                 foreach (KeyValuePair<ArcanumObjectId, bool> pair in _waiting)
                     world.SetNpcWaiting(pair.Key, pair.Value);
@@ -731,37 +745,21 @@ namespace Arcanum.Runtime.Dialogue
             Diagnostic?.Invoke(diagnostic);
         }
 
-        private sealed class DialogueScriptHost : ScriptHostAdapter
+        private sealed class DialogueScriptHost : WorldScriptCampaignHost
         {
             private readonly ProductionDialogueSession _dialogue;
-            private readonly WorldMapSessionCoordinator _world;
 
             public DialogueScriptHost(ProductionDialogueSession dialogue, WorldMapSessionCoordinator world)
+                : base(world)
             {
                 _dialogue = dialogue;
-                _world = world;
-            }
-
-            public override object[] ResolveFocus(int sfoType, int sfoValue, ScriptContext context)
-            {
-                return (Sfo)sfoType switch
-                {
-                    Sfo.Triggerer => One(context.Triggerer),
-                    Sfo.Attachee => One(context.Attachee),
-                    Sfo.ExtraObject => One(context.Extra),
-                    Sfo.Player => _world.PlayerState == null ? Array.Empty<object>()
-                        : One(new WorldScriptObjectReference(_world.PlayerState.Identity)),
-                    _ => throw Unsupported($"ResolveFocus({(Sfo)sfoType})"),
-                };
             }
 
             public override void StartDialog(object obj, int dialogLine, int scriptNum, int scriptLine)
                 => _dialogue.OpenFromScript(obj, dialogLine, scriptLine);
 
             public override bool IsFollowingPc(object obj)
-                => obj is WorldScriptObjectReference reference && _world.Party.IsMember(reference.Identity);
-
-            private static object[] One(object value) => value == null ? Array.Empty<object>() : new[] { value };
+                => obj is WorldScriptObjectReference reference && Session.Party.IsMember(reference.Identity);
         }
     }
 
@@ -887,7 +885,7 @@ namespace Arcanum.Runtime.Dialogue
             if (!result.Succeeded) throw new InvalidOperationException($"Item transfer failed: {result.Code}.");
         }
         public void GiveXp(int questId) => throw Outside(nameof(GiveXp));
-        public void GiveFatePoint() => throw Outside(nameof(GiveFatePoint));
+        public void GiveFatePoint() => _world.GameplayHud.GrantFatePoint();
         public void StartCombat()
         {
             _world.Social.SetHostile(_npc, _pc);

@@ -19,6 +19,8 @@ namespace Arcanum.Runtime.World
         public int PrototypeNumber { get; }
         /// <summary>Effective source OBJ_F_NAME index used by dialogue/script inventory lookup.</summary>
         public int NameIndex { get; }
+        /// <summary>Effective source OBJ_F_DESCRIPTION, with an authored instance override taking precedence.</summary>
+        public int DescriptionId { get; }
         /// <summary>Effective source NPC social class used by generated class-specific dialogue.</summary>
         public int SocialClass { get; }
         /// <summary>Effective source NPC AI packet row.</summary>
@@ -41,8 +43,11 @@ namespace Arcanum.Runtime.World
         public bool Off { get; internal set; }
         public bool Locked { get; internal set; }
         public int UseScriptNum { get; internal set; }
+        public uint UseScriptLocalFlags { get; internal set; }
+        public uint UseScriptLocalCounters { get; internal set; }
+        public ArcanumObjectId SceneryOccupantIdentity { get; internal set; }
         public int DialogNum { get; internal set; }
-        public int ItemFlags { get; }
+        public int ItemFlags { get; internal set; }
         public uint? InventoryArtId { get; }
         public int WeaponFlags { get; }
         /// <summary>Effective prototype combat facts retained independently of Unity presentation.</summary>
@@ -52,6 +57,8 @@ namespace Arcanum.Runtime.World
         public int GenericFlags { get; }
         public int WrittenSubtype { get; }
         public int WrittenStartLine { get; }
+        /// <summary>Effective source OBJ_F_KEY_KEY_ID used by the PC keyring and Logbook.</summary>
+        public int KeyId { get; }
         /// <summary>Effective stored OBJ_F_ITEM_WEIGHT (instance override, otherwise prototype).</summary>
         public int UnitWeight { get; }
         /// <summary>First inventory ART frame rounded up to source 32-pixel grid cells.</summary>
@@ -99,7 +106,9 @@ namespace Arcanum.Runtime.World
             int? origin = null,
             int? faction = null,
             int? writtenSubtype = null,
-            int? writtenStartLine = null)
+            int? writtenStartLine = null,
+            int? descriptionId = null,
+            int? keyId = null)
         {
             Identity = identity;
             AuthoredParentIdentity = source.ParentIdentity;
@@ -107,6 +116,7 @@ namespace Arcanum.Runtime.World
             Type = source.Type;
             PrototypeNumber = source.PrototypeNumber;
             NameIndex = nameIndex ?? source.NameIndex ?? 0;
+            DescriptionId = descriptionId ?? source.Description ?? 0;
             SocialClass = socialClass ?? source.SocialClass ?? 0;
             AiData = aiData ?? source.AiData ?? 0;
             Origin = origin ?? source.Origin ?? 0;
@@ -125,6 +135,9 @@ namespace Arcanum.Runtime.World
             Off = off;
             Locked = locked;
             UseScriptNum = source.UseScriptNum;
+            UseScriptLocalFlags = source.UseScriptLocalFlags;
+            UseScriptLocalCounters = source.UseScriptLocalCounters;
+            SceneryOccupantIdentity = source.SceneryOccupantIdentity;
             DialogNum = source.DialogNum;
             ItemFlags = itemFlags;
             InventoryArtId = inventoryArtId;
@@ -134,6 +147,7 @@ namespace Arcanum.Runtime.World
             GenericFlags = genericFlags;
             WrittenSubtype = writtenSubtype ?? source.WrittenSubtype ?? -1;
             WrittenStartLine = writtenStartLine ?? source.TextStartLine ?? 0;
+            KeyId = keyId ?? source.KeyId ?? 0;
             UnitWeight = unitWeight ?? source.Weight ?? 0;
             InventoryFootprint = inventoryFootprint ?? InventoryFootprint.OneCell;
             StackQuantity = ValidateStackQuantity(Type, stackQuantity);
@@ -163,6 +177,7 @@ namespace Arcanum.Runtime.World
             Type = prototype.Type;
             PrototypeNumber = prototype.ProtoNumber;
             NameIndex = prototype.NameIndex ?? 0;
+            DescriptionId = prototype.Description ?? 0;
             SocialClass = prototype.SocialClass ?? 0;
             AiData = prototype.AiData ?? 0;
             Origin = prototype.Origin ?? 0;
@@ -192,6 +207,7 @@ namespace Arcanum.Runtime.World
             GenericFlags = prototype.GenericFlags ?? 0;
             WrittenSubtype = prototype.WrittenSubtype ?? -1;
             WrittenStartLine = prototype.TextStartLine ?? 0;
+            KeyId = prototype.KeyId ?? 0;
             UnitWeight = prototype.Weight;
             InventoryFootprint = inventoryFootprint;
             StackQuantity = ValidateStackQuantity(Type, Type switch
@@ -215,6 +231,7 @@ namespace Arcanum.Runtime.World
             Type = source.Type;
             PrototypeNumber = source.PrototypeNumber;
             NameIndex = source.NameIndex;
+            DescriptionId = source.DescriptionId;
             SocialClass = source.SocialClass;
             AiData = source.AiData;
             Origin = source.Origin;
@@ -232,6 +249,9 @@ namespace Arcanum.Runtime.World
             Off = source.Off;
             Locked = source.Locked;
             UseScriptNum = source.UseScriptNum;
+            UseScriptLocalFlags = source.UseScriptLocalFlags;
+            UseScriptLocalCounters = source.UseScriptLocalCounters;
+            SceneryOccupantIdentity = source.SceneryOccupantIdentity;
             DialogNum = source.DialogNum;
             ItemFlags = source.ItemFlags;
             InventoryArtId = source.InventoryArtId;
@@ -241,6 +261,7 @@ namespace Arcanum.Runtime.World
             GenericFlags = source.GenericFlags;
             WrittenSubtype = source.WrittenSubtype;
             WrittenStartLine = source.WrittenStartLine;
+            KeyId = source.KeyId;
             UnitWeight = source.UnitWeight;
             InventoryFootprint = source.InventoryFootprint;
             StackQuantity = ValidateStackQuantity(Type, stackQuantity);
@@ -252,7 +273,8 @@ namespace Arcanum.Runtime.World
         }
 
         internal PersistentObjectState(ArcanumObjectId identity, ArcanumObjectId authoredParentIdentity,
-            string sourceSector, ObjectType type, int prototypeNumber, int nameIndex, int socialClass,
+            string sourceSector, ObjectType type, int prototypeNumber, int nameIndex, int descriptionId,
+            int socialClass,
             int aiData, int origin, int faction,
             int sourceWorth, int maximumHitPoints, int hitPointDamage, int retailPriceMultiplier,
             int inventorySourceId, ArcanumObjectId substituteInventoryIdentity, int npcFlags,
@@ -262,7 +284,9 @@ namespace Arcanum.Runtime.World
             int writtenSubtype, int writtenStartLine,
             InventoryFootprint inventoryFootprint, int inventoryLocation, int? stackQuantity, bool portalOpen,
             Vector2 tilePosition, ObjectPlacement placement, bool isRuntimeCreated,
-            Weapon weaponData = null, int? ammoItemType = null, bool deathConsequencesProcessed = false)
+            Weapon weaponData = null, int? ammoItemType = null, bool deathConsequencesProcessed = false,
+            uint useScriptLocalFlags = 0, uint useScriptLocalCounters = 0,
+            ArcanumObjectId sceneryOccupantIdentity = default, int keyId = 0)
         {
             Identity = identity;
             AuthoredParentIdentity = authoredParentIdentity;
@@ -270,6 +294,7 @@ namespace Arcanum.Runtime.World
             Type = type;
             PrototypeNumber = prototypeNumber;
             NameIndex = nameIndex;
+            DescriptionId = descriptionId;
             SocialClass = socialClass;
             AiData = aiData;
             Origin = origin;
@@ -288,6 +313,9 @@ namespace Arcanum.Runtime.World
             Off = off;
             Locked = locked;
             UseScriptNum = useScriptNum;
+            UseScriptLocalFlags = useScriptLocalFlags;
+            UseScriptLocalCounters = useScriptLocalCounters;
+            SceneryOccupantIdentity = sceneryOccupantIdentity;
             DialogNum = dialogNum;
             ItemFlags = itemFlags;
             InventoryArtId = inventoryArtId;
@@ -297,6 +325,7 @@ namespace Arcanum.Runtime.World
             GenericFlags = genericFlags;
             WrittenSubtype = writtenSubtype;
             WrittenStartLine = writtenStartLine;
+            KeyId = keyId;
             UnitWeight = unitWeight;
             InventoryFootprint = inventoryFootprint;
             InventoryLocation = inventoryLocation;

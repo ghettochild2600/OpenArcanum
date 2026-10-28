@@ -8,6 +8,7 @@ using Arcanum.Formats.World;
 using Arcanum.Runtime.Character;
 using Arcanum.Runtime.Combat;
 using Arcanum.Runtime.Magic;
+using Arcanum.Runtime.UI;
 using Arcanum.Runtime.World;
 using Arcanum.Runtime;
 using Arcanum.World;
@@ -105,6 +106,53 @@ namespace Arcanum.Formats.Tests
         }
 
         [Test]
+        public void SpellAtMaximumUsesRetailMaximumAndConsumesOnlyAfterValidPreview()
+        {
+            _session.GameplayHud.GrantFatePoint();
+            Assert.That(_session.GameplayHud.ActivateFate(FateChoice.SpellAtMaximum).Succeeded, Is.True);
+            _session.Magic.SetRandomSource(new SequenceMagicRandom(99));
+
+            SpellCastResult result = _session.Magic.Cast(
+                new SpellCastRequest(_pc.Identity, PhaseOneSpellCatalog.Harm, _target));
+
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(result.Magnitude, Is.EqualTo(40));
+            Assert.That(_session.GameplayHud.IsFateActive(FateChoice.SpellAtMaximum), Is.False);
+        }
+
+        [Test]
+        public void InvalidSpellDoesNotConsumeArmedSpellAtMaximum()
+        {
+            _session.GameplayHud.GrantFatePoint();
+            Assert.That(_session.GameplayHud.ActivateFate(FateChoice.SpellAtMaximum).Succeeded, Is.True);
+
+            SpellCastResult result = _session.Magic.Cast(new SpellCastRequest(_pc.Identity, 999, _target));
+
+            Assert.That(result.Failure, Is.EqualTo(SpellCastFailure.InvalidSpell));
+            Assert.That(_session.GameplayHud.IsFateActive(FateChoice.SpellAtMaximum), Is.True);
+        }
+
+        [Test]
+        public void SaveAgainstMagickForcesPcSaveAndConsumesOnValidCast()
+        {
+            _session.Characters.SetEffectModifier(_target, "test:fate-save-against-magick-willpower",
+                CharacterAttribute.Willpower, 1);
+            _session.Magic.SetKnownCollegeRank(_target, SpellCollege.Phantasm, 2);
+            _session.GameplayHud.GrantFatePoint();
+            Assert.That(_session.GameplayHud.ActivateFate(FateChoice.SaveAgainstMagick).Succeeded, Is.True);
+            _session.Magic.SetRandomSource(new SequenceMagicRandom(99));
+
+            SpellCastResult result = _session.Magic.Cast(
+                new SpellCastRequest(_target, PhaseOneSpellCatalog.Flash, _pc.Identity));
+
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(result.ResistancePercent, Is.EqualTo(100));
+            Assert.That(result.ActiveEffectId, Is.Null);
+            Assert.That(_session.Combat.HasCritterFlag(_pc.Identity, 0x80), Is.False);
+            Assert.That(_session.GameplayHud.IsFateActive(FateChoice.SaveAgainstMagick), Is.False);
+        }
+
+        [Test]
         public void HarmPartialMagicResistanceReducesDamageWithMinimumOne()
         {
             ArcanumObjectId resistant = AddNpc("G_22222222_2222_2222_2222_222222222222",
@@ -149,11 +197,19 @@ namespace Arcanum.Formats.Tests
             Assert.That(_session.Characters.GetBaseAttribute(_pc.Identity, CharacterAttribute.Strength), Is.EqualTo(8));
             Assert.That(_session.Characters.GetEffectiveAttribute(_pc.Identity, CharacterAttribute.Strength),
                 Is.EqualTo(strength + 4));
+            CharacterContributor contributor = _session.Characters.Contributors
+                .GetOrderedContributors(_pc.Identity)
+                .Single(value => value.Domain == CharacterContributorDomain.Spell);
+            Assert.That((contributor.SourceId, contributor.Target, contributor.Amount),
+                Is.EqualTo((PhaseOneSpellCatalog.StrengthOfEarth,
+                    CharacterContributorTarget.Attribute(CharacterAttribute.Strength), 4)));
             Assert.That(_session.Magic.Cast(new SpellCastRequest(_pc.Identity, 15, _pc.Identity)).Failure,
                 Is.EqualTo(SpellCastFailure.DuplicateEffect));
             Assert.That(_session.Magic.EndEffect(result.ActiveEffectId.Value), Is.True);
             Assert.That(_session.Characters.GetEffectiveAttribute(_pc.Identity, CharacterAttribute.Strength),
                 Is.EqualTo(strength));
+            Assert.That(_session.Characters.Contributors.GetOrderedContributors(_pc.Identity)
+                .Any(value => value.Domain == CharacterContributorDomain.Spell), Is.False);
         }
 
         [Test]
@@ -260,6 +316,8 @@ namespace Arcanum.Formats.Tests
             Assert.That(_session.Magic.ActiveEffects[0].Id, Is.EqualTo(maintained.ActiveEffectId));
             Assert.That(_session.Characters.GetEffectiveAttribute(_pc.Identity, CharacterAttribute.Strength),
                 Is.EqualTo(12));
+            Assert.That(_session.Characters.Contributors.GetOrderedContributors(_pc.Identity)
+                .Count(value => value.Domain == CharacterContributorDomain.Spell), Is.EqualTo(1));
             Assert.That(Fatigue(_pc.Identity), Is.EqualTo(fatigueBeforePending));
             Assert.That(Hp(_target), Is.EqualTo(targetHitPoints));
         }

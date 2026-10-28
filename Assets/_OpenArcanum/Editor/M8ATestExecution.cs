@@ -12,6 +12,33 @@ internal sealed class M8ATestExecution : ScriptableObject, ICallbacks
     private string _label;
     private bool _active;
 
+    [MenuItem("OpenArcanum/Script Compatibility/Run Focused EditMode Tests", false, 2)]
+    private static void RunScriptCompatibilityFocused()
+        => Run(Category("ScriptCompatibility"), "script compatibility focused EditMode");
+
+    [MenuItem("OpenArcanum/Script Compatibility/Run Affected Regression Tests", false, 3)]
+    private static void RunScriptCompatibilityAffected()
+    {
+        RunMany(
+            new[]
+            {
+                Test("Arcanum.Formats.Tests.ScriptVmTests"), Category("M2BUseScript"),
+                Category("M3B"), Category("M3D"), Category("M10BTechnologyRuntime"),
+                Category("M11BSocialSystems"), Category("M4BCharacterVitality"),
+                Category("M4CCharacterProgression"), Category("M4DDerivedCharacterStats"), Category("M6A"),
+            },
+            new[]
+            {
+                "script VM", "use-script dispatch", "inventory commands", "stack state",
+                "technology runtime", "social systems",
+                "character vitality", "character progression", "derived character stats", "session save/load",
+            });
+    }
+
+    [MenuItem("OpenArcanum/Script Compatibility/Run Complete EditMode Tests", false, 4)]
+    private static void RunScriptCompatibilityAll()
+        => Run(new Filter { testMode = TestMode.EditMode }, "script compatibility complete EditMode");
+
     [MenuItem("OpenArcanum/M13A/Run Focused EditMode Tests #&q", false, 1)]
     private static void RunM13AFocused()
         => Run(Category("M13AKeyboardInput"), "M13A keyboard/input focused EditMode");
@@ -70,6 +97,156 @@ internal sealed class M8ATestExecution : ScriptableObject, ICallbacks
     [MenuItem("OpenArcanum/M12C/Run Complete EditMode Tests #&h", false, 3)]
     private static void RunM12CAll()
         => Run(new Filter { testMode = TestMode.EditMode }, "M12C complete EditMode");
+
+    [MenuItem("OpenArcanum/UI-D/Run Focused EditMode Tests #&i", false, 1)]
+    private static void RunUiDFocused()
+        => Run(Category("UIDCharacterCreation"), "UI-D focused EditMode");
+
+    [MenuItem("OpenArcanum/UI Hover/Run Focused EditMode Tests #&l", false, 1)]
+    private static void RunUiHoverFocused()
+        => RunMany(
+            new[]
+            {
+                Test("Arcanum.Formats.Tests.UiDCharacterCreationTests.IdentitySelectorHoverTransitionsReusePreparedBitmapPresenters"),
+                Test("Arcanum.Formats.Tests.UiACommonRuntimeTests.BitmapTextChangesReusePreparedGlyphPresenters"),
+                Test("Arcanum.Formats.Tests.UiCGameplayHudTests.HudContextualHelpChangesRenderImmediatelyAndIgnoreIdenticalRefreshes"),
+            },
+            new[] { "Character Creation hover responsiveness", "shared bitmap text reuse",
+                "HUD contextual-help responsiveness" });
+
+    [MenuItem("OpenArcanum/UI Hover/Run Affected UI Tests #&j", false, 2)]
+    private static void RunUiHoverAffected()
+        => RunMany(
+            new[]
+            {
+                Category("UIACommonRuntime"), Category("UIBMainMenu"), Category("UICGameplayHud"),
+                Category("UIDCharacterCreation"), Category("UIEInventoryEquipment"),
+                Category("UIE2CharacterSkills"), Category("UiF2LogbookPresentation"),
+            },
+            new[]
+            {
+                "shared UI runtime", "Main Menu", "gameplay HUD", "Character Creation and Shopkeeper",
+                "inventory presentation", "Character Skills/Magic/Technology", "Logbook presentation",
+            });
+
+    [MenuItem("OpenArcanum/Shopkeeper/Run Focused EditMode Tests #&k", false, 1)]
+    private static void RunShopkeeperFocused()
+        => RunMany(
+            new[]
+            {
+                Category("UIDCharacterCreation"), Category("UIEInventoryEquipment"),
+                new Filter
+                {
+                    testMode = TestMode.EditMode,
+                    categoryNames = new[] { "M3D", "M11AEconomyVendor" },
+                },
+            },
+            new[]
+            {
+                "Shopkeeper UI-D", "Shopkeeper inventory presentation",
+                "Shopkeeper stack and economy authority",
+            });
+
+    [MenuItem("OpenArcanum/UI-D.2/Run Focused EditMode Tests", false, 1)]
+    private static void RunUiD2Focused()
+        => Run(Category("UID2CharacterCreation"), "UI-D.2 partial-window ownership focused EditMode");
+
+    [MenuItem("OpenArcanum/UI-D.1/Run Focused EditMode Tests", false, 1)]
+    private static void RunUiD1Focused()
+    {
+        RunMany(
+            new[]
+            {
+                Category("UIDCharacterCreation"), Category("UIBMainMenu"),
+                Category("UICGameplayHud"), Category("UIE2CharacterSkills"),
+                Category("M12BCharacterCreationNewGame"), Category("M13AKeyboardInput"),
+            },
+            new[]
+            {
+                "UI-D.1 Character Creation", "UI-B.1 Main Menu / Pick Character",
+                "UI-C.5 gameplay HUD", "UI-E.2 Character / Skills",
+                "M12B Character Creation", "production keyboard/input",
+            });
+    }
+
+    [MenuItem("OpenArcanum/UI-D.1/Run Targeted Regression Tests", false, 2)]
+    private static void RunUiD1Targeted()
+    {
+        RunMany(
+            new[]
+            {
+                Category("UIACommonRuntime"), Category("UIBMainMenu"), Category("UICGameplayHud"),
+                Category("UIDCharacterCreation"), Category("UIEInventoryEquipment"),
+                Category("UIE2CharacterSkills"), Category("M3A"), Category("M3C"),
+                Category("M4ACharacterAttributes"), Category("M4BCharacterVitality"),
+                Category("M4CCharacterProgression"), Category("M4DDerivedCharacterStats"),
+                Category("M6A"), Category("M8FCriticalResolution"), Category("M10AMagicRuntime"),
+                Category("M12BCharacterCreationNewGame"), Category("M12CFullGameUi"),
+                Category("M13AKeyboardInput"), Category("PlayerStartup"),
+            },
+            new[]
+            {
+                "UI-A common runtime", "UI-B Main Menu", "UI-C gameplay HUD",
+                "UI-D Character Creation", "UI-E.1 Inventory / Equipment",
+                "UI-E.2 Character / Skills", "M3A inventory", "M3C equipment",
+                "M4A attributes", "M4B vitality", "M4C progression", "M4D derived stats",
+                "M6A save/load", "M8F critical runtime", "M10 magic",
+                "M12B Character Creation", "M12C production UI", "production keyboard/input",
+                "Player Startup",
+            });
+    }
+
+    [MenuItem("OpenArcanum/UI-D.1/Run Complete EditMode Tests", false, 3)]
+    private static void RunUiD1All()
+        => Run(new Filter { testMode = TestMode.EditMode }, "UI-D.1 complete EditMode");
+
+    [MenuItem("OpenArcanum/UI-E.2/Run Focused EditMode Tests", false, 1)]
+    private static void RunUiE2Focused()
+        => Run(Category("UIE2CharacterSkills"), "UI-E.2 Character/Skills focused EditMode");
+
+    [MenuItem("OpenArcanum/UI-E.2/Run Targeted Regression Tests", false, 2)]
+    private static void RunUiE2Targeted()
+    {
+        RunMany(
+            new[]
+            {
+                Category("UIDCharacterCreation"), Category("UIEInventoryEquipment"),
+                Category("M4ACharacterAttributes"), Category("M4BCharacterVitality"),
+                Category("M4CCharacterProgression"), Category("M4DDerivedCharacterStats"),
+                Category("M12CFullGameUi"), Category("M13AKeyboardInput"), Category("PlayerStartup"),
+            },
+            new[]
+            {
+                "UI-D Character Creation", "UI-E.1 Inventory/Equipment", "M4A attributes", "M4B vitality",
+                "M4C progression", "M4D derived stats", "M12C production UI", "production keyboard/input",
+                "Player Startup",
+            });
+    }
+
+    [MenuItem("OpenArcanum/UI-E.2/Run Complete EditMode Tests", false, 3)]
+    private static void RunUiE2All()
+        => Run(new Filter { testMode = TestMode.EditMode }, "UI-E.2 complete EditMode");
+
+    [MenuItem("OpenArcanum/UI-D/Run Targeted Regression Tests", false, 2)]
+    private static void RunUiDTargeted()
+    {
+        RunMany(
+            new[]
+            {
+                Category("UIACommonRuntime"), Category("UIBMainMenu"),
+                Category("M12BCharacterCreationNewGame"), Category("M4ACharacterAttributes"),
+                Category("M4BCharacterVitality"), Category("M4CCharacterProgression"),
+                Category("M4DDerivedCharacterStats"), Category("M10AMagicRuntime"),
+                Category("M10BTechnologyRuntime"), Category("PlayerStartup"),
+                Category("M13AKeyboardInput"),
+            },
+            new[]
+            {
+                "UI-A common runtime", "UI-B Main Menu", "M12B Character Creation",
+                "M4A attributes", "M4B vitality", "M4C progression", "M4D derived stats",
+                "M10A magic", "M10B technology", "Player Startup", "production keyboard/input",
+            });
+    }
 
     [MenuItem("OpenArcanum/M12B/Run Focused EditMode Tests #&b", false, 1)]
     private static void RunM12BFocused()
@@ -680,6 +857,7 @@ internal sealed class M8ATestExecution : ScriptableObject, ICallbacks
 
     private void RunNext()
     {
+        if (!_active || _filters == null || _labels == null) return;
         if (_index >= _filters.Length)
         {
             _active = false;
