@@ -98,9 +98,54 @@ internal sealed class M8ATestExecution : ScriptableObject, ICallbacks
     private static void RunM12CAll()
         => Run(new Filter { testMode = TestMode.EditMode }, "M12C complete EditMode");
 
-    [MenuItem("OpenArcanum/UI-D/Run Focused EditMode Tests", false, 1)]
+    [MenuItem("OpenArcanum/UI-D/Run Focused EditMode Tests #&i", false, 1)]
     private static void RunUiDFocused()
         => Run(Category("UIDCharacterCreation"), "UI-D focused EditMode");
+
+    [MenuItem("OpenArcanum/UI Hover/Run Focused EditMode Tests #&l", false, 1)]
+    private static void RunUiHoverFocused()
+        => RunMany(
+            new[]
+            {
+                Test("Arcanum.Formats.Tests.UiDCharacterCreationTests.IdentitySelectorHoverTransitionsReusePreparedBitmapPresenters"),
+                Test("Arcanum.Formats.Tests.UiACommonRuntimeTests.BitmapTextChangesReusePreparedGlyphPresenters"),
+                Test("Arcanum.Formats.Tests.UiCGameplayHudTests.HudContextualHelpChangesRenderImmediatelyAndIgnoreIdenticalRefreshes"),
+            },
+            new[] { "Character Creation hover responsiveness", "shared bitmap text reuse",
+                "HUD contextual-help responsiveness" });
+
+    [MenuItem("OpenArcanum/UI Hover/Run Affected UI Tests #&j", false, 2)]
+    private static void RunUiHoverAffected()
+        => RunMany(
+            new[]
+            {
+                Category("UIACommonRuntime"), Category("UIBMainMenu"), Category("UICGameplayHud"),
+                Category("UIDCharacterCreation"), Category("UIEInventoryEquipment"),
+                Category("UIE2CharacterSkills"), Category("UiF2LogbookPresentation"),
+            },
+            new[]
+            {
+                "shared UI runtime", "Main Menu", "gameplay HUD", "Character Creation and Shopkeeper",
+                "inventory presentation", "Character Skills/Magic/Technology", "Logbook presentation",
+            });
+
+    [MenuItem("OpenArcanum/Shopkeeper/Run Focused EditMode Tests #&k", false, 1)]
+    private static void RunShopkeeperFocused()
+        => RunMany(
+            new[]
+            {
+                Category("UIDCharacterCreation"), Category("UIEInventoryEquipment"),
+                new Filter
+                {
+                    testMode = TestMode.EditMode,
+                    categoryNames = new[] { "M3D", "M11AEconomyVendor" },
+                },
+            },
+            new[]
+            {
+                "Shopkeeper UI-D", "Shopkeeper inventory presentation",
+                "Shopkeeper stack and economy authority",
+            });
 
     [MenuItem("OpenArcanum/UI-D.2/Run Focused EditMode Tests", false, 1)]
     private static void RunUiD2Focused()

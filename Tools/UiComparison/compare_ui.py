@@ -36,6 +36,19 @@ CROPS = {
     "H_contextual_help": (188, 446, 612, 600),
 }
 
+SHOPKEEPER_CROPS = {
+    "A_merchant_inventory": (0, 160, 350, 400),
+    "B_player_inventory": (358, 0, 710, 400),
+    "C_gold_no_badge": (358, 0, 455, 82),
+    "D_gold_hover_panel": (175, 420, 625, 600),
+    "E_resource_counters": (710, 52, 800, 188),
+    "F_scrollbar": (323, 160, 352, 400),
+    "G_drag_operation": (358, 0, 710, 400),
+    "H_relocated_item": (358, 0, 710, 400),
+    "I_merchant_quote": (80, 115, 350, 165),
+    "J_full_screen": (0, 0, 800, 600),
+}
+
 
 @dataclass(frozen=True)
 class ControlRegion:
@@ -315,13 +328,15 @@ def main() -> int:
 
     save_outputs(source, target, args.output, args.source, args.openarcanum)
     crop_manifest: dict[str, list[int]] = {}
-    for name, bounds in CROPS.items():
+    crops = SHOPKEEPER_CROPS if args.label == "starting-shopkeeper" else CROPS
+    for name, bounds in crops.items():
         crop_manifest[name] = list(bounds)
         save_outputs(source.crop(bounds), target.crop(bounds), args.output / "crops" / name)
 
-    write_measurements(source, target, args.output)
-    (args.output / "font_manifest.json").write_text(
-        json.dumps(FONT_MANIFEST, indent=2) + "\n", encoding="utf-8")
+    if args.label != "starting-shopkeeper":
+        write_measurements(source, target, args.output)
+        (args.output / "font_manifest.json").write_text(
+            json.dumps(FONT_MANIFEST, indent=2) + "\n", encoding="utf-8")
     metadata = {
         "label": args.label,
         "required_dimensions": list(EXPECTED_SIZE),
