@@ -112,7 +112,7 @@ risk. Retail data is used locally for research and execution and is never part o
 
 OpenArcanum builds on earlier Unity Arcanum work from
 [Suvitruf/unity-arcanum](https://github.com/Suvitruf/unity-arcanum). That work is preserved in this repository's Git
-history as a direct ancestor. OpenArcanum has since substantially expanded the runtime integration, gameplay systems,
+history as a direct ancestor. OpenArcanum has since expanded the runtime integration, gameplay systems,
 automated testing, documentation, user interface, and campaign-compatibility work. This attribution does not imply
 endorsement or active collaboration with the upstream author.
 
