@@ -858,6 +858,40 @@ namespace Arcanum.Formats.Tests
         }
 
         [Test]
+        public void HudContextualHelpChangesRenderImmediatelyAndIgnoreIdenticalRefreshes()
+        {
+            SourceHoverHintTarget character = Descendant("Character").GetComponent<SourceHoverHintTarget>();
+            SourceHoverHintTarget logbook = Descendant("Logbook").GetComponent<SourceHoverHintTarget>();
+            Assert.That(_retail.TryReadMessage("mes/intgame.mes", 1005, out string characterText), Is.True);
+            Assert.That(_retail.TryReadMessage("mes/intgame.mes", 1004, out string logbookText), Is.True);
+            int changes = 0;
+            _controller.ContextualHelpChanged += () => changes++;
+
+            character.OnPointerEnter(null);
+            Assert.That(_view.ContextualHelpText, Is.EqualTo(characterText),
+                "the shared HUD presenter must update in the pointer callback, without a frame-late synchronize");
+            Assert.That(_view.IsContextualHelpVisible, Is.True);
+            Assert.That(changes, Is.EqualTo(1));
+
+            character.OnPointerEnter(null);
+            Assert.That(changes, Is.EqualTo(1),
+                "an identical warm hover must not dirty the HUD presentation again");
+
+            logbook.OnPointerEnter(null);
+            Assert.That(_view.ContextualHelpText, Is.EqualTo(logbookText));
+            Assert.That(changes, Is.EqualTo(2));
+
+            character.OnPointerExit(null);
+            Assert.That(_view.ContextualHelpText, Is.EqualTo(logbookText),
+                "a stale owner exit must not clear the replacement hover");
+            Assert.That(changes, Is.EqualTo(2));
+
+            logbook.OnPointerExit(null);
+            Assert.That(_view.IsContextualHelpVisible, Is.False);
+            Assert.That(changes, Is.EqualTo(3));
+        }
+
+        [Test]
         public void HudContextualHelpUsesSourceIconFontsColorsAndTextRectangles()
         {
             Assert.That(RetailGameplayHudLayout.WorldTargetIcon, Is.EqualTo(new Rect(217, 510, 64, 64)));

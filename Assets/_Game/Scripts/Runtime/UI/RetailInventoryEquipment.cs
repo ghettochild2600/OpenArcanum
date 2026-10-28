@@ -46,8 +46,8 @@ namespace Arcanum.Runtime.UI
         public static readonly Rect WeightText = new(145f, 29f, 185f, 15f);
         public static readonly Rect EncumbranceText = new(145f, 44f, 185f, 15f);
         public static readonly Rect SpeedText = new(145f, 59f, 185f, 15f);
-        public static readonly Rect AttackIcon = new(29f, 318f, 48f, 75f);
-        public static readonly Rect DefenseIcon = new(254f, 319f, 48f, 74f);
+        public static readonly Rect AttackIcon = new(29f, 318f, 54f, 71f);
+        public static readonly Rect DefenseIcon = new(254f, 319f, 83f, 71f);
         public static readonly Rect AttackValue = new(80f, 358f, 23f, 35f);
         public static readonly Rect DefenseValue = new(261f, 358f, 23f, 35f);
         public static readonly Rect ArrangeButton = new(763f, 197f, 32f, 32f);
@@ -94,7 +94,9 @@ namespace Arcanum.Runtime.UI
     [DisallowMultipleComponent]
     public sealed class RetailInventoryEquipmentView : MonoBehaviour
     {
-        private static readonly Color SourceText = new Color32(231, 217, 174, 255);
+        private const string AttackHelpKey = "inventory-total-attack";
+        private const string DefenseHelpKey = "inventory-total-defense";
+        private static readonly Color SourceText = Color.white;
         private static readonly Color Selected = new Color32(222, 168, 35, 90);
 
         private GameUiController _controller;
@@ -116,6 +118,7 @@ namespace Arcanum.Runtime.UI
         private readonly List<Image> _selectionHighlights = new();
         private IReadOnlyList<GameUiItemView> _projectedItems = Array.Empty<GameUiItemView>();
         private int _projectionSignature = int.MinValue;
+        private InventoryArrangeMode _nextArrangeMode = InventoryArrangeMode.Horizontal;
         private bool _dirty = true;
 
         public bool IsAvailable => _canvasRoot != null && _resolver != null;
@@ -207,15 +210,20 @@ namespace Arcanum.Runtime.UI
             AddSourceButton("Arrange Items", _window, RetailInventoryEquipmentLayout.ArrangeSourceId,
                 RetailInventoryEquipmentLayout.ArrangeButton, () =>
                 {
-                    _controller.ArrangeInventory();
+                    _controller.ArrangeInventory(_nextArrangeMode);
+                    _nextArrangeMode = _nextArrangeMode == InventoryArrangeMode.Horizontal
+                        ? InventoryArrangeMode.Vertical
+                        : InventoryArrangeMode.Horizontal;
                     _dirty = true;
                     Synchronize();
                 });
 
-            AddSourceImage("Total Attack", _window, RetailInventoryEquipmentLayout.TotalAttackSourceId,
-                RetailInventoryEquipmentLayout.AttackIcon);
-            AddSourceImage("Total Defense", _window, RetailInventoryEquipmentLayout.TotalDefenseSourceId,
-                RetailInventoryEquipmentLayout.DefenseIcon);
+            SourceUiImage attackIcon = AddSourceImage("Total Attack", _window,
+                RetailInventoryEquipmentLayout.TotalAttackSourceId, RetailInventoryEquipmentLayout.AttackIcon);
+            SourceUiImage defenseIcon = AddSourceImage("Total Defense", _window,
+                RetailInventoryEquipmentLayout.TotalDefenseSourceId, RetailInventoryEquipmentLayout.DefenseIcon);
+            BindCombatSummaryHover(attackIcon.gameObject, true);
+            BindCombatSummaryHover(defenseIcon.gameObject, false);
 
             foreach (RetailEquipmentSlotDefinition slot in RetailInventoryEquipmentLayout.EquipmentSlots)
             {
@@ -225,11 +233,18 @@ namespace Arcanum.Runtime.UI
                 _equipmentButtons.Add(slot.Location, button);
             }
 
-            _weight = AddText("Weight", _window, RetailInventoryEquipmentLayout.WeightText);
-            _encumbrance = AddText("Encumbrance", _window, RetailInventoryEquipmentLayout.EncumbranceText);
-            _speed = AddText("Speed", _window, RetailInventoryEquipmentLayout.SpeedText);
-            _attack = AddText("Attack Value", _window, RetailInventoryEquipmentLayout.AttackValue);
-            _defense = AddText("Defense Value", _window, RetailInventoryEquipmentLayout.DefenseValue);
+            _weight = AddText("Weight", _window, RetailInventoryEquipmentLayout.WeightText,
+                SourceUiBitmapText.Flare12FontSourceId);
+            _encumbrance = AddText("Encumbrance", _window, RetailInventoryEquipmentLayout.EncumbranceText,
+                SourceUiBitmapText.Flare12FontSourceId);
+            _speed = AddText("Speed", _window, RetailInventoryEquipmentLayout.SpeedText,
+                SourceUiBitmapText.Flare12FontSourceId);
+            _attack = AddText("Attack Value", _window, RetailInventoryEquipmentLayout.AttackValue,
+                SourceUiBitmapText.InventoryStatFontSourceId);
+            _defense = AddText("Defense Value", _window, RetailInventoryEquipmentLayout.DefenseValue,
+                SourceUiBitmapText.InventoryStatFontSourceId);
+            BindCombatValueHover("Attack Value Help", RetailInventoryEquipmentLayout.AttackValue, true);
+            BindCombatValueHover("Defense Value Help", RetailInventoryEquipmentLayout.DefenseValue, false);
             for (int index = 0; index < _counters.Length; index++)
                 _counters[index] = AddText($"Counter {index}", _window,
                     RetailInventoryEquipmentLayout.CounterRects[index]);
@@ -267,7 +282,8 @@ namespace Arcanum.Runtime.UI
             button.onClick.AddListener(() => OnItem(item, equipped));
             SourceHoverHintTarget hint = root.gameObject.AddComponent<SourceHoverHintTarget>();
             hint.Bind(() => _controller.InspectItem(item.Identity), null);
-            RetailInventoryItemDragTarget drag = root.gameObject.AddComponent<RetailInventoryItemDragTarget>();
+            RetailInventoryItemDragTarget drag =
+                RetailInventoryDragPresenter.AddDragTarget<RetailInventoryItemDragTarget>(root.gameObject);
             drag.Bind(_window, item.Identity, equipped, OnInventoryDrop);
 
             if (item.InventoryArtId.HasValue
@@ -329,14 +345,28 @@ namespace Arcanum.Runtime.UI
         }
 
         private bool OnInventoryDrop(ArcanumObjectId item, bool equipped, Vector2 screenPosition,
-            Camera eventCamera)
+            Vector2 itemTopLeftScreenPosition, Camera eventCamera)
         {
             if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(
                     _window, screenPosition, eventCamera, out Vector2 local)) return false;
             float sourceX = local.x + _window.rect.width * _window.pivot.x;
             float sourceY = _window.rect.height * (1f - _window.pivot.y) - local.y;
-            float x = sourceX - RetailInventoryEquipmentLayout.InventoryGrid.x;
-            float y = sourceY - RetailInventoryEquipmentLayout.InventoryGrid.y;
+            Vector2 sourcePoint = new(sourceX, sourceY);
+            foreach (RetailEquipmentSlotDefinition slot in RetailInventoryEquipmentLayout.EquipmentSlots)
+                if (slot.Rect.Contains(sourcePoint))
+                {
+                    bool equippedAtSlot = _controller.Equip(item, slot.Location);
+                    if (equippedAtSlot) _dirty = true;
+                    Synchronize();
+                    return equippedAtSlot;
+                }
+
+            if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(
+                    _window, itemTopLeftScreenPosition, eventCamera, out Vector2 itemTopLeftLocal)) return false;
+            float itemSourceX = itemTopLeftLocal.x + _window.rect.width * _window.pivot.x;
+            float itemSourceY = _window.rect.height * (1f - _window.pivot.y) - itemTopLeftLocal.y;
+            float x = itemSourceX - RetailInventoryEquipmentLayout.InventoryGrid.x;
+            float y = itemSourceY - RetailInventoryEquipmentLayout.InventoryGrid.y;
             if (x < 0f || y < 0f || x >= RetailInventoryEquipmentLayout.InventoryGrid.width
                 || y >= RetailInventoryEquipmentLayout.InventoryGrid.height) return false;
             int column = Mathf.FloorToInt(x / RetailInventoryEquipmentLayout.CellSize);
@@ -364,7 +394,7 @@ namespace Arcanum.Runtime.UI
             SetText(_encumbrance, $"{SourceMessage(10, "Encumbrance")}: "
                                   + $"{EncumbranceName(summary.EncumbranceLevel)} ({summary.EncumbranceThreshold})");
             SetText(_speed, $"{SourceMessage(11, "Speed")}: {summary.Speed}");
-            SetText(_attack, summary.TotalAttack.ToString());
+            SetRightAlignedText(_attack, summary.TotalAttack.ToString(), RetailInventoryEquipmentLayout.AttackValue);
             SetText(_defense, summary.TotalDefense.ToString());
             SetText(_counters[0], summary.Gold.ToString());
             for (int index = 0; index < 4; index++)
@@ -381,6 +411,59 @@ namespace Arcanum.Runtime.UI
             return _resolver.Original.TryReadMessage("mes/critter.mes", level + 18, out string value)
                    && !string.IsNullOrWhiteSpace(value) ? value : fallback[Mathf.Clamp(level, 0, 6)];
         }
+
+        private void BindCombatSummaryHover(GameObject target, bool attack)
+        {
+            Image image = target.GetComponent<Image>();
+            image.raycastTarget = true;
+            target.AddComponent<SourceHoverHintTarget>().Bind(
+                () => ShowCombatSummary(attack),
+                () => _controller.ClearContextualHelp(attack ? AttackHelpKey : DefenseHelpKey));
+        }
+
+        private void BindCombatValueHover(string name, Rect rect, bool attack)
+        {
+            RectTransform target = AddRect(name, _window, rect);
+            Image image = target.gameObject.AddComponent<Image>();
+            image.color = Color.clear;
+            image.raycastTarget = true;
+            target.gameObject.AddComponent<SourceHoverHintTarget>().Bind(
+                () => ShowCombatSummary(attack),
+                () => _controller.ClearContextualHelp(attack ? AttackHelpKey : DefenseHelpKey));
+        }
+
+        private void ShowCombatSummary(bool attack)
+        {
+            GameUiInventorySummaryView summary = _controller.ProjectInventorySummary();
+            if (summary == null) return;
+            if (attack)
+            {
+                string body = $"Base To Hit: {summary.BaseToHit}%  Damage: "
+                              + $"{DamageRange(summary.NormalDamageMinimum, summary.NormalDamageMaximum)}\n"
+                              + $"Fatigue: {DamageRange(summary.FatigueDamageMinimum, summary.FatigueDamageMaximum)}  "
+                              + $"Electrical Damage: {DamageRange(summary.ElectricalDamageMinimum, summary.ElectricalDamageMaximum)}\n"
+                              + $"Fire Damage: {DamageRange(summary.FireDamageMinimum, summary.FireDamageMaximum)}  "
+                              + $"Poison: {DamageRange(summary.PoisonDamageMinimum, summary.PoisonDamageMaximum)}";
+                _controller.ShowContextualHelp(AttackHelpKey, body,
+                    $"Total Attack: {summary.TotalAttack}", 675);
+            }
+            else
+            {
+                string body = $"Total AC: {summary.ArmorClass}  Damage Resistance: {ResistanceValue(summary.DamageResistance)}\n"
+                              + $"Magic Resistance: {ResistanceValue(summary.MagicResistance)}  "
+                              + $"Electrical Resistance: {ResistanceValue(summary.ElectricalResistance)}\n"
+                              + $"Fire Resistance: {ResistanceValue(summary.FireResistance)}  "
+                              + $"Poison Resistance: {ResistanceValue(summary.PoisonResistance)}";
+                _controller.ShowContextualHelp(DefenseHelpKey, body,
+                    $"Total Defense: {summary.TotalDefense}", 674);
+            }
+        }
+
+        private static string DamageRange(int minimum, int maximum)
+            => maximum == 0 ? "0" : $"{minimum}-{maximum}";
+
+        private static string ResistanceValue(int value)
+            => value == 0 ? "0" : $"{value}%";
 
         private void Invalidate()
         {
@@ -426,8 +509,7 @@ namespace Arcanum.Runtime.UI
             target.gameObject.AddComponent<Button>();
             target.gameObject.AddComponent<SourceUiImage>();
             SourceUiButton source = target.gameObject.AddComponent<SourceUiButton>();
-            source.Bind(_resolver, new UiAssetKey(sourceId, frame: 0), new UiAssetKey(sourceId, frame: 1),
-                new UiAssetKey(sourceId, frame: 2), new UiAssetKey(sourceId, frame: 0));
+            RetailInventorySourceButtonState.Bind(source, _resolver, sourceId);
             source.Button.onClick.AddListener(() => clicked());
             return source;
         }
@@ -443,11 +525,12 @@ namespace Arcanum.Runtime.UI
             return button;
         }
 
-        private SourceUiBitmapText AddText(string name, RectTransform parent, Rect rect)
+        private SourceUiBitmapText AddText(string name, RectTransform parent, Rect rect,
+            int fontSourceId = RetailGameplayHudLayout.TextFontSourceId)
         {
             RectTransform target = AddRect(name, parent, rect);
             SourceUiBitmapText text = target.gameObject.AddComponent<SourceUiBitmapText>();
-            text.Bind(_resolver, string.Empty, SourceText, RetailGameplayHudLayout.TextFontSourceId);
+            text.Bind(_resolver, string.Empty, SourceText, fontSourceId);
             return text;
         }
 
@@ -455,6 +538,13 @@ namespace Arcanum.Runtime.UI
         {
             if (text.Text == value) return;
             text.Bind(_resolver, value, SourceText, text.FontSourceId);
+        }
+
+        private void SetRightAlignedText(SourceUiBitmapText text, string value, Rect sourceRect)
+        {
+            SetText(text, value);
+            RectTransform rect = (RectTransform)text.transform;
+            rect.anchoredPosition = new Vector2(sourceRect.x + sourceRect.width - rect.sizeDelta.x, -sourceRect.y);
         }
 
         private static RectTransform AddRect(string name, RectTransform parent, Rect rect)
@@ -510,6 +600,7 @@ namespace Arcanum.Runtime.UI
             _session = null;
             DynamicItemCount = 0;
             _projectionSignature = int.MinValue;
+            _nextArrangeMode = InventoryArrangeMode.Horizontal;
             _dirty = true;
         }
     }
@@ -564,6 +655,7 @@ namespace Arcanum.Runtime.UI
     }
 
     [DisallowMultipleComponent]
+    [RequireComponent(typeof(CanvasGroup))]
     public sealed class RetailInventoryItemDragTarget : MonoBehaviour, IBeginDragHandler, IDragHandler,
         IEndDragHandler, ICancelHandler
     {
@@ -571,26 +663,32 @@ namespace Arcanum.Runtime.UI
         private RectTransform _itemTransform;
         private ArcanumObjectId _item;
         private bool _equipped;
-        private Func<ArcanumObjectId, bool, Vector2, Camera, bool> _dropped;
+        private Func<ArcanumObjectId, bool, Vector2, Vector2, Camera, bool> _dropped;
         private CanvasGroup _canvasGroup;
         private Vector2 _startPosition;
         private Vector2 _pointerOffset;
         private bool _dragging;
 
         public void Bind(RectTransform window, ArcanumObjectId item, bool equipped,
-            Func<ArcanumObjectId, bool, Vector2, Camera, bool> dropped)
+            Func<ArcanumObjectId, bool, Vector2, Vector2, Camera, bool> dropped)
         {
             _window = window;
             _itemTransform = (RectTransform)transform;
             _item = item;
             _equipped = equipped;
             _dropped = dropped;
-            _canvasGroup = gameObject.GetComponent<CanvasGroup>() ?? gameObject.AddComponent<CanvasGroup>();
+            _canvasGroup = RetailInventoryDragPresenter.EnsureCanvasGroup(gameObject);
         }
 
         public void OnBeginDrag(PointerEventData eventData)
         {
             if (_itemTransform == null || eventData == null) return;
+            _canvasGroup = RetailInventoryDragPresenter.EnsureCanvasGroup(gameObject);
+            if (_canvasGroup == null)
+            {
+                _dragging = false;
+                return;
+            }
             _startPosition = _itemTransform.anchoredPosition;
             _dragging = RectTransformUtility.ScreenPointToLocalPointInRectangle(
                 (RectTransform)_itemTransform.parent, eventData.position, eventData.pressEventCamera,
@@ -614,9 +712,13 @@ namespace Arcanum.Runtime.UI
         public void OnEndDrag(PointerEventData eventData)
         {
             if (!_dragging) return;
+            Vector2 itemTopLeft = eventData == null
+                ? Vector2.zero
+                : RectTransformUtility.WorldToScreenPoint(eventData.pressEventCamera, _itemTransform.position);
             RestorePresentation();
             if (eventData != null)
-                _dropped?.Invoke(_item, _equipped, eventData.position, eventData.pressEventCamera);
+                _dropped?.Invoke(_item, _equipped, eventData.position, itemTopLeft,
+                    eventData.pressEventCamera);
         }
 
         public void OnCancel(BaseEventData eventData) => RestorePresentation();

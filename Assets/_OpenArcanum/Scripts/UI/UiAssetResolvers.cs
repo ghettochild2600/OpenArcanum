@@ -146,6 +146,18 @@ namespace OpenArcanum.UI
             }
         }
 
+        public bool IsFrameAvailable(UiAssetKey key)
+        {
+            ThrowIfDisposed();
+            if (key.SourceId < 0 || key.Palette < 0 || key.Rotation < 0 || key.Frame < 0)
+                return false;
+            if (!TryGetSource(key.SourceId, out DecodedSource source)) return false;
+            ArtFile art = source.Art;
+            return key.Palette < art.Palettes.Count
+                   && key.Rotation < art.Rotations.Count
+                   && key.Frame < art.Rotations[key.Rotation].Frames.Length;
+        }
+
         /// <summary>
         /// Reads localized retail text through the same mounted source hierarchy as interface artwork. Screen
         /// presenters use this instead of copying message tables or opening a second archive stack.
@@ -180,6 +192,8 @@ namespace OpenArcanum.UI
         /// presentation-only; ownership, placement, equipment, and shortcut state continue to come from runtime
         /// services.
         /// </summary>
+        public static int InventoryPaletteIndex(uint artId) => (int)((artId >> 4) & 0x3u);
+
         public bool TryResolveInventoryItem(uint artId, out RetailItemArtAsset asset)
         {
             ThrowIfDisposed();
@@ -198,7 +212,10 @@ namespace OpenArcanum.UI
                 if (art.Palettes.Count == 0 || art.Rotations.Count == 0
                     || art.Rotations[0].Frames.Length == 0) return false;
                 ArtFrame frame = art.Rotations[0].Frames[0];
-                Texture2D texture = ArtTextureFactory.CreateTexture(frame, art.Palettes[0]);
+                int paletteIndex = InventoryPaletteIndex(artId);
+                if (paletteIndex >= art.Palettes.Count)
+                    throw new InvalidDataException($"palette {paletteIndex} is unavailable in {path}");
+                Texture2D texture = ArtTextureFactory.CreateTexture(frame, art.Palettes[paletteIndex]);
                 texture.name = $"UI_Inventory_{artId:X8}";
                 texture.filterMode = FilterMode.Point;
                 texture.wrapMode = TextureWrapMode.Clamp;
@@ -351,12 +368,16 @@ namespace OpenArcanum.UI
         }
 
         private static bool UsesSourceFontAlpha(int sourceId)
+            // Roller font 25 is the exception: roller_ui.c draws it as an opaque black/green/red
+            // font over authored ART 314 digit wells. Treating its dark palette red channel as
+            // coverage makes the black quantity numerals effectively transparent.
             => sourceId == SourceUiBitmapText.Morph15FontSourceId
                || sourceId == SourceUiBitmapText.Pork12FontSourceId
                || sourceId == SourceUiBitmapText.Flare12FontSourceId
                || sourceId == SourceUiBitmapText.Cloister18FontSourceId
                || sourceId == SourceUiBitmapText.Nick16FontSourceId
                || sourceId == SourceUiBitmapText.Garmond9FontSourceId
+               || sourceId == SourceUiBitmapText.InventoryStatFontSourceId
                || sourceId == SourceUiBitmapText.DefaultFontSourceId;
 
         private static void ApplySourceFontAlpha(Texture2D texture)

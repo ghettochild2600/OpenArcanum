@@ -6,6 +6,13 @@ using Arcanum.Runtime.Character;
 
 namespace Arcanum.Runtime.World
 {
+    /// <summary>The two deterministic scan orders used by source <c>item_arrange_inventory</c>.</summary>
+    public enum InventoryArrangeMode
+    {
+        Horizontal,
+        Vertical,
+    }
+
     /// <summary>Inventory ART footprint measured in the source engine's 32-pixel grid cells.</summary>
     public readonly struct InventoryFootprint : IEquatable<InventoryFootprint>
     {
@@ -283,10 +290,42 @@ namespace Arcanum.Runtime.World
         }
 
         /// <summary>
-        /// Source <c>item_arrange_inventory</c>: ignore worn items, order by descending height then width,
-        /// and pack into the first horizontal free location.  All locations are preflighted before commit.
+        /// Preflights the exact source-grid origin of an item being transferred from another owner. Matching
+        /// Gold/Ammo may be dropped on the compatible destination stack; otherwise the complete footprint must
+        /// be free before barter is allowed to mutate either inventory.
         /// </summary>
-        internal bool ArrangeInventory(ArcanumObjectId owner)
+        internal bool CanReceiveAt(ArcanumObjectId owner, ArcanumObjectId itemIdentity, int location)
+        {
+            PersistentObjectState item = Item(itemIdentity);
+            RequireOwner(owner, out ObjectType ownerType);
+            int rows = ownerType == ObjectType.Container ? ContainerGridRows : CritterGridRows;
+            bool[] grid = BuildGrid(owner, rows, default);
+            if (Fits(grid, rows, location, item.InventoryFootprint)) return true;
+            if (!item.StackQuantity.HasValue) return false;
+            foreach (PersistentObjectState candidate in _session.States.Values)
+            {
+                if (candidate.Placement.Kind != ObjectPlacementKind.Contained
+                    || candidate.ParentIdentity != owner
+                    || !WorldMapSessionCoordinator.CanStack(item, candidate)) continue;
+                int width = Math.Max(1, candidate.InventoryFootprint.Width);
+                int height = Math.Max(1, candidate.InventoryFootprint.Height);
+                int row = location / GridColumns;
+                int column = location % GridColumns;
+                int candidateRow = candidate.InventoryLocation / GridColumns;
+                int candidateColumn = candidate.InventoryLocation % GridColumns;
+                if (column >= candidateColumn && column < candidateColumn + width
+                    && row >= candidateRow && row < candidateRow + height) return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Source <c>item_arrange_inventory</c>: ignore worn items, stably order by descending height then width,
+        /// and pack with the requested horizontal/vertical first-fit scan. All locations are preflighted before
+        /// commit, matching the source's all-or-nothing location update.
+        /// </summary>
+        internal bool ArrangeInventory(ArcanumObjectId owner,
+            InventoryArrangeMode mode = InventoryArrangeMode.Horizontal)
         {
             RequireOwner(owner, out ObjectType ownerType);
             int rows = ownerType == ObjectType.Container ? ContainerGridRows : CritterGridRows;
@@ -295,13 +334,14 @@ namespace Arcanum.Runtime.World
                                 && value.Placement.Kind == ObjectPlacementKind.Contained)
                 .OrderByDescending(value => value.InventoryFootprint.Height)
                 .ThenByDescending(value => value.InventoryFootprint.Width)
-                .ThenBy(value => value.Identity.Key, StringComparer.Ordinal)
                 .ToList();
             var locations = new int[items.Count];
             var grid = new bool[GridColumns * rows];
             for (int index = 0; index < items.Count; index++)
             {
-                int location = FindFirstFit(grid, rows, items[index].InventoryFootprint);
+                int location = mode == InventoryArrangeMode.Vertical
+                    ? FindFirstFitVertical(grid, rows, items[index].InventoryFootprint)
+                    : FindFirstFit(grid, rows, items[index].InventoryFootprint);
                 if (location < 0) return false;
                 locations[index] = location;
                 Mark(grid, location, items[index].InventoryFootprint);
@@ -380,6 +420,17 @@ namespace Arcanum.Runtime.World
         {
             for (int y = 0; y <= rows - footprint.Height; y++)
                 for (int x = 0; x <= GridColumns - footprint.Width; x++)
+                {
+                    int location = y * GridColumns + x;
+                    if (Fits(grid, rows, location, footprint)) return location;
+                }
+            return -1;
+        }
+
+        private static int FindFirstFitVertical(bool[] grid, int rows, InventoryFootprint footprint)
+        {
+            for (int x = 0; x <= GridColumns - footprint.Width; x++)
+                for (int y = 0; y <= rows - footprint.Height; y++)
                 {
                     int location = y * GridColumns + x;
                     if (Fits(grid, rows, location, footprint)) return location;

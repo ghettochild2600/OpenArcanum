@@ -214,12 +214,19 @@ namespace Arcanum.Formats.Tests
             PersistentObjectState armor = _session.States.Values.Single(value => value.PrototypeNumber == 8157);
             Assert.That(armor.ParentIdentity, Is.EqualTo(pc));
             Assert.That(armor.Placement.Kind, Is.EqualTo(ObjectPlacementKind.Contained));
+            Assert.That(armor.ItemFlags & EconomyStateService.ItemFlagIdentified, Is.Not.Zero,
+                "background_generate_inventory marks authored starting items identified");
         }
 
         [TestCase(CharacterRace.Human, CharacterGender.Male, 8049)]
         [TestCase(CharacterRace.Human, CharacterGender.Female, 8133)]
         [TestCase(CharacterRace.Dwarf, CharacterGender.Male, 8065)]
+        [TestCase(CharacterRace.Elf, CharacterGender.Male, 8049)]
+        [TestCase(CharacterRace.Elf, CharacterGender.Female, 8133)]
+        [TestCase(CharacterRace.HalfElf, CharacterGender.Male, 8049)]
+        [TestCase(CharacterRace.HalfElf, CharacterGender.Female, 8133)]
         [TestCase(CharacterRace.Gnome, CharacterGender.Male, 8065)]
+        [TestCase(CharacterRace.Halfling, CharacterGender.Male, 8065)]
         [TestCase(CharacterRace.HalfOrc, CharacterGender.Male, 8049)]
         [TestCase(CharacterRace.HalfOrc, CharacterGender.Female, 8133)]
         [TestCase(CharacterRace.HalfOgre, CharacterGender.Male, 8069)]

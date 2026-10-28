@@ -231,7 +231,8 @@ namespace Arcanum.Runtime.UI
             Button button = root.gameObject.AddComponent<Button>();
             button.transition = Selectable.Transition.None;
             button.onClick.AddListener(() => submit());
-            root.gameObject.AddComponent<RetailStartingEquipmentDragTarget>().Bind(destination, submit);
+            RetailInventoryDragPresenter.AddDragTarget<RetailStartingEquipmentDragTarget>(root.gameObject)
+                .Bind(destination, submit);
             SourceHoverHintTarget hint = root.gameObject.AddComponent<SourceHoverHintTarget>();
             hint.Bind(() =>
             {
@@ -362,8 +363,7 @@ namespace Arcanum.Runtime.UI
             target.gameObject.AddComponent<Button>();
             target.gameObject.AddComponent<SourceUiImage>();
             SourceUiButton source = target.gameObject.AddComponent<SourceUiButton>();
-            source.Bind(_resolver, new UiAssetKey(sourceId, frame: 0), new UiAssetKey(sourceId, frame: 1),
-                new UiAssetKey(sourceId, frame: 2), new UiAssetKey(sourceId, frame: 0));
+            RetailInventorySourceButtonState.Bind(source, _resolver, sourceId);
             source.Button.onClick.AddListener(() => clicked());
             return source;
         }

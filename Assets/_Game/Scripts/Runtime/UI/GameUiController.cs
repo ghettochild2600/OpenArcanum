@@ -84,6 +84,23 @@ namespace Arcanum.Runtime.UI
         public int Speed { get; internal set; }
         public int TotalAttack { get; internal set; }
         public int TotalDefense { get; internal set; }
+        public int BaseToHit { get; internal set; }
+        public int NormalDamageMinimum { get; internal set; }
+        public int NormalDamageMaximum { get; internal set; }
+        public int FatigueDamageMinimum { get; internal set; }
+        public int FatigueDamageMaximum { get; internal set; }
+        public int FireDamageMinimum { get; internal set; }
+        public int FireDamageMaximum { get; internal set; }
+        public int ElectricalDamageMinimum { get; internal set; }
+        public int ElectricalDamageMaximum { get; internal set; }
+        public int PoisonDamageMinimum { get; internal set; }
+        public int PoisonDamageMaximum { get; internal set; }
+        public int ArmorClass { get; internal set; }
+        public int DamageResistance { get; internal set; }
+        public int FireResistance { get; internal set; }
+        public int ElectricalResistance { get; internal set; }
+        public int PoisonResistance { get; internal set; }
+        public int MagicResistance { get; internal set; }
         public int Gold { get; internal set; }
         public IReadOnlyList<int> Ammunition { get; internal set; }
     }
@@ -104,6 +121,12 @@ namespace Arcanum.Runtime.UI
     {
         public string Name { get; internal set; }
         public uint? InventoryArtId { get; internal set; }
+        public int MessageIconSourceId { get; internal set; }
+        public string TitleRightLine { get; internal set; }
+        public IReadOnlyList<string> PropertyLines { get; internal set; }
+        public string WeightLine { get; internal set; }
+        public string ConditionLine { get; internal set; }
+        public string QuantityLine { get; internal set; }
         public IReadOnlyList<string> Lines { get; internal set; }
         public string Summary => Lines == null ? string.Empty : string.Join("   ", Lines);
     }
@@ -289,6 +312,7 @@ namespace Arcanum.Runtime.UI
         public string ContextualHelpKey { get; private set; } = string.Empty;
         public string ContextualHelpTitle { get; private set; } = string.Empty;
         public int ContextualHelpIconSourceId { get; private set; } = RetailGameplayHudLayout.ContextualHelpIconSourceId;
+        public event Action ContextualHelpChanged;
         public CombatUiController Combat { get; }
         public SaveLoadPanelController SaveLoad { get; }
         public CharacterCreationSpecification CreationDraft { get; private set; }
@@ -620,10 +644,17 @@ namespace Arcanum.Runtime.UI
         public void ShowContextualHelp(string key, string message, string title = null,
             int iconSourceId = RetailGameplayHudLayout.ContextualHelpIconSourceId)
         {
-            ContextualHelpKey = key ?? string.Empty;
-            ContextualHelp = message ?? string.Empty;
-            ContextualHelpTitle = title ?? string.Empty;
+            string nextKey = key ?? string.Empty;
+            string nextMessage = message ?? string.Empty;
+            string nextTitle = title ?? string.Empty;
+            if (ContextualHelpKey == nextKey && ContextualHelp == nextMessage
+                && ContextualHelpTitle == nextTitle && ContextualHelpIconSourceId == iconSourceId)
+                return;
+            ContextualHelpKey = nextKey;
+            ContextualHelp = nextMessage;
+            ContextualHelpTitle = nextTitle;
             ContextualHelpIconSourceId = iconSourceId;
+            ContextualHelpChanged?.Invoke();
         }
 
         public void ClearContextualHelp(string key = null)
@@ -634,6 +665,7 @@ namespace Arcanum.Runtime.UI
                 ContextualHelpKey = string.Empty;
                 ContextualHelpTitle = string.Empty;
                 ContextualHelpIconSourceId = RetailGameplayHudLayout.ContextualHelpIconSourceId;
+                ContextualHelpChanged?.Invoke();
             }
         }
 
@@ -1055,34 +1087,116 @@ namespace Arcanum.Runtime.UI
         {
             if (!_session.TryGetObjectState(identity, out PersistentObjectState state)
                 || state.Type is ObjectType.Pc or ObjectType.Npc) return null;
-            var lines = new List<string>();
+            var properties = new List<string>();
             if (state.WeaponData != null)
             {
                 int normal = (int)DamageType.Normal;
                 int fatigue = (int)DamageType.Fatigue;
-                lines.Add($"D:{state.WeaponData.DamageMin[normal]}-{state.WeaponData.DamageMax[normal]}");
-                lines.Add($"FT:{state.WeaponData.DamageMin[fatigue]}-{state.WeaponData.DamageMax[fatigue]}");
-                lines.Add($"Speed:{state.WeaponData.SpeedFactor}");
+                properties.Add($"D:{state.WeaponData.DamageMin[normal]}-{state.WeaponData.DamageMax[normal]}");
+                properties.Add($"FT:{state.WeaponData.DamageMin[fatigue]}-{state.WeaponData.DamageMax[fatigue]}");
             }
             ObjectProtoInfo prototype = _session.ResolvePrototype(state.PrototypeNumber);
             if (state.Type == ObjectType.Armor && prototype != null)
             {
-                lines.Add($"AC:{prototype.ArmorAc.GetValueOrDefault()}");
+                properties.Add($"AC:{prototype.ArmorAc.GetValueOrDefault()}");
                 int[] resistance = prototype.ArmorResist;
-                if (resistance != null && resistance.Length > 0)
-                    lines.Add($"DR:{resistance[0]}");
+                // OBJ_F_ARMOR_RESISTANCE_ADJ_IDX stores Normal, Fire, Electrical, Poison, Magic,
+                // while intgame.format_armor_stats presents DR, PR, FR, ER, MR.
+                (string label, int index)[] sourceOrder =
+                {
+                    ("DR", 0), ("PR", 3), ("FR", 1), ("ER", 2), ("MR", 4),
+                };
+                if (resistance != null)
+                    foreach ((string label, int index) in sourceOrder)
+                        if (index < resistance.Length && resistance[index] != 0)
+                            properties.Add($"{label}:{resistance[index]:+0;-0;0}");
             }
-            lines.Add($"Weight: {state.UnitWeight} stone");
-            if (state.MaximumHitPoints > 0)
-                lines.Add($"{Math.Max(0, state.MaximumHitPoints - state.HitPointDamage)}/{state.MaximumHitPoints}");
-            if (state.StackQuantity.GetValueOrDefault() > 1)
-                lines.Add($"Quantity: {state.StackQuantity.Value}");
+            string weight = $"Weight: {state.UnitWeight} stone";
+            string condition = state.MaximumHitPoints > 0
+                ? $"{Math.Max(0, state.MaximumHitPoints - state.HitPointDamage)}/{state.MaximumHitPoints}"
+                : string.Empty;
+            string quantity = state.StackQuantity.GetValueOrDefault() > 1
+                ? $"Quantity: {state.StackQuantity.Value}"
+                : string.Empty;
+            var lines = new List<string>(properties);
+            if (!string.IsNullOrEmpty(quantity)) lines.Add(quantity);
+            lines.Add(weight);
+            if (!string.IsNullOrEmpty(condition)) lines.Add(condition);
             return new GameUiItemInspectionView
             {
                 Name = ItemName(state),
                 InventoryArtId = state.InventoryArtId,
+                MessageIconSourceId = SourceItemMessageIcon(state, prototype),
+                TitleRightLine = state.WeaponData == null ? string.Empty
+                    : $"Speed: {state.WeaponData.SpeedFactor}",
+                PropertyLines = properties,
+                WeightLine = weight,
+                ConditionLine = condition,
+                QuantityLine = quantity,
                 Lines = lines,
             };
+        }
+
+        private static int SourceItemMessageIcon(PersistentObjectState state, ObjectProtoInfo prototype)
+        {
+            // intgame_item_icon_get: the message panel uses a categorical interface icon, never the compact
+            // inventory sprite. The retained fields below cover the source families represented by runtime state.
+            int complexity = prototype?.ItemComplexity ?? 0;
+            switch (state.Type)
+            {
+                case ObjectType.Weapon:
+                    int weapon = state.WeaponData?.AmmoType switch
+                    {
+                        0 => 395, // bow
+                        1 or 2 or 3 => 392, // firearm / technological ranged weapon
+                        _ => 391,
+                    };
+                    return weapon + (complexity > 0 ? 1 : complexity < 0 ? 2 : 0);
+                case ObjectType.Ammo:
+                    return state.AmmoItemType is >= 0 and <= 3 ? 398 + state.AmmoItemType.Value : 398;
+                case ObjectType.Armor:
+                    int coverage = state.InventoryArtId.HasValue
+                        ? (int)((state.InventoryArtId.Value >> 14) & 0x7) : 0;
+                    int armor = coverage switch
+                    {
+                        0 => ((state.ArtId >> 6) & 0xF) switch
+                        {
+                            5 => 408, // robe
+                            2 or 3 or 4 or 6 or 7 => 405, // leather/chain/plate families
+                            _ => 402, // ordinary clothing
+                        },
+                        1 or 2 or 3 or 4 => 405,
+                        5 => 411, // ring
+                        6 => 414, // medallion
+                        _ => 402,
+                    };
+                    return armor + (complexity > 0 ? 1 : complexity < 0 ? 2 : 0);
+                case ObjectType.Gold: return 417;
+                case ObjectType.Food:
+                    if (complexity > 0) return 418;
+                    if (complexity < 0)
+                        return prototype?.ItemDiscipline switch { 0 => 420, 1 => 421, 6 => 419, _ => 423 };
+                    return 423;
+                case ObjectType.Scroll: return 425;
+                case ObjectType.Key: return 426;
+                case ObjectType.KeyRing: return 427;
+                case ObjectType.Written:
+                    return state.WrittenSubtype switch
+                    {
+                        1 => 429, 2 => 431, 3 => 430, 5 => 462, _ => 428,
+                    };
+                case ObjectType.Generic: return complexity > 0 ? 433 : complexity < 0 ? 434 : 432;
+                default: return 444;
+            }
+        }
+
+        public bool DropInventoryItem(ArcanumObjectId item)
+        {
+            if (_session.PlayerState == null || string.IsNullOrWhiteSpace(_session.SelectedSector))
+                return Reject(WorldInteractionResultCode.InvalidDestination.ToString());
+            WorldInteractionResult result = _session.ExecuteInteraction(WorldInteractionCommand.Drop(
+                Player, item, _session.SelectedSector, _session.PlayerState.TilePosition));
+            return Complete(result.IsSuccess, result.IsSuccess ? "Dropped item." : result.Code.ToString());
         }
 
         public GameUiInventorySummaryView ProjectInventorySummary(ArcanumObjectId owner = default)
@@ -1105,6 +1219,11 @@ namespace Arcanum.Runtime.UI
                     && item.Type == ObjectType.Ammo && item.AmmoItemType is >= 0 and <= 3)
                     ammunition[item.AmmoItemType.Value] = checked(ammunition[item.AmmoItemType.Value]
                                                                + item.StackQuantity.GetValueOrDefault());
+            Weapon weapon = ResolveEquippedWeapon(owner);
+            int meleeBonus = weapon.Skill == WeaponSkill.Melee
+                ? _session.DerivedStats.GetDerivedStat(owner, CharacterDerivedStat.MeleeDamageBonus) : 0;
+            int NormalMinimum() => weapon.DamageMin[(int)DamageType.Normal] + meleeBonus;
+            int NormalMaximum() => weapon.DamageMax[(int)DamageType.Normal] + meleeBonus;
             return new GameUiInventorySummaryView
             {
                 Weight = weight,
@@ -1114,21 +1233,44 @@ namespace Arcanum.Runtime.UI
                 Speed = _session.DerivedStats.GetDerivedStat(owner, CharacterDerivedStat.Speed),
                 TotalAttack = ProjectTotalAttack(owner),
                 TotalDefense = ProjectTotalDefense(owner),
+                BaseToHit = ProjectAttackEffectiveness(owner, weapon),
+                NormalDamageMinimum = NormalMinimum(),
+                NormalDamageMaximum = NormalMaximum(),
+                FatigueDamageMinimum = weapon.DamageMin[(int)DamageType.Fatigue],
+                FatigueDamageMaximum = weapon.DamageMax[(int)DamageType.Fatigue],
+                FireDamageMinimum = weapon.DamageMin[(int)DamageType.Fire],
+                FireDamageMaximum = weapon.DamageMax[(int)DamageType.Fire],
+                ElectricalDamageMinimum = weapon.DamageMin[(int)DamageType.Electrical],
+                ElectricalDamageMaximum = weapon.DamageMax[(int)DamageType.Electrical],
+                PoisonDamageMinimum = weapon.DamageMin[(int)DamageType.Poison],
+                PoisonDamageMaximum = weapon.DamageMax[(int)DamageType.Poison],
+                ArmorClass = _session.DerivedStats.GetArmorClass(owner),
+                DamageResistance = _session.DerivedStats.GetResistance(owner, CharacterResistance.Normal),
+                FireResistance = _session.DerivedStats.GetResistance(owner, CharacterResistance.Fire),
+                ElectricalResistance = _session.DerivedStats.GetResistance(owner, CharacterResistance.Electrical),
+                PoisonResistance = _session.DerivedStats.GetResistance(owner, CharacterResistance.Poison),
+                MagicResistance = _session.DerivedStats.GetResistance(owner, CharacterResistance.Magic),
                 Gold = _session.GetGold(owner),
                 Ammunition = ammunition,
             };
         }
 
         public bool MoveInventoryItem(ArcanumObjectId item, int location)
+            => MoveInventoryItem(Player, item, location);
+
+        public bool MoveInventoryItem(ArcanumObjectId owner, ArcanumObjectId item, int location)
         {
-            bool moved = _session.TryMoveItemToInventory(Player, item, location);
+            bool moved = _session.TryMoveItemToInventory(owner, item, location);
             string name = _session.TryGetObjectState(item, out PersistentObjectState state)
                 ? ItemName(state) : "item";
             return Complete(moved, moved ? $"Moved {name}." : $"{name} does not fit there.");
         }
 
-        public bool ArrangeInventory()
-            => Complete(_session.ArrangeInventory(Player), "Inventory arranged.");
+        public bool ArrangeInventory(InventoryArrangeMode mode = InventoryArrangeMode.Horizontal)
+            => Complete(_session.ArrangeInventory(Player, mode),
+                mode == InventoryArrangeMode.Vertical
+                    ? "Inventory arranged vertically."
+                    : "Inventory arranged horizontally.");
 
         public bool BeginCorpseLoot(ArcanumObjectId corpse)
         {
@@ -1324,8 +1466,16 @@ namespace Arcanum.Runtime.UI
             if (!_session.TryGetObjectState(item, out PersistentObjectState state)
                 || !WorldMapSessionCoordinator.TryGetNaturalWornLocation(state, out WornLocation location))
                 return Reject("That item cannot be equipped.");
+            return Equip(item, location);
+        }
+
+        public bool Equip(ArcanumObjectId item, WornLocation location)
+        {
+            if (!_session.TryGetObjectState(item, out PersistentObjectState state))
+                return Reject("That item cannot be equipped.");
             EquipmentTransactionResult result = _session.EquipItem(Player, item, location);
-            return Complete(result.Succeeded, result.Succeeded ? $"Equipped {ItemName(state)}." : result.Code.ToString());
+            return Complete(result.Succeeded,
+                result.Succeeded ? $"Equipped {ItemName(state)}." : result.Code.ToString());
         }
 
         public bool Unequip(WornLocation location)
@@ -1667,10 +1817,12 @@ namespace Arcanum.Runtime.UI
             => !_merchant.IsPersistent ? Array.Empty<GameUiItemView>()
                 : ProjectInventory(_merchant).Where(value => value.IsEquipped).ToArray();
 
-        public bool Trade(EconomyTransactionDirection direction, ArcanumObjectId item, int quantity = 1)
+        public bool Trade(EconomyTransactionDirection direction, ArcanumObjectId item, int quantity = 1,
+            int destinationInventoryLocation = -1)
         {
             EconomyTransactionResult result = _session.Economy.Execute(
-                new EconomyTransactionRequest(direction, _merchant, Player, item, quantity));
+                new EconomyTransactionRequest(direction, _merchant, Player, item, quantity,
+                    destinationInventoryLocation));
             return Complete(result.Succeeded, result.Succeeded
                 ? $"Transaction complete: {result.GoldTransferred} Gold." : result.Failure.ToString());
         }
@@ -1857,20 +2009,8 @@ namespace Arcanum.Runtime.UI
 
         private int ProjectTotalAttack(ArcanumObjectId owner)
         {
-            Weapon weapon = _session.TryGetEquippedItem(owner, WornLocation.Weapon,
-                                out PersistentObjectState equipped)
-                            && equipped.Type == ObjectType.Weapon && equipped.WeaponData != null
-                ? equipped.WeaponData : Weapon.Unarmed();
-            CharacterSkill skill = weapon.Skill switch
-            {
-                WeaponSkill.Bow => CharacterSkill.Bow,
-                WeaponSkill.Throwing => CharacterSkill.Throwing,
-                WeaponSkill.Firearms => CharacterSkill.Firearms,
-                _ => CharacterSkill.Melee,
-            };
-            int effectiveness = checked(5 * _session.Progression.GetEffectiveSkillRank(owner, skill) + 25);
-            if (_session.Characters.GetEffectiveAttribute(owner, CharacterAttribute.Intelligence) >= 20)
-                effectiveness += 10;
+            Weapon weapon = ResolveEquippedWeapon(owner);
+            int effectiveness = ProjectAttackEffectiveness(owner, weapon);
             int weighted = 15 * effectiveness;
             int divisor = 15;
             int[] weights = { 12, 12, 18, 15, 12 };
@@ -1884,6 +2024,26 @@ namespace Arcanum.Runtime.UI
                 divisor += weights[index];
             }
             return weighted / (divisor + 6);
+        }
+
+        private Weapon ResolveEquippedWeapon(ArcanumObjectId owner)
+            => _session.TryGetEquippedItem(owner, WornLocation.Weapon, out PersistentObjectState equipped)
+               && equipped.Type == ObjectType.Weapon && equipped.WeaponData != null
+                ? equipped.WeaponData : Weapon.Unarmed();
+
+        private int ProjectAttackEffectiveness(ArcanumObjectId owner, Weapon weapon)
+        {
+            CharacterSkill skill = weapon.Skill switch
+            {
+                WeaponSkill.Bow => CharacterSkill.Bow,
+                WeaponSkill.Throwing => CharacterSkill.Throwing,
+                WeaponSkill.Firearms => CharacterSkill.Firearms,
+                _ => CharacterSkill.Melee,
+            };
+            int effectiveness = checked(5 * _session.Progression.GetEffectiveSkillRank(owner, skill) + 25);
+            if (_session.Characters.GetEffectiveAttribute(owner, CharacterAttribute.Intelligence) >= 20)
+                effectiveness += 10;
+            return effectiveness;
         }
 
         private int ProjectTotalDefense(ArcanumObjectId owner)

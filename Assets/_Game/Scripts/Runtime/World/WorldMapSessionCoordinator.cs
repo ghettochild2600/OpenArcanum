@@ -923,20 +923,28 @@ namespace Arcanum.Runtime.World
         public bool TryMoveItemToInventory(ArcanumObjectId owner, ArcanumObjectId itemIdentity, int location)
         {
             if (!_states.TryGetValue(itemIdentity, out PersistentObjectState item)
+                || item.Placement.Kind == ObjectPlacementKind.Equipped && (item.ItemFlags & 0x20) != 0
                 || !InventoryCapacity.CanPlaceInInventory(owner, itemIdentity, location))
                 return false;
             ObjectPlacement previous = item.Placement;
+            int previousLocation = item.InventoryLocation;
             ObjectPlacement destination = ObjectPlacement.ContainedBy(owner);
             item.Placement = destination;
             item.InventoryLocation = location;
-            if (previous.Kind != destination.Kind || previous.ParentIdentity != destination.ParentIdentity)
+            if (previous.Kind != destination.Kind || previous.ParentIdentity != destination.ParentIdentity
+                || previousLocation != location)
                 ObjectPlacementChanged?.Invoke(item, previous, destination);
             return true;
         }
 
+        /// <summary>Source barter exact-cell preflight for an item still owned by the opposite inventory.</summary>
+        public bool CanReceiveInventoryItemAt(ArcanumObjectId owner, ArcanumObjectId itemIdentity, int location)
+            => InventoryCapacity.CanReceiveAt(owner, itemIdentity, location);
+
         /// <summary>Authoritative source arrange command; presentation owns no item positions.</summary>
-        public bool ArrangeInventory(ArcanumObjectId owner)
-            => InventoryCapacity.ArrangeInventory(owner);
+        public bool ArrangeInventory(ArcanumObjectId owner,
+            InventoryArrangeMode mode = InventoryArrangeMode.Horizontal)
+            => InventoryCapacity.ArrangeInventory(owner, mode);
 
         /// <summary>Finds the stable source-shaped ammo stack used by the bounded ranged transaction.</summary>
         public bool TryGetAmmo(ArcanumObjectId owner, int ammoType, int quantity,
@@ -1306,6 +1314,22 @@ namespace Arcanum.Runtime.World
             return match;
         }
 
+        private PersistentObjectState FindCompatibleContainedStack(ObjectProtoInfo prototype,
+            ArcanumObjectId parentIdentity)
+        {
+            if (prototype == null || prototype.Type is not (ObjectType.Ammo or ObjectType.Gold)) return null;
+            PersistentObjectState match = null;
+            foreach (PersistentObjectState candidate in _states.Values)
+                if (candidate.Placement.Kind == ObjectPlacementKind.Contained
+                    && candidate.Placement.ParentIdentity == parentIdentity
+                    && candidate.Type == prototype.Type
+                    && candidate.PrototypeNumber == prototype.ProtoNumber
+                    && candidate.StackQuantity is > 0
+                    && (match == null || string.CompareOrdinal(candidate.Identity.Key, match.Identity.Key) < 0))
+                    match = candidate;
+            return match;
+        }
+
         public bool IsWorldPresentationEligible(PersistentObjectState state, string sector)
             => state != null && !state.Off && state.Placement.Kind == ObjectPlacementKind.World
                && string.Equals(state.Placement.Sector, NormalizeSector(sector), StringComparison.Ordinal);
@@ -1666,10 +1690,33 @@ namespace Arcanum.Runtime.World
 
             InventoryFootprint footprint = _resolveInventoryFootprint?.Invoke(prototype.InvAid)
                                            ?? InventoryFootprint.OneCell;
+            PersistentObjectState existing = destination.Kind == ObjectPlacementKind.Contained
+                ? FindCompatibleContainedStack(prototype, destination.ParentIdentity)
+                : null;
+            int? createdQuantity = prototype.Type switch
+            {
+                ObjectType.Ammo => prototype.AmmoQuantity,
+                ObjectType.Gold => prototype.GoldQuantity,
+                _ => null,
+            };
+            if (existing != null
+                && ((createdQuantity ?? 0) < 1
+                    || (long)existing.StackQuantity.Value + createdQuantity.Value > MaxStackQuantity))
+                return new ItemCreationResult(InventoryResultCode.QuantityOverflow);
             InventoryAcceptance acceptance = destination.Kind == ObjectPlacementKind.Contained
-                ? InventoryCapacity.EvaluatePrototype(prototype, footprint, destination.ParentIdentity)
+                ? InventoryCapacity.EvaluatePrototype(prototype, footprint, destination.ParentIdentity, existing)
                 : InventoryAcceptance.Accept(-1);
             if (!acceptance.Succeeded) return new ItemCreationResult(acceptance.Code);
+
+            // item_insert coalesces matching Gold/Ammo immediately. Creation therefore shares the same
+            // source insertion rule as transfers instead of leaving restocks as duplicate runtime objects.
+            if (existing != null)
+            {
+                int previous = existing.StackQuantity.Value;
+                existing.StackQuantity = checked(previous + createdQuantity.Value);
+                ObjectQuantityChanged?.Invoke(existing, previous, existing.StackQuantity.Value);
+                return new ItemCreationResult(InventoryResultCode.Success, existing);
+            }
 
             if (!TryAllocateDynamicIdentity(out ArcanumObjectId identity))
                 return new ItemCreationResult(InventoryResultCode.IdentityExhausted);

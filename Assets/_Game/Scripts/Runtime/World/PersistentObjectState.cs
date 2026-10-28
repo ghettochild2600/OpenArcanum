@@ -47,7 +47,7 @@ namespace Arcanum.Runtime.World
         public uint UseScriptLocalCounters { get; internal set; }
         public ArcanumObjectId SceneryOccupantIdentity { get; internal set; }
         public int DialogNum { get; internal set; }
-        public int ItemFlags { get; }
+        public int ItemFlags { get; internal set; }
         public uint? InventoryArtId { get; }
         public int WeaponFlags { get; }
         /// <summary>Effective prototype combat facts retained independently of Unity presentation.</summary>

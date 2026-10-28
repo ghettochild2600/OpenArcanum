@@ -28,9 +28,18 @@ namespace Arcanum.Runtime.Economy
         public ArcanumObjectId Customer { get; }
         public ArcanumObjectId Item { get; }
         public int Quantity { get; }
+        /// <summary>
+        /// Optional source inventory-grid origin selected by the barter drop. A negative value preserves the
+        /// ordinary first-fit transaction used by dialogue and non-grid callers.
+        /// </summary>
+        public int DestinationInventoryLocation { get; }
         public EconomyTransactionRequest(EconomyTransactionDirection direction, ArcanumObjectId merchant,
-            ArcanumObjectId customer, ArcanumObjectId item, int quantity = 1)
-        { Direction = direction; Merchant = merchant; Customer = customer; Item = item; Quantity = quantity; }
+            ArcanumObjectId customer, ArcanumObjectId item, int quantity = 1,
+            int destinationInventoryLocation = -1)
+        {
+            Direction = direction; Merchant = merchant; Customer = customer; Item = item; Quantity = quantity;
+            DestinationInventoryLocation = destinationInventoryLocation;
+        }
     }
 
     public readonly struct EconomyPriceBreakdown
@@ -264,7 +273,8 @@ namespace Arcanum.Runtime.Economy
             ArcanumObjectId destination = request.Direction == EconomyTransactionDirection.BuyFromMerchant
                 ? request.Customer : merchantInventory;
             WorldMapSessionCoordinator.DialogueInventorySnapshot snapshot = _world.CaptureDialogueInventorySnapshot();
-            InventoryTransferResult transfer = TransferQuantity(item, request.Quantity, destination);
+            InventoryTransferResult transfer = TransferQuantity(item, request.Quantity, destination,
+                request.DestinationInventoryLocation);
             _world.RestoreDialogueInventorySnapshot(snapshot);
             if (!transfer.Succeeded)
                 return Fail(transfer.Code is InventoryResultCode.NoRoom or InventoryResultCode.TooHeavy
@@ -285,7 +295,8 @@ namespace Arcanum.Runtime.Economy
                 NormalizeStoreGold(merchantInventory, request.Merchant);
                 ArcanumObjectId destination = request.Direction == EconomyTransactionDirection.BuyFromMerchant
                     ? request.Customer : merchantInventory;
-                InventoryTransferResult transfer = TransferQuantity(item, request.Quantity, destination);
+                InventoryTransferResult transfer = TransferQuantity(item, request.Quantity, destination,
+                    request.DestinationInventoryLocation);
                 if (!transfer.Succeeded) throw new InvalidOperationException(transfer.Code.ToString());
                 int payment = request.Direction == EconomyTransactionDirection.BuyFromMerchant
                     ? preview.QuotedTotal : Math.Min(preview.QuotedTotal, _world.GetGold(request.Merchant));
@@ -510,18 +521,29 @@ namespace Arcanum.Runtime.Economy
         }
 
         private InventoryTransferResult TransferQuantity(PersistentObjectState item, int quantity,
-            ArcanumObjectId destination)
+            ArcanumObjectId destination, int destinationInventoryLocation)
         {
-            if (!item.StackQuantity.HasValue || quantity == item.StackQuantity.Value)
-                return _world.TransferItem(item.Identity, item.Placement, ObjectPlacement.ContainedBy(destination));
-            StackSplitResult split = _world.SplitStack(item.Identity, quantity);
-            if (!split.Succeeded)
-                return new InventoryTransferResult(split.Code is StackResultCode.NoRoom ? InventoryResultCode.NoRoom
-                    : split.Code is StackResultCode.TooHeavy ? InventoryResultCode.TooHeavy
-                    : InventoryResultCode.InvalidDestination, item.Identity, item.Placement,
-                    ObjectPlacement.ContainedBy(destination));
-            return _world.TransferItem(split.CreatedState.Identity, split.CreatedState.Placement,
-                ObjectPlacement.ContainedBy(destination));
+            PersistentObjectState transferring = item;
+            if (item.StackQuantity.HasValue && quantity != item.StackQuantity.Value)
+            {
+                StackSplitResult split = _world.SplitStack(item.Identity, quantity);
+                if (!split.Succeeded)
+                    return new InventoryTransferResult(split.Code is StackResultCode.NoRoom
+                            ? InventoryResultCode.NoRoom
+                            : split.Code is StackResultCode.TooHeavy ? InventoryResultCode.TooHeavy
+                            : InventoryResultCode.InvalidDestination, item.Identity, item.Placement,
+                        ObjectPlacement.ContainedBy(destination));
+                transferring = split.CreatedState;
+            }
+
+            InventoryTransferResult transfer = _world.TransferItem(transferring.Identity,
+                transferring.Placement, ObjectPlacement.ContainedBy(destination));
+            if (!transfer.Succeeded || destinationInventoryLocation < 0 || transfer.SourceConsumed)
+                return transfer;
+            if (_world.TryMoveItemToInventory(destination, transfer.ItemIdentity, destinationInventoryLocation))
+                return transfer;
+            return new InventoryTransferResult(InventoryResultCode.NoRoom, transfer.ItemIdentity,
+                transfer.Previous, transfer.Destination);
         }
 
         private void NormalizeStoreGold(ArcanumObjectId inventoryOwner, ArcanumObjectId merchant)

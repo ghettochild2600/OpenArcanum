@@ -169,11 +169,18 @@ namespace Arcanum.Formats.Tests
         }
 
         [Test]
-        public void DynamicSplitMergeUsesExistingAllocatorAndDestinationIdentityContract()
+        public void DynamicCreationUsesSourceInsertionMergeAndPreservesAllocator()
         {
             var prototype = new ObjectProtoInfo(6001, ObjectType.Ammo, 0x50000000u)
                 { AmmoQuantity = 40, ItemFlags = 0 };
-            _session.BindPrototypeSource(number => number == 6001 ? prototype : null);
+            var otherPrototype = new ObjectProtoInfo(6002, ObjectType.Ammo, 0x50000000u)
+                { AmmoQuantity = 5, ItemFlags = 0 };
+            _session.BindPrototypeSource(number => number switch
+            {
+                6001 => prototype,
+                6002 => otherPrototype,
+                _ => null,
+            });
             ItemCreationResult original = _session.CreateItem(6001, ObjectPlacement.ContainedBy(_player.Identity));
             StackSplitResult split = _session.SplitStack(original.State.Identity, 15);
             Assert.That(original.State.Identity.Key, Is.EqualTo("D_0000000000000001"));
@@ -182,8 +189,40 @@ namespace Arcanum.Formats.Tests
                 Is.True);
             Assert.That(original.State.StackQuantity, Is.EqualTo(40));
             Assert.That(_session.IsObjectRemoved(split.CreatedState.Identity), Is.True);
-            Assert.That(_session.CreateItem(6001, ObjectPlacement.ContainedBy(_player.Identity)).State.Identity.Key,
+            ItemCreationResult merged = _session.CreateItem(6001,
+                ObjectPlacement.ContainedBy(_player.Identity));
+            Assert.That(merged.State, Is.SameAs(original.State));
+            Assert.That(original.State.StackQuantity, Is.EqualTo(80));
+            Assert.That(_session.ChildrenOf(_player.Identity), Is.EqualTo(new[] { original.State.Identity }));
+            Assert.That(_session.CreateItem(6002, ObjectPlacement.ContainedBy(_player.Identity)).State.Identity.Key,
                 Is.EqualTo("D_0000000000000003"));
+        }
+
+        [Test]
+        public void RepeatedAmmoCreationCoalescesExactPrototypeButNotDifferentAmmo()
+        {
+            var arrows = new ObjectProtoInfo(7058, ObjectType.Ammo, 0x50000000u)
+                { AmmoQuantity = 10, ItemFlags = 0 };
+            var bullets = new ObjectProtoInfo(7059, ObjectType.Ammo, 0x50000000u)
+                { AmmoQuantity = 20, ItemFlags = 0 };
+            _session.BindPrototypeSource(number => number == 7058 ? arrows : number == 7059 ? bullets : null);
+
+            PersistentObjectState first = null;
+            for (int index = 0; index < 10; index++)
+            {
+                ItemCreationResult created = _session.CreateItem(7058,
+                    ObjectPlacement.ContainedBy(_player.Identity));
+                Assert.That(created.Succeeded, Is.True);
+                first ??= created.State;
+                Assert.That(created.State, Is.SameAs(first));
+            }
+            ItemCreationResult different = _session.CreateItem(7059,
+                ObjectPlacement.ContainedBy(_player.Identity));
+
+            Assert.That(first.StackQuantity, Is.EqualTo(100));
+            Assert.That(different.State.StackQuantity, Is.EqualTo(20));
+            Assert.That(different.State.Identity, Is.Not.EqualTo(first.Identity));
+            Assert.That(_session.ChildrenOf(_player.Identity), Has.Count.EqualTo(2));
         }
 
         [Test]

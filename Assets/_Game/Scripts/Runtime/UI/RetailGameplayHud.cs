@@ -253,6 +253,12 @@ namespace Arcanum.Runtime.UI
         private Rect _originalCameraRect;
         private float _originalCameraOrthographicSize;
         private bool _managingViewport;
+        private string _renderedContextualHelpKey;
+        private string _renderedContextualHelpText;
+        private string _renderedContextualHelpTitle;
+        private int _renderedContextualHelpIcon;
+        private int _renderedContextualHelpLineCount;
+        private bool _renderedContextualHelpTitled;
 
         public bool IsAvailable => _resolver != null && _canvasRoot != null;
         public bool IsVisible => IsAvailable && _canvasRoot.activeSelf;
@@ -295,6 +301,7 @@ namespace Arcanum.Runtime.UI
                 _resolver = resolver ?? UiSkinResolver.CreateProduction(ReportProductionDiagnostic);
                 _ownsResolver = resolver == null;
                 BuildPresentation();
+                _controller.ContextualHelpChanged += HandleContextualHelpChanged;
                 Synchronize(show: true);
             }
             catch (Exception exception)
@@ -328,6 +335,30 @@ namespace Arcanum.Runtime.UI
             SetCounter(_fatigueText, Mathf.Max(0, LastProjection.Fatigue));
             RefreshMaintainedSpellSlots(LastProjection.MaintainedSpellSlotCapacity, LastProjection.ActiveEffects);
 
+            SynchronizeMessageWindow();
+            SetCounter(_fateText, Mathf.Max(0, LastProjection.FatePoints), 2);
+            SetCounter(_contextText, Mathf.Max(0, LastProjection.ContextQuantity), 6);
+            if (_ammoImage != null) _ammoImage.SetKey(new UiAssetKey(LastProjection.ContextIconSourceId));
+            RefreshPrimaryButtons();
+            RefreshClock();
+            RefreshExperienceGauge();
+            RefreshRecentActions();
+            RefreshFollowerSlots();
+            if (_fatePanel != null) _fatePanel.gameObject.SetActive(_controller.HudPanel == GameUiHudPanel.Fate);
+            if (_sleepPanel != null)
+            {
+                bool sleepOpen = _controller.HudPanel == GameUiHudPanel.Sleep;
+                _sleepPanel.gameObject.SetActive(sleepOpen);
+                if (sleepOpen) RefreshSleepPanel();
+            }
+            if (_skillsPanel != null)
+                _skillsPanel.gameObject.SetActive(_controller.HudPanel == GameUiHudPanel.Skills);
+            _combatButton?.SetSelected(LastProjection.CombatActive);
+            RefreshQuickSlots();
+        }
+
+        private void SynchronizeMessageWindow()
+        {
             bool contextualHelpVisible = !string.IsNullOrWhiteSpace(_controller.ContextualHelp)
                                          || !string.IsNullOrWhiteSpace(_controller.ContextualHelpTitle);
             bool targetVisible = !contextualHelpVisible && _worldTarget != null
@@ -367,25 +398,13 @@ namespace Arcanum.Runtime.UI
                     : string.Empty;
                 SetText(_messageLineTwo, Clip(combat, 46), SourceText);
             }
-            SetCounter(_fateText, Mathf.Max(0, LastProjection.FatePoints), 2);
-            SetCounter(_contextText, Mathf.Max(0, LastProjection.ContextQuantity), 6);
-            if (_ammoImage != null) _ammoImage.SetKey(new UiAssetKey(LastProjection.ContextIconSourceId));
-            RefreshPrimaryButtons();
-            RefreshClock();
-            RefreshExperienceGauge();
-            RefreshRecentActions();
-            RefreshFollowerSlots();
-            if (_fatePanel != null) _fatePanel.gameObject.SetActive(_controller.HudPanel == GameUiHudPanel.Fate);
-            if (_sleepPanel != null)
-            {
-                bool sleepOpen = _controller.HudPanel == GameUiHudPanel.Sleep;
-                _sleepPanel.gameObject.SetActive(sleepOpen);
-                if (sleepOpen) RefreshSleepPanel();
-            }
-            if (_skillsPanel != null)
-                _skillsPanel.gameObject.SetActive(_controller.HudPanel == GameUiHudPanel.Skills);
-            _combatButton?.SetSelected(LastProjection.CombatActive);
-            RefreshQuickSlots();
+        }
+
+        private void HandleContextualHelpChanged()
+        {
+            if (!IsAvailable || _controller == null || LastProjection == null
+                || !_canvasRoot.activeInHierarchy) return;
+            SynchronizeMessageWindow();
         }
 
         public bool ContainsScreenPoint(Vector2 screenBottomLeft)
@@ -803,6 +822,20 @@ namespace Arcanum.Runtime.UI
         private void RefreshContextualHelp()
         {
             bool titled = !string.IsNullOrWhiteSpace(_controller.ContextualHelpTitle);
+            bool unchanged = string.Equals(_renderedContextualHelpKey, _controller.ContextualHelpKey,
+                                 StringComparison.Ordinal)
+                             && string.Equals(_renderedContextualHelpText, _controller.ContextualHelp,
+                                 StringComparison.Ordinal)
+                             && string.Equals(_renderedContextualHelpTitle, _controller.ContextualHelpTitle,
+                                 StringComparison.Ordinal)
+                             && _renderedContextualHelpIcon == _controller.ContextualHelpIconSourceId;
+            if (unchanged)
+            {
+                _contextualHelpTitle.gameObject.SetActive(_renderedContextualHelpTitled);
+                for (int index = 0; index < _contextualHelpLines.Length; index++)
+                    _contextualHelpLines[index].gameObject.SetActive(index < _renderedContextualHelpLineCount);
+                return;
+            }
             _contextualHelpTitle.gameObject.SetActive(titled);
             SetText(_contextualHelpTitle, titled ? _controller.ContextualHelpTitle : string.Empty,
                 ContextualHelpTextColor);
@@ -823,6 +856,12 @@ namespace Arcanum.Runtime.UI
                     sourceRect.width, RetailGameplayHudLayout.ContextualHelpLineHeight)));
                 SetText(line, lines[index], ContextualHelpTextColor);
             }
+            _renderedContextualHelpKey = _controller.ContextualHelpKey;
+            _renderedContextualHelpText = _controller.ContextualHelp;
+            _renderedContextualHelpTitle = _controller.ContextualHelpTitle;
+            _renderedContextualHelpIcon = _controller.ContextualHelpIconSourceId;
+            _renderedContextualHelpLineCount = lines.Count;
+            _renderedContextualHelpTitled = titled;
         }
 
         private void HideContextualHelp()
@@ -1440,6 +1479,7 @@ namespace Arcanum.Runtime.UI
         private void Cleanup()
         {
             RestoreWorldViewport();
+            if (_controller != null) _controller.ContextualHelpChanged -= HandleContextualHelpChanged;
             if (_canvasRoot != null)
             {
                 _canvasRoot.SetActive(false);
@@ -1504,6 +1544,12 @@ namespace Arcanum.Runtime.UI
             Array.Clear(_slotLabels, 0, _slotLabels.Length);
             Array.Clear(_slots, 0, _slots.Length);
             LastProjection = null;
+            _renderedContextualHelpKey = null;
+            _renderedContextualHelpText = null;
+            _renderedContextualHelpTitle = null;
+            _renderedContextualHelpIcon = 0;
+            _renderedContextualHelpLineCount = 0;
+            _renderedContextualHelpTitled = false;
         }
 
         private static void ReportProductionDiagnostic(string message)

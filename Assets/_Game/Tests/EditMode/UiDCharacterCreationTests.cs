@@ -312,6 +312,13 @@ namespace Arcanum.Formats.Tests
         }
 
         [Test]
+        public void NameEntryDoesNotRenderUnitySelectionHighlight()
+        {
+            Assert.That(_view.NameInput.selectionColor.a, Is.Zero,
+                "source name editing shows the bitmap glyphs and caret without Unity's blue selection rectangle");
+        }
+
+        [Test]
         public void PortraitGenderAndRaceCyclingRemainCatalogAndBodyLegal()
         {
             int first = _controller.CreationDraft.PortraitId;
@@ -479,6 +486,11 @@ namespace Arcanum.Formats.Tests
                 Assert.That(background.EffectId, Is.EqualTo(expectedEffect));
                 Assert.That(background.Conditions, Is.EqualTo(rules.Get(key + 2) ?? string.Empty));
                 Assert.That(background.StartingGold, Is.EqualTo(Math.Max(0, expectedGold)));
+                int[] expectedItems = (rules.Get(key + 4) ?? string.Empty)
+                    .Split((char[])null, StringSplitOptions.RemoveEmptyEntries)
+                    .Select(int.Parse).ToArray();
+                Assert.That(background.StartingItems, Is.EqualTo(expectedItems),
+                    $"Background {background.Id} starting inventory");
                 Assert.That(background.RawEffect, Is.EqualTo(effects.Get(background.EffectId) ?? string.Empty));
                 Assert.That(background.Name, Is.Not.Null.And.Not.Empty);
             }
@@ -775,6 +787,120 @@ namespace Arcanum.Formats.Tests
         }
 
         [Test]
+        public void IdentitySelectorHoverTransitionsReusePreparedBitmapPresenters()
+        {
+            SourceHoverHintTarget gender = _view.GetComponentsInChildren<SourceHoverHintTarget>(true)
+                .Single(value => value.name == "Gender Context");
+            SourceHoverHintTarget race = _view.GetComponentsInChildren<SourceHoverHintTarget>(true)
+                .Single(value => value.name == "Race Context");
+            SourceHoverHintTarget background = _view.GetComponentsInChildren<SourceHoverHintTarget>(true)
+                .Single(value => value.name == "Background Context");
+
+            // Warm the retail message/ART caches before measuring only the presentation transition.
+            gender.OnPointerEnter(null);
+            race.OnPointerEnter(null);
+            background.OnPointerEnter(null);
+            background.OnPointerExit(null);
+            Canvas.ForceUpdateCanvases();
+            MeasureHoverTransition("Male", "enter", () => gender.OnPointerEnter(null));
+            MeasureHoverTransition("Male", "exit", () => gender.OnPointerExit(null));
+            MeasureHoverTransition("Human", "enter", () => race.OnPointerEnter(null));
+            MeasureHoverTransition("Human", "exit", () => race.OnPointerExit(null));
+            MeasureHoverTransition("Background", "enter", () => background.OnPointerEnter(null));
+            MeasureHoverTransition("Background", "exit", () => background.OnPointerExit(null));
+            RectTransform description = _view.GetComponentsInChildren<RectTransform>(true)
+                .Single(value => value.name == "Description Body");
+            SourceUiBitmapText[] preparedLines = description.GetComponentsInChildren<SourceUiBitmapText>(true);
+            Image[] preparedGlyphs = description.GetComponentsInChildren<Image>(true);
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+
+            double[] stateSamples = new double[120];
+            double[] visualSamples = new double[120];
+            int sampleIndex = 0;
+            long allocationsBefore = GC.GetAllocatedBytesForCurrentThread();
+            long started = System.Diagnostics.Stopwatch.GetTimestamp();
+            for (int index = 0; index < 20; index++)
+            {
+                RecordHoverTransition(gender, true, stateSamples, visualSamples, ref sampleIndex);
+                RecordHoverTransition(gender, false, stateSamples, visualSamples, ref sampleIndex);
+                RecordHoverTransition(race, true, stateSamples, visualSamples, ref sampleIndex);
+                RecordHoverTransition(race, false, stateSamples, visualSamples, ref sampleIndex);
+                RecordHoverTransition(background, true, stateSamples, visualSamples, ref sampleIndex);
+                RecordHoverTransition(background, false, stateSamples, visualSamples, ref sampleIndex);
+            }
+            long finished = System.Diagnostics.Stopwatch.GetTimestamp();
+            long allocated = GC.GetAllocatedBytesForCurrentThread() - allocationsBefore;
+            double milliseconds = (finished - started) * 1000d / System.Diagnostics.Stopwatch.Frequency;
+            double stateAverage = Average(stateSamples);
+            double visualAverage = Average(visualSamples);
+            Array.Sort(stateSamples);
+            Array.Sort(visualSamples);
+            int p95Index = Mathf.CeilToInt(stateSamples.Length * .95f) - 1;
+            Debug.Log(
+                $"UI HOVER RESULT: transitions={sampleIndex} elapsedMs={milliseconds:F3} "
+                + $"stateAverageMs={stateAverage:F3} stateP95Ms={stateSamples[p95Index]:F3} "
+                + $"visualAverageMs={visualAverage:F3} visualP95Ms={visualSamples[p95Index]:F3} "
+                + $"allocatedBytes={allocated}");
+
+            Assert.That(Wrapped("Description Body"), Is.Not.Empty);
+            Assert.That(description.GetComponentsInChildren<SourceUiBitmapText>(true),
+                Is.EqualTo(preparedLines), "hover must reuse the prepared source text lines");
+            Assert.That(description.GetComponentsInChildren<Image>(true),
+                Is.EqualTo(preparedGlyphs), "hover must reuse the prepared bitmap-glyph presenters");
+            Canvas[] contextCanvases = _view.IdentityRoot.GetComponentsInChildren<Canvas>(true)
+                .Where(value => value.name == "Identity Context Canvas").ToArray();
+            Assert.That(contextCanvases, Has.Length.EqualTo(1),
+                "the source description invalidation rectangle is isolated from the static Character UI");
+            Assert.That(_view.IdentityRoot.GetComponentsInChildren<Graphic>(true)
+                .Where(value => value.GetComponentInParent<SourceUiBitmapText>() != null)
+                .All(value => !value.raycastTarget), Is.True,
+                "bitmap glyphs must never enter GraphicRaycaster candidate lists");
+            Assert.That(allocated, Is.Zero, "warm hover transitions must remain allocation free");
+        }
+
+        private static void RecordHoverTransition(SourceHoverHintTarget target, bool entering,
+            double[] stateSamples, double[] visualSamples, ref int sampleIndex)
+        {
+            long pointerTimestamp = System.Diagnostics.Stopwatch.GetTimestamp();
+            if (entering) target.OnPointerEnter(null);
+            else target.OnPointerExit(null);
+            long stateTimestamp = System.Diagnostics.Stopwatch.GetTimestamp();
+            Canvas.ForceUpdateCanvases();
+            long visualTimestamp = System.Diagnostics.Stopwatch.GetTimestamp();
+            stateSamples[sampleIndex] = (stateTimestamp - pointerTimestamp) * 1000d
+                                        / System.Diagnostics.Stopwatch.Frequency;
+            visualSamples[sampleIndex] = (visualTimestamp - pointerTimestamp) * 1000d
+                                         / System.Diagnostics.Stopwatch.Frequency;
+            sampleIndex++;
+        }
+
+        private static double Average(double[] values)
+        {
+            double total = 0d;
+            for (int index = 0; index < values.Length; index++) total += values[index];
+            return total / values.Length;
+        }
+
+        private static void MeasureHoverTransition(string control, string transition, Action action)
+        {
+            long pointerTimestamp = System.Diagnostics.Stopwatch.GetTimestamp();
+            action();
+            long stateTimestamp = System.Diagnostics.Stopwatch.GetTimestamp();
+            Canvas.ForceUpdateCanvases();
+            long visualTimestamp = System.Diagnostics.Stopwatch.GetTimestamp();
+            double stateMilliseconds = (stateTimestamp - pointerTimestamp) * 1000d
+                                       / System.Diagnostics.Stopwatch.Frequency;
+            double visualMilliseconds = (visualTimestamp - pointerTimestamp) * 1000d
+                                        / System.Diagnostics.Stopwatch.Frequency;
+            Debug.Log($"UI HOVER SAMPLE: control={control} transition={transition} "
+                      + $"pointerTicks={pointerTimestamp} stateTicks={stateTimestamp} "
+                      + $"visualTicks={visualTimestamp} stateMs={stateMilliseconds:F3} "
+                      + $"visualMs={visualMilliseconds:F3}");
+        }
+
+        [Test]
         public void SourceMessageProjectionSeparatesTitleAndWrappedBody()
         {
             RetailMessageWindowProjection message = RetailMessageWindowProjection.FromSource(
@@ -894,6 +1020,129 @@ namespace Arcanum.Formats.Tests
             Hover($"{skill} Name", true);
             Assert.That(Text("Editor Message Requirement").Text,
                 Is.EqualTo($"Minimum {abbreviation} to raise: 6"));
+        }
+
+        [Test]
+        public void AllSixteenSkillRowsAndAdjustmentControlsRouteExactSourceHelp()
+        {
+            _view.ContinueToEditor();
+            const int firstDescription = CharacterSkillRules.SkillCount
+                                         + (int)SkillTrainingLevel.Master + 1;
+            foreach (CharacterSkill skill in CharacterSkillRules.AllSkills)
+            {
+                Invoke($"Skill Group {(int)skill / 4}");
+                Assert.That(_retail.TryReadMessage("mes/skill.mes", (int)skill,
+                    out string sourceName), Is.True, skill.ToString());
+                Assert.That(_retail.TryReadMessage("mes/skill.mes", firstDescription + (int)skill,
+                    out string sourceDescription), Is.True, skill.ToString());
+
+                string[] targets = { $"{skill} Row Help", $"{skill} Name", $"{skill} Gauge",
+                    $"Decrease {skill}", $"Increase {skill}" };
+                foreach (string target in targets)
+                {
+                    Hover(target, true);
+                    Assert.That(Text("Editor Message Title").Text, Is.EqualTo(sourceName.Trim()), target);
+                    string normalizedSource = string.Join(" ", sourceDescription.Split(
+                        (char[])null, StringSplitOptions.RemoveEmptyEntries));
+                    Assert.That(normalizedSource, Does.StartWith(Wrapped("Editor Message Body")), target);
+                    Hover(target, false);
+                    Assert.That(Text("Editor Message Title").Text, Is.Empty, target);
+                    Assert.That(Wrapped("Editor Message Body"), Is.Empty, target);
+                }
+            }
+        }
+
+        [Test]
+        public void AllFourSkillGroupButtonsRouteExactSourceHelp()
+        {
+            _view.ContinueToEditor();
+            for (int group = 0; group < 4; group++)
+            {
+                Assert.That(_retail.TryReadMessage("mes/charedit.mes", 135 + group,
+                    out string sourceMessage), Is.True, $"skill group {group}");
+                RetailMessageWindowProjection expected = RetailMessageWindowProjection.FromSource(sourceMessage);
+
+                Hover($"Skill Group {group}", true);
+                Assert.That(Text("Editor Message Title").Text, Is.EqualTo(expected.Title));
+                Assert.That(Wrapped("Editor Message Body"), Is.EqualTo(expected.Body));
+
+                Hover($"Skill Group {group}", false);
+                Assert.That(Text("Editor Message Title").Text, Is.Empty);
+                Assert.That(Wrapped("Editor Message Body"), Is.Empty);
+            }
+        }
+
+        [Test]
+        public void SelectedSkillGroupRemainsLatchedWhileOtherGroupsUseTransientHover()
+        {
+            _view.ContinueToEditor();
+            SourceUiButton selected = SourceButton("Skill Group 0");
+            SourceUiButton other = SourceButton("Skill Group 1");
+            Assert.That(selected.CurrentPresentationKey.Frame, Is.EqualTo(1),
+                "source TIG toggle/latch radio group keeps the active skill family at hover brightness");
+            Assert.That(other.CurrentPresentationKey.Frame, Is.Zero);
+
+            selected.OnDeselect(null);
+            Assert.That(selected.CurrentPresentationKey.Frame, Is.EqualTo(1),
+                "temporary Unity focus loss must not clear the owner-selected state");
+            other.OnPointerEnter(null);
+            Assert.That(other.CurrentPresentationKey.Frame, Is.EqualTo(1));
+            Assert.That(selected.CurrentPresentationKey.Frame, Is.EqualTo(1));
+            other.OnPointerExit(null);
+            Assert.That(other.CurrentPresentationKey.Frame, Is.Zero);
+            Assert.That(selected.CurrentPresentationKey.Frame, Is.EqualTo(1));
+
+            Invoke("Skill Group 1");
+            Assert.That(SourceButton("Skill Group 0").CurrentPresentationKey.Frame, Is.Zero);
+            Assert.That(SourceButton("Skill Group 1").CurrentPresentationKey.Frame, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void CharacterCreationNavigationArrowsAreMomentaryNotHoverLatched()
+        {
+            _view.ContinueToEditor();
+            SourceUiButton back = SourceButton("Editor Back");
+            Assert.That(back.CurrentPresentationKey.Frame, Is.Zero);
+            back.OnPointerEnter(null);
+            Assert.That(back.CurrentPresentationKey.Frame, Is.Zero,
+                "stationary pointer over a newly revealed source arrow leaves it up");
+            back.OnPointerDown(null);
+            Assert.That(back.CurrentPresentationKey.Frame, Is.EqualTo(2));
+            back.OnPointerUp(null);
+            Assert.That(back.CurrentPresentationKey.Frame, Is.Zero);
+        }
+
+        [Test]
+        public void WarmCombatSkillSweepReusesPreparedPresentersWithoutAllocating()
+        {
+            _view.ContinueToEditor();
+            CharacterSkill[] combat = { CharacterSkill.Bow, CharacterSkill.Dodge,
+                CharacterSkill.Melee, CharacterSkill.Throwing };
+            SourceHoverHintTarget[] targets = combat.Select(skill =>
+                    _view.GetComponentsInChildren<SourceHoverHintTarget>(true)
+                        .Single(value => value.name == $"{skill} Row Help"))
+                .ToArray();
+            foreach (SourceHoverHintTarget target in targets)
+            {
+                target.OnPointerEnter(null);
+                target.OnPointerExit(null);
+            }
+            int glyphs = _view.GetComponentsInChildren<SourceUiBitmapText>(true)
+                .Sum(value => value.GlyphPresenterCount);
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            for (int pass = 0; pass < 25; pass++)
+            {
+                foreach (SourceHoverHintTarget target in targets) target.OnPointerEnter(null);
+                for (int index = targets.Length - 1; index >= 0; index--)
+                    targets[index].OnPointerEnter(null);
+            }
+            long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+            Assert.That(allocated, Is.Zero);
+            Assert.That(_view.GetComponentsInChildren<SourceUiBitmapText>(true)
+                .Sum(value => value.GlyphPresenterCount), Is.EqualTo(glyphs));
         }
 
         [Test]
@@ -1107,14 +1356,32 @@ namespace Arcanum.Formats.Tests
             if (entered) hint.OnPointerEnter(null); else hint.OnPointerExit(null);
         }
 
+        private SourceUiButton SourceButton(string name)
+            => _view.GetComponentsInChildren<SourceUiButton>(true)
+                .Single(value => value.name == name);
+
         private SourceUiBitmapText Text(string name)
-            => _view.GetComponentsInChildren<SourceUiBitmapText>(true).Single(value => value.name == name);
+        {
+            IEnumerable<SourceUiBitmapText> matches = _view.GetComponentsInChildren<SourceUiBitmapText>(true)
+                .Where(value => value.name == name
+                                || name == "Description Title"
+                                && value.name.StartsWith("Description Title", StringComparison.Ordinal));
+            if (name == "Description Title")
+                matches = matches.Where(value => value.GetComponentInParent<CanvasGroup>()?.alpha > .5f);
+            return matches.Single();
+        }
 
         private string Wrapped(string name)
         {
-            RectTransform body = _view.GetComponentsInChildren<RectTransform>(true)
-                .Single(value => value.name == name);
+            IEnumerable<RectTransform> matches = _view.GetComponentsInChildren<RectTransform>(true)
+                .Where(value => value.name == name
+                                || name == "Description Body"
+                                && value.name.StartsWith("Description Body", StringComparison.Ordinal));
+            if (name == "Description Body")
+                matches = matches.Where(value => value.GetComponentInParent<CanvasGroup>()?.alpha > .5f);
+            RectTransform body = matches.Single();
             return string.Join(" ", body.GetComponentsInChildren<SourceUiBitmapText>(true)
+                .Where(value => value.gameObject.activeSelf)
                 .Select(value => value.Text));
         }
 

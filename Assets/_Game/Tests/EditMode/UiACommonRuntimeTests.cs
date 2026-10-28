@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using NUnit.Framework;
 using OpenArcanum.Rendering;
 using OpenArcanum.UI;
@@ -248,6 +249,8 @@ namespace Arcanum.Formats.Tests
                     new UiAssetKey(9, frame: 1),
                     new UiAssetKey(9, frame: 2),
                     new UiAssetKey(9, frame: 2));
+                SourceUiImage sourceImage = go.GetComponent<SourceUiImage>();
+                Assert.That(sourceImage.PreparedAssetCount, Is.EqualTo(3));
                 Vector2 before = rect.sizeDelta;
                 button.OnPointerEnter((PointerEventData)null);
                 Assert.That(button.CurrentPresentationKey.Frame, Is.EqualTo(1));
@@ -256,6 +259,57 @@ namespace Arcanum.Formats.Tests
                 button.SetInteractable(false);
                 Assert.That(button.CurrentPresentationKey.Frame, Is.EqualTo(2));
                 Assert.That(rect.sizeDelta, Is.EqualTo(before));
+            }
+            finally { Object.DestroyImmediate(go); }
+        }
+
+        [Test]
+        public void TwoFrameSourceButtonReusesActiveFrameForPressedState()
+        {
+            var go = new GameObject("Two Frame UIA Button", typeof(RectTransform), typeof(Image), typeof(Button),
+                typeof(SourceUiImage), typeof(SourceUiButton));
+            try
+            {
+                SourceUiButton button = go.GetComponent<SourceUiButton>();
+                button.Bind(_skin,
+                    new UiAssetKey(137, frame: 0),
+                    new UiAssetKey(137, frame: 1),
+                    new UiAssetKey(137, frame: 2),
+                    new UiAssetKey(137, frame: 0));
+                SourceUiImage sourceImage = go.GetComponent<SourceUiImage>();
+                Assert.That(sourceImage.PreparedAssetCount, Is.EqualTo(2));
+
+                button.OnPointerEnter(null);
+                button.OnPointerDown(null);
+                Assert.That(button.CurrentPresentationKey, Is.EqualTo(new UiAssetKey(137, frame: 1)));
+            }
+            finally { Object.DestroyImmediate(go); }
+        }
+
+        [Test]
+        public void MomentarySourceButtonReturnsUpOnReleaseAndDoesNotLatchUnityFocus()
+        {
+            var go = new GameObject("Momentary UIA Button", typeof(RectTransform), typeof(Image), typeof(Button),
+                typeof(SourceUiImage), typeof(SourceUiButton));
+            try
+            {
+                SourceUiButton button = go.GetComponent<SourceUiButton>();
+                button.Bind(_skin,
+                    new UiAssetKey(9, frame: 0),
+                    new UiAssetKey(9, frame: 1),
+                    new UiAssetKey(9, frame: 2),
+                    new UiAssetKey(9, frame: 0));
+
+                button.OnPointerEnter(null);
+                Assert.That(button.CurrentPresentationKey.Frame, Is.EqualTo(1));
+                button.OnPointerDown(null);
+                Assert.That(button.CurrentPresentationKey.Frame, Is.EqualTo(2));
+                button.OnPointerUp(null);
+                Assert.That(button.CurrentPresentationKey.Frame, Is.Zero,
+                    "mouse release restores the authored up frame even while Unity retains event focus");
+                button.OnSelect(null);
+                Assert.That(button.CurrentPresentationKey.Frame, Is.Zero,
+                    "Unity selection focus is not a source button latch state");
             }
             finally { Object.DestroyImmediate(go); }
         }
@@ -270,6 +324,43 @@ namespace Arcanum.Formats.Tests
             Assert.That(second.Sprite, Is.SameAs(first.Sprite));
             Assert.That(_retail.CachedFrameCount, Is.InRange(before, before + 1));
             Assert.That(_skin.CachedResolutionCount, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void BitmapTextChangesReusePreparedGlyphPresenters()
+        {
+            var go = new GameObject("Reusable Bitmap Text", typeof(RectTransform), typeof(SourceUiBitmapText));
+            try
+            {
+                SourceUiBitmapText text = go.GetComponent<SourceUiBitmapText>();
+                text.Bind(_skin, "Background", Color.white, SourceUiBitmapText.Flare12FontSourceId);
+                Image[] prepared = go.GetComponentsInChildren<Image>(true);
+                int capacity = text.GlyphPresenterCount;
+
+                text.Bind(_skin, "Constitution", Color.yellow, SourceUiBitmapText.Flare12FontSourceId);
+                Assert.That(go.GetComponentsInChildren<Image>(true).Take(prepared.Length),
+                    Is.EqualTo(prepared));
+                Assert.That(text.GlyphPresenterCount, Is.GreaterThanOrEqualTo(capacity));
+
+                Image[] expanded = go.GetComponentsInChildren<Image>(true);
+                int expandedCapacity = text.GlyphPresenterCount;
+                text.Bind(_skin, "Race", Color.white, SourceUiBitmapText.Flare12FontSourceId);
+                Assert.That(go.GetComponentsInChildren<Image>(true), Is.EqualTo(expanded));
+                Assert.That(text.GlyphPresenterCount, Is.EqualTo(expandedCapacity));
+                Assert.That(text.ActiveGlyphPresenterCount, Is.EqualTo(4));
+
+                // A previously seen string is a prepared presentation: it reuses both layout metrics and
+                // per-glyph resolved source assets instead of resolving the bitmap font again.
+                text.Bind(_skin, "Constitution", Color.yellow, SourceUiBitmapText.Flare12FontSourceId);
+                int[] preparedAssetCounts = go.GetComponentsInChildren<SourceUiImage>(true)
+                    .Select(value => value.PreparedAssetCount).ToArray();
+                text.Bind(_skin, "Race", Color.white, SourceUiBitmapText.Flare12FontSourceId);
+                text.Bind(_skin, "Constitution", Color.yellow, SourceUiBitmapText.Flare12FontSourceId);
+                Assert.That(text.PreparedLayoutCount, Is.EqualTo(3));
+                Assert.That(go.GetComponentsInChildren<SourceUiImage>(true)
+                    .Select(value => value.PreparedAssetCount), Is.EqualTo(preparedAssetCounts));
+            }
+            finally { Object.DestroyImmediate(go); }
         }
 
         [Test]

@@ -2,6 +2,7 @@ using System;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
+using System.Collections.Generic;
 
 namespace OpenArcanum.UI
 {
@@ -62,11 +63,14 @@ namespace OpenArcanum.UI
         private SourceUiPaletteTransform _paletteTransform;
         private Texture2D _paletteTexture;
         private Sprite _paletteSprite;
+        private readonly Dictionary<UiAssetKey, UiResolvedAsset> _preparedAssets = new();
 
         public UiAssetKey Key => asset.Key;
         public UiResolvedAsset CurrentAsset { get; private set; }
         public SourceUiPaletteTransform PaletteTransform => _paletteTransform;
         public Image Image => _image != null ? _image : (_image = GetComponent<Image>());
+        public int PreparedAssetCount => _preparedAssets.Count;
+        public bool IsBoundTo(UiSkinResolver resolver) => ReferenceEquals(_resolver, resolver);
 
         private void OnEnable()
         {
@@ -92,7 +96,14 @@ namespace OpenArcanum.UI
         public void Bind(UiSkinResolver resolver, UiAssetKey key, bool useNativeLogicalSize = false)
         {
             if (resolver == null) throw new ArgumentNullException(nameof(resolver));
+            if (ReferenceEquals(_resolver, resolver) && asset.Key.Equals(key)
+                && applyNativeLogicalSize == useNativeLogicalSize)
+            {
+                if (CurrentAsset == null) Refresh();
+                return;
+            }
             Unsubscribe();
+            if (!ReferenceEquals(_resolver, resolver)) _preparedAssets.Clear();
             _resolver = resolver;
             asset = new UiAssetReference(key);
             applyNativeLogicalSize = useNativeLogicalSize;
@@ -102,8 +113,26 @@ namespace OpenArcanum.UI
 
         public void SetKey(UiAssetKey key)
         {
+            if (asset.Key.Equals(key) && CurrentAsset != null) return;
             asset = new UiAssetReference(key);
             Refresh();
+        }
+
+        public bool PrepareKey(UiAssetKey key)
+        {
+            if (_resolver == null) return false;
+            if (_preparedAssets.TryGetValue(key, out UiResolvedAsset prepared)
+                && prepared?.Sprite != null)
+                return true;
+            if (!_resolver.TryResolve(key, out prepared)) return false;
+            _preparedAssets[key] = prepared;
+            return true;
+        }
+
+        public void PrepareAsset(UiResolvedAsset prepared)
+        {
+            if (prepared?.Sprite == null) throw new ArgumentNullException(nameof(prepared));
+            _preparedAssets[prepared.Key] = prepared;
         }
 
         public void SetPaletteTransform(SourceUiPaletteTransform transform)
@@ -116,7 +145,16 @@ namespace OpenArcanum.UI
         public bool Refresh()
         {
             ReleasePaletteResources();
-            if (_resolver == null || !_resolver.TryResolve(asset.Key, out UiResolvedAsset resolved))
+            if (_resolver == null)
+            {
+                CurrentAsset = null;
+                Image.sprite = null;
+                return false;
+            }
+
+            UiResolvedAsset resolved;
+            if (!_preparedAssets.TryGetValue(asset.Key, out resolved)
+                && !_resolver.TryResolve(asset.Key, out resolved))
             {
                 CurrentAsset = null;
                 Image.sprite = null;
@@ -212,6 +250,7 @@ namespace OpenArcanum.UI
             // glyph. Unity's native object is already gone in that narrow window, so fail closed instead of
             // touching the retired component.
             if (this == null) return;
+            _preparedAssets.Clear();
             Refresh();
         }
     }
@@ -265,21 +304,29 @@ namespace OpenArcanum.UI
             _resolver = resolver ?? throw new ArgumentNullException(nameof(resolver));
             normal = new UiAssetReference(normalKey);
             hover = new UiAssetReference(hoverKey);
-            pressed = new UiAssetReference(pressedKey);
+            // Some source buttons expose only normal/active frames. TIG keeps their active frame while pressed;
+            // probing a conventional third frame both warns and creates work on the hover path.
+            pressed = new UiAssetReference(_resolver.Original.IsFrameAvailable(pressedKey)
+                ? pressedKey
+                : hoverKey);
             disabled = new UiAssetReference(disabledKey);
             hasSelectedState = selectedKey.HasValue;
             selected = new UiAssetReference(selectedKey ?? normalKey);
+            SourceImage.Bind(_resolver, normalKey);
+            PreparePresentationKeys();
             RefreshPresentation();
         }
 
         public void SetInteractable(bool value)
         {
+            if (Button.interactable == value) return;
             Button.interactable = value;
             RefreshPresentation();
         }
 
         public void SetSelected(bool value)
         {
+            if (_selected == value) return;
             _selected = value;
             RefreshPresentation();
         }
@@ -307,20 +354,16 @@ namespace OpenArcanum.UI
         public void OnPointerUp(PointerEventData eventData)
         {
             _pressed = false;
+            // TIG momentary buttons return to their authored up frame when the mouse is released.
+            // A later pointer-enter can show hover again; Unity keyboard/event focus must not latch
+            // the visual active frame after a click.
+            _hovered = false;
             RefreshPresentation();
         }
 
-        public void OnSelect(BaseEventData eventData)
-        {
-            _selected = true;
-            RefreshPresentation();
-        }
+        public void OnSelect(BaseEventData eventData) { }
 
-        public void OnDeselect(BaseEventData eventData)
-        {
-            _selected = false;
-            RefreshPresentation();
-        }
+        public void OnDeselect(BaseEventData eventData) { }
 
         private void RefreshPresentation()
         {
@@ -332,7 +375,16 @@ namespace OpenArcanum.UI
             else if (_hovered) key = hover.Key;
             else key = normal.Key;
 
-            SourceImage.Bind(_resolver, key);
+            SourceImage.SetKey(key);
+        }
+
+        private void PreparePresentationKeys()
+        {
+            SourceImage.PrepareKey(normal.Key);
+            SourceImage.PrepareKey(hover.Key);
+            SourceImage.PrepareKey(pressed.Key);
+            SourceImage.PrepareKey(disabled.Key);
+            if (hasSelectedState) SourceImage.PrepareKey(selected.Key);
         }
     }
 

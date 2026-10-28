@@ -143,6 +143,14 @@ namespace Arcanum.Runtime.UI
     {
         private enum IdentityContext { Resting, Background, Gender, Race }
 
+        private sealed class IdentityContextPresentation
+        {
+            public RectTransform Root;
+            public CanvasGroup Group;
+            public SourceUiBitmapText Title;
+            public RectTransform Body;
+        }
+
         private static readonly Color SourceWhite = new Color32(250, 250, 250, 255);
         private static readonly Color SourceRed = new Color32(255, 50, 50, 255);
         private static readonly Color SourceYellow = new Color32(255, 210, 0, 255);
@@ -192,6 +200,7 @@ namespace Arcanum.Runtime.UI
         private RectTransform _identityNavigation;
         private RectTransform _editorNavigation;
         private RectTransform _identityDescription;
+        private RectTransform _identityContextLayer;
         private RectTransform _editorPanel;
         private SourceUiImage _identityBackground;
         private SourceUiImage _editorBackground;
@@ -236,7 +245,13 @@ namespace Arcanum.Runtime.UI
         private readonly Dictionary<CharacterAttribute, (SourceUiButton Minus, SourceUiButton Plus)> _attributeButtons = new();
         private readonly Dictionary<RetailCreationEditorPage, SourceUiButton> _pageButtons = new();
         private readonly Dictionary<SourceUiBitmapText, Rect> _textBounds = new();
+        private readonly Dictionary<IdentityContext, IdentityContextPresentation> _identityContextPresentations =
+            new();
         private readonly Dictionary<CharacterSkill, Image> _skillGauges = new();
+        private readonly string[] _skillHintTitles = new string[CharacterSkillRules.SkillCount];
+        private readonly string[] _skillHintRequirements = new string[CharacterSkillRules.SkillCount];
+        private readonly IReadOnlyList<string>[] _skillHintLines =
+            new IReadOnlyList<string>[CharacterSkillRules.SkillCount];
         private bool _wasVisible;
         private int _identitySignature = int.MinValue;
         private int _editorSignature = int.MinValue;
@@ -247,6 +262,7 @@ namespace Arcanum.Runtime.UI
         private int _autoLevelSchemeOffset;
         private bool _nameEditing;
         private IdentityContext _identityContext = IdentityContext.Resting;
+        private IdentityContext _visibleIdentityContext = IdentityContext.Resting;
         private string _identityValidation = string.Empty;
 
         public bool IsAvailable => _canvasRoot != null && _resolver != null;
@@ -514,12 +530,13 @@ namespace Arcanum.Runtime.UI
             for (int index = 0; index < derivedStats.Length; index++)
                 _identityDerivedStats.Add(AddText($"Initial Derived {index}", _identity, derivedStats[index],
                     string.Empty, SourceUiBitmapText.Flare12FontSourceId, SourceWhite));
-            _descriptionTitle = AddText("Description Title", _identity,
-                RetailCharacterCreationLayout.DescriptionTitle, string.Empty,
-                SourceUiBitmapText.Morph15FontSourceId, SourceWhite);
-            SetCenteredText(_descriptionTitle, "Background", SourceWhite);
-            _identityDescription = AddRect("Description Body", _identity,
-                RetailCharacterCreationLayout.DescriptionBody);
+            _identityContextLayer = AddRect("Identity Context Canvas", _identity,
+                new Rect(0f, 0f, RetailCharacterCreationLayout.Window.width,
+                    RetailCharacterCreationLayout.Window.height));
+            _identityContextLayer.gameObject.AddComponent<Canvas>();
+            BuildIdentityContextPresentation(IdentityContext.Gender, "Gender", primary: false);
+            BuildIdentityContextPresentation(IdentityContext.Race, "Race", primary: true);
+            BuildIdentityContextPresentation(IdentityContext.Background, "Background", primary: false);
             _identityMessageIcon = AddSourceImage("Identity Message Icon", _identityNavigation,
                 RetailCharacterCreationLayout.FeedbackIconSourceId, RetailCharacterCreationLayout.EditorMessageIcon);
             _identityMessageTitle = AddText("Identity Message Title", _identityNavigation,
@@ -813,6 +830,7 @@ namespace Arcanum.Runtime.UI
 
         private void BuildSkillsPanel(CharacterCreationSpecification draft)
         {
+            PrepareSkillHints(draft);
             AddSourceImage("Skills Window", _editorPanel, 29, new Rect(0f, 0f, 235f, 325f));
             for (int group = 0; group < 4; group++)
             {
@@ -821,11 +839,18 @@ namespace Arcanum.Runtime.UI
                     302 + group, new Vector2(new[] { 21f, 75f, 129f, 185f }[group], 17f),
                     () => { _skillGroup = captured; _editorSignature = int.MinValue; Synchronize(); }, true);
                 button.SetSelected(group == _skillGroup);
+                BindHint(button.gameObject, 135 + group, null);
             }
             for (int row = 0; row < 4; row++)
             {
                 CharacterSkill skill = (CharacterSkill)(_skillGroup * 4 + row);
                 float buttonY = 84f + 66f * row;
+                RectTransform rowHover = AddRect($"{skill} Row Help", _editorPanel,
+                    new Rect(17f, 63f + 66f * row, 200f, 60f));
+                Image rowHitArea = rowHover.gameObject.AddComponent<Image>();
+                rowHitArea.color = Color.clear;
+                rowHitArea.raycastTarget = true;
+                BindSkillHint(rowHover.gameObject, skill);
                 SourceUiButton minus = AddSourceButtonTopLeft($"Decrease {skill}", _editorPanel, 625,
                     new Vector2(18f, buttonY), () => AdjustSkill(skill, -1));
                 SourceUiButton plus = AddSourceButtonTopLeft($"Increase {skill}", _editorPanel, 624,
@@ -833,7 +858,8 @@ namespace Arcanum.Runtime.UI
                 minus.SetInteractable(CanAdjustSkill(draft, skill, -1));
                 plus.SetInteractable(CanAdjustSkill(draft, skill, 1));
                 SourceUiBitmapText name = AddText($"{skill} Name", _editorPanel,
-                    new Rect(17f, 63f + 66f * row, 170f, 18f), Friendly(skill), 27, SourceWhite);
+                    new Rect(17f, 63f + 66f * row, 170f, 18f),
+                    _skillHintTitles[(int)skill], 27, SourceWhite);
                 foreach (GameObject target in new[] { minus.gameObject, plus.gameObject, name.gameObject })
                     BindSkillHint(target, skill);
                 int sourceLevel = draft.GetSkillPoints(skill) * CharacterSkillRules.SkillUnitsPerPoint
@@ -1068,7 +1094,9 @@ namespace Arcanum.Runtime.UI
         }
 
         private BackgroundDefinition CurrentBackground(CharacterCreationSpecification draft)
-            => _session.CharacterCreation.Catalog.TryGetBackground(draft.BackgroundId, out BackgroundDefinition value)
+            => draft != null && _session != null
+               && _session.CharacterCreation.Catalog.TryGetBackground(draft.BackgroundId,
+                   out BackgroundDefinition value)
                 ? value : null;
 
         private int ProjectMaximumHitPoints(CharacterCreationSpecification draft)
@@ -1200,13 +1228,11 @@ namespace Arcanum.Runtime.UI
             hint.Bind(() =>
             {
                 _identityContext = context;
-                CharacterCreationSpecification draft = _controller?.CreationDraft;
-                if (draft != null) RefreshIdentityContext(draft, CurrentBackground(draft));
+                ApplyIdentityContextPresentation(CurrentBackground(_controller?.CreationDraft));
             }, () =>
             {
                 _identityContext = IdentityContext.Resting;
-                CharacterCreationSpecification draft = _controller?.CreationDraft;
-                if (draft != null) RefreshIdentityContext(draft, CurrentBackground(draft));
+                ApplyIdentityContextPresentation(CurrentBackground(_controller?.CreationDraft));
             });
         }
 
@@ -1221,25 +1247,60 @@ namespace Arcanum.Runtime.UI
         private void ShowSkillHint(CharacterSkill skill)
         {
             int sourceIndex = (int)skill;
-            string title = _resolver.Original.TryReadMessage("mes/skill.mes", sourceIndex,
-                out string sourceName) ? sourceName.Trim() : Friendly(skill);
-            const int firstSkillDescriptionId = CharacterSkillRules.SkillCount
-                                                + (int)SkillTrainingLevel.Master + 1;
-            string body = _resolver.Original.TryReadMessage("mes/skill.mes",
-                firstSkillDescriptionId + sourceIndex, out string sourceDescription)
-                ? sourceDescription.Trim()
-                : string.Empty;
-            CharacterCreationSpecification draft = _controller?.CreationDraft;
-            int current = draft == null ? 0 : _session.CharacterCreation.GetEffectiveSkillRank(draft, skill);
-            int required = CharacterSkillRules.MinimumAttributeForRank(
-                Math.Min(CharacterSkillRules.MaximumEffectiveRank,
-                    current + CharacterSkillRules.SkillUnitsPerPoint));
-            string requirement = $"Minimum {Short(CharacterSkillRules.GoverningAttribute(skill))} to raise: {required}";
-            RebuildEditorMessage(string.IsNullOrEmpty(title) ? Friendly(skill) : title,
-                body, requirement, true);
+            if ((uint)sourceIndex >= _skillHintTitles.Length) return;
+            if (_editorMessageIcon != null)
+            {
+                _editorMessageIcon.SetKey(new UiAssetKey(RetailCharacterCreationLayout.FeedbackIconSourceId));
+                _editorMessageIcon.gameObject.SetActive(true);
+            }
+            SetText(_editorMessageTitle, _skillHintTitles[sourceIndex]);
+            SetRightAlignedText(_editorMessageRequirement, _skillHintRequirements[sourceIndex],
+                RetailCharacterCreationLayout.EditorMessageTitle,
+                new Color32(244, 43, 25, 255));
+            UpdateWrappedLines(_editorMessageBody, _skillHintLines[sourceIndex], 3,
+                SourceUiBitmapText.Flare12FontSourceId);
         }
 
-        private void ClearHint() => RebuildEditorMessage(_controller?.Feedback ?? string.Empty);
+        private void PrepareSkillHints(CharacterCreationSpecification draft)
+        {
+            const int firstSkillDescriptionId = CharacterSkillRules.SkillCount
+                                                + (int)SkillTrainingLevel.Master + 1;
+            foreach (CharacterSkill skill in CharacterSkillRules.AllSkills)
+            {
+                int sourceIndex = (int)skill;
+                _skillHintTitles[sourceIndex] = _resolver.Original.TryReadMessage("mes/skill.mes", sourceIndex,
+                    out string sourceName) && !string.IsNullOrWhiteSpace(sourceName)
+                    ? sourceName.Trim()
+                    : Friendly(skill);
+                string body = _resolver.Original.TryReadMessage("mes/skill.mes",
+                    firstSkillDescriptionId + sourceIndex, out string sourceDescription)
+                    ? sourceDescription.Trim()
+                    : string.Empty;
+                _skillHintLines[sourceIndex] = WrapText(body, 44, 3);
+                int current = draft == null ? 0 : _session.CharacterCreation.GetEffectiveSkillRank(draft, skill);
+                int required = CharacterSkillRules.MinimumAttributeForRank(
+                    Math.Min(CharacterSkillRules.MaximumEffectiveRank,
+                        current + CharacterSkillRules.SkillUnitsPerPoint));
+                _skillHintRequirements[sourceIndex] =
+                    $"Minimum {Short(CharacterSkillRules.GoverningAttribute(skill))} to raise: {required}";
+            }
+        }
+
+        private void ClearHint()
+        {
+            if (_editorMessageIcon != null) _editorMessageIcon.gameObject.SetActive(false);
+            SetText(_editorMessageTitle, string.Empty);
+            SetText(_editorMessageRequirement, string.Empty);
+            if (_editorMessageBody == null) return;
+            for (int index = 0; index < _editorMessageBody.childCount; index++)
+            {
+                Transform child = _editorMessageBody.GetChild(index);
+                SourceUiBitmapText line = child.GetComponent<SourceUiBitmapText>();
+                if (line == null) continue;
+                SetText(line, string.Empty);
+                line.gameObject.SetActive(false);
+            }
+        }
 
         private string ReadMainMenuMessage(int id, string fallback)
             => _resolver.Original.TryReadMessage(RetailMainMenuSource.MessageTable, id, out string source)
@@ -1247,32 +1308,67 @@ namespace Arcanum.Runtime.UI
 
         private void RefreshIdentityContext(CharacterCreationSpecification draft, BackgroundDefinition background)
         {
+            IdentityContextPresentation gender = _identityContextPresentations[IdentityContext.Gender];
+            SetCenteredText(gender.Title, string.Empty, SourceWhite);
+            RebuildSourceWrappedText(gender.Body,
+                ReadMainMenuMessage(742 + (int)draft.Gender, string.Empty), 12);
+
+            IdentityContextPresentation race = _identityContextPresentations[IdentityContext.Race];
+            SetCenteredText(race.Title, ReadMainMenuMessage(745, "Race"), SourceWhite);
+            RebuildSourceWrappedText(race.Body,
+                ReadMainMenuMessage(770 + 2 * (int)draft.Race + (int)draft.Gender, string.Empty), 12);
+
+            IdentityContextPresentation backgroundPresentation =
+                _identityContextPresentations[IdentityContext.Background];
+            RetailMessageWindowProjection projection = RetailMessageWindowProjection.FromSource(
+                background?.Description ?? string.Empty);
+            SetCenteredText(backgroundPresentation.Title,
+                background?.Name ?? projection.Title, SourceWhite);
+            RebuildSourceWrappedText(backgroundPresentation.Body,
+                string.IsNullOrEmpty(projection.Body) ? projection.Title : projection.Body, 12);
+
+            ApplyIdentityContextPresentation(background, force: true);
+        }
+
+        private void BuildIdentityContextPresentation(IdentityContext context, string suffix, bool primary)
+        {
+            RectTransform root = AddRect($"Identity {suffix} Context Presentation", _identityContextLayer,
+                new Rect(0f, 0f, RetailCharacterCreationLayout.Window.width,
+                    RetailCharacterCreationLayout.Window.height));
+            CanvasGroup group = root.gameObject.AddComponent<CanvasGroup>();
+            group.interactable = false;
+            group.blocksRaycasts = false;
+            SourceUiBitmapText title = AddText(primary ? "Description Title" : $"Description Title {suffix}",
+                root, RetailCharacterCreationLayout.DescriptionTitle, string.Empty,
+                SourceUiBitmapText.Morph15FontSourceId, SourceWhite);
+            RectTransform body = AddRect(primary ? "Description Body" : $"Description Body {suffix}", root,
+                RetailCharacterCreationLayout.DescriptionBody);
+            _identityContextPresentations.Add(context, new IdentityContextPresentation
+            {
+                Root = root,
+                Group = group,
+                Title = title,
+                Body = body,
+            });
+            if (primary)
+            {
+                _descriptionTitle = title;
+                _identityDescription = body;
+            }
+        }
+
+        private void ApplyIdentityContextPresentation(BackgroundDefinition background, bool force = false)
+        {
             // mainmenu_ui_new_char_create starts in the source's idle mode. Its shared refresh displays the
             // selected background only for source text rows above 1000; row 1000 falls back to Race.
             IdentityContext context = _identityContext == IdentityContext.Resting
                 ? background?.TextId > 1000 ? IdentityContext.Background : IdentityContext.Race
                 : _identityContext;
-            switch (context)
-            {
-                case IdentityContext.Gender:
-                    SetCenteredText(_descriptionTitle, string.Empty, SourceWhite);
-                    RebuildSourceWrappedText(_identityDescription,
-                        ReadMainMenuMessage(742 + (int)draft.Gender, string.Empty), 12);
-                    break;
-                case IdentityContext.Race:
-                    SetCenteredText(_descriptionTitle, ReadMainMenuMessage(745, "Race"), SourceWhite);
-                    RebuildSourceWrappedText(_identityDescription,
-                        ReadMainMenuMessage(770 + 2 * (int)draft.Race + (int)draft.Gender, string.Empty),
-                        12);
-                    break;
-                default:
-                    RetailMessageWindowProjection projection = RetailMessageWindowProjection.FromSource(
-                        background?.Description ?? string.Empty);
-                    SetCenteredText(_descriptionTitle, background?.Name ?? projection.Title, SourceWhite);
-                    RebuildSourceWrappedText(_identityDescription,
-                        string.IsNullOrEmpty(projection.Body) ? projection.Title : projection.Body, 12);
-                    break;
-            }
+            if (!force && _visibleIdentityContext == context) return;
+            foreach ((IdentityContext candidate, IdentityContextPresentation presentation) in
+                     _identityContextPresentations)
+                presentation.Group.alpha = candidate == context ? 1f : 0f;
+            _visibleIdentityContext = context;
         }
 
         private void SetIdentityBottomValidation(string value)
@@ -1311,6 +1407,7 @@ namespace Arcanum.Runtime.UI
             input.customCaretColor = true;
             input.caretColor = SourceRed;
             input.caretWidth = 1;
+            input.selectionColor = Color.clear;
 
             _nameText = AddText("Name Bitmap Value", root, new Rect(0f, 0f, rect.width, rect.height),
                 string.Empty, SourceUiBitmapText.Morph15FontSourceId, SourceRed);
@@ -1385,9 +1482,13 @@ namespace Arcanum.Runtime.UI
             target.gameObject.AddComponent<Button>();
             target.gameObject.AddComponent<SourceUiImage>();
             SourceUiButton source = target.gameObject.AddComponent<SourceUiButton>();
-            source.Bind(_resolver, new UiAssetKey(sourceId, frame: 0), new UiAssetKey(sourceId, frame: 1),
+            UiAssetKey normal = new(sourceId, frame: 0);
+            UiAssetKey hover = sourceId is 321 or 323 ? normal : new UiAssetKey(sourceId, frame: 1);
+            source.Bind(_resolver, normal, hover,
                 new UiAssetKey(sourceId, frame: 2), new UiAssetKey(sourceId, frame: 0),
-                selected ? new UiAssetKey(sourceId, frame: 2) : null);
+                // Source TIG toggle/latch buttons use the same maximum-brightness state for hover and selection.
+                // Frame 2 is the pressed presentation, not a third persistent selection brightness.
+                selected ? new UiAssetKey(sourceId, frame: 1) : null);
             source.Button.onClick.AddListener(() => clicked());
             return source;
         }
@@ -1465,20 +1566,32 @@ namespace Arcanum.Runtime.UI
 
         private void RebuildWrappedText(RectTransform parent, string value, int columns, int maxLines)
         {
-            ClearChildren(parent);
             List<string> lines = WrapText(value, columns, maxLines);
-            for (int index = 0; index < lines.Count; index++)
-                AddText($"Line {index + 1}", parent, new Rect(0f, index * 15f, parent.rect.width, 15f),
-                    lines[index], 229, SourceWhite);
+            UpdateWrappedLines(parent, lines, maxLines, SourceUiBitmapText.Flare12FontSourceId);
         }
 
         private void RebuildSourceWrappedText(RectTransform parent, string value, int maxLines)
         {
-            ClearChildren(parent);
             List<string> lines = WrapSourceText(value, Mathf.RoundToInt(parent.rect.width), maxLines);
-            for (int index = 0; index < lines.Count; index++)
-                AddText($"Line {index + 1}", parent, new Rect(0f, index * 15f, parent.rect.width, 15f),
-                    lines[index], SourceUiBitmapText.Flare12FontSourceId, SourceWhite);
+            UpdateWrappedLines(parent, lines, maxLines, SourceUiBitmapText.Flare12FontSourceId);
+        }
+
+        private void UpdateWrappedLines(RectTransform parent, IReadOnlyList<string> lines, int maximumLines,
+            int fontSourceId)
+        {
+            int existing = parent.childCount;
+            for (int index = existing; index < maximumLines; index++)
+                AddText($"Line {index + 1}", parent,
+                    new Rect(0f, index * 15f, parent.rect.width, 15f), string.Empty,
+                    fontSourceId, SourceWhite);
+            for (int index = 0; index < parent.childCount; index++)
+            {
+                SourceUiBitmapText line = parent.GetChild(index).GetComponent<SourceUiBitmapText>();
+                if (line == null) continue;
+                bool active = index < lines.Count;
+                SetText(line, active ? lines[index] : string.Empty);
+                line.gameObject.SetActive(active);
+            }
         }
 
         private List<string> WrapSourceText(string value, int maxWidth, int maxLines)
@@ -1679,6 +1792,7 @@ namespace Arcanum.Runtime.UI
             _identityNavigation = null;
             _editorNavigation = null;
             _identityDescription = null;
+            _identityContextLayer = null;
             _editorPanel = null;
             _identityMessageText = null;
             _identityMessageTitle = null;
@@ -1707,6 +1821,7 @@ namespace Arcanum.Runtime.UI
             _attributeButtons.Clear();
             _pageButtons.Clear();
             _textBounds.Clear();
+            _identityContextPresentations.Clear();
             _skillGauges.Clear();
             _controller = null;
             _session = null;
@@ -1715,6 +1830,7 @@ namespace Arcanum.Runtime.UI
             _identitySignature = int.MinValue;
             _editorSignature = int.MinValue;
             _identityContext = IdentityContext.Resting;
+            _visibleIdentityContext = IdentityContext.Resting;
             _identityValidation = string.Empty;
         }
 

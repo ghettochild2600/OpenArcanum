@@ -8,6 +8,7 @@ using Arcanum.Formats.Text;
 using Arcanum.Formats.World;
 using Arcanum.Runtime.Character;
 using Arcanum.Runtime.Dialogue;
+using Arcanum.Runtime.Economy;
 using Arcanum.Runtime.Magic;
 using Arcanum.Runtime.Save;
 using Arcanum.Runtime.Technology;
@@ -857,8 +858,18 @@ namespace Arcanum.Runtime.Creation
                 .FirstOrDefault(value => _world.Economy.TryResolveMerchant(value.Identity, out _, out _));
             if (merchant == null)
                 throw new InvalidOperationException("The authentic SHOPPING_MAP Human Shopkeeper is unavailable.");
+            if (!_world.Economy.TryResolveMerchant(merchant.Identity, out ArcanumObjectId inventoryOwner,
+                    out _))
+                throw new InvalidOperationException("The Human Shopkeeper inventory owner is unavailable.");
             if (!_world.Economy.RestockNow(merchant.Identity, out string failure))
                 throw new InvalidOperationException(failure ?? "The Human Shopkeeper inventory could not be generated.");
+            // Source inven_ui_create arranges a non-PC barter target horizontally; sub_572640 then identifies
+            // the merchant and substitute inventory before the first barter frame is drawn.
+            if (!_world.ArrangeInventory(inventoryOwner))
+                throw new InvalidOperationException("The Human Shopkeeper inventory could not be arranged.");
+            foreach (PersistentObjectState item in _world.ChildrenOf(inventoryOwner)
+                         .Select(identity => _world.States[identity]))
+                item.ItemFlags |= EconomyStateService.ItemFlagIdentified;
             StartingEquipmentMerchant = merchant.Identity;
             StartingEquipmentActive = true;
         }
@@ -1013,6 +1024,8 @@ namespace Arcanum.Runtime.Creation
             {
                 ItemCreationResult created = _world.CreateItem(prototype, ObjectPlacement.ContainedBy(pc));
                 if (!created.Succeeded) throw new InvalidOperationException($"Starting item {prototype}: {created.Code}.");
+                // background_generate_inventory sets OIF_IDENTIFIED before transferring authored grants.
+                created.State.ItemFlags |= EconomyStateService.ItemFlagIdentified;
             }
             if (!BackgroundProvidesArmor(value.Background))
                 CreateStartingItem(pc, CharacterCreationRules.DefaultClothingPrototype(value.Race, value.Gender));
